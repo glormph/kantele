@@ -1,0 +1,20 @@
+div.errormsg {
+display: table-cell;
+color: red;
+}
+
+div.table {
+display: table;
+width: 1000px;
+table-layout: fixed;
+}
+
+div.tablecell {
+display: table-cell;
+width: 30%;
+}
+
+#metafield {
+display: table-cell;
+width: 50%;
+}

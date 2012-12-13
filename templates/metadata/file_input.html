@@ -1,0 +1,31 @@
+<head>
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
+</head>
+
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+<script src="{{ STATIC_URL }}fileShowFilter.js"></script>
+
+<form action="" method="POST">{% csrf_token %}
+<input type="hidden" name="step" value="file_input">
+<div class="table">
+<div class="tablecell">
+<h3>Paste filenames from an experiment</h3>
+<textarea name="pastefiles" rows=30 cols=70>
+</textarea>
+</div>
+<div class="tablecell">
+<div class="largetext">OR</div>
+</div>
+
+<div class="tablecell">
+<h3 id="header">Select uploaded files</h3>
+<select id="filelist" size=30 name="selectfiles" multiple>
+{% for file in filelist %}
+<option value="{{ file }}">{{ file }}</option>
+{% endfor %}
+</select>
+</div>
+
+</div>
+<input type="submit">
+</form>

@@ -1,0 +1,43 @@
+<head>
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
+</head>
+<h1>Input your metadata parameters</h1>
+
+
+<input type="hidden" name="step" value="meta_input">
+<input type="hidden" name="tmpdir" value="{{ param_set.tmpdir }}">
+{% load metadata_access %}
+
+
+<table>
+<tr>
+<td> Files </td>
+{% for name,param in param_set.params.items %}
+{% if name in param_set.metadata.metadata %}
+<td> {{ param.title }} </td>
+{% endif %}
+{% endfor %}
+</tr>
+
+{% for fn in param_set.allfiles %}
+<tr>
+    <td>{{ fn }} </td>
+    {% for paramname in param_set.metadata.metadata %}
+    <td>
+    {% get_meta param_set.metadata fn paramname %}
+    </td>
+    {% endfor %}
+
+</tr>
+{% endfor %}
+</table>
+
+
+<form action="" method="post" class="infoform">
+{% csrf_token %}
+<input type="hidden" name="tmpdir" value="{{ param_set.tmpdir }}">
+<input type="submit">
+</form>
+
+{% block sidebar %}
+{% endblock %}
