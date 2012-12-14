@@ -1,0 +1,21 @@
+<h1>Login page</h1>
+
+{% if form.errors %}
+Your username and password did not match. Please try again.
+{% endif %}
+
+<form method="post" action="{% url django.contrib.auth.views.login %}">
+{% csrf_token %}
+{{ form.username.label_tag }}
+<br>
+{{ form.username }}
+<br>
+ 
+{{ form.password.label_tag }}
+<br>
+{{ form.password }}
+<br>
+<input type="submit" value="login" />
+<input type="hidden" name="next" value="{{ next }}" />
+</form>
+

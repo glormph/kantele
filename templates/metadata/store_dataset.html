@@ -1,7 +1,7 @@
 <head>
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
 </head>
-<h1>Input your metadata parameters</h1>
+<h1>Review metadata parameters for all files</h1>
 
 
 <input type="hidden" name="step" value="meta_input">
@@ -33,9 +33,10 @@
 </table>
 
 
-<form action="" method="post" class="infoform">
+<form action="/kantele/store_metadata/" method="post" class="infoform">
 {% csrf_token %}
 <input type="hidden" name="tmpdir" value="{{ param_set.tmpdir }}">
+<input type="hidden" name="step" value="store">
 <input type="submit">
 </form>
 

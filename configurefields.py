@@ -1,5 +1,5 @@
-import json, os
-import parameters
+import json, os, datetime, glob, shutil
+import parameters, consts
 
 
 class ParameterSet(object):
@@ -10,7 +10,14 @@ class ParameterSet(object):
             config = json.load(fp)
         for paramconfig in config:
             self.params[paramconfig] = parameters.jsonparams_to_class_map[config[paramconfig]['type']](paramconfig, config[paramconfig])
-
+             
+    def initialize(self, request):
+        username = '{0} {1}'.format(request.user.first_name,
+        request.user.last_name)
+        for p in self.params:
+            if self.params[p].is_user:
+                self.params[p].inputvalues = [username]
+            
     def incoming_metadata(self, formdata):
         params_passed = [x for x in formdata if x not in \
             ['csrfmiddlewaretoken', 'step', 'tmpdir', 'add_outliers',
@@ -84,13 +91,14 @@ class ParameterSet(object):
                 'files': {fn : {} for fn in self.allfiles }}
         return tmp_meta
     
-    def save_json(self, meta):
-        with open( os.path.join(self.tmpdir, 'metadata.json'), 'w') as fp:
+    def save_json(self, meta, location=None):
+        if not location:
+            dst = os.path.join(self.tmpdir, 'metadata.json')
+        # else: verify existing dst? #FIXME
+        with open( dst, 'w') as fp:
             json.dump(meta, fp)
-        
+
     def autodetection(self):
-        # FIXME also fix outlierfiles, not just allfiles?
-        
         if self.is_outlier:
             files_to_detect = self.outlierfiles
         else:
@@ -147,23 +155,44 @@ class ParameterSet(object):
         
         self.save_json(tmp_metadata)
 
-    def gather_metadata(self):
-        # first update select fields values if necessary
+    def gather_metadata(self, user):
+        # first update select fields values if necessary DEPRECATE?
         for p in self.params:
             if self.params[p].update_values:
                 pass # FIXME
+
         self.metadata = self.load_json_metadata()
         
+        # FIXME not concurrency safe, use database to store, then get nr from
+        # there and store on server
+        infofiles = glob.glob(os.path.join(consts.TMP_INFOFILE_DIR, '*.json'))
+        infofiles.extend(glob.glob(os.path.join(consts.INFOFILE_LOCATION,
+        '*.json')))
+        if not infofiles:
+            infofiles = ['info0.json']
+        newfilenr = max([int(x.replace('info','').replace('.json', '')) for x in \
+                infofiles]) + 1
+        new_file = 'info{0}.json'.format(str(newfilenr))
         general_info = {
-        'date':1 ,
-        'mail':2,
+        'date':  datetime.date.strftime(datetime.datetime.now(), '%Y%m%d'),
+        'mail': user.email,
         'status': 'new',
-        'infofilename': ''
+        'infofilename': new_file
         }
         self.metadata['general_info'] = general_info
-        print self.metadata 
+        self.save_json(self.metadata)
 
-    def push_definite_metadata(self):
-        pass
-        # just copy file to server
-        #save, but where??
+    def push_definite_metadata(self, formdata):
+        self.tmpdir = formdata['tmpdir']
+        print self.tmpdir
+        metadata = self.load_json_metadata()
+
+        src = os.path.join(self.tmpdir, 'metadata.json')
+        dst = os.path.join(consts.TMP_INFOFILE_DIR, metadata['general_info']['infofilename'])
+        print os.listdir(self.tmpdir)
+        print dst
+        try:
+            shutil.copy(src, dst)
+        except OSError:
+            print 'OOPsie'
+            raise

@@ -1,7 +1,7 @@
 import datetime
 
 class BaseParameter(object):
-    def __init__(self, name, paramdata, form=None):
+    def __init__(self, name, paramdata):
         self.name = name
         self.store = True
         self.optional = False
@@ -15,13 +15,9 @@ class BaseParameter(object):
         self.inputvalues = []
         self.errors = {}
         self.warnings = {}
+        self.is_user = False
         
-        # this logic unneccessary?
-        if not form:
-            self.load_from_conf(paramdata)
-        else:
-            self.incoming_form_data(paramdata, form)
-        self.entered = False # necessary?
+        self.load_from_conf(paramdata)
     
     def load_from_conf(self, paramdata):
         self.title = paramdata['title']
@@ -162,11 +158,12 @@ class SelectParameter(BaseParameter):
             self.update_values = paramdata['update_values']
 
     def render_html(self):
+        print self.inputvalues
         if self.inputvalues:
             values = self.inputvalues
         else:
             values = [''] * self.amount
-        
+
         # first define input
         input_units = []
         for value in values:
@@ -268,14 +265,9 @@ class IntegerParameter(TextParameter):
 
 
 class UserParameter(SelectParameter):
-    def load_from_conf(self, paramdata):
-        super(UserParameter, self).load_from_conf(paramdata)
-        # also get names/ids/mails from db
-        pass
-
-    def render_html(self):
-        return 'USER 2 do'
-
+    def __init__(self, name, paramdata):
+        super(UserParameter, self).__init__(name, paramdata)
+        self.is_user = True 
 
 
 jsonparams_to_class_map = {
@@ -287,5 +279,5 @@ jsonparams_to_class_map = {
     'xofy'      :   XofYParameter,
     'range'     :   RangeParameter,
     'checkboxes':   CheckBoxParameter,
-    'date'      :   DateParameter,
+    'date'      :   DateParameter
     }
