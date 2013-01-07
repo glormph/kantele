@@ -1,4 +1,4 @@
 from django.shortcuts import render, HttpResponse
 
 def home(request):
-    return HttpResponse('Home page')
+    return render(request, 'kantele/index.html')
