@@ -204,6 +204,11 @@ class DateParameter(TextParameter):
     def validate(self):
         super(DateParameter, self).validate()
         for date in self.inputvalues:
+            if date == 'today':
+                date = datetime.date.strftime(datetime.datetime.now(), '%Y%m%d')
+            if date == 'yesterday':
+                date = datetime.date.strftime(datetime.datetime.now()- \
+                            datetime.timedelta(1), '%Y%m%d')
             try:
                 datediff = datetime.datetime.now() - date
             except TypeError:

@@ -165,9 +165,10 @@ class ParameterSet(object):
         
         # FIXME not concurrency safe, use database to store, then get nr from
         # there and store on server
-        infofiles = glob.glob(os.path.join(consts.TMP_INFOFILE_DIR, '*.json'))
+        infofiles = glob.glob(os.path.join(consts.TMP_INFOFILE_DIR, 'info[0-9]*.json'))
         infofiles.extend(glob.glob(os.path.join(consts.INFOFILE_LOCATION,
-        '*.json')))
+        'info[0-9]*.json')))
+        infofiles = [os.path.basename(x) for x in infofiles]
         if not infofiles:
             infofiles = ['info0.json']
         newfilenr = max([int(x.replace('info','').replace('.json', '')) for x in \
