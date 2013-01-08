@@ -1,4 +1,14 @@
 <body>
 
 <a href="newdataset">Add new dataset</a>
+<p>
+Infofiles currently processing: {{ status.infofiles }}<br>
+Service info: {{ status.message }}<br>
+QUEUES<br>
+{% for k,v in status.worker_queues.items %}
+{{ k }} {{ v }}<br>
+{% endfor %}
+Server status: {{ status.server_status.description }}
+
+</p>
 </body>
