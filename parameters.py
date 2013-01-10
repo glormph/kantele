@@ -88,7 +88,7 @@ class BaseParameter(object):
                 # get nr by char-by-char checking validity
                 
                 cur = fn.index(prefix_found[0]) + len(prefix_found[0])
-                if fn[cur] in [' ', '-', '_', '.']:
+                while fn[cur] in [' ', '-', '_', '.']:
                     cur += 1
                 start = cur
                 while not self.errors:
