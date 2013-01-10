@@ -1,6 +1,5 @@
-import json, os, datetime, glob, shutil
-import parameters, consts
-
+import json, os, datetime, shutil, tempfile
+import parameters, consts, db
 
 class ParameterSet(object):
     def __init__(self):
@@ -156,44 +155,41 @@ class ParameterSet(object):
         self.save_json(tmp_metadata)
 
     def gather_metadata(self, user):
-        # first update select fields values if necessary DEPRECATE?
+        # first update select fields values if necessary DEPRECATE - we want
+        # templates?
         for p in self.params:
             if self.params[p].update_values:
                 pass # FIXME
 
         self.metadata = self.load_json_metadata()
-        
-        # FIXME not concurrency safe, use database to store, then get nr from
-        # there and store on server
-        infofiles = glob.glob(os.path.join(consts.TMP_INFOFILE_DIR, 'info[0-9]*.json'))
-        infofiles.extend(glob.glob(os.path.join(consts.INFOFILE_LOCATION,
-        'info[0-9]*.json')))
-        infofiles = [os.path.basename(x) for x in infofiles]
-        if not infofiles:
-            infofiles = ['info0.json']
-        newfilenr = max([int(x.replace('info','').replace('.json', '')) for x in \
-                infofiles]) + 1
-        new_file = 'info{0}.json'.format(str(newfilenr))
         general_info = {
         'date':  datetime.date.strftime(datetime.datetime.now(), '%Y%m%d'),
         'mail': user.email,
         'status': 'new',
-        'infofilename': new_file
         }
         self.metadata['general_info'] = general_info
         self.save_json(self.metadata)
 
     def push_definite_metadata(self, formdata):
+        """
+        Gets metadata from tmpdir, generates a unique filename, puts metadata
+        in mongoDB, and adds a relation in the sql Dataset table.
+        """
         self.tmpdir = formdata['tmpdir']
-        print self.tmpdir
         metadata = self.load_json_metadata()
+        
+        fd,fpath = tempfile.mkstemp(suffix='.json', prefix='info_', 
+            dir=self.tmpdir)
+        fn = os.path.basename(fpath)
+        os.close(fd)
 
-        src = os.path.join(self.tmpdir, 'metadata.json')
-        dst = os.path.join(consts.TMP_INFOFILE_DIR, metadata['general_info']['infofilename'])
-        print os.listdir(self.tmpdir)
-        print dst
+        metadata['general_info']['infofilename'] = fn
+        with open(fpath, 'w') as fp:
+            json.dump(metadata, fp)
         try:
-            shutil.copy(src, dst)
+            shutil.copy(fpath, os.path.join(consts.TMP_INFOFILE_DIR, fn))
         except OSError:
-            print 'OOPsie'
             raise
+        
+        mongo = db.MongoConnection(consts.DBNAME)
+        obj_id = mongo.run('insert', 'metadata', metadata)
