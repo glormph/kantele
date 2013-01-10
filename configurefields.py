@@ -1,5 +1,6 @@
 import json, os, datetime, shutil, tempfile
 import parameters, consts, db
+from metadata.models import Dataset
 
 class ParameterSet(object):
     def __init__(self):
@@ -170,7 +171,7 @@ class ParameterSet(object):
         self.metadata['general_info'] = general_info
         self.save_json(self.metadata)
 
-    def push_definite_metadata(self, formdata):
+    def push_definite_metadata(self, formdata, userlogin):
         """
         Gets metadata from tmpdir, generates a unique filename, puts metadata
         in mongoDB, and adds a relation in the sql Dataset table.
@@ -193,3 +194,8 @@ class ParameterSet(object):
         
         mongo = db.MongoConnection(consts.DBNAME)
         obj_id = mongo.run('insert', 'metadata', metadata)
+        ds = Dataset(user=userlogin,
+            mongoid=obj_id, date=metadata['general_info']['date'],
+            project=metadata['metadata']['project'],
+            experiment=metadata['metadata']['experiment'])
+        ds.save()

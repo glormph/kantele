@@ -77,7 +77,7 @@ def store_dataset(request, loaded_ps=None):
             return render(request, 'metadata/store_dataset.html', {'param_set': loaded_ps})
         else:
             loaded_ps = copy.deepcopy(ps)
-            loaded_ps.push_definite_metadata(request.POST)
+            loaded_ps.push_definite_metadata(request.POST, request.user)
             return render(request, 'metadata/succesful_storage.html', {'param_set': loaded_ps})
 
     else:
