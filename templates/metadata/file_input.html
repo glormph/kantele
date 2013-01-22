@@ -5,7 +5,20 @@
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
 <script src="{{ STATIC_URL }}fileShowFilter.js"></script>
 
+
+
 <form action="" method="POST">{% csrf_token %}
+
+
+<!-- header if we're creating files to show progress -->
+{% if mds.status == "creating" %}
+<p>Files</p>
+<input type="submit" name="target_add_files" value="Input metadata">
+<p>Change metadata for specific files</p>
+{% endif %}
+
+
+
 <input type="hidden" name="step" value="file_input">
 <div class="table">
 <div class="tablecell">

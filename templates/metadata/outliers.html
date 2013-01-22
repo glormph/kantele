@@ -1,0 +1,27 @@
+
+<head>
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
+</head>
+<h1>Input your metadata parameters</h1>
+<script>
+function addField(divName)
+{
+var test = document.createElement('div');
+var divinput = divName + "_inputunit0";
+var newdiv = document.getElementById(divinput).cloneNode(true);
+newdiv.id = divName + "_inputunit"; // fix so that they get a number? check request post output
+document.getElementById(divName).appendChild(newdiv);
+}
+</script>
+
+
+
+{% if mds.status == "creating" %}
+<a href="/kantele/dataset/files/{{ mds.obj_id_str }}">Files</a>
+<a href="/kantele/dataset/metadata/{{ mds.obj_id_str }}">Metadata</a>
+<input type="submit" name="more_outliers" 
+    value="Define more file-specific metadata">
+<input type="submit" name="target_define_outliers" value="Store dataset">
+{% elif mds.status == "editing" %}
+<input type="submit" name="target_define_outliers" value="Store file-specific data">
+{% endif %}
