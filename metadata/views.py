@@ -1,85 +1,79 @@
-from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import logout
-import copy, os, tempfile, json
-import configurefields
 
-ps = configurefields.ParameterSet()
-# should prob be in util module
-def get_uploaded_files():
-    return sorted(os.listdir('/mnt/kalevalatmp'))
-    
-def newmetadata(request):
-    return render(request, 'metadata/metadata_input.html', {'param_set': ps})
+from models import Dataset
+import copy
+import metadata 
 
-def logout_page(request):
-    logout(request)
-    return redirect('/kantele')
+empty_mds = metadata.MetadataSet()
+
 
 @login_required
 def new_dataset(request):
-    print request.user.email, request.user.last_name
-    if request.method == 'POST':
-        print request.POST
-        if request.POST['step'] == 'file_input':
-            # files come in, now write metadata
-            if not request.POST['pastefiles'] and \
-                'selectfiles' not in request.POST:
-                return render(request, 'metadata/file_input.html', 
-                    {'filelist': get_uploaded_files() })
-            else:
-                filelist = request.POST['pastefiles']
-                if filelist == '':
-                    filelist = []
-                else:
-                    filelist = [x.strip() for x in filelist.strip().split('\n')]
-                if 'selectfiles' in request.POST:
-                    filelist.extend(request.POST.getlist('selectfiles'))
-
-                loaded_ps = copy.deepcopy(ps)
-                loaded_ps.initialize(request)
-                loaded_ps.tmpdir = tempfile.mkdtemp(dir='tmp')
-                with open(os.path.join(loaded_ps.tmpdir, 'filelist.json'), 'w') as fp:
-                    json.dump(filelist, fp)
-                return render(request, 'metadata/metadata_input.html',
-                    {'param_set': loaded_ps})
-
-        elif request.POST['step'] in ['base_meta_input', 'outlier_meta']:
-            loaded_ps = copy.deepcopy(ps)
-            loaded_ps.incoming_metadata(request.POST)
-
-            if loaded_ps.error:
-                if not loaded_ps.is_outlier:
-                    loaded_ps.add_outliers = False
-                else:
-                    loaded_ps.add_outliers = True
-                return render(request, 'metadata/metadata_input.html', {'param_set': loaded_ps})
-            else:
-                loaded_ps.autodetection()
-                loaded_ps.save_tmp_parameters()
-                
-                if loaded_ps.add_outliers:
-                    return render(request, 'metadata/metadata_input.html',
-                        {'param_set': loaded_ps})
-                else:
-                    return store_dataset(request, loaded_ps)
-                            
-    else:
-        return render(request, 'metadata/file_input.html', 
-            {'filelist': get_uploaded_files()})
+    mds = copy.deepcopy(empty_mds)
+    oid = mds.initialize_new_dataset(request)
+    # FIXME store oid also in sql
+    redirect('/kantele/files/{0}'.format(oid))
 
 @login_required
-def store_dataset(request, loaded_ps=None):
-    if request.method == 'POST':
-        if request.POST['step'] in ['base_meta_input', 'outlier_meta']:
-            loaded_ps.gather_metadata(request.user)
-            return render(request, 'metadata/store_dataset.html', {'param_set': loaded_ps})
-        else:
-            loaded_ps = copy.deepcopy(ps)
-            loaded_ps.push_definite_metadata(request.POST, request.user)
-            return render(request, 'metadata/succesful_storage.html', {'param_set': loaded_ps})
+def edit_dataset(request, dataset_id):
+    mds = copy.deepcopy(empty_mds)
+    mds.load_from_db(dataset_id)
+    mds.update_db_status('tmp')
+    mds.create_draft_from_metadata()
+    redirect('/kantele/dataset/{0}'.format(dataset_id))
+    
 
+@login_required
+def show_dataset(request, dataset_id):
+    if request.method == 'GET':
+        dataset_view_action(request, dataset_id, 'show_dataset.html')
     else:
-        return redirect('/kantele')
+        redirect('/kantele')
 
+
+@login_required
+def add_files(request, dataset_id):    
+    dataset_view_action(request, dataset_id, 'file_input.html', 'metadata')
+
+
+@login_required
+def write_metadata(request, dataset_id):
+    dataset_view_action(request, dataset_id, 'base_meta.html', 'outliers')
+
+
+@login_required
+def define_outliers(request, dataset_id):
+    dataset_view_action(request, dataset_id, 'outliers.html', 'store')
+
+
+@login_required
+def store_dataset(request, dataset_id):
+    dataset_view_action(request, dataset_id, 'store.html', 'succesful_storage.html')
+
+
+def dataset_view_action(request, dataset_id, template, nextstep=None):
+    mds = copy.deepcopy(empty_mds)
+    if dataset_id not in \
+            [x.mongoid for x in Dataset.objects.filter(user=request.user.pk)] or \
+            request.method not in ['POST', 'GET']:
+        return redirect('/kantele')
+        
+    elif request.method == 'POST':
+        mds.incoming_form(request.POST, dataset_id)
+        # FIXME check for problems in mds:
+        # in case of mds.error:
+            # pass mds to get request?
+        # when editing: redirect to dataset view, when creating new: next step
+        if mds.status == 'creating':
+            # there is a button for more outliers
+            if template == 'outliers.html' and mds.more_outliers == True:
+                nextstep = 'outliers'
+            return redirect('/kantele/dataset/{0}/{1}'.format(nextstep, mds.obj_id)) 
+        else:
+            return redirect('/kantele/dataset/{0}'.format(mds.obj_id)) 
+
+    elif request.method == 'GET':
+        mds.load_from_db(request.user, dataset_id)
+        return render(request, 'metadata/{0}'.format(template), {'mds': mds} )
+    
