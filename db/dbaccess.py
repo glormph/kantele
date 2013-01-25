@@ -34,14 +34,19 @@ class DatabaseAccess(object):
         else:
             raise ValueError, 'No {0} collection in draft db'.format(coll)
     
-    def update_metadata(self, oid, record):
-        self.mongo.run('update', 'draftmeta', key_bson={'_id': oid},
-            value_bson=record)
+    def update_metadata(self, oid, record, replace=False):
+        self.update_record('metadata', {'_id': oid}, record, replace)
     
-    def update_draft_metadata(self, oid, record):
-        self.mongo.run('update', 'draftmeta', key_bson={'_id': oid},
-            value_bson=record)
-
+    def update_draft_metadata(self, oid, record, replace=False):
+        self.update_record('draftmeta', {'_id': oid}, record, replace)
+    
+    def update_record(self, coll, spec, record, replace=False):
+        if replace:
+            self.mongo.run('update', coll, key_bson=spec, value_bson=record)
+        else:
+            self.mongo.run('update', coll, key_bson=spec, value_bson={'$set':
+                    record} )
+            
     def upsert_draft_record(self, coll, spec, record):
         if coll != 'metadata':
                 return self.mongo.run('upsert', coll, key_bson=spec, value_bson=record, ups=True)

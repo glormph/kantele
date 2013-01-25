@@ -48,14 +48,28 @@ def define_outliers(request, dataset_id):
 
 @login_required
 def store_dataset(request, dataset_id):
-    dataset_view_action(request, dataset_id, 'store.html', 'succesful_storage.html')
+    if request.method == 'GET':
+        # or should we redirect to kantele when get comes?
+        dataset_view_action(request, dataset_id, 'store.html')
+    elif request.method == 'POST':
+        mds = check_dataset(request, dataset_id)
+        if not mds:
+            return redirect('/kantele')
+        else:
+            mds.store_dataset(request, dataset_id) 
+            redirect('/kantele') # Can we add a message: congratulations here?
 
-
-def dataset_view_action(request, dataset_id, template, nextstep=None):
-    mds = copy.deepcopy(empty_mds)
+def check_dataset(request, dataset_id):
     if dataset_id not in \
             [x.mongoid for x in Dataset.objects.filter(user=request.user.pk)] or \
             request.method not in ['POST', 'GET']:
+        return False
+    else:
+       return copy.deepcopy(empty_mds)
+
+def dataset_view_action(request, dataset_id, template, nextstep=None):
+    mds = check_dataset(request, dataset_id)
+    if not mds:
         return redirect('/kantele')
         
     elif request.method == 'POST':

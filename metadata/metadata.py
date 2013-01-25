@@ -1,4 +1,4 @@
-import os
+import os, datetime
 from pymongo.objectid import ObjectId
 from parameters import ParameterSet
 from db.dbaccess import DatabaseAccess
@@ -35,8 +35,49 @@ class MetadataSet(object):
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
         self.create_paramsets(request.user, files, basemd, outliers)
     
-    def store_dataset(self, request, oid):
-        pass
+    def store_dataset(self, request, oid_str):
+        sessionid = request.session.get('draft_id', None)
+        if not sessionid == oid_str:
+            pass # TODO ERROR
+        files, basemd, outliers = self.load_from_db(ObjectId(oid_str),
+                    sessionid)
+        # remove draft_id, status=edit/copy, metadata_id, etc from data
+        metadata_id = basemd.pop('metadata_id', None)
+        for x in ['draft_id', 'status', '_id']:
+            files.pop(x, None)
+            basemd.pop(x, None)
+            for rec in outliers:
+                rec.pop(x, None) # pops from the original dict data object, no
+                                 # need to redefine and put in new list.
+        
+        # convert outliers to files in fullmeta
+        files = files['files']
+        for out in outliers:
+            for key,val in out['metadata'].items():
+                if key in basemd and val != basemd[key]:
+                    for fn in out['files']:
+                        files[fn][key] = val  
+                        # FIXME what about extension?
+                        # shoudl be put in the files db
+                        # keep out of all dict entries.
+        
+        # FIXME get recnr from SQL DB that registers mongoid/users
+        # Base infofilename on that. Concurrency problem solved.
+        recnr = 0
+
+
+        fullmeta = {'metadata': basemd, 'files': files}
+        fullmeta['general_info'] = {'date': \
+                datetime.date.strftime(datetime.datetime.now(), '%Y%m%d'),
+                                    'mail': request.user.email,
+                                    'status': 'new',
+                                    'nr': recnr
+                                    }
+
+        if metadata_id:
+            self.db.update_metadata(metadata_id, fullmeta, replace=True)
+        else:
+            self.db.insert_metadata_record(fullmeta)
 
     def draft_from_fullmetadata(self, task, obj_id_str):
         obj_id = ObjectId(obj_id_str)
@@ -139,10 +180,8 @@ class MetadataSet(object):
                 self.paramset.do_autodetection()
                 self.paramset.generate_metadata_for_db()
                 if formtgt == 'target_write_metadata':
-                    # TODO check if we need to write more than just
-                    # paramset.metadata here. _id stays the same even w/o $set
                     self.db.update_draft_metadata(obj_id,
-                            self.paramset.metadata)
+                            self.paramset.metadata, replace=False)
                 else:
                     outlierfiles = req.POST.get('outlierfiles', None)
                     # check outliers
