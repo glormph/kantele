@@ -13,13 +13,25 @@ class MetadataSet(object):
     
     def initialize_new_dataset(self, request):
         # FIXME what to do if the button is pressed twice? Create new or show
-        # the old from session?
+        # the old from session? probably create new.
         draft_oid = self.db.insert_draft_metadata( {} )
-        request.session['draft_id'] = draft_oid 
+        request.session['draft_id'] = draft_oid # FIXME is this returned? Is the
+        # session really chnaged?
         self.db.insert_draft_files({'draft_id': draft_oid})
         self.db.insert_draft_outliers({'draft_id': draft_oid})
         return str(draft_oid)
     
+    def edit_dataset(self, request, oid_str):
+        session_id = request.session.get('draft_id', None)
+        self.load_from_db(session_id, ObjectId(oid_str) ) 
+        #mds.update_db_status('tmp')
+        #mds.create_draft_from_metadata()
+    
+    def show_dataset(self, request, oid):
+        session_id = request.session.get('draft_id', None)
+        files, basemd, outliers = self.load_from_db(session_id, ObjectId(oid))
+        self.create_paramsets(request.user, files, basemd, outliers)
+
     def create_draft_from_existing_metadata(self):
         md = {self.fullmeta['metadata'][k] for k in self.fullmeta['metadata']}
         md['metadata_id'] = str(self.fullmeta['_id'])
@@ -41,56 +53,54 @@ class MetadataSet(object):
             outlier['metadata_id'] = str(self.fullmeta['_id'])
             self.insert_draft_record('outliers', outlier)
 
-    def load_from_db(self, request, obj_id_str, make_paramsets=True):
-        self.obj_id_str = obj_id_str
-        self.obj_id = ObjectId(obj_id_str)
-        self.fullmeta = self.db.get_metadata(self.obj_id)
+    def load_from_db(self, sessionid, obj_id):
+        self.fullmeta = self.db.get_metadata(obj_id)
         if not self.fullmeta:
             # data is either draft, or doesn't exist
             # check if session ID ok
-            if request.session.get('draft_id', None) == self.obj_id:
+            if sessionid == obj_id:
                 pass # TODO error, NO ACCESS or redirect!
             # check if exist in draft
             else:
-                self.basemetadata = self.db.get_metadata(self.obj_id,
-                        draft=True)
-                if not self.basemetadata:
+                basemetadata = self.db.get_metadata(obj_id, draft=True)
+                if not basemetadata:
                     pass # NO ACCESS!, redirect
 
                 else: # load also outliers and files
-                    self.files = self.get_files(self.obj_id)
-                    self.outliers = []
-                    for record in self.get_outliers(self.obj_id):
+                    files = self.db.get_files(obj_id)
+                    outliers = []
+                    for record in self.db.get_outliers(obj_id):
                         self.outliers.append(record)
                      
         else:
+            # We're either editing or we're just showing.
             self.basemetadata = self.fullmeta['metadata']
             # TODO extract outliers et al from fullmeta
+        
+        return files, basemetadata, outliers
 
-        if make_paramsets:
-            self.baseparamset = ParameterSet()
-            self.baseparamset.initialize(request.user, self.basemetadata)
-            self.outlierparamsets = []
-            for record in self.outliers: 
-                pset = ParameterSet()
-                pset.initialize(request.user, record)
-                self.outlierparamsets.append( pset )
+    def create_paramsets(self, user, files, basemetadata, outliers):
+        self.baseparamset = ParameterSet()
+        self.baseparamset.initialize(user, basemetadata)
+        self.outlierparamsets = []
+        for record in outliers: 
+            pset = ParameterSet()
+            pset.initialize(user, record)
+            self.outlierparamsets.append( pset )
 
     def incoming_form(self, req, obj_id_str):
         obj_id = ObjectId(obj_id_str)
         # validate session id with req.
-        if not req.session.get('draft_id') == obj_id_str:
+        sessionid = req.session.get('draft_id', None)
+        if not sessionid == obj_id:
             pass # NO ACCESS!
         
-        # with obj_id, get tmp metadata['sessionid']
-        # paramset, validate, store.
         formtgt = [x for x in req.POST if x.startswith('target_')][0]
         
-        # FIXME This if block isn't correct - add_files 
         if formtgt == 'target_add_files':
             if not req.POST['pastefiles'] and \
                 'selectfiles' not in req.POST:
-                pass # FIXME set error flag and redirect to file form
+                pass # TODO set error flag and redirect to file form
             else:
                 filelist = req.POST['pastefiles']
                 if filelist == '':
@@ -99,10 +109,11 @@ class MetadataSet(object):
                     filelist = [x.strip() for x in filelist.strip().split('\n')]
                 if 'selectfiles' in req.POST:
                     filelist.extend(req.POST.getlist('selectfiles'))
-                files = { x : {} for x in filelist }
-                files['draft_id'] = obj_id
-                self.db.insert_files(files)
+                self.db.insert_files({ 'files': [x for x in filelist],
+                            'draft_id': obj_id } ) 
 
+        # with obj_id, get tmp metadata['sessionid']
+        # paramset, validate, store.
         elif formtgt in ['target_write_metadata','target_define_outliers',
                         'more_outliers']:
             self.paramset = ParameterSet()
@@ -121,11 +132,11 @@ class MetadataSet(object):
                     # check outliers
                     if not outlierfiles:
                         pass # ERROR, no files specified
-                    self.load_from_db(req, obj_id_str, make_paramsets=False)
-                    if self.paramset.metadata == self.basemetadata:
+                    files, basemd, outliers = self.load_from_db(sessionid, obj_id)
+                    if self.paramset.metadata == basemd:
                         pass # ERROR, basemeta == outlier
                     
-                    for outlier in self.outliers:
+                    for outlier in outliers:
                         if self.paramset.metadata == outlier['metadata']:
                             pass # ERROR, outlier == previous outlier
                         elif set(outlierfiles).intersection(outlier['files']):
@@ -133,7 +144,7 @@ class MetadataSet(object):
 
                     # Checks passed, save to db:
                     self.more_outliers = 'more_outliers'==formtgt
-                    meta_for_db = { 'draft_id': obj_id_str, 
+                    meta_for_db = { 'draft_id': obj_id, 
                                     'metadata': self.paramset.metadata,
                                     'files': outlierfiles }
 

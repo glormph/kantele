@@ -18,9 +18,8 @@ def new_dataset(request):
 @login_required
 def edit_dataset(request, dataset_id):
     mds = copy.deepcopy(empty_mds)
-    mds.load_from_db(dataset_id)
-    mds.update_db_status('tmp')
-    mds.create_draft_from_metadata()
+    mds.edit_dataset(request, dataset_id)
+    
     redirect('/kantele/dataset/{0}'.format(dataset_id))
     
 
@@ -69,11 +68,12 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
             # there is a button for more outliers
             if template == 'outliers.html' and mds.more_outliers == True:
                 nextstep = 'outliers'
-            return redirect('/kantele/dataset/{0}/{1}'.format(nextstep, mds.obj_id)) 
+            return redirect('/kantele/dataset/{0}/{1}'.format(nextstep,
+                    dataset_id)) 
         else:
             return redirect('/kantele/dataset/{0}'.format(mds.obj_id)) 
 
     elif request.method == 'GET':
-        mds.load_from_db(request.user, dataset_id)
+        mds.show_dataset(request, dataset_id)
         return render(request, 'metadata/{0}'.format(template), {'mds': mds} )
     
