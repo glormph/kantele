@@ -22,12 +22,12 @@ class MetadataSet(object):
         return str(draft_oid)
     
     def copy_dataset(self, request, oid_str):
-        draft_oid = self.drafts_fromfullmetadata('copy', oid_str)
+        draft_oid = self.draft_from_fullmetadata('copy', oid_str)
         request.session['draft_id'] = draft_oid
         return str(draft_oid)
 
     def edit_dataset(self, request, oid_str):
-        draft_oid = self.drafts_from_fullmetadata('edit', oid_str)
+        draft_oid = self.draft_from_fullmetadata('edit', oid_str)
         request.session['draft_id'] = draft_oid
         return str(draft_oid) 
     
@@ -83,9 +83,11 @@ class MetadataSet(object):
                                     'nr': d.id
                                     }
 
-        if metadata_id:
-            # FIXME if existing, don't change general_info!
-            self.db.update_metadata(metadata_id, fullmeta, replace=True)
+        if metadata_id: # only when editing, no general info update
+            self.db.update_metadata(metadata_id,
+                    {'metadata':fullmeta['metadata']}, replace=True)
+            self.db.update_metadata(metadata_id, {'files':fullmeta['files']},
+                    replace=True)
         else:
             self.db.insert_metadata_record(fullmeta)
 
