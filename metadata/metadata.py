@@ -1,5 +1,6 @@
 import os, datetime
 from pymongo.objectid import ObjectId
+from models import Dataset
 from parameters import ParameterSet
 from db.dbaccess import DatabaseAccess
 
@@ -37,13 +38,16 @@ class MetadataSet(object):
     
     def store_dataset(self, request, oid_str):
         sessionid = request.session.get('draft_id', None)
+        curdate = datetime.date.strftime(datetime.datetime.now(), '%Y%m%d')
+        
         if not sessionid == oid_str:
             pass # TODO ERROR
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str),
                     sessionid)
         # remove draft_id, status=edit/copy, metadata_id, etc from data
         metadata_id = basemd.pop('metadata_id', None)
-        for x in ['draft_id', 'status', '_id']:
+        for x in ['draft_id', 'status', '_id']: # TODO this should be solve elsewhere, what if we change...
+            # ...a name somewhere!?
             files.pop(x, None)
             basemd.pop(x, None)
             for rec in outliers:
@@ -56,25 +60,31 @@ class MetadataSet(object):
             for key,val in out['metadata'].items():
                 if key in basemd and val != basemd[key]:
                     for fn in out['files']:
-                        files[fn][key] = val  
-                        # FIXME what about extension?
-                        # shoudl be put in the files db
-                        # keep out of all dict entries.
-        
-        # FIXME get recnr from SQL DB that registers mongoid/users
-        # Base infofilename on that. Concurrency problem solved.
-        recnr = 0
+                        files[fn][key] = val
 
+        # parse extension from files since mongo doesnt accept '.' in its keys
+        newfiles = {}
+        for fn in files:
+            newfn = os.path.splitext(fn)
+            newfiles[newfn[0]] = files[fn]
+            newfiles[newfn[0]]['extension'] = newfn[1]
+        files = newfiles
+
+        # get id from SQL DB that registers mongoid/users
+        # Base infofilename on that. Concurrency problem solved.
+        d = Dataset(user=request.user,mongoid=metadata_id,date=datetime.datetime.now(),
+                project=basemd['Project'], experiment=basemd['Experiment'])
+        d.save()
 
         fullmeta = {'metadata': basemd, 'files': files}
-        fullmeta['general_info'] = {'date': \
-                datetime.date.strftime(datetime.datetime.now(), '%Y%m%d'),
+        fullmeta['general_info'] = {'date': curdate,
                                     'mail': request.user.email,
                                     'status': 'new',
-                                    'nr': recnr
+                                    'nr': d.id
                                     }
 
         if metadata_id:
+            # FIXME if existing, don't change general_info!
             self.db.update_metadata(metadata_id, fullmeta, replace=True)
         else:
             self.db.insert_metadata_record(fullmeta)
