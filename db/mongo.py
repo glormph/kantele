@@ -21,7 +21,6 @@ class MongoConnection(object):
                 'draftmeta' :   self.draft.metadata,
                 'files'     :   self.draft.files,
                 'outliers'  :   self.draft.outliers,
-                'last_outlier': self.draft.lastoutlier
                 }   
         
         self.actionmap = {
@@ -34,8 +33,8 @@ class MongoConnection(object):
 
     
     def returnColnames(self):
-        return {'metadata': self.meta.collection_names(), 
-                'draft': self.draft.collection_names()}
+        return {'metadata': 'metadata', 
+                'draft': [x for x in self.collmap.keys() if x != 'metadata']}
 
     def run(self, action, coll, in_bson=None, **kwargs):
         try:

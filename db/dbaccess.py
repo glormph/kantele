@@ -3,7 +3,7 @@ import mongo
 class DatabaseAccess(object):
     def __init__(self):
         self.mongo = mongo.MongoConnection('metadata', 'draft')
-   
+
     def get_metadata(self, obj_id, draft=False):
         if draft:
             return self.mongo.run('find_one', 'draftmeta', {'_id', obj_id} )
@@ -30,6 +30,8 @@ class DatabaseAccess(object):
 
     def insert_draft_record(self, coll, record):
         if coll in self.mongo.returnColnames()['draft']:
+            return self.mongo.run('insert', coll, record)
+        elif self.mongo.returnColnames()['draft'] == []:
             return self.mongo.run('insert', coll, record)
         else:
             raise ValueError, 'No {0} collection in draft db'.format(coll)
