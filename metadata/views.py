@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 
-from models import Dataset
+from models import Dataset, DraftDataset
 from db import dbaccess
 import copy
 import metadata 
@@ -59,7 +59,6 @@ def store_dataset(request, dataset_id):
 
 def dataset_view_action(request, dataset_id, template, nextstep=None):
     mds = check_dataset(request, dataset_id)
-    print mds
     if not mds:
         return redirect('/kantele')
         
@@ -90,9 +89,13 @@ def deepcopy_metadataset(mds):
     return new_mds
 
 def check_dataset(request, dataset_id):
-    if dataset_id not in \
-            [x.mongoid for x in Dataset.objects.filter(user=request.user.pk)] or \
-            request.method not in ['POST', 'GET']:
+    if request.method not in ['POST', 'GET']:
         return False
+    elif dataset_id in \
+            [x.mongoid for x in Dataset.objects.filter(user=request.user.pk)]:
+        return deepcopy_metadataset(empty_mds)
+    elif dataset_id in \
+            [x.mongoid for x in DraftDataset.objects.filter(user=request.user.pk)]:
+        return True
     else:
-       return copy.deepcopy(empty_mds)
+       return False

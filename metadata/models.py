@@ -9,6 +9,12 @@ class Dataset(models.Model):
     experiment = models.CharField(max_length=100)
 
     
+class DraftDataset(models.Model):
+    user = models.ForeignKey(User)
+    mongoid = models.CharField(max_length=100)
+    date = models.DateField('date created')
+
+
 class Template(models.Model):
     user = models.ForeignKey(User)
     mongoid = models.CharField(max_length=100)

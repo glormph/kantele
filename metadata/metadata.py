@@ -14,11 +14,13 @@ class MetadataSet(object):
         # FIXME what to do if the button is pressed twice? Create new or show
         # the old from session? probably create new.
         draft_oid = self.db.insert_draft_metadata( {} )
+        self.save_to_sql_db(DraftDataset, user=request.user, 
+                mongoid=str(draft_oid), date=datetime.datetime.now())
         request.session['draft_id'] = draft_oid 
         self.db.insert_files({'draft_id': draft_oid})
         self.db.insert_outliers({'draft_id': draft_oid})
         return str(draft_oid)
-    
+
     def copy_dataset(self, request, oid_str):
         draft_oid = self.draft_from_fullmetadata('copy', oid_str)
         request.session['draft_id'] = draft_oid
@@ -82,9 +84,9 @@ class MetadataSet(object):
             metadata_id = self.db.insert_metadata_record(fullmeta)
             # get id from SQL DB that registers mongoid/users
             # Base infofilename on that. Concurrency problem solved.
-            d = Dataset(user=request.user,mongoid=str(metadata_id),date=datetime.datetime.now(),
+            d = self.save_to_sql_db(Dataset, user=request.user,
+                    mongoid=str(metadata_id),date=datetime.datetime.now(),
                     project=basemd['Project'], experiment=basemd['Experiment'])
-            d.save()
             fullmeta['general_info']['status'] = 'new'
             fullmeta['general_info']['nr'] = d.id
             self.db.update_metadata(metadata_id, fullmeta, replace=True)
@@ -228,7 +230,10 @@ class MetadataSet(object):
                 pass
                 # TODO check for errors, set flag and redirect target
         
-    
+    def save_to_sql_db(self, model, **kwargs):
+        record = model(**kwargs)
+        record.save()
+        return record
 
     def get_uploaded_files(self):
         return sorted(os.listdir('/mnt/kalevalatmp'))
