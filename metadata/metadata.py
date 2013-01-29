@@ -1,8 +1,7 @@
 import os, datetime
 from bson.objectid import ObjectId
-from models import Dataset
+from models import Dataset, DraftDataset
 from parameterset import ParameterSet
-from db.dbaccess import DatabaseAccess
 
 class MetadataSet(object):
     def __init__(self):
@@ -69,26 +68,26 @@ class MetadataSet(object):
             newfiles[newfn[0]]['extension'] = newfn[1]
         files = newfiles
 
-        # get id from SQL DB that registers mongoid/users
-        # Base infofilename on that. Concurrency problem solved.
-        d = Dataset(user=request.user,mongoid=metadata_id,date=datetime.datetime.now(),
-                project=basemd['Project'], experiment=basemd['Experiment'])
-        d.save()
-
         fullmeta = {'metadata': basemd, 'files': files}
         fullmeta['general_info'] = {'date': curdate,
                                     'mail': request.user.email,
-                                    'status': 'new',
-                                    'nr': d.id
+                                    'status': 'storing',
                                     }
 
         if metadata_id: # only when editing, no general info update
             self.db.update_metadata(metadata_id,
-                    {'metadata':fullmeta['metadata']}, replace=True)
-            self.db.update_metadata(metadata_id, {'files':fullmeta['files']},
-                    replace=True)
+                        {'metadata':fullmeta['metadata']})
+            self.db.update_metadata(metadata_id, {'files':fullmeta['files']})
         else:
-            self.db.insert_metadata_record(fullmeta)
+            metadata_id = self.db.insert_metadata_record(fullmeta)
+            # get id from SQL DB that registers mongoid/users
+            # Base infofilename on that. Concurrency problem solved.
+            d = Dataset(user=request.user,mongoid=str(metadata_id),date=datetime.datetime.now(),
+                    project=basemd['Project'], experiment=basemd['Experiment'])
+            d.save()
+            fullmeta['general_info']['status'] = 'new'
+            fullmeta['general_info']['nr'] = d.id
+            self.db.update_metadata(metadata_id, fullmeta, replace=True)
 
     def draft_from_fullmetadata(self, task, obj_id_str):
         obj_id = ObjectId(obj_id_str)
