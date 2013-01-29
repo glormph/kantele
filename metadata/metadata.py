@@ -1,7 +1,7 @@
 import os, datetime
-from pymongo.objectid import ObjectId
+from bson.objectid import ObjectId
 from models import Dataset
-from parameters import ParameterSet
+from parameterset import ParameterSet
 from db.dbaccess import DatabaseAccess
 
 class MetadataSet(object):
@@ -10,15 +10,14 @@ class MetadataSet(object):
         self.obj_id = False
         self.status = False
         self.more_outliers = False
-        self.db = DatabaseAccess()
     
     def initialize_new_dataset(self, request):
         # FIXME what to do if the button is pressed twice? Create new or show
         # the old from session? probably create new.
         draft_oid = self.db.insert_draft_metadata( {} )
         request.session['draft_id'] = draft_oid 
-        self.db.insert_draft_files({'draft_id': draft_oid})
-        self.db.insert_draft_outliers({'draft_id': draft_oid})
+        self.db.insert_files({'draft_id': draft_oid})
+        self.db.insert_outliers({'draft_id': draft_oid})
         return str(draft_oid)
     
     def copy_dataset(self, request, oid_str):
@@ -105,10 +104,10 @@ class MetadataSet(object):
 
         draft_id = self.db.insert_draft_metadata(basemd)
         files['draft_id'] = draft_id
-        self.db.insert_draft_files(files)
+        self.db.insert_files(files)
         for record in outliers:
             outliers['draft_id'] = draft_id
-            self.db.insert_draft_outliers(record)
+            self.db.insert_outliers(record)
 
         return draft_id
             
