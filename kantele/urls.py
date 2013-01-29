@@ -8,7 +8,7 @@ admin.autodiscover()
 
 urlpatterns = patterns('',
     url(r'^kantele/login/$', 'django.contrib.auth.views.login'),
-    url(r'^logout/$', 'metadata.views.logout'),
+    url(r'^kantele/logout/$', 'kantele.views.logout_page'),
     
     url(r'^kantele/$', 'kantele.views.home'),
     
@@ -17,7 +17,7 @@ urlpatterns = patterns('',
     url(r'^kantele/dataset/new/$', 'metadata.views.new_dataset'),
     url(r'^kantele/dataset/edit/(?P<dataset_id>\w+)/$', 'metadata.views.edit_dataset'),
 
-    url(r'^kantele/dataset/files/(?P<dataset_id>\w+)/$', 'metadata.views.add_files'),
+    url(r'^kantele/dataset/files/(?P<dataset_id>\w+)/$', 'metadata.views.select_files'),
     url(r'^kantele/dataset/metadata/(?P<dataset_id>\w+)/$', 'metadata.views.write_metadata'),
     url(r'^kantele/dataset/outliers/(?P<dataset_id>\w+)/$', 'metadata.views.define_outliers'),
     url(r'^kantele/dataset/store/(?P<dataset_id>\w+)/$', 'metadata.views.store_dataset'),
