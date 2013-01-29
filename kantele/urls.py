@@ -20,8 +20,7 @@ urlpatterns = patterns('',
     url(r'^kantele/dataset/files/(?P<dataset_id>\w+)/$', 'metadata.views.add_files'),
     url(r'^kantele/dataset/metadata/(?P<dataset_id>\w+)/$', 'metadata.views.write_metadata'),
     url(r'^kantele/dataset/outliers/(?P<dataset_id>\w+)/$', 'metadata.views.define_outliers'),
-
-    url(r'^kantele/store_metadata/$', 'metadata.views.store_dataset'),
+    url(r'^kantele/dataset/store/(?P<dataset_id>\w+)/$', 'metadata.views.store_dataset'),
     
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
