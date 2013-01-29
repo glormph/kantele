@@ -11,7 +11,7 @@ class ParameterSet(object):
         for paramconfig in config:
             self.params[paramconfig] = parameters.jsonparams_to_class_map[config[paramconfig]['type']](paramconfig, config[paramconfig])
              
-    def initialize(self, user, record=None):
+    def initialize(self, user, files, record=None):
         username = '{0} {1}'.format(user.first_name, user.last_name)
         for p in self.params:
             if self.params[p].is_user:
@@ -86,24 +86,17 @@ class ParameterSet(object):
                 if self.params[paramname].errors:
                     self.error = True
 
-    def do_autodetection(self):
-        if self.is_outlier:
-            files_to_detect = self.outlierfiles
-        else:
-            files_to_detect = self.allfiles
-        outfiles = { fn : {} for fn in files_to_detect }
-        for paramname in self.params:
-            if self.params[paramname].autodetect_param:
-                dep = self.params[paramname].depends_on
-                outfiles = self.params[paramname].autodetect(outfiles,
-                    self.params[dep].inputvalues)
-        
-        storedmeta = self.load_json_metadata()
-        for fn in outfiles:
-            for p in outfiles[fn]:
-                storedmeta['files'][fn][p] = outfiles[fn][p]
-        
-        self.save_json(storedmeta)
+    def do_autodetection(self, files, files_to_process):
+        autodetection_done = False
+        for p in self.params:
+            if self.params[p].autodetect_param:
+                prefix = self.params[self.params[p].depends_on].inputvalues
+                files, check = self.params[p].autodetect(files, files_to_process,
+                            prefix)
+                if check:
+                    autodetection_done = True
+
+        return files, autodetection_done
     
     def generate_metadata_for_db(self, **kwargs):
         # kwargs will be added to metadata as k/v pairs

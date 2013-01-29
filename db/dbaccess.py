@@ -37,6 +37,9 @@ class DatabaseAccess(object):
     def update_metadata(self, oid, record, replace=False):
         self.update_record('metadata', {'_id': oid}, record, replace)
     
+    def update_files(self, oid, record, replace=False):
+        self.update_record('files', {'draft_id': oid}, record, replace)
+    
     def update_draft_metadata(self, oid, record, replace=False):
         self.update_record('draftmeta', {'_id': oid}, record, replace)
     

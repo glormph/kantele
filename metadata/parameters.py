@@ -76,35 +76,45 @@ class BaseParameter(object):
     def render_autodetect_html(self):
         return False
 
-    def autodetect(self, outfiles, prefix=None):
+    def autodetect(self, files, filelist, prefix=None):
         if not self.autodetect_param:
             return True
+        self.store = False # autodetect params are not saved in metadata, but
+                           # in files record in DB
         if prefix == ['None']:
-            self.store = False
-            return outfiles
+            # In case of no (fraction or other) prefix in filename
+            return files, False
         else:
-            for fn in outfiles:
+            for fn in filelist:
                 self.errors = {}
                 prefix_found = []
+                self.inputvalues = []
                 for pref in prefix:
+                    # inputvalues is list
                     if pref in fn:
                         prefix_found.append(pref)
-                        # tmp register the pref
-                # if two nrs: complain
-                # else: 
-                # get nr by char-by-char checking validity
                 
+                # if two nrs: complain - shouldnt happen, errors checked
+                # before autodetection
+                # else: 
+                # get nr by char-by-char checking validity(below)
+               
                 cur = fn.index(prefix_found[0]) + len(prefix_found[0])
                 while fn[cur] in [' ', '-', '_', '.']:
                     cur += 1
                 start = cur
                 while not self.errors:
                     if self.inputvalues:
-                        outfiles[fn][self.name] = self.inputvalues[0]
+                        files[fn][self.name] = self.inputvalues[0]
                     self.inputvalues = [fn[start:cur+1]]
-                    self.validate()
+                    self.validate() # populates self.errors in case of error in
+                                    # inputvalues
                     cur += 1
-            return outfiles
+                if cur - start == 1 and self.errors:
+                    # no value found after prefix
+                    files[fn][self.name] = 'NA'
+            autodetection_done = True
+            return files, autodetection_done
 
 
 class CheckBoxParameter(BaseParameter):

@@ -179,7 +179,7 @@ class MetadataSet(object):
                     filelist = [x.strip() for x in filelist.strip().split('\n')]
                 if 'selectfiles' in req.POST:
                     filelist.extend(req.POST.getlist('selectfiles'))
-                self.db.insert_files({ 'files': filelist, 'draft_id': obj_id})
+                self.db.insert_files({ 'files': { k: {} for k in filelist }, 'draft_id': obj_id})
 
         # with obj_id, get tmp metadata['sessionid']
         # paramset, validate, store.
@@ -189,9 +189,12 @@ class MetadataSet(object):
             self.paramset.incoming_metadata(req.POST)
 
             if not self.paramset.error:
-                self.paramset.do_autodetection()
                 self.paramset.generate_metadata_for_db()
                 if formtgt == 'target_write_metadata':
+                    files = self.db.get_files(obj_id)
+                    files['files'], autodet_done = \
+                    self.paramset.do_autodetection(files['files'],
+                            [fn for fn in files['files']] )
                     self.db.update_draft_metadata(obj_id,
                             self.paramset.metadata, replace=False)
                 else:
@@ -209,7 +212,9 @@ class MetadataSet(object):
                             pass # ERROR, outlier == previous outlier
                         elif set(outlierfiles).intersection(outlier['files']):
                             pass # ERROR
-
+                    
+                    files['files'], autodet_done = \
+                    self.paramset.do_autodetection(files['files'],outlierfiles)
                     # Checks passed, save to db:
                     self.more_outliers = 'more_outliers'==formtgt
                     meta_for_db = { 'draft_id': obj_id, 
@@ -217,7 +222,10 @@ class MetadataSet(object):
                                     'files': outlierfiles }
 
                     self.db.insert_outliers(meta_for_db)
-
+                
+                if autodet_done: # DB hit is expensive, check first
+                    self.db.update_files(obj_id, files)
+            
             else:
                 pass
                 # TODO check for errors, set flag and redirect target
