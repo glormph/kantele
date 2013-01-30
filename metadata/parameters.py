@@ -71,7 +71,7 @@ class BaseParameter(object):
         for value in self.inputvalues:
             html.append("""<div class="metadata_value">{0}
                         </div>""".format(value))
-        return html
+        return ''.join(html)
 
     def render_autodetect_html(self):
         return False

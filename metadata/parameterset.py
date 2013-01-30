@@ -11,7 +11,7 @@ class ParameterSet(object):
         for paramconfig in config:
             self.params[paramconfig] = parameters.jsonparams_to_class_map[config[paramconfig]['type']](paramconfig, config[paramconfig])
              
-    def initialize(self, user, files, record=None):
+    def initialize(self, user, record=None):
         username = '{0} {1}'.format(user.first_name, user.last_name)
         for p in self.params:
             if self.params[p].is_user:
@@ -19,8 +19,15 @@ class ParameterSet(object):
 
         if record:
             for p in self.params:
-                self.params[p].inputvalues = [x.encode('utf-8') for x in record[p] ]
-
+                if p not in record:
+                    continue
+                if type(record[p]) != list:
+                    record[p] = [record[p]]
+                self.params[p].inputvalues = []
+                for value in record[p]:
+                    if type(value) == unicode:
+                        value = value.encode('utf-8')
+                    self.params[p].inputvalues.append(value)
 
     def incoming_metadata(self, formdata):
         params_passed = [x for x in formdata if x in self.params.keys() ] 
@@ -61,7 +68,6 @@ class ParameterSet(object):
                     # check if requiring parameter is filled in, but not the required
                     if type(requirement[reqname]) in [str, unicode]:
                         requirement[reqname] = [requirement[reqname]]
-                    print requirement[reqname], self.params[reqname].inputvalues
                     if self.params[reqname] and \
                         True in [x in self.params[reqname].inputvalues for x in \
                         requirement[reqname]]:
