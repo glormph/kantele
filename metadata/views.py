@@ -11,8 +11,7 @@ empty_mds = metadata.MetadataSet()
 @login_required
 def new_dataset(request):
     mds = deepcopy_metadataset(empty_mds)
-    oid = mds.initialize_new_dataset(request)
-    # FIXME store oid also in sql
+    oid = mds.new_dataset(request)
     return redirect('/kantele/dataset/files/{0}'.format(oid))
 
 @login_required
@@ -66,7 +65,7 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
         # in case of mds.error:
             # pass mds to get request?
         # when editing: redirect to dataset view, when creating new: next step
-        if mds.status == 'creating':
+        if request.session.get('metadatastatus', None) == 'new':
             # there is a button for more outliers
             if template == 'outliers.html' and mds.more_outliers == True:
                 nextstep = 'outliers'
@@ -77,7 +76,8 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
 
     elif request.method == 'GET':
         mds.show_dataset(request, dataset_id)
-        return render(request, 'metadata/{0}'.format(template), {'mds': mds} )
+        return render(request, 'metadata/{0}'.format(template), {'mds': mds,
+                    'ds_id': dataset_id} )
     
 def deepcopy_metadataset(mds):
     """Database access cannot be deepcopied since it contains mongo
