@@ -1,15 +1,12 @@
-import logging
 from pymongo import Connection
 import consts
 
-log = logging.getLogger(__name__)
 
 class MongoConnection(object):
     def __init__(self, meta, draft=None):
         try:
             self.con = Connection(host=consts.DBHOST)
         except:
-            log.critical('Could not establish connection with MongoDB.')
             raise
         
         self.meta = self.con[meta]
@@ -42,8 +39,8 @@ class MongoConnection(object):
             if rval:
                 return rval
         except:
-            log.critical('MongoDB error caught while processing input action={0}, \
-coll={1}, in_bson={2}'.format(action, coll, in_bson), exc_info=True )
+            print('MongoDB error caught while processing input action={0}, \
+coll={1}, in_bson={2}'.format(action, coll, in_bson))
 
     def ins(self, coll, bson_obj):
         return coll.insert(bson_obj)

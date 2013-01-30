@@ -6,9 +6,9 @@ class DatabaseAccess(object):
 
     def get_metadata(self, obj_id, draft=False):
         if draft:
-            return self.mongo.run('find_one', 'draftmeta', {'_id', obj_id} )
+            return self.mongo.run('find_one', 'draftmeta', {'_id': obj_id} )
         else:
-            return self.mongo.run('find_one', 'metadata', {'_id', obj_id} )
+            return self.mongo.run('find_one', 'metadata', {'_id': obj_id} )
     
     def get_files(self, obj_id):
         return self.mongo.run('find_one', 'files', {'_id': obj_id})
@@ -47,9 +47,9 @@ class DatabaseAccess(object):
     
     def update_record(self, coll, spec, record, replace=False):
         if replace:
-            self.mongo.run('update', coll, key_bson=spec, value_bson=record)
+            self.mongo.run('update', coll, in_bson=spec, value_bson=record)
         else:
-            self.mongo.run('update', coll, key_bson=spec, value_bson={'$set':
+            self.mongo.run('update', coll, in_bson=spec, value_bson={'$set': \
                     record} )
             
     def upsert_draft_record(self, coll, spec, record):

@@ -4,6 +4,7 @@ from metadata.models import Dataset
 import json
 
 def home(request):
+    # This should be via a class interface to Vainamoinen if specified
     try:
         with open('infofile_status.json') as fp:
             status = json.load(fp)
@@ -12,12 +13,10 @@ def home(request):
 
     if request.user.is_authenticated():
         datasets =  Dataset.objects.filter(user=request.user)
-        templates = 1
     else:
         datasets = None
-        templates = None
     return render(request, 'kantele/index.html', {'status': status, 
-        'datasets': datasets, 'templates': templates} )
+        'datasets': datasets} )
 
 
 def logout_page(request):

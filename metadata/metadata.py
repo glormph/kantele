@@ -62,14 +62,6 @@ class MetadataSet(object):
                     for fn in out['files']:
                         files[fn][key] = val
 
-        # parse extension from files since mongo doesnt accept '.' in its keys
-        newfiles = {}
-        for fn in files:
-            newfn = os.path.splitext(fn)
-            newfiles[newfn[0]] = files[fn]
-            newfiles[newfn[0]]['extension'] = newfn[1]
-        files = newfiles
-
         fullmeta = {'metadata': basemd, 'files': files}
         fullmeta['general_info'] = {'date': curdate,
                                     'mail': request.user.email,
@@ -116,7 +108,7 @@ class MetadataSet(object):
         self.fullmeta = self.db.get_metadata(obj_id)
         if not self.fullmeta:
             # data is either draft, or doesn't exist
-            if sessionid == obj_id:
+            if sessionid != obj_id:
                 pass # TODO error, NO ACCESS or redirect!
             else:
                 basemetadata = self.db.get_metadata(obj_id, draft=True)
@@ -159,10 +151,10 @@ class MetadataSet(object):
             self.outlierparamsets.append( pset )
 
     def incoming_form(self, req, obj_id_str):
-        obj_id = ObjectId(obj_id_str)
+        self.obj_id = ObjectId(obj_id_str)
         # validate session id with req.
         sessionid = req.session.get('draft_id', None)
-        if not sessionid == obj_id:
+        if not sessionid == self.obj_id:
             pass # NO ACCESS!
         
         formtgt = [x for x in req.POST if x.startswith('target_')][0]
@@ -176,10 +168,13 @@ class MetadataSet(object):
                 if filelist == '':
                     filelist = []
                 else:
-                    filelist = [x.strip() for x in filelist.strip().split('\n')]
+                    filelist = [ x.strip() for x in filelist.strip().split('\n') ]
                 if 'selectfiles' in req.POST:
                     filelist.extend(req.POST.getlist('selectfiles'))
-                self.db.insert_files({ 'files': { k: {} for k in filelist }, 'draft_id': obj_id})
+                
+                filelist = [ os.path.splitext(x) for x in filelist ]
+                self.db.update_files( self.obj_id, { 'files': { k[0]: {'extension':\
+                            k[1][1:]} for k in filelist }})
 
         # with obj_id, get tmp metadata['sessionid']
         # paramset, validate, store.
@@ -191,18 +186,18 @@ class MetadataSet(object):
             if not self.paramset.error:
                 self.paramset.generate_metadata_for_db()
                 if formtgt == 'target_write_metadata':
-                    files = self.db.get_files(obj_id)
+                    files = self.db.get_files(self.obj_id)
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],
                             [fn for fn in files['files']] )
-                    self.db.update_draft_metadata(obj_id,
+                    self.db.update_draft_metadata(self.obj_id,
                             self.paramset.metadata, replace=False)
                 else:
                     outlierfiles = req.POST.get('outlierfiles', None)
                     # check outliers
                     if not outlierfiles:
                         pass # ERROR, no files specified
-                    files, basemd, outliers = self.load_from_db(obj_id,
+                    files, basemd, outliers = self.load_from_db(self.obj_id,
                             sessionid)
                     if self.paramset.metadata == basemd:
                         pass # ERROR, basemeta == outlier
@@ -217,14 +212,14 @@ class MetadataSet(object):
                     self.paramset.do_autodetection(files['files'],outlierfiles)
                     # Checks passed, save to db:
                     self.more_outliers = 'more_outliers'==formtgt
-                    meta_for_db = { 'draft_id': obj_id, 
+                    meta_for_db = { 'draft_id': self.obj_id, 
                                     'metadata': self.paramset.metadata,
                                     'files': outlierfiles }
 
                     self.db.insert_outliers(meta_for_db)
                 
                 if autodet_done: # DB hit is expensive, check first
-                    self.db.update_files(obj_id, files)
+                    self.db.update_files(self.obj_id, files)
             
             else:
                 pass
@@ -236,5 +231,5 @@ class MetadataSet(object):
         return record
 
     def get_uploaded_files(self):
-        return sorted(os.listdir('/mnt/kalevalatmp'))
+        return sorted(os.listdir('/tmp'))
 

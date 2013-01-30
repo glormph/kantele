@@ -12,7 +12,6 @@ empty_mds = metadata.MetadataSet()
 def new_dataset(request):
     mds = deepcopy_metadataset(empty_mds)
     oid = mds.initialize_new_dataset(request)
-    print 'hej hej'
     # FIXME store oid also in sql
     return redirect('/kantele/dataset/files/{0}'.format(oid))
 
@@ -20,7 +19,6 @@ def new_dataset(request):
 def edit_dataset(request, dataset_id):
     mds = deepcopy_metadataset(empty_mds)
     mds.edit_dataset(request, dataset_id)
-    
     return redirect('/kantele/dataset/{0}'.format(dataset_id))
 
 @login_required
@@ -63,7 +61,7 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
         return redirect('/kantele')
         
     elif request.method == 'POST':
-        mds.incoming_form(request.POST, dataset_id)
+        mds.incoming_form(request, dataset_id)
         # FIXME check for problems in mds:
         # in case of mds.error:
             # pass mds to get request?
@@ -96,6 +94,6 @@ def check_dataset(request, dataset_id):
         return deepcopy_metadataset(empty_mds)
     elif dataset_id in \
             [x.mongoid for x in DraftDataset.objects.filter(user=request.user.pk)]:
-        return True
+        return deepcopy_metadataset(empty_mds)
     else:
-       return False
+        return False
