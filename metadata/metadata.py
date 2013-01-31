@@ -83,7 +83,6 @@ class MetadataSet(object):
         sessionid = req.session.get('draft_id', None)
         if not sessionid == self.obj_id:
             pass # NO ACCESS!
-         
         formtgt = [x for x in req.POST if x.startswith('target_')][0]
         
         if formtgt == 'target_add_files':
@@ -106,7 +105,7 @@ class MetadataSet(object):
         # with obj_id, get tmp metadata['sessionid']
         # paramset, validate, store.
         elif formtgt in ['target_write_metadata','target_define_outliers',
-                        'more_outliers']:
+                        'target_more_outliers']:
             self.paramset = ParameterSet()
             self.paramset.incoming_metadata(req.POST)
 
@@ -117,6 +116,7 @@ class MetadataSet(object):
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],
                             [fn for fn in files['files']] )
+                    
                     self.db.update_draft_metadata(self.obj_id,
                             self.paramset.metadata, replace=False)
                 else:
@@ -126,6 +126,7 @@ class MetadataSet(object):
                         pass # ERROR, no files specified
                     files, basemd, outliers = self.load_from_db(self.obj_id,
                             sessionid)
+                    
                     if self.paramset.metadata == basemd:
                         pass # ERROR, basemeta == outlier
                     
@@ -158,7 +159,6 @@ class MetadataSet(object):
         request.session['draft_id'] = draft_oid 
         request.session['metadatastatus'] = 'new' 
         self.db.insert_files({'draft_id': draft_oid})
-        self.db.insert_outliers({'draft_id': draft_oid})
 
     def draft_from_fullmetadata(self, task, obj_id_str):
         obj_id = ObjectId(obj_id_str)
@@ -203,8 +203,27 @@ class MetadataSet(object):
             basemetadata = self.fullmeta['metadata']
             files = {'files': self.fullmeta['files'].keys()}
             outliers = self.get_outliers_from_fullmetadata(self.fullmeta)
+            
+        # convert mongo's unicode to utf-8
+        # my first recursive function! What a mindwarp.
+        def convert_dicts_unicode_to_utf8(d):
+            if isinstance(d, dict):
+                return { convert_dicts_unicode_to_utf8(k): \
+                    convert_dicts_unicode_to_utf8(v) for k,v in d.items() }
+            elif isinstance(d, list):
+                return [convert_dicts_unicode_to_utf8(x) for x in d]
+            elif isinstance(d, unicode):
+                return d.encode('utf-8')
+            else:
+                return d
+
+        basemetadata = convert_dicts_unicode_to_utf8(basemetadata)
+        files = convert_dicts_unicode_to_utf8(files)
+        newoutliers = []
+        for outlier in outliers:
+            newoutliers.append(convert_dicts_unicode_to_utf8(outlier))
         
-        return files, basemetadata, outliers
+        return files, basemetadata, newoutliers
     
     def get_outliers_from_fullmetadata(self, md):
         outliers = []
