@@ -11,10 +11,10 @@ class DatabaseAccess(object):
             return self.mongo.run('find_one', 'metadata', {'_id': obj_id} )
     
     def get_files(self, obj_id):
-        return self.mongo.run('find_one', 'files', {'_id': obj_id})
+        return self.mongo.run('find_one', 'files', {'draft_id': obj_id})
 
     def get_outliers(self, obj_id):
-        return self.mongo.run('find', 'files', {'_id': obj_id})
+        return self.mongo.run('find', 'outliers', {'draft_id': obj_id})
     
     def insert_metadata_record(self, record):
         return self.mongo.run('insert', 'metadata', record)
