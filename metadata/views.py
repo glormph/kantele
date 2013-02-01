@@ -35,7 +35,6 @@ def select_files(request, dataset_id):
 def write_metadata(request, dataset_id):
     return dataset_view_action(request, dataset_id, 'base_meta.html', 'outliers')
 
-
 @login_required
 def define_outliers(request, dataset_id):
     return dataset_view_action(request, dataset_id, 'outliers.html', 'store')
@@ -46,7 +45,7 @@ def store_dataset(request, dataset_id):
         # or should we redirect to kantele when get comes?
         dataset_view_action(request, dataset_id, 'store.html')
     elif request.method == 'POST':
-        mds = check_dataset(request, dataset_id)
+        mds = check_dataset_owner(request, dataset_id)
         if not mds:
             return redirect('/kantele')
         else:
@@ -55,15 +54,26 @@ def store_dataset(request, dataset_id):
 
 
 def dataset_view_action(request, dataset_id, template, nextstep=None):
-    mds = check_dataset(request, dataset_id)
+    def return_get(request, template, ds_id, mds, message=None):
+        print template
+        return render(request, 'metadata/{0}'.format(template), {'mds': mds,
+                'ds_id': ds_id} )
+
+    mds = check_dataset_owner(request, dataset_id)
     if not mds:
         return redirect('/kantele')
         
     elif request.method == 'POST':
         mds.incoming_form(request, dataset_id)
         # FIXME check for problems in mds:
-        # in case of mds.error:
-            # pass mds to get request?
+        if mds.error:
+            print 'error found: {0}'.format(mds.error['message'])
+            if mds.error['redirect'] == 'return_to_form':
+                return return_get(request, template, dataset_id, mds,
+                        message=mds.error['message'])
+            elif mds.error['redirect'] == 'home':
+                return redirect('home', message=mds.error['message'])
+
         # when editing: redirect to dataset view, when creating new: next step
         if request.session.get('metadatastatus', None) == 'new':
             # there is a button for more outliers
@@ -76,8 +86,7 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
 
     elif request.method == 'GET':
         mds.show_dataset(request, dataset_id)
-        return render(request, 'metadata/{0}'.format(template), {'mds': mds,
-                    'ds_id': dataset_id} )
+        return return_get(request, template, dataset_id, mds)
     
 def deepcopy_metadataset(mds):
     """Database access cannot be deepcopied since it contains mongo
@@ -86,7 +95,7 @@ def deepcopy_metadataset(mds):
     new_mds.db = dbaccess.DatabaseAccess()
     return new_mds
 
-def check_dataset(request, dataset_id):
+def check_dataset_owner(request, dataset_id):
     if request.method not in ['POST', 'GET']:
         return False
     elif dataset_id in \

@@ -3,7 +3,7 @@ from django.contrib.auth import logout
 from metadata.models import Dataset
 import json
 
-def home(request):
+def home(request, message=None):
     # This should be via a class interface to Vainamoinen if specified
     try:
         with open('infofile_status.json') as fp:

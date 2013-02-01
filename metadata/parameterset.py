@@ -5,7 +5,7 @@ import parameters
 class ParameterSet(object):
     def __init__(self):
         self.params = {}
-        self.error = []
+        self.error = False
         with open('param_conf_newest.json') as fp:
             config = json.load(fp)
         for paramconfig in config:
@@ -21,13 +21,17 @@ class ParameterSet(object):
             for p in self.params:
                 if p not in record:
                     continue
+                invals = []
                 if type(record[p]) != list:
-                    record[p] = [record[p]]
-                self.params[p].inputvalues = []
-                for value in record[p]:
+                    invals.append(record[p])
+                else:
+                    for value in record[p]:
+                        invals.append(value)
+                for value in invals:
                     if type(value) == unicode:
-                        value = value.encode('utf-8')
-                    self.params[p].inputvalues.append(value)
+                        self.params[p].inputvalues.append(value.encode('utf-8'))
+                    else:
+                        self.params[p].inputvalues.append(value)
 
     def incoming_metadata(self, formdata):
         params_passed = [x for x in formdata if x in self.params.keys() ] 
@@ -46,15 +50,6 @@ class ParameterSet(object):
             self.params[paramname].inputvalues = [x.encode('utf-8') for x in unique_invals]
 
         self.check_incoming_data(params_passed)
-
-        #self.add_outliers = formdata['add_outliers'] in ['True', 'true', 1,
-        #'1', True]
-        #with open(os.path.join(self.tmpdir, 'filelist.json')) as fp:
-        #    self.allfiles = json.load(fp)
-        
-        #if self.is_outlier:
-        #    self.outlierfiles = formdata.getlist('outlierfiles')
-            
 
     def check_incoming_data(self, params_passed):
         # validate input
@@ -89,8 +84,8 @@ class ParameterSet(object):
 
         # check if any error in any parameter of set
         for paramname in params_passed:
-                if self.params[paramname].errors:
-                    self.error = True
+            if self.params[paramname].errors:
+                self.error = True
 
     def do_autodetection(self, files, files_to_process):
         autodetection_done = False

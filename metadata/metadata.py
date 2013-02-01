@@ -8,6 +8,7 @@ class MetadataSet(object):
         self.is_new_dataset = False
         self.obj_id = False
         self.more_outliers = False
+        self.error = False
     
     def new_dataset(self, request):
         draft_oid = self.db.insert_draft_metadata( {} )
@@ -29,6 +30,7 @@ class MetadataSet(object):
         session_id = request.session.get('draft_id', None)
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
         self.create_paramsets(request.user, files, basemd, outliers)
+        self.paramset = self.baseparamset
     
     def store_dataset(self, request, oid_str):
         sessionid = request.session.get('draft_id', None)
@@ -79,16 +81,20 @@ class MetadataSet(object):
 
     def incoming_form(self, req, obj_id_str):
         self.obj_id = ObjectId(obj_id_str)
+        # FIXME should all session stuff be done in the views? Possible?
         # validate session id with req.
         sessionid = req.session.get('draft_id', None)
         if not sessionid == self.obj_id:
-            pass # NO ACCESS!
+            self.mark_error('home', 'You have no access to the requested '
+            'resource. Perhaps your session has been time out?')
+
         formtgt = [x for x in req.POST if x.startswith('target_')][0]
         
         if formtgt == 'target_add_files':
             if not req.POST['pastefiles'] and \
                 'selectfiles' not in req.POST:
-                pass # TODO set error flag and redirect to file form
+                self.mark_error('return_to_form', 'You have not selected files')
+                return
             else:
                 filelist = req.POST['pastefiles']
                 if filelist == '':
@@ -106,9 +112,10 @@ class MetadataSet(object):
         # paramset, validate, store.
         elif formtgt in ['target_write_metadata','target_define_outliers',
                         'target_more_outliers']:
+            files, basemd, outliers = self.load_from_db(self.obj_id, sessionid)
+            self.create_paramsets(req.user, files, basemd, outliers)
             self.paramset = ParameterSet()
             self.paramset.incoming_metadata(req.POST)
-
             if not self.paramset.error:
                 self.paramset.generate_metadata_for_db()
                 if formtgt == 'target_write_metadata':
@@ -123,19 +130,25 @@ class MetadataSet(object):
                     outlierfiles = req.POST.get('outlierfiles', None)
                     # check outliers
                     if not outlierfiles:
-                        pass # ERROR, no files specified
-                    files, basemd, outliers = self.load_from_db(self.obj_id,
-                            sessionid)
+                        pass # TODO ERROR, no files specified
                     
+                    basemd.pop('_id')
                     if self.paramset.metadata == basemd:
-                        pass # ERROR, basemeta == outlier
+                        self.mark_error('return_to_form', 'Outlier metadata '
+                        'identical to base metadata')
+                        return
                     
                     for outlier in outliers:
                         if self.paramset.metadata == outlier['metadata']:
-                            pass # ERROR, outlier == previous outlier
-                        elif set(outlierfiles).intersection(outlier['files']):
-                            pass # ERROR
-                    
+                            self.mark_error('return_to_form', 'Outlier metadata identical '
+                                    'to previous outlier metadata.')
+                            return
+                        # TODO uncomment when outlier files are processed.
+                        #elif set(outlierfiles).intersection(outlier['files']):
+                        #    self.mark_error('return_to_form', 'Specified outlier files '
+                        #              'already selected in previous outlier set.')
+                        #    return
+
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],outlierfiles)
                     # Checks passed, save to db:
@@ -150,9 +163,12 @@ class MetadataSet(object):
                     self.db.update_files(self.obj_id, files)
             
             else:
-                pass
-                # TODO check for errors, set flag and redirect target
-        
+                self.mark_error('return_to_form', 
+                        'Errors in entered metadata')
+    
+    def mark_error(self, redirect, message):
+        self.error = { 'redirect': redirect, 'message': message }
+
     def initialize_new_dataset(self, request, draft_oid):
         self.save_to_sql_db(DraftDataset, user=request.user, 
                 mongoid=str(draft_oid), date=datetime.datetime.now())
@@ -243,7 +259,7 @@ class MetadataSet(object):
         self.outlierparamsets = []
         for record in outliers: 
             pset = ParameterSet()
-            pset.initialize(user, record)
+            pset.initialize(user, record['metadata'])
             self.outlierparamsets.append( pset )
 
     def save_to_sql_db(self, model, **kwargs):
