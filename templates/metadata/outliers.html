@@ -1,8 +1,6 @@
+{% extends "metadata/dataset.html" %}
 
-<head>
-<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
-</head>
-<h1>Input your metadata parameters</h1>
+{% block dset %}
 <script>
 function addField(divName)
 {
@@ -16,12 +14,81 @@ document.getElementById(divName).appendChild(newdiv);
 
 
 
-{% if mds.status == "creating" %}
-<a href="/kantele/dataset/files/{{ mds.obj_id_str }}">Files</a>
-<a href="/kantele/dataset/metadata/{{ mds.obj_id_str }}">Metadata</a>
-<input type="submit" name="more_outliers" 
+{% load metadata_access %}
+<table>
+
+<tr>
+<td>
+<input type="submit" name="target_define_outliers" 
+    value="Save file-specific metadata">
+<input type="submit" name="target_more_outliers" 
     value="Define more file-specific metadata">
-<input type="submit" name="target_define_outliers" value="Store dataset">
-{% elif mds.status == "editing" %}
-<input type="submit" name="target_define_outliers" value="Store file-specific data">
-{% endif %}
+</td>
+<td> 
+{{ mds.allfiles.files|length }} files
+<div class="filebox">
+{% for fn in mds.allfiles.files %}
+{{ fn }}</br>
+{% endfor %}
+</div>
+</td>
+{% for ofiles,outset in mds.outlierparamsets %}
+<td>
+{{ mds.allfiles.files|length }} files
+<div class="filebox">
+{% for fn in ofiles %}
+{{ fn }}</br>
+{% endfor %}
+</div>
+</td>
+{% endfor %}
+<td>
+<select class="filelist" size=15 name="outlierfiles" multiple>
+{% for file in mds.allfiles.files %}
+<option value="{{ file }}">{{ file }}</option>
+{% endfor %}
+</select>
+
+</td>
+</tr>
+
+<tr>
+<td></td>
+<td>Base metadata</td>
+{% for outset in mds.outlierparamsets %}
+<td>Outlier metadata</td>
+{% endfor %}
+<td>Specify outlier metadata</td>
+</tr>
+    {% for name, param in mds.baseparamset.params.items %}
+    {% if param.render_html %}
+<tr>
+<td> {{ param.title }} </td>
+
+<td> {{ param.render_values_html|safe }} </td>
+
+{% for files,outlierset in mds.outlierparamsets %}
+{% with opr=outlierset.params|lookup:name %}
+<td>{{ opr.render_values_html|safe }}</td>
+{% endwith %}
+{% endfor %}
+
+{% with ps=mds.paramset.params|lookup:name %}
+<td>{{ ps.render_html|safe }}</td>
+
+<td>
+    {% if ps.errors %}
+        <div class="errormsg" id="metafield">
+        {% for error in ps.errors %}
+        {{ error }}
+        {% endfor %}
+        </div>
+    {% endif %}
+    </div>
+    </td>
+{% endwith %}
+</tr>
+    {% endif %}
+    {% endfor %}
+</table>
+{% endblock dset %}

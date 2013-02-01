@@ -1,7 +1,40 @@
-<body>
+<html>
+<head>
+<title>Kantele</title>
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
+</head>
 
-<a href="newdataset">Add new dataset</a>
-<p>
+<body>
+BOOO
+{% if user.is_authenticated %}
+<div class="headermenu">
+<a href="dataset/new">Add new dataset</a>
+<a href="mydatasets">My Datasets</a>
+<a href="">My Templates</a>
+<a href="">Search datasets</a>
+</div>
+
+{% block content %}
+<div class="column">
+News:
+</div>
+
+<div class="column">
+<!-- dataset history -->
+
+{% for ds in datasets %}
+<div class="dataset">
+{{ ds.id }}<br>
+{{ ds.date }}<br>
+{{ ds.mongoid }}<br>
+{{ ds.project }}<br>
+{{ ds.experiment }}<br>
+</div>
+{% endfor %}
+</div>
+
+<div class="column">
+<!-- server report -->
 Infofiles currently processing: {{ status.infofiles }}<br>
 Service info: {{ status.message }}<br>
 QUEUES<br>
@@ -9,6 +42,16 @@ QUEUES<br>
 {{ k }} {{ v }}<br>
 {% endfor %}
 Server status: {{ status.server_status.description }}
+</div>
 
-</p>
+{% endblock content %}
+{% else %}
+<div class="headermenu">
+<a href="login">Login</a>
+</div>
+{% endif %}
+
+
+
 </body>
+</html>

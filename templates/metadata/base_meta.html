@@ -1,8 +1,6 @@
+{% extends "metadata/dataset.html" %}
 
-<head>
-<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
-</head>
-<h1>Input your metadata parameters</h1>
+{% block dset %}
 <script>
 function addField(divName)
 {
@@ -14,22 +12,20 @@ document.getElementById(divName).appendChild(newdiv);
 }
 </script>
 
-
-<form>
-
-<!-- Header with buttons -->
-{% if mds.status == "creating" %}
-<a href="/kantele/files/{{ mds.obj_id_str }}">Files</a> 
-Metadata
-<input type="submit" name="target_write_metadata" value="Change metadata for specific files">
-Store dataset
-{% elif mds.status == "editing" %}
-<input type="submit" name="target_write_metadata" value="Store metadata">
-{% endif %}
-
-
 <table>
-    {% for name, param in mds.param_set.params.items %}
+<tr>
+<td></td>
+<td> 
+{{ mds.allfiles.files|length }} files
+<div class="filebox">
+{% for fn in mds.allfiles.files %}
+{{ fn }}</br>
+{% endfor %}
+</div>
+</td>
+</tr>
+
+{% for name, param in mds.paramset.params.items %}
     {% if param.render_html %}
 <tr>
 <td> {{ param.title }} </td>
@@ -48,4 +44,4 @@ Store dataset
     {% endif %}
     {% endfor %}
 </table>
-</form>
+{% endblock %}
