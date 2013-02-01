@@ -43,7 +43,7 @@ def define_outliers(request, dataset_id):
 def store_dataset(request, dataset_id):
     if request.method == 'GET':
         # or should we redirect to kantele when get comes?
-        dataset_view_action(request, dataset_id, 'store.html')
+        return dataset_view_action(request, dataset_id, 'store.html')
     elif request.method == 'POST':
         mds = check_dataset_owner(request, dataset_id)
         if not mds:
@@ -55,7 +55,7 @@ def store_dataset(request, dataset_id):
 
 def dataset_view_action(request, dataset_id, template, nextstep=None):
     def return_get(request, template, ds_id, mds, message=None):
-        print template
+        print ds_id
         return render(request, 'metadata/{0}'.format(template), {'mds': mds,
                 'ds_id': ds_id} )
 
@@ -64,6 +64,7 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
         return redirect('/kantele')
         
     elif request.method == 'POST':
+        print request.POST
         mds.incoming_form(request, dataset_id)
         # FIXME check for problems in mds:
         if mds.error:

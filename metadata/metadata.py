@@ -29,7 +29,7 @@ class MetadataSet(object):
     def show_dataset(self, request, oid_str):
         session_id = request.session.get('draft_id', None)
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
-        self.create_paramsets(request.user, files, basemd, outliers)
+        self.create_paramsets(None, files, basemd, outliers)
         self.paramset = self.baseparamset
     
     def store_dataset(self, request, oid_str):
@@ -113,7 +113,7 @@ class MetadataSet(object):
         elif formtgt in ['target_write_metadata','target_define_outliers',
                         'target_more_outliers']:
             files, basemd, outliers = self.load_from_db(self.obj_id, sessionid)
-            self.create_paramsets(req.user, files, basemd, outliers)
+            self.create_paramsets(None, files, basemd, outliers)
             self.paramset = ParameterSet()
             self.paramset.incoming_metadata(req.POST)
             if not self.paramset.error:
@@ -152,7 +152,7 @@ class MetadataSet(object):
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],outlierfiles)
                     # Checks passed, save to db:
-                    self.more_outliers = 'more_outliers'==formtgt
+                    self.more_outliers = 'target_more_outliers'==formtgt
                     meta_for_db = { 'draft_id': self.obj_id, 
                                     'metadata': self.paramset.metadata,
                                     'files': outlierfiles }

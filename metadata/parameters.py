@@ -175,7 +175,6 @@ class SelectParameter(BaseParameter):
             self.update_values = paramdata['update_values']
 
     def render_html(self):
-        print self.inputvalues
         if self.inputvalues:
             values = self.inputvalues
         else:
