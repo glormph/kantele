@@ -127,7 +127,7 @@ class MetadataSet(object):
                     self.db.update_draft_metadata(self.obj_id,
                             self.paramset.metadata, replace=False)
                 else:
-                    outlierfiles = req.POST.get('outlierfiles', None)
+                    outlierfiles = req.POST.getlist('outlierfiles', None)
                     # check outliers
                     if not outlierfiles:
                         pass # TODO ERROR, no files specified
@@ -256,11 +256,12 @@ class MetadataSet(object):
     def create_paramsets(self, user, files, basemetadata, outliers):
         self.baseparamset = ParameterSet()
         self.baseparamset.initialize(user, basemetadata)
+        self.allfiles = files
         self.outlierparamsets = []
         for record in outliers: 
             pset = ParameterSet()
             pset.initialize(user, record['metadata'])
-            self.outlierparamsets.append( pset )
+            self.outlierparamsets.append( (record['files'], pset) )
 
     def save_to_sql_db(self, model, **kwargs):
         record = model(**kwargs)
