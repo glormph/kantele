@@ -1,6 +1,7 @@
 {% extends "kantele/index.html" %}
 {% block content %}
 
+{% load metadata_access %}
 <form action="" method="POST">
 {% csrf_token %}
 
@@ -9,10 +10,14 @@
 
 <!--  Header with links to completed forms for new/all forms for edit-->
 {% if request.session.metadatastatus == "new" %}
-<a href="/kantele/dataset/files/{{ ds_id }}">Files</a>
-<a href="/kantele/dataset/metadata/{{ ds_id }}">Metadata</a>
-<a href="/kantele/dataset/outliers/{{ ds_id }}">Define outliers</a>
-<a href="/kantele/dataset/store/{{ ds_id }}">Store Metadata</a>
+
+{% for link in mds.tocomplete %}
+{% if link in mds.completed %}
+<a href="/kantele/dataset/{{ link }}/{{ ds_id }}">{{ mds.completetitles|lookup:link }}</a>
+{% else %}
+{{ mds.completetitles|lookup:link }}
+{% endif %}
+{% endfor %}
 
 {% elif request.session.metadatastatus == "edit" %}
 <a href="/kantele/dataset/metadata/{{ ds_id }}">Metadata</a>

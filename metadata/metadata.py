@@ -29,6 +29,18 @@ class MetadataSet(object):
     def show_dataset(self, request, oid_str):
         session_id = request.session.get('draft_id', None)
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
+        # FIXME do this:
+        self.tocomplete = ['files', 'metadata', 'outliers', 'store']
+        self.completed = []
+        self.completetitles = {'files': 'Files', 'metadata': 'Base Metadata',
+        'outliers': 'Outliers', 'store': 'Store Metadata'}
+        if 'files' in files:
+            self.completed.append('files')
+        if basemd.keys() != ['_id']:
+            self.completed.append('metadata')
+            self.completed.append('outliers')
+            self.completed.append('store')
+
         self.create_paramsets(None, files, basemd, outliers)
         self.paramset = self.baseparamset
     
