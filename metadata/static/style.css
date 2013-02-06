@@ -1,11 +1,76 @@
+body {
+margin: 0;
+padding: 0;
+}
 
-.column {
+div#header {
+height: 180px;
+padding-top:40px;
+padding-bottom: 0;
+padding-left: 100px;
+background-color: #ffffff;
+font-family: 'Fjalla One';
+text-align: center;
+}
+
+div.headerbutton {
+display: inline-block;
+margin: 20px;
+}
+
+div#content {
+height: 1000px;
+padding: 20px;
+width: 100%;
+background-color: #eaffdc;
+text-align: center;
+}
+
+div.column {
 margin-left: 50px;
-padding: 10px;
+padding: 0;
+background-color: transparent;
+display: inline-block;
+vertical-align: text-top;
 width: 20%;
-float: left;
-background-color: red;
+font-family: Helvetica, Arial, sans-serif;
+font-weight: bold;
+font-size: 20px;
+color: #24611a;
+text-align: center;
+}
+
+div.contentitem {
+background-color: #d8e6a2;
+padding: 10px;
 border-radius: 15px;
+border-width: 2px;
+border-color: #0f290b;
+border-style: solid;
+padding: 10px;
+width: 100%;
+margin-bottom: 20px;
+text-align: left;
+font-size: 13px;
+font-weight: normal;
+color: #0f290b;
+}
+
+a.header:link {
+font-size: 25px;
+text-decoration: none;
+color: #0f290b;
+}
+
+a.header:visited {
+color: #0f290b;
+}
+
+a.header:hover {
+color: #24611a;
+}
+a.header:active {
+color: #0f290b;
 }
 
 div.errormsg {
