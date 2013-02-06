@@ -129,10 +129,9 @@ class CheckBoxParameter(BaseParameter):
         else:
             values = ['']
         
-        base_html ="""<div class="infokey">{0}</div><div class="tablecell"
-        id="metafield">""".format(self.title)
-        base_html = """{0} <input type="hidden" name="{1}" value="other">
-        """.format(base_html, self.name)
+        
+        base_html = """<input type="hidden" name="{0}" value="other">
+        """.format(self.name)
         for selectoption in self.selectoptions:
             base_html = """{0} <input type="checkbox" name="{1}"
             value="{2}" {3}> {2}""".format(base_html, self.name, selectoption,
@@ -149,11 +148,9 @@ class TextParameter(BaseParameter):
             values = [''] * self.amount
         input_units = []
         for value in values:
-            input_units.append("""<div id="{0}"><input type="text" class="infonew"
-                    name="{0}" value="{1}"></div>""".format(self.name, value))
-        base_html ="""<div class="tablecell" id="metafield">{0}</div>
-        """.format(''.join(input_units))
-        return base_html
+            input_units.append("""<div id="{0}"><div id="{0}_inputunit0"><input
+            type="text" "textinput" name="{0}" value="{1}"></div></div>""".format(self.name, value))
+        return ''.join(input_units)
         
     def validate(self):
         super(TextParameter, self).validate()
@@ -188,7 +185,7 @@ class SelectParameter(BaseParameter):
             elif value != '':
                 self.selected = None
             
-            input_unit = """<div id="{0}"><div id="{0}_inputunit0"><select class="infoselect" name="{0}">
+            input_unit = """<div id="{0}"><div id="{0}_inputunit0"><select class="selectinput" name="{0}">
         <option value="other" {1}>Other: </option>""".format(self.name,
                 'selected' if self.selected==None else '')
             for selectoption in self.selectoptions:
@@ -196,15 +193,14 @@ class SelectParameter(BaseParameter):
                     <option value="{1}" {2}>{1}</option>""".format(input_unit,
                     selectoption, 'selected' if self.selected==selectoption else '')
             input_unit = """{0}
-                </select><input type="text" class="infonew" name="{1}"
-                value="{2}"></div></div>
+                </select><input type="text" class="textinput" name="{1}"
+                value="{2}"></div>
                 """.format(input_unit, self.name, 
                     value if self.selected==None else '')
             input_units.append(input_unit)
         
         # construct base html
-        base_html ="""<div class="tablecell" id="metafield">{1}
-        """.format(self.title, ''.join(input_units) )
+        base_html =''.join(input_units)
         if self.multiple:
             base_html = """{0}
             <input type="button" value="Add another {1}" onClick="addField('{2}');">
