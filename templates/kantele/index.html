@@ -2,28 +2,73 @@
 <head>
 <title>Kantele</title>
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}ui.notify.css">
+<link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet'
+type='text/css'>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js">
+</script>
+<script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.10.0/jquery-ui.min.js">
+</script>
+<script src="{{ STATIC_URL }}ui.notify.js"></script>
 </head>
 
 <body>
-BOOO
-{% if user.is_authenticated %}
-<div class="headermenu">
-<a href="dataset/new">Add new dataset</a>
-<a href="mydatasets">My Datasets</a>
-<a href="">My Templates</a>
-<a href="">Search datasets</a>
+<div id="header">
+<img src="{{ STATIC_URL }}logo.svg">
+<div class="headerbutton">
+<a class="header" href="dataset/new">NEW METADATA</a>
 </div>
+<div class="headerbutton">
+<a class="header" href="mydatasets">MY DATASETS</a>
+</div>
+<div class="headerbutton">
+<a class="header" href="">SEARCH DATASETS</a>
+</div>
+</div>
+
+<div id="content">
+
+{% if user.is_authenticated %}
+
+<!-- set the container hidden to avoid a flash of unstyled content
+when the page first loads -->
+<div id="container" style="display:none">
+    <!-- 
+    Later on, you can choose which template to use by referring to the 
+    ID assigned to each template.  Alternatively, you could refer
+    to each template by index, so in this example, "basic-tempate"
+    is index 0 and "advanced-template" is index 1.           -->
+
+    <div id="basic-template">
+        <a class="ui-notify-cross ui-notify-close" href="#">x</a>
+        <h1>#{title}</h1>
+        <p>#{text}</p>
+    </div>
+</div>
+
+{% if message %}
+<script type="text/javascript">
+$("#container").notify();
+$("#container").notify("create", {
+    title: 'Error',
+    text: '{{ message }}'
+    });
+</script>
+{% endif %}
+
 
 {% block content %}
 <div class="column">
-News:
+News
+<div class="contentitem">
+Here's some news for you.
+</div>
 </div>
 
 <div class="column">
-<!-- dataset history -->
-
+Datasets
 {% for ds in datasets %}
-<div class="dataset">
+<div class="contentitem">
 {{ ds.id }}<br>
 {{ ds.date }}<br>
 {{ ds.mongoid }}<br>
@@ -33,7 +78,10 @@ News:
 {% endfor %}
 </div>
 
+
 <div class="column">
+Server status
+<div class="contentitem">
 <!-- server report -->
 Infofiles currently processing: {{ status.infofiles }}<br>
 Service info: {{ status.message }}<br>
@@ -43,6 +91,7 @@ QUEUES<br>
 {% endfor %}
 Server status: {{ status.server_status.description }}
 </div>
+</div>
 
 {% endblock content %}
 {% else %}
@@ -51,7 +100,7 @@ Server status: {{ status.server_status.description }}
 </div>
 {% endif %}
 
-
+</div>
 
 </body>
 </html>

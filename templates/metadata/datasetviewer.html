@@ -1,0 +1,13 @@
+<!-- 
+Showing the edit buttons, or not.
+-->
+{% if mds.status == None %}
+<!-- Show no header -->
+{% elif mds.status == "creating" %}
+<!-- Show header dependent on stage 
+form with next button.
+previous buttons are links, I guess.
+-->
+{% elif mds.status == "editing" %}
+<!-- Show full header, but not files -->
+{% endif %}

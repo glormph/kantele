@@ -1,46 +1,24 @@
 {% extends "kantele/index.html" %}
 {% block content %}
 
-<form action="" method="POST">{% csrf_token %}
+<form action="" method="POST">
 {% csrf_token %}
 
 
 <!-- header if we're creating files to show progress -->
-Files<input type="submit" name="target_add_files" value="Input metadata">Change metadata for specific files Store dataset
 
-
-<!-- Header with buttons -->
-{% if request.session.metadatastatus == "new" %}
-<a href="/kantele/dataset/files/{{ ds_id }}">Files</a> 
-Metadata
-<input type="submit" name="target_write_metadata" value="Change metadata for specific files">
-Store dataset
-{% elif request.session.metadatastatus == "edit" %}
-<input type="submit" name="target_write_metadata" value="Store metadata">
-{% endif %}
-
-
-
+<!--  Header with links to completed forms for new/all forms for edit-->
 {% if request.session.metadatastatus == "new" %}
 <a href="/kantele/dataset/files/{{ ds_id }}">Files</a>
 <a href="/kantele/dataset/metadata/{{ ds_id }}">Metadata</a>
-Define outliers
+<a href="/kantele/dataset/outliers/{{ ds_id }}">Define outliers</a>
 <a href="/kantele/dataset/store/{{ ds_id }}">Store Metadata</a>
+
 {% elif request.session.metadatastatus == "edit" %}
-<input type="submit" name="target_define_outliers" value="Store file-specific data">
-{% endif %}
-
-
-
-{% if request.session.metadatastatus == "new" %}
-<a href="/kantele/dataset/files/{{ ds_id }}">Files</a>
 <a href="/kantele/dataset/metadata/{{ ds_id }}">Metadata</a>
-<a href="/kantele/dataset/store/{{ ds_id }}">Define outliers</a>
-Store dataset
-{% elif request.session.metadatastatus == "edit" %}
-<input type="submit" name="target_define_outliers" value="Store file-specific data">
+<a href="/kantele/dataset/outliers/{{ ds_id }}">Define outliers</a>
+<a href="/kantele/dataset/store/{{ ds_id }}">Store Metadata</a>
 {% endif %}
-
 
 {% block dset %}
 {% endblock dset %}
