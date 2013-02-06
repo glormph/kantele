@@ -29,6 +29,6 @@ function listFilter(header, list) {
 
 
 $(function () {
-    listFilter($("#header"), $("#filelist"));
+    listFilter($("#fileheader"), $("#filelist"));
 });
 }(jQuery));
