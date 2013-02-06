@@ -2,28 +2,41 @@
 {% block content %}
 
 {% load metadata_access %}
-<form action="" method="POST">
-{% csrf_token %}
 
-
-<!-- header if we're creating files to show progress -->
 
 <!--  Header with links to completed forms for new/all forms for edit-->
-{% if request.session.metadatastatus == "new" %}
 
+<div class="progressheader">
 {% for link in mds.tocomplete %}
 {% if link in mds.completed %}
-<a href="/kantele/dataset/{{ link }}/{{ ds_id }}">{{ mds.completetitles|lookup:link }}</a>
+<div class="progressnumber">
+<img src="{{ STATIC_URL }}{{ link }}_dark.svg">
+</div>
 {% else %}
-{{ mds.completetitles|lookup:link }}
+<div class="progressnumber">
+<img src="{{ STATIC_URL }}{{ link }}.svg">
+</div>
 {% endif %}
 {% endfor %}
+</div>
 
-{% elif request.session.metadatastatus == "edit" %}
-<a href="/kantele/dataset/metadata/{{ ds_id }}">Metadata</a>
-<a href="/kantele/dataset/outliers/{{ ds_id }}">Define outliers</a>
-<a href="/kantele/dataset/store/{{ ds_id }}">Store Metadata</a>
+<div class="progressheader">
+{% for link in mds.tocomplete %}
+{% if link in mds.completed %}
+<div class="progressname">
+<a class="progressheader" href="/kantele/dataset/{{ link }}/{{ ds_id }}">{{ mds.completetitles|lookup:link }}</a>
+</div>
+{% else %}
+<div class="progressname">
+{{ mds.completetitles|lookup:link }}
+</div>
 {% endif %}
+{% endfor %}
+</div>
+
+
+<form action="" method="POST">
+{% csrf_token %}
 
 {% block dset %}
 {% endblock dset %}

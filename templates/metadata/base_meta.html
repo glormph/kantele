@@ -5,7 +5,6 @@
 <script>
 function addField(divName)
 {
-var test = document.createElement('div');
 var divinput = divName + "_inputunit0";
 var newdiv = document.getElementById(divinput).cloneNode(true);
 newdiv.id = divName + "_inputunit"; // fix so that they get a number? check request post output
@@ -14,7 +13,7 @@ document.getElementById(divName).appendChild(newdiv);
 </script>
 
 <input type="submit" value="next" name="target_write_metadata">
-<table>
+<table class="metadata">
 <tr>
 <td></td>
 <td> 

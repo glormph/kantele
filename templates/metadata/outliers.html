@@ -13,16 +13,16 @@ document.getElementById(divName).appendChild(newdiv);
 </script>
 
 
-
-{% load metadata_access %}
-<table>
-
-<tr>
-<td>
 <input type="submit" name="target_define_outliers" 
     value="Save file-specific metadata">
 <input type="submit" name="target_more_outliers" 
     value="Define more file-specific metadata">
+
+{% load metadata_access %}
+<table class="metadata">
+
+<tr>
+<td>
 </td>
 <td> 
 {{ mds.allfiles.files|length }} files

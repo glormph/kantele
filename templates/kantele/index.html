@@ -1,6 +1,6 @@
 <html>
 <head>
-<title>Kantele</title>
+<title>Kantele - metadata management</title>
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}style.css">
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}ui.notify.css">
 <link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet'
@@ -14,15 +14,15 @@ type='text/css'>
 
 <body>
 <div id="header">
-<img src="{{ STATIC_URL }}logo.svg">
+<a href="/kantele"><img src="{{ STATIC_URL }}logo.svg"></a>
 <div class="headerbutton">
-<a class="header" href="dataset/new">NEW METADATA</a>
+<a class="header" href="/kantele/dataset/new">NEW METADATA</a>
 </div>
 <div class="headerbutton">
-<a class="header" href="mydatasets">MY DATASETS</a>
+<a class="header" href="/kantele/mydatasets">MY DATASETS</a>
 </div>
 <div class="headerbutton">
-<a class="header" href="">SEARCH DATASETS</a>
+<a class="header" href="/kantele/">SEARCH DATASETS</a>
 </div>
 </div>
 
@@ -69,11 +69,13 @@ Here's some news for you.
 Datasets
 {% for ds in datasets %}
 <div class="contentitem">
-{{ ds.id }}<br>
-{{ ds.date }}<br>
-{{ ds.mongoid }}<br>
-{{ ds.project }}<br>
-{{ ds.experiment }}<br>
+Date: {{ ds.date }}<br>
+Project: {{ ds.project }}<br>
+Experiment: {{ ds.experiment }}
+<div class="datasetbuttons">
+<a href="/kantele/dataset/copy/{{ ds.mongoid }}">copy</a>
+<a href="/kantele/dataset/edit/{{ ds.mongoid }}">edit</a>
+</div>
 </div>
 {% endfor %}
 </div>

@@ -10,6 +10,7 @@ padding-bottom: 0;
 padding-left: 100px;
 background-color: #ffffff;
 font-family: 'Fjalla One';
+font-size: 25px;
 text-align: center;
 }
 
@@ -19,14 +20,13 @@ margin: 20px;
 }
 
 div#content {
-height: 1000px;
 padding: 20px;
 width: 100%;
 background-color: #eaffdc;
 text-align: center;
 }
 
-div.column {
+div.column, div.filescolumn {
 margin-left: 50px;
 padding: 0;
 background-color: transparent;
@@ -38,6 +38,15 @@ font-weight: bold;
 font-size: 20px;
 color: #24611a;
 text-align: center;
+}
+
+div.filescolumn {
+width: 40%;
+}
+
+table.metadata {
+margin-left: auto;
+margin-right: auto;
 }
 
 div.contentitem {
@@ -56,20 +65,36 @@ font-weight: normal;
 color: #0f290b;
 }
 
-a.header:link {
-font-size: 25px;
+div.progressheader {
+width: 600px;
+margin: 0 auto;
+}
+
+div.progressnumber {
+width: 20%;
+display: inline-block;
+}
+
+div.progressname {
+width: 20%;
+display: inline-block;
+font-family: Helvetica, Arial, sans-serif;
+font-size: 11px;
+}
+
+a.header:link, a.progressheader:link {
 text-decoration: none;
 color: #0f290b;
 }
 
-a.header:visited {
+a.header:visited, a.progressheader:visited {
 color: #0f290b;
 }
 
-a.header:hover {
+a.header:hover, a.progressheader:hover {
 color: #24611a;
 }
-a.header:active {
+a.header:active, a.progressheader:active {
 color: #0f290b;
 }
 
@@ -78,26 +103,24 @@ display: table-cell;
 color: red;
 }
 
-div.table {
-display: table;
-width: 1000px;
-table-layout: fixed;
-}
-
-div.tablecell {
-display: table-cell;
-width: 30%;
-}
-
-.filebox {
+div.filebox {
 overflow:auto;
 height: 200px;
 width: 200px;
-background-color: green;
+background-color: white;
+border-width: 4px;
+border-color: #90a58d;
+border-style: solid;
 padding: 30px;
+font-family: Helvetica, Arial, sans-serif;
+font-size: 11px;
 }
 
-#metafield {
-display: table-cell;
-width: 50%;
+.textinput {
+float: right;
+}
+
+.selectinput {
+width: 150px;
+float: left;
 }
