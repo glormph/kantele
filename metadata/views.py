@@ -20,10 +20,15 @@ def edit_dataset(request, dataset_id):
     mds.edit_dataset(request, dataset_id)
     return redirect('/kantele/dataset/{0}'.format(dataset_id))
 
+
+@login_required
+def copy_dataset(request, dataset_id):
+    pass
+
 @login_required
 def show_dataset(request, dataset_id):
     if request.method == 'GET':
-        return dataset_view_action(request, dataset_id, 'show_dataset.html')
+        return dataset_view_action(request, dataset_id, 'base_meta.html')
     else:
         return redirect('/kantele')
 
@@ -68,6 +73,7 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
         if mds.error:
             print 'error found: {0}'.format(mds.error['message'])
             if mds.error['redirect'] == 'return_to_form':
+                mds.show_errored_dataset(request, dataset_id)
                 return return_get(request, template, dataset_id, mds,
                         message=mds.error['message'])
             elif mds.error['redirect'] == 'home':

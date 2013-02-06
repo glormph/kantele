@@ -29,20 +29,15 @@ class MetadataSet(object):
     def show_dataset(self, request, oid_str):
         session_id = request.session.get('draft_id', None)
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
-        # FIXME do this:
-        self.tocomplete = ['files', 'metadata', 'outliers', 'store']
-        self.completed = []
-        self.completetitles = {'files': 'Files', 'metadata': 'Base Metadata',
-        'outliers': 'Outliers', 'store': 'Store Metadata'}
-        if 'files' in files:
-            self.completed.append('files')
-        if basemd.keys() != ['_id']:
-            self.completed.append('metadata')
-            self.completed.append('outliers')
-            self.completed.append('store')
-
+        self.check_completed_stages(basemd, files, request.session)
         self.create_paramsets(None, files, basemd, outliers)
         self.paramset = self.baseparamset
+        print 'hej'
+    
+    def show_errored_dataset(self, request, oid_str):
+        session_id = request.session.get('draft_id', None)
+        files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
+        self.check_completed_stages(basemd, files, request.session)
     
     def store_dataset(self, request, oid_str):
         sessionid = request.session.get('draft_id', None)
@@ -115,7 +110,7 @@ class MetadataSet(object):
                     filelist = [ x.strip() for x in filelist.strip().split('\n') ]
                 if 'selectfiles' in req.POST:
                     filelist.extend(req.POST.getlist('selectfiles'))
-                
+                # FIXME We have to parse out files with a '.' in them.
                 filelist = [ os.path.splitext(x) for x in filelist ]
                 self.db.update_files( self.obj_id, { 'files': { k[0]: {'extension':\
                             k[1][1:]} for k in filelist }})
@@ -279,6 +274,18 @@ class MetadataSet(object):
         record = model(**kwargs)
         record.save()
         return record
+    
+    def check_completed_stages(self, basemd, files, session):
+        self.tocomplete = ['files', 'metadata', 'outliers', 'store']
+        self.completed = []
+        self.completetitles = {'files': 'Files', 'metadata': 'Base Metadata',
+        'outliers': 'Outliers', 'store': 'Store Metadata'}
+        if 'files' in files and session['metadatastatus'] == 'new':
+            self.completed.append('files')
+        if basemd.keys() != ['_id']:
+            self.completed.append('metadata')
+            self.completed.append('outliers')
+            self.completed.append('store')
 
     def get_uploaded_files(self):
         return sorted(os.listdir('/tmp'))
