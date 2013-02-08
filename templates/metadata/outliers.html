@@ -37,7 +37,7 @@ document.getElementById(divName).appendChild(newdiv);
 {{ mds.allfiles.files|length }} files
 <div class="filebox">
 {% for fn in ofiles %}
-{{ fn }}</br>
+{{ fn }}<br>
 {% endfor %}
 </div>
 </td>
@@ -84,7 +84,6 @@ document.getElementById(divName).appendChild(newdiv);
         {% endfor %}
         </div>
     {% endif %}
-    </div>
     </td>
 {% endwith %}
 </tr>

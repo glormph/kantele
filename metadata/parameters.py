@@ -137,7 +137,7 @@ class CheckBoxParameter(BaseParameter):
             value="{2}" {3}> {2}""".format(base_html, self.name, selectoption,
             'checked' if selectoption in values else '')
 
-        return '{0}</div>'.format(base_html)
+        return base_html
 
 
 class TextParameter(BaseParameter):
@@ -149,7 +149,7 @@ class TextParameter(BaseParameter):
         input_units = []
         for value in values:
             input_units.append("""<div id="{0}"><div id="{0}_inputunit0"><input
-            type="text" "textinput" name="{0}" value="{1}"></div></div>""".format(self.name, value))
+            type="text" class="textinput" name="{0}" value="{1}"></div></div>""".format(self.name, value))
         return ''.join(input_units)
         
     def validate(self):

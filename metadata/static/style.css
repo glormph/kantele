@@ -1,29 +1,62 @@
+html {
+margin: 0;
+padding: 0;
+height: 100%
+}
+
 body {
 margin: 0;
 padding: 0;
+width: 100%;
+height: 100%;
 }
 
-div#header {
-height: 180px;
-padding-top:40px;
-padding-bottom: 0;
-padding-left: 100px;
-background-color: #ffffff;
+div.header {
+height: 140px;
+padding-top:10px;
+padding-bottom: 0px;
+background-color: #2b3b33;
 font-family: 'Fjalla One';
 font-size: 25px;
 text-align: center;
+border-color: #486255;
+border-width: 2px;
+border-style: none none solid none;
 }
 
 div.headerbutton {
 display: inline-block;
-margin: 20px;
+margin-left: 20px;
 }
 
-div#content {
-padding: 20px;
-width: 100%;
-background-color: #eaffdc;
+div#statusbar {
+background-color: #9eb6a8;
+height: 20px;
+font-family: Arial, sans-serif;
+font-size: 13px;
+padding: 5px;
+border-top-color: #3c5046;
+border-bottom-color: #b6c8bf;
+border-width: 3px;
+border-style: solid none solid;
 text-align: center;
+}
+
+div#statuscontainer {
+width: 60%;
+}
+
+div#content, div#filler {
+padding-top: 30px;
+padding-bottom: 0px;
+width: 100%;
+background-color: #f3ffea;
+text-align: center;
+}
+
+div#filler {
+height: 100%;
+padding: 0;
 }
 
 div.column, div.filescolumn {
@@ -52,15 +85,14 @@ margin-right: auto;
 div.contentitem {
 background-color: #d8e6a2;
 padding: 10px;
-border-radius: 15px;
-border-width: 2px;
-border-color: #0f290b;
+border-width: 4px;
+border-color: #689932;
 border-style: solid;
 padding: 10px;
 width: 100%;
 margin-bottom: 20px;
 text-align: left;
-font-size: 13px;
+font-size: 15px;
 font-weight: normal;
 color: #0f290b;
 }
@@ -82,20 +114,71 @@ font-family: Helvetica, Arial, sans-serif;
 font-size: 11px;
 }
 
-a.header:link, a.progressheader:link {
+a.header:link {
 text-decoration: none;
-color: #0f290b;
+color: #d8e6a2;
 }
 
-a.header:visited, a.progressheader:visited {
-color: #0f290b;
+a.header:visited {
+color: #d8e6a2;
 }
 
-a.header:hover, a.progressheader:hover {
-color: #24611a;
+a.header:hover {
+color: #ffffff;
 }
-a.header:active, a.progressheader:active {
-color: #0f290b;
+a.header:active {
+color: #d8e6a2;
+}
+
+
+
+a.statusbar:link {
+text-decoration:none;
+color: #486255;
+}
+
+a.statusbar:visited {
+color: #486255;
+}
+a.statusbar:hover {
+color: #d8e6a2;
+}
+a.statusbar:active {
+color: #486255;
+}
+
+a.progressheader:link {
+text-decoration: none;
+color: #486255; 
+}
+
+a.progressheader:visited {
+color: #486255; 
+}
+
+a.progressheader:hover {
+color: #d8e6a2;
+}
+
+a.progressheader:active {
+color: #486255;
+}
+
+
+a.contentitem:link {
+text-decoration: none;
+color: #486255; 
+}
+
+a.contentitem:visited {
+color: #486255;
+}
+
+a.contentitem:hover {
+color: #9eb6a8;
+}
+a.contentitem:active {
+color: #486255;
 }
 
 div.errormsg {

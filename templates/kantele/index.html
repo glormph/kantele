@@ -13,8 +13,9 @@ type='text/css'>
 </head>
 
 <body>
-<div id="header">
+<div class="header">
 <a href="/kantele"><img src="{{ STATIC_URL }}logo.svg"></a>
+{% if user.is_authenticated %}
 <div class="headerbutton">
 <a class="header" href="/kantele/dataset/new">NEW METADATA</a>
 </div>
@@ -24,12 +25,27 @@ type='text/css'>
 <div class="headerbutton">
 <a class="header" href="/kantele/">SEARCH DATASETS</a>
 </div>
+{% else %}
+<div class="headerbutton">
+<a class="header" href="/kantele/login">LOGIN</a>
+</div>
+{% endif %}
+<div class="headerbutton">
+<a class="header" href="/kantele/about">ABOUT</a>
+</div>
 </div>
 
+<div id="statusbar">
+{% if user.is_authenticated %}
+<div id="statuscontainer">
+Logged in as {{ user.first_name }} {{ user.last_name }}. 
+<a class="progressheader" href="/kantele/logout">logout</a>
+</div>
+{% endif %}
+</div>
 <div id="content">
 
 {% if user.is_authenticated %}
-
 <!-- set the container hidden to avoid a flash of unstyled content
 when the page first loads -->
 <div id="container" style="display:none">
@@ -73,8 +89,8 @@ Date: {{ ds.date }}<br>
 Project: {{ ds.project }}<br>
 Experiment: {{ ds.experiment }}
 <div class="datasetbuttons">
-<a href="/kantele/dataset/copy/{{ ds.mongoid }}">copy</a>
-<a href="/kantele/dataset/edit/{{ ds.mongoid }}">edit</a>
+<a class="contentitem" href="/kantele/dataset/copy/{{ ds.mongoid }}">copy</a>
+<a class="contentitem" href="/kantele/dataset/edit/{{ ds.mongoid }}">edit</a>
 </div>
 </div>
 {% endfor %}
@@ -96,12 +112,11 @@ Server status: {{ status.server_status.description }}
 </div>
 
 {% endblock content %}
-{% else %}
-<div class="headermenu">
-<a href="login">Login</a>
-</div>
 {% endif %}
 
+</div>
+
+<div id="filler">
 </div>
 
 </body>
