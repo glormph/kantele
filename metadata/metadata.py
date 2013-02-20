@@ -138,7 +138,8 @@ class MetadataSet(object):
                     outlierfiles = req.POST.getlist('outlierfiles', None)
                     # check outliers
                     if not outlierfiles:
-                        pass # TODO ERROR, no files specified
+                        self.mark_error('return_to_form', 'No outlier files'
+                        ' were specified.')
                     
                     basemd.pop('_id')
                     if self.paramset.metadata == basemd:
@@ -151,11 +152,10 @@ class MetadataSet(object):
                             self.mark_error('return_to_form', 'Outlier metadata identical '
                                     'to previous outlier metadata.')
                             return
-                        # TODO uncomment when outlier files are processed.
-                        #elif set(outlierfiles).intersection(outlier['files']):
-                        #    self.mark_error('return_to_form', 'Specified outlier files '
-                        #              'already selected in previous outlier set.')
-                        #    return
+                        elif set(outlierfiles).intersection(outlier['files']):
+                            self.mark_error('return_to_form', 'Specified outlier files '
+                                      'already selected in previous outlier set.')
+                            return
 
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],outlierfiles)
