@@ -11,7 +11,10 @@ class Files(object):
     def load_files(self, files):
         self.pastefiles = []
         self.selectfiles = []
-        self.allfiles = files['files']
+        if 'files' in files:
+            self.allfiles = files['files']
+        else:
+            self.allfiles = []
         uploaded = self.get_uploaded_files()
         for fn in self.allfiles:
             fullfn = fn + '.' + self.allfiles[fn]['extension']
