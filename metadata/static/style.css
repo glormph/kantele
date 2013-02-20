@@ -1,7 +1,6 @@
 html {
 margin: 0;
 padding: 0;
-height: 100%
 }
 
 body {
@@ -32,8 +31,6 @@ margin-left: 20px;
 div#statusbar {
 background-color: #9eb6a8;
 height: 20px;
-font-family: Arial, sans-serif;
-font-size: 13px;
 padding: 5px;
 border-top-color: #3c5046;
 border-bottom-color: #b6c8bf;
@@ -44,6 +41,9 @@ text-align: center;
 
 div#statuscontainer {
 width: 60%;
+color: #0f290b;
+font-family: Helvetica, Arial, sans-serif;
+font-size: 13px;
 }
 
 div#content, div#filler {
@@ -94,6 +94,12 @@ margin-bottom: 20px;
 text-align: left;
 font-size: 15px;
 font-weight: normal;
+color: #0f290b;
+}
+
+div#dsetcontainer, table {
+font-family: Helvetica, Arial, sans-serif;
+font-size: 14px;
 color: #0f290b;
 }
 
@@ -194,7 +200,7 @@ background-color: white;
 border-width: 4px;
 border-color: #90a58d;
 border-style: solid;
-padding: 30px;
+padding: 10px;
 font-family: Helvetica, Arial, sans-serif;
 font-size: 11px;
 }
