@@ -1,21 +1,37 @@
 import os
+import consts
 
 class Files(object):
-    def __init__(self, postdata):
-        self.data = postdata
+    def __init__(self):
+        pass
+    
+    def get_uploaded_files(self):
+        return sorted(os.listdir(consts.UPLOAD_DIR))
 
-    def incoming_files(self):
-        filelist = self.data['pastefiles']
+    def load_files(self, files):
+        self.pastefiles = []
+        self.selectfiles = []
+        self.allfiles = files['files']
+        uploaded = self.get_uploaded_files()
+        for fn in self.allfiles:
+            fullfn = fn + '.' + self.allfiles[fn]['extension']
+            if fullfn in uploaded:
+                self.selectfiles.append(fullfn)
+            else:
+                self.pastefiles.append(fullfn)
+
+    def post_files(self, postdata):
+        filelist = postdata['pastefiles']
         if filelist == '':
             filelist = []
         else:
             filelist = [ x.strip() for x in filelist.strip().split('\n') ]
-        if 'selectfiles' in self.data:
-            filelist.extend(self.data.getlist('selectfiles'))
+        if 'selectfiles' in postdata:
+            filelist.extend(postdata.getlist('selectfiles'))
         self.filelist = [ os.path.splitext(x) for x in filelist ]
     
     def check_file_formatting(self):
-        forbidden = set(['/','\\','?','.','\%','*',':','|','\"','<','>','\''])
+        forbidden = set(['/','\\','?','.',',','\%','*',':','|','\"','<','>','\''])
         self.forbidden_found = []
         for fn in self.filelist:
             print fn

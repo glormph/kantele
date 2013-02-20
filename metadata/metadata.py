@@ -1,4 +1,4 @@
-import os, datetime
+import datetime
 from bson.objectid import ObjectId
 from models import Dataset, DraftDataset
 from parameterset import ParameterSet
@@ -38,6 +38,7 @@ class MetadataSet(object):
         session_id = request.session.get('draft_id', None)
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
         self.check_completed_stages(basemd, files, request.session)
+        self.create_paramsets(request.user, files, basemd, outliers)
     
     def store_dataset(self, request, oid_str):
         """ SHould be turned into class later for diff storage forms"""
@@ -104,8 +105,8 @@ class MetadataSet(object):
                 self.mark_error('return_to_form', 'You have not selected files')
                 return
             else:
-                files = Files(req.POST)
-                files.incoming_files()
+                files = Files()
+                files.post_files(req.POST)
                 if not files.check_file_formatting():
                     self.mark_error('return_to_form', 'Your files contain the'
                     ' following forbidden characters: {0}'.format(' '.join( \
@@ -120,7 +121,7 @@ class MetadataSet(object):
         elif formtgt in ['target_write_metadata','target_define_outliers',
                         'target_more_outliers']:
             files, basemd, outliers = self.load_from_db(self.obj_id, sessionid)
-            self.create_paramsets(req.user, files, basemd, outliers)
+            #self.create_paramsets(req.user, files, basemd, outliers)
             self.paramset = ParameterSet()
             self.paramset.incoming_metadata(req.POST)
             if not self.paramset.error:
@@ -261,9 +262,11 @@ class MetadataSet(object):
         return outliers
 
     def create_paramsets(self, user, files, basemetadata, outliers):
+        self.fileset = Files()
+        self.fileset.load_files(files)
         self.baseparamset = ParameterSet()
         self.baseparamset.initialize(user, basemetadata)
-        self.allfiles = files
+        self.allfiles = files # FIXME make dependent on self.fileset
         self.outlierparamsets = []
         for record in outliers: 
             pset = ParameterSet()
@@ -287,6 +290,4 @@ class MetadataSet(object):
             self.completed.append('outliers')
             self.completed.append('store')
 
-    def get_uploaded_files(self):
-        return sorted(os.listdir('/tmp'))
 
