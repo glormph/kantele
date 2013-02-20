@@ -1,11 +1,11 @@
 import json 
 import parameters
 
-
 class ParameterSet(object):
     def __init__(self):
         self.params = {}
         self.error = False
+        # FIXME param_conf, should we only load it upon server start!
         with open('param_conf_newest.json') as fp:
             config = json.load(fp)
         for paramconfig in config:
@@ -21,7 +21,7 @@ class ParameterSet(object):
 
         if record:
             for p in self.params:
-                if p not in record:
+                if p not in record or self.params[p].is_user:
                     continue
                 invals = []
                 if type(record[p]) != list:
@@ -101,6 +101,13 @@ class ParameterSet(object):
 
         return files, autodetection_done
     
+    def parameter_lookup(self):
+        for p in self.params:
+            if self.params[p].is_lookup:
+                k = self.params[ self.params[p].keyparam ]
+                self.params[p].lookup(k)
+            print p, self.params[p].inputvalues
+                
     def generate_metadata_for_db(self, **kwargs):
         # kwargs will be added to metadata as k/v pairs
         self.metadata = {}

@@ -90,7 +90,6 @@ class MetadataSet(object):
 
     def incoming_form(self, req, obj_id_str):
         self.obj_id = ObjectId(obj_id_str)
-        # FIXME should all session stuff be done in the views? Possible?
         # validate session id with req.
         sessionid = req.session.get('draft_id', None)
         if not sessionid == self.obj_id:
@@ -131,6 +130,7 @@ class MetadataSet(object):
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],
                             [fn for fn in files['files']] )
+                    self.paramset.parameter_lookup()
                     
                     self.db.update_draft_metadata(self.obj_id,
                             self.paramset.metadata, replace=False)
@@ -140,6 +140,7 @@ class MetadataSet(object):
                     if not outlierfiles:
                         self.mark_error('return_to_form', 'No outlier files'
                         ' were specified.')
+                        return
                     
                     basemd.pop('_id')
                     if self.paramset.metadata == basemd:
@@ -159,6 +160,7 @@ class MetadataSet(object):
 
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],outlierfiles)
+                    self.paramset.parameter_lookup()
                     # Checks passed, save to db:
                     self.more_outliers = 'target_more_outliers'==formtgt
                     meta_for_db = { 'draft_id': self.obj_id, 
@@ -266,7 +268,6 @@ class MetadataSet(object):
         self.fileset.load_files(files)
         self.baseparamset = ParameterSet()
         self.baseparamset.initialize(user, basemetadata)
-        self.allfiles = files # FIXME make dependent on self.fileset
         self.outlierparamsets = []
         for record in outliers: 
             pset = ParameterSet()

@@ -1,4 +1,5 @@
 import datetime
+from django.contrib.auth.models import User 
 
 class BaseParameter(object):
     def __init__(self, name, paramdata):
@@ -6,11 +7,13 @@ class BaseParameter(object):
         self.store = True
         self.optional = False
         self.selectoptions = None
-        self.update_values = False
+        self.update_values = False # FIXME deprecate?
         self.multiple = False
         self.amount = 1
         self.required_by = None
         self.autodetect_param = False
+        self.is_lookup = False
+        self.hidden_param = False
         self.depends_on = None
         self.inputvalues = []
         self.errors = {}
@@ -30,10 +33,13 @@ class BaseParameter(object):
             self.optional = paramdata['optional']
         if 'required_by' in paramdata:
             self.required_by = paramdata['required_by']
+        if 'hidden' in paramdata:
+            self.hidden_param = paramdata['hidden'] in [1, '1', True, 'True',
+                        'true']
         if 'autodetect' in paramdata:
             self.autodetect_param = paramdata['autodetect'] in [1, '1', True,
                 'True', 'true']
-            self.render_html = self.render_autodetect_html
+            self.render_html = self.render_no_html
         if 'depends_on' in paramdata:
             self.depends_on = paramdata['depends_on']
 
@@ -73,7 +79,7 @@ class BaseParameter(object):
                         </div>""".format(value))
         return ''.join(html)
 
-    def render_autodetect_html(self):
+    def render_no_html(self):
         return False
 
     def autodetect(self, files, filelist, prefix=None):
@@ -167,6 +173,7 @@ class SelectParameter(BaseParameter):
             self.selected = paramdata['selected']
         else:
             self.selected = None
+        # FIXME update_values: to be deprecated?
         self.update_values = True
         if 'update_values' in paramdata:            
             self.update_values = paramdata['update_values']
@@ -283,6 +290,22 @@ class UserParameter(SelectParameter):
     def __init__(self, name, paramdata):
         super(UserParameter, self).__init__(name, paramdata)
         self.is_user = True 
+        self.selectoptions = ['{0} {1}'.format(u.first_name.encode('utf-8'), 
+                u.last_name.encode('utf-8')) for u in User.objects.all() ]
+
+
+class LookupParameter(BaseParameter):
+    def __init__(self, name, paramdata):
+        super(LookupParameter, self).__init__(name, paramdata)
+        self.is_lookup = True
+        self.keyparam = paramdata['keyparam']
+        self.lookup_table = paramdata['lookup']
+
+    def lookup(self, keyparam):
+        self.inputvalues = self.lookup_table[keyparam.inputvalues[0] ]
+        if type(self.inputvalues) in [str, int, float]:
+            self.inputvalues = [self.inputvalues]
+
 
 
 jsonparams_to_class_map = {
@@ -294,5 +317,6 @@ jsonparams_to_class_map = {
     'xofy'      :   XofYParameter,
     'range'     :   RangeParameter,
     'checkboxes':   CheckBoxParameter,
-    'date'      :   DateParameter
+    'date'      :   DateParameter,
+    'lookup'    :   LookupParameter
     }
