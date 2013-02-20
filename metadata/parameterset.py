@@ -13,7 +13,8 @@ class ParameterSet(object):
              
     def initialize(self, user=None, record=None):
         if user:
-            username = '{0} {1}'.format(user.first_name, user.last_name)
+            username = '{0} {1}'.format(user.first_name.encode('utf-8'),
+            user.last_name.encode('utf-8') )
             for p in self.params:
                 if self.params[p].is_user:
                     self.params[p].inputvalues = [username]
