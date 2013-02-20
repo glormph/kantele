@@ -17,9 +17,9 @@ document.getElementById(divName).appendChild(newdiv);
 <tr>
 <td></td>
 <td> 
-{{ mds.allfiles.files|length }} files
+{{ mds.fileset.allfiles|length }} files
 <div class="filebox">
-{% for fn in mds.allfiles.files %}
+{% for fn in mds.fileset.allfiles %}
 {{ fn }}<br>
 {% endfor %}
 </div>

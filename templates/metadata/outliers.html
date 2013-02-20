@@ -25,16 +25,16 @@ document.getElementById(divName).appendChild(newdiv);
 <td>
 </td>
 <td> 
-{{ mds.allfiles.files|length }} files
+{{ mds.fileset.allfiles|length }} files
 <div class="filebox">
-{% for fn in mds.allfiles.files %}
+{% for fn in mds.fileset.allfiles %}
 {{ fn }}</br>
 {% endfor %}
 </div>
 </td>
 {% for ofiles,outset in mds.outlierparamsets %}
 <td>
-{{ mds.allfiles.files|length }} files
+{{ mds.fileset.allfiles|length }} files
 <div class="filebox">
 {% for fn in ofiles %}
 {{ fn }}<br>
@@ -44,7 +44,7 @@ document.getElementById(divName).appendChild(newdiv);
 {% endfor %}
 <td>
 <select class="filelist" size=15 name="outlierfiles" multiple>
-{% for file in mds.allfiles.files %}
+{% for file in mds.fileset.allfiles %}
 <option value="{{ file }}">{{ file }}</option>
 {% endfor %}
 </select>
@@ -54,7 +54,7 @@ document.getElementById(divName).appendChild(newdiv);
 
 <tr>
 <td></td>
-<td>Base metadata</td>
+<td class="tablehead">Base metadata</td>
 {% for outset in mds.outlierparamsets %}
 <td>Outlier metadata</td>
 {% endfor %}

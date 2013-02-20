@@ -11,6 +11,8 @@
 <div class="filescolumn">
 <h3>Paste filenames from an experiment</h3>
 <textarea name="pastefiles" rows=30 cols=70>
+{{ mds.fileset.pastefiles|join:"&#10;" }}
+
 </textarea>
 </div>
 
@@ -19,8 +21,12 @@ OR
 <div class="filescolumn" >
 <h3 id="fileheader">Select uploaded files</h3>
 <select id="filelist" size=30 name="selectfiles" multiple>
-{% for file in mds.get_uploaded_files %}
-<option value="{{ file }}">{{ file }}</option>
+{% for file in mds.fileset.get_uploaded_files %}
+
+<option value="{{ file }}"
+{% if file in mds.fileset.selectfiles %}
+selected
+{% endif %}>{{ file }}</option>
 {% endfor %}
 </select>
 </div>
