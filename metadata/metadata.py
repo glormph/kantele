@@ -2,6 +2,7 @@ import os, datetime
 from bson.objectid import ObjectId
 from models import Dataset, DraftDataset
 from parameterset import ParameterSet
+from files import Files
 
 class MetadataSet(object):
     def __init__(self):
@@ -30,9 +31,8 @@ class MetadataSet(object):
         session_id = request.session.get('draft_id', None)
         files, basemd, outliers = self.load_from_db(ObjectId(oid_str), session_id)
         self.check_completed_stages(basemd, files, request.session)
-        self.create_paramsets(None, files, basemd, outliers)
+        self.create_paramsets(request.user, files, basemd, outliers)
         self.paramset = self.baseparamset
-        print 'hej'
     
     def show_errored_dataset(self, request, oid_str):
         session_id = request.session.get('draft_id', None)
@@ -40,6 +40,7 @@ class MetadataSet(object):
         self.check_completed_stages(basemd, files, request.session)
     
     def store_dataset(self, request, oid_str):
+        """ SHould be turned into class later for diff storage forms"""
         sessionid = request.session.get('draft_id', None)
         curdate = datetime.date.strftime(datetime.datetime.now(), '%Y%m%d')
         
@@ -103,24 +104,23 @@ class MetadataSet(object):
                 self.mark_error('return_to_form', 'You have not selected files')
                 return
             else:
-                filelist = req.POST['pastefiles']
-                if filelist == '':
-                    filelist = []
-                else:
-                    filelist = [ x.strip() for x in filelist.strip().split('\n') ]
-                if 'selectfiles' in req.POST:
-                    filelist.extend(req.POST.getlist('selectfiles'))
-                # FIXME We have to parse out files with a '.' in them.
-                filelist = [ os.path.splitext(x) for x in filelist ]
+                files = Files(req.POST)
+                files.incoming_files()
+                if not files.check_file_formatting():
+                    self.mark_error('return_to_form', 'Your files contain the'
+                    ' following forbidden characters: {0}'.format(' '.join( \
+                    files.forbidden_found)))
+
                 self.db.update_files( self.obj_id, { 'files': { k[0]: {'extension':\
-                            k[1][1:]} for k in filelist }})
+                            k[1][1:]} for k in files.filelist }})
+                            
 
         # with obj_id, get tmp metadata['sessionid']
         # paramset, validate, store.
         elif formtgt in ['target_write_metadata','target_define_outliers',
                         'target_more_outliers']:
             files, basemd, outliers = self.load_from_db(self.obj_id, sessionid)
-            self.create_paramsets(None, files, basemd, outliers)
+            self.create_paramsets(req.user, files, basemd, outliers)
             self.paramset = ParameterSet()
             self.paramset.incoming_metadata(req.POST)
             if not self.paramset.error:
