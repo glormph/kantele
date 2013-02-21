@@ -10,7 +10,7 @@ class Dataset(models.Model):
 
 
 class DatasetOwner(models.Model):
-    dataset_id = models.ForeignKey(Dataset)
+    dataset = models.ForeignKey(Dataset)
     owner = models.ForeignKey(User)
    
 

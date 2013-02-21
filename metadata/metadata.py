@@ -11,9 +11,15 @@ class MetadataSet(object):
         self.obj_id = False
         self.more_outliers = False
         self.error = False
-    
+        self.paramconf = ParameterSet()
+
     def new_dataset(self, request):
-        draft_oid = self.db.insert_draft_metadata( {} )
+        userparams = self.paramconf.get_user_params()
+        userparams = [up.name for up in userparams]
+        user = '{0} {1}'.format(request.user.first_name.encode('utf-8'), 
+                    request.user.last_name.encode('utf-8'))
+        draft_oid = self.db.insert_draft_metadata({up:user for up in \
+                    userparams})
         self.initialize_new_dataset(request, draft_oid)
         return str(draft_oid)
     
@@ -91,11 +97,12 @@ class MetadataSet(object):
             self.create_paramsets(request.user, filesset, basemd, outliers)
             owners = {x: 0 for x in self.baseparamset.return_dataset_owners() }
             for u in User.objects.all():
-                name = '{0} {1}'.format(u.first_name, u.last_name)
+                name = '{0} {1}'.format(u.first_name.encode('utf-8'),
+                u.last_name.encode('utf-8'))
                 if name in owners:
                     owners[name] = u
             for o in owners.values():
-                self.save_to_sql_db(DatasetOwner, dataset_id=d.id, owner=o)
+                self.save_to_sql_db(DatasetOwner, dataset=d, owner=o)
             
             # save the whole metadata to mongo
             fullmeta['general_info']['status'] = 'new'
@@ -211,7 +218,7 @@ class MetadataSet(object):
             basemd['metadata_id'] = self.fullmeta['_id']
         else:
             files, outliers = {}, [{}]
-
+        
         draft_id = self.db.insert_draft_metadata(basemd)
         files['draft_id'] = draft_id
         self.db.insert_files(files)

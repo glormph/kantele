@@ -10,18 +10,18 @@ class ParameterSet(object):
             config = json.load(fp)
         for paramconfig in config:
             self.params[paramconfig] = parameters.jsonparams_to_class_map[config[paramconfig]['type']](paramconfig, config[paramconfig])
-             
+    
     def initialize(self, user=None, record=None):
-        if user:
-            username = '{0} {1}'.format(user.first_name.encode('utf-8'),
-            user.last_name.encode('utf-8') )
-            for p in self.params:
-                if self.params[p].is_user:
-                    self.params[p].inputvalues = [username]
-
+#        if user:
+#            username = '{0} {1}'.format(user.first_name.encode('utf-8'),
+#            user.last_name.encode('utf-8') )
+#            for p in self.params:
+#                if self.params[p].is_user:
+#                    self.params[p].inputvalues = [username]
+#
         if record:
             for p in self.params:
-                if p not in record or self.params[p].is_user:
+                if p not in record:
                     continue
                 invals = []
                 if type(record[p]) != list:
@@ -31,9 +31,16 @@ class ParameterSet(object):
                         invals.append(value)
                 for value in invals:
                     if type(value) == unicode:
-                        self.params[p].inputvalues.append(value.encode('utf-8'))
-                    else:
-                        self.params[p].inputvalues.append(value)
+                        value = value.encode('utf-8')
+                    self.params[p].inputvalues.append(value)
+
+    def get_user_params(self):
+        ups = []
+        for p in self.params:
+            if self.params[p].is_user:
+                ups.append( self.params[p] )
+        
+        return ups
 
     def incoming_metadata(self, formdata):
         params_passed = [x for x in formdata if x in self.params.keys() ] 
