@@ -69,9 +69,7 @@ def dataset_view_action(request, dataset_id, template, nextstep=None):
         
     elif request.method == 'POST':
         mds.incoming_form(request, dataset_id)
-        # FIXME check for problems in mds:
         if mds.error:
-            print 'error found: {0}'.format(mds.error['message'])
             if mds.error['redirect'] == 'return_to_form':
                 mds.show_errored_dataset(request, dataset_id)
                 return return_get(request, template, dataset_id, mds,
