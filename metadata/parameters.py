@@ -6,19 +6,20 @@ class BaseParameter(object):
         self.name = name
         self.store = True
         self.optional = False
-        self.selectoptions = None
         self.update_values = False # FIXME deprecate?
-        self.multiple = False
-        self.amount = 1
         self.required_by = None
         self.autodetect_param = False
-        self.is_lookup = False
         self.hidden_param = False
         self.depends_on = None
         self.inputvalues = []
         self.errors = {}
         self.warnings = {}
+        self.is_lookup = False
         self.is_user = False
+        self.is_owner = False
+       
+        self.multiple = False
+        self.amount = 1
         
         self.load_from_conf(paramdata)
     
@@ -169,10 +170,15 @@ class TextParameter(BaseParameter):
 class SelectParameter(BaseParameter):
     def __init__(self, name, paramdata ):
         super(SelectParameter, self).__init__(name, paramdata)
+        self.select_and_text = True
+        if 'notext' in paramdata and paramdata['notext'] in [1,'1',True,'True',
+                                    'true']:
+            self.select_and_text = False
         if 'selected' in paramdata:
             self.selected = paramdata['selected']
         else:
             self.selected = None
+
         # FIXME update_values: to be deprecated?
         self.update_values = True
         if 'update_values' in paramdata:            
@@ -192,28 +198,31 @@ class SelectParameter(BaseParameter):
             elif value != '':
                 self.selected = None
             
-            input_unit = """<div id="{0}"><div id="{0}_inputunit0"><select class="selectinput" name="{0}">
-        <option value="other" {1}>Other: </option>""".format(self.name,
-                'selected' if self.selected==None else '')
+            input_unit = """<div id="{0}"><div id="{0}_inputunit0"><select
+            class="selectinput" name="{0}">""".format(self.name)
+            if self.select_and_text: 
+                input_unit += """<option value="other" {0}>Other:
+                </option>""".format('selected' if self.selected==None else '')
             for selectoption in self.selectoptions:
-                input_unit = """{0}
-                    <option value="{1}" {2}>{1}</option>""".format(input_unit,
-                    selectoption, 'selected' if self.selected==selectoption else '')
-            input_unit = """{0}
-                </select><input type="text" class="textinput" name="{1}"
-                value="{2}"></div>
-                """.format(input_unit, self.name, 
-                    value if self.selected==None else '')
+                input_unit += """<option value="{0}" {1}>{0}</option>""".format(selectoption, 
+                        'selected' if self.selected==selectoption else '')
+            if self.select_and_text:
+                input_unit += """</select><input type="text" class="textinput"
+                        name="{0}" value="{1}"></div>""".format(self.name, 
+                        value if self.selected==None else '')
+            else:
+                input_unit += """</select></div>"""
+
+                
             input_units.append(input_unit)
         
         # construct base html
         base_html =''.join(input_units)
         if self.multiple:
-            base_html = """{0}
-            <input type="button" value="Add another {1}" onClick="addField('{2}');">
-            </div>""".format(base_html, self.title, self.name)
+            base_html += """</div><input type="button" value="Add another {0}"
+            onClick="addField('{1}');">""".format(self.title, self.name)
         else:
-            base_html = """{0}</div>""".format(base_html)
+            base_html += """</div>"""
         return base_html
     
 
@@ -289,7 +298,11 @@ class IntegerParameter(TextParameter):
 class UserParameter(SelectParameter):
     def __init__(self, name, paramdata):
         super(UserParameter, self).__init__(name, paramdata)
-        self.is_user = True 
+        self.is_user = True
+        self.select_and_text = False
+        if 'owner' in paramdata and paramdata['owner'] in [1,'1', True,
+                            'true']:
+            self.is_owner = True
         self.selectoptions = ['{0} {1}'.format(u.first_name.encode('utf-8'), 
                 u.last_name.encode('utf-8')) for u in User.objects.all() ]
 
