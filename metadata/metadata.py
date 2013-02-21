@@ -101,6 +101,8 @@ class MetadataSet(object):
                 u.last_name.encode('utf-8'))
                 if name in owners:
                     owners[name] = u
+            if request.user not in owners.values():
+                owners['loggedin_user'] = request.user
             for o in owners.values():
                 self.save_to_sql_db(DatasetOwner, dataset=d, owner=o)
             

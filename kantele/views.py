@@ -12,7 +12,7 @@ def home(request, message=None):
         pass # FIXME logging
 
     if request.user.is_authenticated():
-        datasets =  Dataset.objects.filter(user=request.user)
+        datasets = Dataset.objects.filter(datasetowner__owner=request.user).order_by('-date')[:5]
     else:
         datasets = None
     return render(request, 'kantele/index.html', {'status': status, 
