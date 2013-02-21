@@ -106,7 +106,6 @@ class ParameterSet(object):
             if self.params[p].is_lookup:
                 k = self.params[ self.params[p].keyparam ]
                 self.params[p].lookup(k)
-            print p, self.params[p].inputvalues
                 
     def generate_metadata_for_db(self, **kwargs):
         # kwargs will be added to metadata as k/v pairs
@@ -119,4 +118,13 @@ class ParameterSet(object):
                 self.metadata[p] = vals
         for p in kwargs:
             self.metadata[p] = kwargs[p]
+
+    def return_dataset_owners(self):
+        owners = []
+        for p in self.params:
+            if self.params[p].is_owner:
+                for v in self.params[p].inputvalues:
+                    owners.append(v)
+        return owners
+
 

@@ -1,6 +1,7 @@
 import datetime
 from bson.objectid import ObjectId
-from models import Dataset, DraftDataset
+from django.contrib.auth.models import User
+from models import Dataset, DraftDataset, DatasetOwner
 from parameterset import ParameterSet
 from files import Files
 
@@ -47,20 +48,20 @@ class MetadataSet(object):
         
         if not sessionid == oid_str:
             pass # TODO ERROR
-        files, basemd, outliers = self.load_from_db(ObjectId(oid_str),
+        filesset, basemd, outliers = self.load_from_db(ObjectId(oid_str),
                     sessionid)
         # remove draft_id, status=edit/copy, metadata_id, etc from data
         metadata_id = basemd.pop('metadata_id', None)
-        for x in ['draft_id', 'status', '_id']: # TODO this should be solve elsewhere, what if we change...
-            # ...a name somewhere!?
-            files.pop(x, None)
+        for x in ['draft_id', 'status', '_id']: 
+        # TODO this should be solved elsewhere, what if we change a name somewhere!?
+            filesset.pop(x, None)
             basemd.pop(x, None)
             for rec in outliers:
                 rec.pop(x, None) # pops from the original dict data object, no
                                  # need to redefine and put in new list.
         
         # convert outliers to files in fullmeta
-        files = files['files']
+        files = filesset['files']
         for out in outliers:
             for key,val in out['metadata'].items():
                 if key in basemd and val != basemd[key]:
@@ -84,11 +85,25 @@ class MetadataSet(object):
             d = self.save_to_sql_db(Dataset, user=request.user,
                     mongoid=str(metadata_id),date=datetime.datetime.now(),
                     project=basemd['Project'], experiment=basemd['Experiment'])
+            
+            # map get dataset owners from base parameters and save to django db
+            # FIXME this whole routine should be refactored!
+            self.create_paramsets(request.user, filesset, basemd, outliers)
+            owners = {x: 0 for x in self.baseparamset.return_dataset_owners() }
+            for u in User.objects.all():
+                name = '{0} {1}'.format(u.first_name, u.last_name)
+                if name in owners:
+                    owners[name] = u
+            for o in owners.values():
+                self.save_to_sql_db(DatasetOwner, dataset_id=d.id, owner=o)
+            
+            # save the whole metadata to mongo
             fullmeta['general_info']['status'] = 'new'
             fullmeta['general_info']['nr'] = d.id
             self.db.update_metadata(metadata_id, fullmeta, replace=True)
 
     def incoming_form(self, req, obj_id_str):
+        # FIXME another routine on the refactoring list!
         self.obj_id = ObjectId(obj_id_str)
         # validate session id with req.
         sessionid = req.session.get('draft_id', None)
@@ -120,7 +135,6 @@ class MetadataSet(object):
         elif formtgt in ['target_write_metadata','target_define_outliers',
                         'target_more_outliers']:
             files, basemd, outliers = self.load_from_db(self.obj_id, sessionid)
-            #self.create_paramsets(req.user, files, basemd, outliers)
             self.paramset = ParameterSet()
             self.paramset.incoming_metadata(req.POST)
             if not self.paramset.error:
