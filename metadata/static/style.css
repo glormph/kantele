@@ -77,6 +77,18 @@ div.filescolumn {
 width: 40%;
 }
 
+div.newstitle {
+font-weight: bold;
+}
+
+span.leftside {
+float: left;
+}
+
+span.rightside {
+float: right;
+}
+
 table.metadata {
 margin-left: auto;
 margin-right: auto;

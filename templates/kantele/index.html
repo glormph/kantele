@@ -76,9 +76,12 @@ $("#container").notify("create", {
 {% block content %}
 <div class="column">
 News
+{% for entry in news %}
 <div class="contentitem">
-Here's some news for you.
+<div class="newstitle">{{ entry.title }}</div>
+{{ entry.body }}
 </div>
+{% endfor %}
 </div>
 
 <div class="column">
@@ -100,14 +103,32 @@ Experiment: {{ ds.experiment }}
 <div class="column">
 Server status
 <div class="contentitem">
-<!-- server report -->
-Infofiles currently processing: {{ status.infofiles }}<br>
-Service info: {{ status.message }}<br>
-QUEUES<br>
+
+<div class="newstitle">Data pipeline</div>
+{{ status.server_status.description }}
+
+<div class="newstitle">Service info</div>
+{% if not status.message %}
+No info
+{% else %} 
+{{ status.message }}
+{% endif %}
+<div class="newstitle">Queues</div>
 {% for k,v in status.worker_queues.items %}
-{{ k }} {{ v }}<br>
+<span class="leftside">{{ k }}</span> <span class="rightside">{{ v}}</span><br>
 {% endfor %}
-Server status: {{ status.server_status.description }}
+
+<div class="newstitle">Processing</div>
+{% if not status.infofiles %}
+Not processing metadata
+{% else %}
+{% for md in status.infofiles %}
+{{ md }} 
+{% endfor %}
+{% endif %}
+
+
+
 </div>
 </div>
 
