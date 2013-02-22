@@ -113,7 +113,10 @@ class BaseParameter(object):
                 while not self.errors:
                     if self.inputvalues:
                         files[fn][self.name] = self.inputvalues[0]
-                    self.inputvalues = [fn[start:cur+1]]
+                    if len(fn) < cur+1:
+                        break
+                    else:
+                        self.inputvalues = [fn[start:cur+1]]
                     self.validate() # populates self.errors in case of error in
                                     # inputvalues
                     cur += 1
