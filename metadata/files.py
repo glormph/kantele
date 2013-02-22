@@ -37,7 +37,6 @@ class Files(object):
         forbidden = set(['/','\\','?','.',',','\%','*',':','|','\"','<','>','\''])
         self.forbidden_found = []
         for fn in self.filelist:
-            print fn
             if len(forbidden.intersection(fn[0]))>0:
                 self.forbidden_found.append(forbidden.intersection(fn[0]))
 

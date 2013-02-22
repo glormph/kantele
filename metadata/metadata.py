@@ -213,19 +213,18 @@ class MetadataSet(object):
         obj_id = ObjectId(obj_id_str)
         # load md from db
         files, basemd, outliers = self.load_from_db(obj_id)
-
         # create draftmeta dict, add status = 'editing/copy'
         basemd['status'] = task
         if task == 'edit':
             basemd['metadata_id'] = self.fullmeta['_id']
         else:
-            files, outliers = {}, [{}]
+            files, outliers = {}, []
         
         draft_id = self.db.insert_draft_metadata(basemd)
         files['draft_id'] = draft_id
         self.db.insert_files(files)
         for record in outliers:
-            outliers['draft_id'] = draft_id
+            record['draft_id'] = draft_id
             self.db.insert_outliers(record)
 
         return draft_id
@@ -250,7 +249,7 @@ class MetadataSet(object):
         else:
             # We're either editing or we're just showing.
             basemetadata = self.fullmeta['metadata']
-            files = {'files': self.fullmeta['files'].keys()}
+            files = {'files': self.fullmeta['files']}
             outliers = self.get_outliers_from_fullmetadata(self.fullmeta)
             
         # convert mongo's unicode to utf-8
@@ -271,7 +270,6 @@ class MetadataSet(object):
         newoutliers = []
         for outlier in outliers:
             newoutliers.append(convert_dicts_unicode_to_utf8(outlier))
-        
         return files, basemetadata, newoutliers
     
     def get_outliers_from_fullmetadata(self, md):
@@ -313,5 +311,4 @@ class MetadataSet(object):
             self.completed.append('metadata')
             self.completed.append('outliers')
             self.completed.append('store')
-
 

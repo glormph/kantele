@@ -15,6 +15,7 @@ urlpatterns = patterns('',
 
     url(r'^kantele/dataset/new/$', 'metadata.views.new_dataset'),
     url(r'^kantele/dataset/edit/(?P<dataset_id>\w+)/$', 'metadata.views.edit_dataset'),
+    url(r'^kantele/dataset/copy/(?P<dataset_id>\w+)/$', 'metadata.views.copy_dataset'),
 
     url(r'^kantele/dataset/files/(?P<dataset_id>\w+)/$', 'metadata.views.select_files'),
     url(r'^kantele/dataset/metadata/(?P<dataset_id>\w+)/$', 'metadata.views.write_metadata'),

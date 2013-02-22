@@ -23,7 +23,9 @@ def edit_dataset(request, dataset_id):
 
 @login_required
 def copy_dataset(request, dataset_id):
-    pass
+    mds = deepcopy_metadataset(empty_mds)
+    oid = mds.copy_dataset(request, dataset_id)
+    return redirect('/kantele/dataset/files/{0}'.format(oid))
 
 @login_required
 def show_dataset(request, dataset_id):
