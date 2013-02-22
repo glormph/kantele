@@ -11,6 +11,7 @@ urlpatterns = patterns('',
     url(r'^kantele/logout/$', 'kantele.views.logout_page'),
     
     url(r'^kantele/$', 'kantele.views.home'),
+    url(r'^kantele/userdatasets/$', 'kantele.views.all_user_datasets'),
     
 
     url(r'^kantele/dataset/new/$', 'metadata.views.new_dataset'),

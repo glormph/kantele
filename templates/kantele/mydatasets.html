@@ -1,0 +1,19 @@
+{% extends "kantele/index.html" %}
+{% block content %}
+
+<div class="column">
+Datasets
+{% for ds in datasets %}
+<div class="contentitem">
+Date: {{ ds.date }}<br>
+Project: {{ ds.project }}<br>
+Experiment: {{ ds.experiment }}
+<div class="datasetbuttons">
+<a class="contentitem" href="/kantele/dataset/copy/{{ ds.mongoid }}">copy</a>
+<a class="contentitem" href="/kantele/dataset/edit/{{ ds.mongoid }}">edit</a>
+</div>
+</div>
+{% endfor %}
+</div>
+
+{% endblock content %}
