@@ -79,7 +79,7 @@ News
 {% for entry in news %}
 <div class="contentitem">
 <div class="newstitle">{{ entry.title }}</div>
-{{ entry.body }}
+{{ entry.body|linebreaks }}
 </div>
 {% endfor %}
 </div>
