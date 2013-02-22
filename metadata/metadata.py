@@ -307,8 +307,11 @@ class MetadataSet(object):
         'outliers': 'Outliers', 'store': 'Store Metadata'}
         if 'files' in files and session['metadatastatus'] == 'new':
             self.completed.append('files')
-        if basemd.keys() != ['_id']:
+        userparams = [x.name for x in self.paramconf.get_user_params() ]
+        if set(basemd.keys()).difference(userparams) != set(['_id']):
             self.completed.append('metadata')
             self.completed.append('outliers')
+
+        if not False in [x in self.completed for x in ['metadata', 'files']]:
             self.completed.append('store')
 
