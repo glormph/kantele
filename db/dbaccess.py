@@ -1,8 +1,9 @@
 import mongo
+import consts
 
 class DatabaseAccess(object):
     def __init__(self):
-        self.mongo = mongo.MongoConnection('metadata', 'draft')
+        self.mongo = mongo.MongoConnection(consts.DBNAME, 'draft')
 
     def get_metadata(self, obj_id, draft=False):
         if draft:
