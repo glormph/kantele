@@ -1,11 +1,11 @@
-from pymongo import Connection
+from pymongo import MongoClient
 import consts
 
 
 class MongoConnection(object):
     def __init__(self, meta, draft=None):
         try:
-            self.con = Connection(host=consts.DBHOST)
+            self.con = MongoClient(host=consts.DBHOST)
         except:
             raise
         
