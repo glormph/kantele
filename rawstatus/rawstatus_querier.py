@@ -5,10 +5,12 @@ dbase = dbaccess.DatabaseAccess()
 def get_statuses(fns):
     report = {}
     for fn in fns:
-        status = 'not found'
+        status,date = 'not found', '-'
         fname = os.path.splitext(fn)[0]
         dbrec = dbase.get_rawfile_processed_status(fname)
         if dbrec and fname + dbrec['files'][fname]['extension'] == fn:
-            status = 'done'
-        report[fn] = status
+            if dbrec['general_info']['status'] == 'new':
+                status = 'done'
+            date = dbrec['general_info']['date']
+        report[fn] = (status, date)
     return report
