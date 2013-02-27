@@ -24,9 +24,12 @@ urlpatterns = patterns('',
     url(r'^kantele/dataset/store/(?P<dataset_id>\w+)/$', 'metadata.views.store_dataset'),
     
     url(r'^kantele/dataset/(?P<dataset_id>\w+)/$', 'metadata.views.show_dataset'),
+
+    url(r'^kantele/rawstatus/(?P<fn>\w+)/$', 'rawstatus.views.raw_file_processed'),
+    url(r'^kantele/rawstatus/(?P<fn>\w+\.\w+)/$', 'rawstatus.views.raw_file_processed'),
+
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
-    
     # Uncomment the next line to enable the admin:
     url(r'^admin/', include(admin.site.urls)),
 )
