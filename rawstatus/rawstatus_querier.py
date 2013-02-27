@@ -9,7 +9,7 @@ def get_statuses(fns):
         fname = os.path.splitext(fn)[0]
         dbrec = dbase.get_rawfile_processed_status(fname)
         if dbrec and fname + dbrec['files'][fname]['extension'] == fn:
-            if dbrec['general_info']['status'] == 'new':
+            if dbrec['general_info']['status'] == 'done':
                 status = 'done'
             date = dbrec['general_info']['date']
         report[fn] = (status, date)
