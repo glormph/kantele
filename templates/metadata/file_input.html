@@ -10,10 +10,13 @@
 <input type="submit" name="target_add_files">
 <div class="filescolumn">
 <h3>Paste filenames from an experiment</h3>
+{% if mds.fileset.pastefiles|length > 0 %}
 <textarea name="pastefiles" rows=30 cols=70>
 {{ mds.fileset.pastefiles|join:"&#10;" }}
-
 </textarea>
+{% else %}
+<textarea name="pastefiles" rows=30 cols=70></textarea>
+{% endif %}
 </div>
 
 OR

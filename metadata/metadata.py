@@ -206,7 +206,7 @@ class MetadataSet(object):
         self.save_to_sql_db(DraftDataset, user=request.user, 
                 mongoid=str(draft_oid), date=datetime.datetime.now())
         request.session['draft_id'] = draft_oid 
-        request.session['metadatastatus'] = 'new' 
+        request.session['metadatastatus'] = 'new'
         self.db.insert_files({'draft_id': draft_oid})
 
     def draft_from_fullmetadata(self, task, obj_id_str):
@@ -221,8 +221,6 @@ class MetadataSet(object):
             files, outliers = {}, []
         
         draft_id = self.db.insert_draft_metadata(basemd)
-        files['draft_id'] = draft_id
-        self.db.insert_files(files)
         for record in outliers:
             record['draft_id'] = draft_id
             self.db.insert_outliers(record)
