@@ -1,4 +1,3 @@
-import os
 import mongo, consts
 
 class DatabaseAccess(object):
@@ -60,18 +59,7 @@ class DatabaseAccess(object):
             raise ValueError, 'No metadata collection in draft db'
 
     def get_rawfile_processed_status(self, fn):
-        fname = os.path.splitext(fn)[0]
-        dbrec = self.mongo.run('find_one', 'metadata',
-            {'files.{0}'.format(fname):{'$exists': True},
-            'general_info.status': 'new'},
-            in_fields=['files.{0}.extension'.format(fname)])
-        if dbrec:
-            fullfn = fname + dbrec['files'][fname]['extension']
-            if fullfn == fn:
-                return True
-
-        return False
-
-
-
-
+        return self.mongo.run('find_one', 'metadata',
+                {'files.{0}'.format(fn):{'$exists': True}},
+                in_fields=['files.{0}.extension'.format(fn), 'general_info'])
+        
