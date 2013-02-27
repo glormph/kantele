@@ -136,7 +136,7 @@ class MetadataSet(object):
                     files.forbidden_found)))
 
                 self.db.update_files( self.obj_id, { 'files': { k[0]: {'extension':\
-                            k[1][1:]} for k in files.filelist }})
+                            k[1]} for k in files.filelist }})
                             
 
         # with obj_id, get tmp metadata['sessionid']

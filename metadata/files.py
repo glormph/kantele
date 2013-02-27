@@ -17,7 +17,7 @@ class Files(object):
             self.allfiles = []
         uploaded = self.get_uploaded_files()
         for fn in self.allfiles:
-            fullfn = fn + '.' + self.allfiles[fn]['extension']
+            fullfn = fn + self.allfiles[fn]['extension']
             if fullfn in uploaded:
                 self.selectfiles.append(fullfn)
             else:
