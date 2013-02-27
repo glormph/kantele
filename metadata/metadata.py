@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from models import Dataset, DraftDataset, DatasetOwner
 from parameterset import ParameterSet
 from files import Files
+import metadataconfig
 
 class MetadataSet(object):
     def __init__(self):
@@ -11,6 +12,7 @@ class MetadataSet(object):
         self.obj_id = False
         self.more_outliers = False
         self.error = False
+        self.config = metadataconfig.MetadataConfig()
         self.paramconf = ParameterSet()
 
     def new_dataset(self, request):

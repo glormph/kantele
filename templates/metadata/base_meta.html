@@ -26,7 +26,9 @@ document.getElementById(divName).appendChild(newdiv);
 </td>
 </tr>
 
-{% for name, param in mds.paramset.params.items %}
+{% load metadata_access %}
+{% for name in mds.config.paramorder %}
+{% with param=mds.paramset.params|lookup:name %}
     {% if param.render_html %}
 <tr>
 <td> {{ param.title }} </td>
@@ -42,6 +44,7 @@ document.getElementById(divName).appendChild(newdiv);
     </td>
 </tr>
     {% endif %}
-    {% endfor %}
+{% endwith %}
+{% endfor %}
 </table>
 {% endblock %}

@@ -60,7 +60,8 @@ document.getElementById(divName).appendChild(newdiv);
 {% endfor %}
 <td>Specify outlier metadata</td>
 </tr>
-    {% for name, param in mds.baseparamset.params.items %}
+    {% for name in mds.config.paramorder %}
+    {% with param=mds.paramset.params|lookup:name %}
     {% if param.render_html %}
 <tr>
 <td> {{ param.title }} </td>
@@ -88,6 +89,7 @@ document.getElementById(divName).appendChild(newdiv);
 {% endwith %}
 </tr>
     {% endif %}
+    {% endwith %}
     {% endfor %}
 </table>
 {% endblock dset %}
