@@ -5,7 +5,7 @@ from rawstatus import rawstatus_querier
 
 
 def raw_file_processed(request):
-    fns = request.GET.getlist('fn')
+    fns = request.POST.getlist('fn')
     report = rawstatus_querier.get_statuses(fns)
     return HttpResponse(json.dumps(report))
 
