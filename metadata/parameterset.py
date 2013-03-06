@@ -1,5 +1,6 @@
 import json 
 import parameters
+from util import util
 
 class ParameterSet(object):
     def __init__(self):
@@ -8,17 +9,11 @@ class ParameterSet(object):
         # FIXME param_conf, should we only load it upon server start!
         with open('param_conf_newest.json') as fp:
             config = json.load(fp)
+            config = util.convert_dicts_unicode_to_utf8(config)
         for paramconfig in config:
             self.params[paramconfig] = parameters.jsonparams_to_class_map[config[paramconfig]['type']](paramconfig, config[paramconfig])
     
     def initialize(self, user=None, record=None):
-#        if user:
-#            username = '{0} {1}'.format(user.first_name.encode('utf-8'),
-#            user.last_name.encode('utf-8') )
-#            for p in self.params:
-#                if self.params[p].is_user:
-#                    self.params[p].inputvalues = [username]
-#
         if record:
             for p in self.params:
                 if p not in record:
