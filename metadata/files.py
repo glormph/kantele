@@ -6,7 +6,11 @@ class Files(object):
         pass
     
     def get_uploaded_files(self):
-        return sorted(os.listdir(consts.UPLOAD_DIR))
+        try:
+            filelist = os.listdir(consts.UPLOAD_DIR)
+        except OSError:
+            filelist = []
+        return sorted(filelist)
 
     def load_files(self, files):
         self.pastefiles = []
