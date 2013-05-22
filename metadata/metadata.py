@@ -150,13 +150,14 @@ class MetadataSet(object):
             self.paramset = ParameterSet()
             self.paramset.incoming_metadata(req.POST)
             if not self.paramset.error:
-                self.paramset.generate_metadata_for_db()
                 if formtgt == 'target_write_metadata':
+                    # FIXME why next line? arent files already read above?
                     files = self.db.get_files(self.obj_id)
                     files['files'], autodet_done = \
                     self.paramset.do_autodetection(files['files'],
                             [fn for fn in files['files']] )
                     self.paramset.parameter_lookup()
+                    self.paramset.generate_metadata_for_db()
                     
                     self.db.update_draft_metadata(self.obj_id,
                             self.paramset.metadata, replace=False)
@@ -188,6 +189,7 @@ class MetadataSet(object):
                     self.paramset.do_autodetection(files['files'],outlierfiles)
                     self.paramset.parameter_lookup()
                     # Checks passed, save to db:
+                    self.paramset.generate_metadata_for_db()
                     self.more_outliers = 'target_more_outliers'==formtgt
                     meta_for_db = { 'draft_id': self.obj_id, 
                                     'metadata': self.paramset.metadata,
