@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from models import Dataset, DraftDataset, DatasetOwner
 from parameterset import ParameterSet
 from files import Files
+from util import util
 import metadataconfig
 
 class MetadataSet(object):
@@ -252,24 +253,11 @@ class MetadataSet(object):
             files = {'files': self.fullmeta['files']}
             outliers = self.get_outliers_from_fullmetadata(self.fullmeta)
             
-        # convert mongo's unicode to utf-8
-        # my first recursive function! What a mindwarp.
-        def convert_dicts_unicode_to_utf8(d):
-            if isinstance(d, dict):
-                return { convert_dicts_unicode_to_utf8(k): \
-                    convert_dicts_unicode_to_utf8(v) for k,v in d.items() }
-            elif isinstance(d, list):
-                return [convert_dicts_unicode_to_utf8(x) for x in d]
-            elif isinstance(d, unicode):
-                return d.encode('utf-8')
-            else:
-                return d
-
-        basemetadata = convert_dicts_unicode_to_utf8(basemetadata)
-        files = convert_dicts_unicode_to_utf8(files)
+        basemetadata = util.convert_dicts_unicode_to_utf8(basemetadata)
+        files = util.convert_dicts_unicode_to_utf8(files)
         newoutliers = []
         for outlier in outliers:
-            newoutliers.append(convert_dicts_unicode_to_utf8(outlier))
+            newoutliers.append(util.convert_dicts_unicode_to_utf8(outlier))
         return files, basemetadata, newoutliers
     
     def get_outliers_from_fullmetadata(self, md):

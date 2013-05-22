@@ -26,7 +26,7 @@ class BaseParameter(object):
     def load_from_conf(self, paramdata):
         self.title = paramdata['title']
         if 'values' in paramdata and paramdata['values'] is not None:
-            self.selectoptions = [x.encode('utf-8') for x in paramdata['values'] ]
+            self.selectoptions = [x for x in paramdata['values'] ]
         if 'multiple' in paramdata:
             self.multiple = True
             self.amount = paramdata['multiple']
