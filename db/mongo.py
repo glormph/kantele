@@ -8,18 +8,17 @@ class MongoConnection(object):
             self.con = MongoClient(host=consts.DBHOST)
         except:
             raise
-        
+
         self.meta = self.con[meta]
         if draft:
             self.draft = self.con[draft]
-        
+
         self.collmap = {
                 'metadata'  :   self.meta.metadata,
                 'draftmeta' :   self.draft.metadata,
                 'files'     :   self.draft.files,
-                'outliers'  :   self.draft.outliers,
-                }   
-        
+                }
+
         self.actionmap = {
         'insert'    :   self.ins,
         'update'    :   self.upd,
@@ -28,9 +27,9 @@ class MongoConnection(object):
         'find_one'  :   self.fnd_one
         }
 
-    
+
     def returnColnames(self):
-        return {'metadata': 'metadata', 
+        return {'metadata': 'metadata',
                 'draft': [x for x in self.collmap.keys() if x != 'metadata']}
 
     def run(self, action, coll, in_bson=None, **kwargs):
@@ -44,7 +43,7 @@ coll={1}, in_bson={2}'.format(action, coll, in_bson))
 
     def ins(self, coll, bson_obj):
         return coll.insert(bson_obj)
-        
+
     def upd(self, coll, key_bson, value_bson, ups=False):
         coll.update(key_bson, value_bson, upsert=ups)
         return False

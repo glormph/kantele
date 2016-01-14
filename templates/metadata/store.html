@@ -17,38 +17,19 @@ If everything looks good, press <input type="submit" value="Confirm">
 {% endfor %}
 </div>
 </td>
-{% for ofiles,outset in mds.outlierparamsets %}
-<td>
-<div class="filebox">
-{% for fn in ofiles %}
-{{ fn }}</br>
-{% endfor %}
-</div>
-</td>
-{% endfor %}
 
-</td>
+</td> <!--FIXME? -->
 </tr>
 
 <tr>
 <td></td>
-<td>Base metadata</td>
-{% for outset in mds.outlierparamsets %}
-<td>Outlier metadata</td>
-{% endfor %}
+<td>Metadata</td>
 </tr>
     {% for name, param in mds.baseparamset.params.items %}
     {% if param.render_html %}
 <tr>
 <td> {{ param.title }} </td>
-
 <td> {{ param.render_values_html|safe }} </td>
-
-{% for files,outlierset in mds.outlierparamsets %}
-{% with opr=outlierset.params|lookup:name %}
-<td>{{ opr.render_values_html|safe }}</td>
-{% endwith %}
-{% endfor %}
 </tr>
     {% endif %}
     {% endfor %}
