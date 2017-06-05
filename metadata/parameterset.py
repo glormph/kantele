@@ -8,9 +8,11 @@ class ParameterSet(object):
         self.params = {}
         self.error = False
         # FIXME param_conf, should we only load it upon server start!
+        # Or is this a feature with live non-breaking changes?
         with open('param_conf_newest.json') as fp:
             config = json.load(fp)
             config = util.convert_dicts_unicode_to_utf8(config)
+        # FIXME here call the DB to get initialization values for each param
         for paramconfig in config:
             self.params[paramconfig] = parameters.jsonparams_to_class_map[
                 config[paramconfig]['type']](paramconfig, config[paramconfig])
@@ -65,15 +67,14 @@ class ParameterSet(object):
         # check if certain parameters require presence of other parameters
         for paramname in params_passed:
             if self.params[paramname].required_by:
-                requirement = self.params[paramname].required_by
-                for reqname in requirement:
+                for reqname, req in self.params[paramname].required_by.items():
                     # check if requiring parameter is filled in, but not
                     # required param
-                    if type(requirement[reqname]) in [str, unicode]:
-                        requirement[reqname] = [requirement[reqname]]
-                    if self.params[reqname] and \
-                            True in [x in self.params[reqname].inputvalues
-                                     for x in requirement[reqname]]:
+                    if type(req) in [str, unicode]:
+                        req = [req]
+                    if (self.params[reqname] and
+                        any([x in self.params[reqname].inputvalues
+                             for x in req])):
                         if self.params[paramname].errors or \
                                 not self.params[paramname].store or \
                                 not self.params[paramname].inputvalues:
@@ -81,9 +82,7 @@ class ParameterSet(object):
                                 'Fields belong together: Your input in field '
                                 '{0} requires filling in {1}.'.format(
                                     self.params[reqname].title,
-                                    self.params[paramname].title)
-                            ] = 1
-
+                                    self.params[paramname].title)] = 1
                     # check if required param is filled in but not
                     # requiring param
                     if self.params[paramname]:
@@ -112,7 +111,6 @@ class ParameterSet(object):
                                                          prefix)
                 if check:
                     autodetection_done = True
-
         return files, autodetection_done
 
     def parameter_lookup(self):

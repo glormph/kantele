@@ -17,6 +17,8 @@ class MetadataSet(object):
         self.paramconf = ParameterSet()
 
     def new_dataset(self, request):
+        """Creates a completely new dataset and initializes draft metadata.
+        Called when user clicks "new metadata" button"""
         userparams = self.paramconf.get_user_params()
         userparams = [up.name for up in userparams]
         user = '{0} {1}'.format(request.user.first_name.encode('utf-8'),
@@ -40,7 +42,7 @@ class MetadataSet(object):
     def show_dataset(self, request, oid_str):
         session_id = request.session.get('draft_id', None)
         files, basemd = self.load_from_db(ObjectId(oid_str),
-                                                    session_id)
+                                          session_id)
         self.check_completed_stages(basemd, files, request.session)
         self.create_paramsets(request.user, files, basemd)
         self.paramset = self.baseparamset
@@ -48,7 +50,7 @@ class MetadataSet(object):
     def show_errored_dataset(self, request, oid_str):
         session_id = request.session.get('draft_id', None)
         files, basemd = self.load_from_db(ObjectId(oid_str),
-                                                    session_id)
+                                          session_id)
         self.check_completed_stages(basemd, files, request.session)
         self.create_paramsets(request.user, files, basemd)
 
@@ -60,7 +62,7 @@ class MetadataSet(object):
         if not sessionid == oid_str:
             pass  # TODO ERROR
         filesset, basemd = self.load_from_db(ObjectId(oid_str),
-                                                       sessionid)
+                                             sessionid)
         # remove draft_id, status=edit/copy, metadata_id, etc from data
         metadata_id = basemd.pop('metadata_id', None)
         for x in ['draft_id', 'status', '_id']:
@@ -75,7 +77,7 @@ class MetadataSet(object):
 
         if metadata_id:  # only when editing, no general info update
             self.db.update_metadata(metadata_id,
-                                    {'metadata':fullmeta['metadata']})
+                                    {'metadata': fullmeta['metadata']})
             self.db.update_metadata(metadata_id, {'files': fullmeta['files']})
         else:
             metadata_id = self.db.insert_metadata_record(fullmeta)
@@ -116,7 +118,6 @@ class MetadataSet(object):
                             'resource. Perhaps the session has timed out?')
 
         formtgt = [x for x in req.POST if x.startswith('target_')][0]
-
         if formtgt == 'target_add_files':
             if not req.POST['pastefiles'] and 'selectfiles' not in req.POST:
                 self.mark_error('return_to_form',

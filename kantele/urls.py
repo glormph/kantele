@@ -1,4 +1,4 @@
-from django.conf.urls import patterns, url, include
+from django.conf.urls import url, include
 from django.contrib import admin
 admin.autodiscover()
 
@@ -6,8 +6,7 @@ admin.autodiscover()
 # from django.contrib import admin
 # admin.autodiscover()
 
-urlpatterns = patterns(
-    '',
+urlpatterns = [
     url(r'^kantele/login/$', 'django.contrib.auth.views.login'),
     url(r'^kantele/logout/$', 'kantele.views.logout_page'),
 
@@ -37,4 +36,4 @@ urlpatterns = patterns(
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
     # Uncomment the next line to enable the admin:
     url(r'^kantele/admin/', include(admin.site.urls)),
-)
+]

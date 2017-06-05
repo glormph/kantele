@@ -102,12 +102,12 @@ ROOT_URLCONF = 'kantele.urls'
 # Python dotted path to the WSGI application used by Django's runserver.
 WSGI_APPLICATION = 'kantele.wsgi.application'
 
-TEMPLATE_DIRS = (
-    '/scratch/repos/kantele/templates'
+TEMPLATE_DIRS = [
+    'templates'
     # Put strings here, like "/home/html/django_templates" or "C:/www/django/templates".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
-)
+]
 
 TEMPLATE_STRING_IF_INVALID = 'yo'
 

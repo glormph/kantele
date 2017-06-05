@@ -1,12 +1,13 @@
 import datetime
-from django.contrib.auth.models import User 
+from django.contrib.auth.models import User
+
 
 class BaseParameter(object):
     def __init__(self, name, paramdata):
         self.name = name
         self.store = True
         self.optional = False
-        self.update_values = False # FIXME deprecate?
+        self.update_values = False  # FIXME deprecate?
         self.required_by = None
         self.autodetect_param = False
         self.hidden_param = False
@@ -17,16 +18,16 @@ class BaseParameter(object):
         self.is_lookup = False
         self.is_user = False
         self.is_owner = False
-       
+
         self.multiple = False
         self.amount = 1
-        
+
         self.load_from_conf(paramdata)
-    
+
     def load_from_conf(self, paramdata):
         self.title = paramdata['title']
         if 'values' in paramdata and paramdata['values'] is not None:
-            self.selectoptions = [x for x in paramdata['values'] ]
+            self.selectoptions = [x for x in paramdata['values']]
         if 'multiple' in paramdata:
             self.multiple = True
             self.amount = paramdata['multiple']
@@ -36,10 +37,10 @@ class BaseParameter(object):
             self.required_by = paramdata['required_by']
         if 'hidden' in paramdata:
             self.hidden_param = paramdata['hidden'] in [1, '1', True, 'True',
-                        'true']
+                                                        'true']
         if 'autodetect' in paramdata:
             self.autodetect_param = paramdata['autodetect'] in [1, '1', True,
-                'True', 'true']
+                                                                'True', 'true']
             self.render_html = self.render_no_html
         if 'depends_on' in paramdata:
             self.depends_on = paramdata['depends_on']
@@ -59,19 +60,18 @@ class BaseParameter(object):
                 self.store = False
             else:
                 self.errors['Field {0} is required.'.format(self.title)] = 1
-        
-        if not self.multiple: # this should only happen in select parameter, I
+        if not self.multiple:  # this should only happen in select parameter, I
         #think: MOVE? # no also in checkbox
-            if len(self.inputvalues)>1:
+            if len(self.inputvalues) > 1:
                 newvals = []
                 for val in self.inputvalues:
                     if val not in self.selectoptions:
                         newvals.append(val)
                 self.inputvalues = newvals
-                self.errors['Conflicting input'] =1
+                self.errors['Conflicting input'] = 1
 
     def render_html(self):
-        return False 
+        return False
 
     def render_values_html(self):
         html = []
@@ -86,8 +86,8 @@ class BaseParameter(object):
     def autodetect(self, files, filelist, prefix=None):
         if not self.autodetect_param:
             return True
-        self.store = False # autodetect params are not saved in metadata, but
-                           # in files record in DB
+        self.store = False  # autodetect params are not saved in metadata, but
+        # in files record in DB
         if prefix == ['None']:
             # In case of no (fraction or other) prefix in filename
             return files, False
@@ -100,12 +100,12 @@ class BaseParameter(object):
                     # inputvalues is list
                     if pref in fn:
                         prefix_found.append(pref)
-                
+
                 # if two nrs: complain - shouldnt happen, errors checked
                 # before autodetection
-                # else: 
+                # else:
                 # get nr by char-by-char checking validity(below)
-               
+
                 cur = fn.index(prefix_found[0]) + len(prefix_found[0])
                 while fn[cur] in [' ', '-', '_', '.']:
                     cur += 1
@@ -113,12 +113,12 @@ class BaseParameter(object):
                 while not self.errors:
                     if self.inputvalues:
                         files[fn][self.name] = self.inputvalues[0]
-                    if len(fn) < cur+1:
+                    if len(fn) < cur + 1:
                         break
                     else:
-                        self.inputvalues = [fn[start:cur+1]]
-                    self.validate() # populates self.errors in case of error in
-                                    # inputvalues
+                        self.inputvalues = [fn[start:cur + 1]]
+                    self.validate()  # populates self.errors in case of error
+                                     # in inputvalues
                     cur += 1
                 if cur - start == 1 and self.errors:
                     # no value found after prefix
@@ -130,7 +130,7 @@ class BaseParameter(object):
 class CheckBoxParameter(BaseParameter):
     def __init__(self, name, paramdata):
         super(CheckBoxParameter, self).__init__(name, paramdata)
-        self.multiple = True # Cannot be multiplexed by design, is already multiple
+        self.multiple = True  # Cannot be multiplexed, is already multiple
         self.optional = True
 
     def render_html(self):
@@ -138,14 +138,13 @@ class CheckBoxParameter(BaseParameter):
             values = self.inputvalues
         else:
             values = ['']
-        
-        
         base_html = """<input type="hidden" name="{0}" value="other">
         """.format(self.name)
         for selectoption in self.selectoptions:
             base_html = """{0} <input type="checkbox" name="{1}"
             value="{2}" {3}> {2}""".format(base_html, self.name, selectoption,
-            'checked' if selectoption in values else '')
+                                           'checked' if selectoption in
+                                           values else '')
 
         return base_html
 
@@ -158,10 +157,12 @@ class TextParameter(BaseParameter):
             values = [''] * self.amount
         input_units = []
         for value in values:
-            input_units.append("""<div id="{0}"><div id="{0}_inputunit0"><input
-            type="text" class="textinput" name="{0}" value="{1}"></div></div>""".format(self.name, value))
+            input_units.append(
+                """<div id="{0}"><div id="{0}_inputunit0">
+                   <input type="text" class="textinput" name="{0}" value="{1}">
+                   </div></div>""".format(self.name, value))
         return ''.join(input_units)
-        
+
     def validate(self):
         super(TextParameter, self).validate()
         self.check_format()
@@ -171,11 +172,11 @@ class TextParameter(BaseParameter):
 
 
 class SelectParameter(BaseParameter):
-    def __init__(self, name, paramdata ):
+    def __init__(self, name, paramdata):
         super(SelectParameter, self).__init__(name, paramdata)
         self.select_and_text = True
-        if 'notext' in paramdata and paramdata['notext'] in [1,'1',True,'True',
-                                    'true']:
+        if 'notext' in paramdata and paramdata['notext'] in [1, '1', True,
+                                                             'True', 'true']:
             self.select_and_text = False
         if 'selected' in paramdata:
             self.selected = paramdata['selected']
@@ -184,7 +185,7 @@ class SelectParameter(BaseParameter):
 
         # FIXME update_values: to be deprecated?
         self.update_values = True
-        if 'update_values' in paramdata:            
+        if 'update_values' in paramdata:
             self.update_values = paramdata['update_values']
 
     def render_html(self):
@@ -200,70 +201,78 @@ class SelectParameter(BaseParameter):
                 self.selected = value
             elif value != '':
                 self.selected = None
-            
+
             input_unit = """<div id="{0}"><div id="{0}_inputunit0"><select
             class="selectinput" name="{0}">""".format(self.name)
-            if self.select_and_text: 
-                input_unit += """<option value="other" {0}>Other:
-                </option>""".format('selected' if self.selected==None else '')
-            for selectoption in self.selectoptions:
-                input_unit += """<option value="{0}" {1}>{0}</option>""".format(selectoption, 
-                        'selected' if self.selected==selectoption else '')
             if self.select_and_text:
-                input_unit += """</select><input type="text" class="textinput"
-                        name="{0}" value="{1}"></div>""".format(self.name, 
-                        value if self.selected==None else '')
+                input_unit += ('<option value="other" {0}>Other: '
+                               '</option>'.format('selected' if
+                                                  self.selected is None
+                                                  else ''))
+            for selectoption in self.selectoptions:
+                input_unit += ('option value="{0}" {1}>{0}'
+                               '</option>'.format(selectoption, 'selected'
+                                                  if self.selected ==
+                                                  selectoption else ''))
+            if self.select_and_text:
+                input_unit += ('</select><input type="text" class="textinput" '
+                               'name="{0}" value="{1}">'
+                               '</div>'.format(self.name, value
+                                               if self.selected is None
+                                               else ''))
             else:
                 input_unit += """</select></div>"""
-
-                
             input_units.append(input_unit)
-        
+
         # construct base html
-        base_html =''.join(input_units)
+        base_html = ''.join(input_units)
         if self.multiple:
             base_html += """</div><input type="button" value="Add another {0}"
             onClick="addField('{1}');">""".format(self.title, self.name)
         else:
             base_html += """</div>"""
         return base_html
-    
+
 
 class DateParameter(TextParameter):
     def validate(self):
         super(DateParameter, self).validate()
         for date in self.inputvalues:
             if date == 'today':
-                date = datetime.date.strftime(datetime.datetime.now(), '%Y%m%d')
+                date = datetime.date.strftime(datetime.datetime.now(),
+                                              '%Y%m%d')
             if date == 'yesterday':
-                date = datetime.date.strftime(datetime.datetime.now()- \
-                            datetime.timedelta(1), '%Y%m%d')
+                date = datetime.date.strftime(datetime.datetime.now() -
+                                              datetime.timedelta(1), '%Y%m%d')
             try:
                 datediff = datetime.datetime.now() - date
             except TypeError:
-                pass # format error caught in check_format, not here
+                pass  # format error caught in check_format, not here
             else:
                 if -5 < datediff < 0:
-                    self.warnings['Date is in the future. Sure that is ok?'] = 1
+                    self.warnings['Date is in the future. '
+                                  'Sure that is ok?'] = 1
                 elif datediff < -10:
-                    self.errors['Date is more than 10 days in the future. \
-                    Surely you cannot be running that long an experiment?'] = 1
-        
+                    self.errors['Date is more than 10 days in the future. '
+                                'Surely you cannot be running that long '
+                                'an experiment?'] = 1
+
     def check_format(self):
         try:
-            self.inputvalues = [datetime.datetime.strptime(x, '%Y%m%d') for x \
-            in self.inputvalues]
+            self.inputvalues = [datetime.datetime.strptime(x, '%Y%m%d') for x
+                                in self.inputvalues]
         except ValueError:
             self.errors['Wrongly formatted date, use YYYYMMDD'] = 1
 
 
 class RangeParameter(TextParameter):
     rangeseparator = '-'
+
     def check_format(self):
         checked_input = []
         for rangeinput in self.inputvalues:
-            inval = [x.strip().replace(',', '.') for x in \
-                rangeinput.split(self.rangeseparator)]
+            inval = [x.strip().replace(',', '.') for x in
+                     rangeinput.split(self.rangeseparator)]
             if len(inval) != 2:
                 self.errors['Wrongly formatted {0}. Use "X.xx {1} \
                 Y.yy"'.format(self.title, self.rangeseparator)] = 1
@@ -283,7 +292,7 @@ class XofYParameter(RangeParameter):
 class FloatParameter(TextParameter):
     def check_format(self):
         try:
-            self.inputvalues = [float(x) for x in self.inputvalues ]
+            self.inputvalues = [float(x) for x in self.inputvalues]
         except ValueError:
             self.errors['Wrongly formatted {0}. Be sure to write \
                 numbers, decimal points are accepted.'.format(self.title)] = 1
@@ -292,7 +301,7 @@ class FloatParameter(TextParameter):
 class IntegerParameter(TextParameter):
     def check_format(self):
         try:
-            self.inputvalues = [int(x) for x in self.inputvalues ]
+            self.inputvalues = [int(x) for x in self.inputvalues]
         except ValueError:
             self.errors['Wrongly formatted {0}. Be sure to write \
                 whole numbers, without decimal points'.format(self.title)] = 1
@@ -303,11 +312,12 @@ class UserParameter(SelectParameter):
         super(UserParameter, self).__init__(name, paramdata)
         self.is_user = True
         self.select_and_text = False
-        if 'owner' in paramdata and paramdata['owner'] in [1,'1', True,
-                            'true']:
+        if 'owner' in paramdata and paramdata['owner'] in [1, '1',
+                                                           True, 'true']:
             self.is_owner = True
-        self.selectoptions = ['{0} {1}'.format(u.first_name.encode('utf-8'), 
-                u.last_name.encode('utf-8')) for u in User.objects.all() ]
+        self.selectoptions = ['{0} {1}'.format(u.first_name.encode('utf-8'),
+                                               u.last_name.encode('utf-8'))
+                              for u in User.objects.all()]
 
 
 class LookupParameter(BaseParameter):
@@ -318,21 +328,20 @@ class LookupParameter(BaseParameter):
         self.lookup_table = paramdata['lookup']
 
     def lookup(self, keyparam):
-        self.inputvalues = self.lookup_table[keyparam.inputvalues[0] ]
+        self.inputvalues = self.lookup_table[keyparam.inputvalues[0]]
         if type(self.inputvalues) in [str, int, float]:
             self.inputvalues = [self.inputvalues]
 
 
-
 jsonparams_to_class_map = {
-    'user'      :   UserParameter,
-    'select'    :   SelectParameter,
-    'text'      :   TextParameter,
-    'float'     :   FloatParameter,
-    'integer'   :   IntegerParameter,
-    'xofy'      :   XofYParameter,
-    'range'     :   RangeParameter,
+    'user':   UserParameter,
+    'select':   SelectParameter,
+    'text':   TextParameter,
+    'float':   FloatParameter,
+    'integer':   IntegerParameter,
+    'xofy':   XofYParameter,
+    'range':   RangeParameter,
     'checkboxes':   CheckBoxParameter,
-    'date'      :   DateParameter,
-    'lookup'    :   LookupParameter
-    }
+    'date':   DateParameter,
+    'lookup':   LookupParameter,
+}
