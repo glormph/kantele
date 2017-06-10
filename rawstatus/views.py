@@ -1,4 +1,5 @@
-from django.http import HttpResponse
+from django.http import (JsonResponse, HttpResponseForbidden,
+                         HttpResponseNotAllowed)
 from filetracker import (RawFile, Producer, TransferredFile)
 
 # FLow is like this:
@@ -11,7 +12,9 @@ from filetracker import (RawFile, Producer, TransferredFile)
 # GET is-md5-ok-of-fn-with-id?
     # response JSON with true or false
 
-# FIXME need auth API key, or client UUID?
+
+def check_producer(producer_id):
+    return Producer.objects.get(client_id=producer_id)
 
 
 def register_file(request):
@@ -22,16 +25,17 @@ def register_file(request):
         - date of production/acquisition
     """
     if request.method == 'POST':
-        # FIXME if not correct producer id, return 403
-        producer = Producer.objects.get(client_id=request.POST.client_id)
+        try:
+            producer = check_producer(request.POST.client_id)
+        except Producer.DoesNotExist:
+            return HttpResponseForbidden()
         file_record = RawFile(request.fn, producer, request.md5, request.size,
                               request.date)
+        # FIXME check if not already exist!
         file_record.save()
-        # FIXME JSON {'file_id': f_id, 'state': 'registered'}
-        return HttpResponse()
+        return JsonResponse({'file_id': file_record.id, 'state': 'registered'})
     else:
-        # throw error 403 HTTP  FIXME
-        return HttpResponse()
+        return HttpResponseNotAllowed()
 
 
 def file_transferred(request):
@@ -39,29 +43,28 @@ def file_transferred(request):
         - fn_id
     Starts checking file MD5 in background
     """
+    fn_id = request.POST.fn_id
     if request.method == 'POST':
-        # FIXME if not correct producer id, return 403
-        file_transferred = RawFile(request.fn_id)
-        file_transferred.save()
-        # FIXME background process for MD5
-        return HttpResponse()  # FIXME 200
-    elif request.method == 'GET':
-        fn_id = request.GET.fn_id
+        try:
+            check_producer(request.POST.client_id)
+        except Producer.DoesNotExist:
+            return HttpResponseForbidden()
+        try:
+            file_transferred = TransferredFile.objects.get(fileid=fn_id)
+        except TransferredFile.DoesNotExist:
+            file_transferred = TransferredFile(fn_id)
+            file_transferred.save()
+            # FIXME start background process for MD5
+            return JsonResponse({'fn_id': request.POST.fn_id,
+                                 'md5_state': False})
         # FIXME rawfile has no file_id field in model, how?
         file_registered = RawFile(file_id=fn_id)
-        filestate_db = TransferredFile.objects.get(file_id=fn_id)
         # FIXME default value at not saved (NULL in db)? FAlse or None?
-        if not filestate_db.md5:
-            pass
-            # FIXME 200 JSON {'fn_id': fn_id, 'md5_state': False}
-        if file_registered.source_md5 == filestate_db.md5:
-            pass
-            # FIXME 200 JSON {'fn_id': fn_id, 'md5_state': 'ok'
+        if not file_transferred.md5:
+            return JsonResponse({'fn_id': fn_id, 'md5_state': False})
+        if file_registered.source_md5 == file_transferred.md5:
+            return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
         else:
-            pass
-            # FIXME 200 JSON {'fn_id': fn_id, 'md5_state': 'error'
-        return
-
+            return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})
     else:
-        # throw error 403 HTTP  FIXME
-        return HttpResponse()
+        return HttpResponseNotAllowed()
