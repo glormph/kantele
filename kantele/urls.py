@@ -1,14 +1,14 @@
 from django.conf.urls import url, include
 from django.contrib import admin
-admin.autodiscover()
+from metadata import views as mdviews
 
 # Uncomment the next two lines to enable the admin:
 # from django.contrib import admin
 # admin.autodiscover()
 
 urlpatterns = [
-    url(r'^kantele/login/$', 'django.contrib.auth.views.login'),
-    url(r'^kantele/logout/$', 'kantele.views.logout_page'),
+    url(r'^admin/', admin.site.urls),
+    url(r'^files/', include('rawstatus.urls')),
 
     url(r'^kantele/$', 'kantele.views.home'),
     url(r'^kantele/userdatasets/$', 'kantele.views.all_user_datasets'),
