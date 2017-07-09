@@ -15,7 +15,7 @@ def md5(fnpath):
 
 
 def register_transfer(host, fn_id, client_id):
-    url = urljoin(host, 'kantele/filetracker/transferred')
+    url = urljoin(host, 'files/transferred')
     postdata = {'fn_id': fn_id,
                 'client_id': client_id,
                 }
@@ -23,7 +23,7 @@ def register_transfer(host, fn_id, client_id):
 
 
 def register_file(host, fn, fn_md5, size, date, client_id):
-    url = urljoin(host, 'kantele/filetracker/register')
+    url = urljoin(host, 'files/register')
     postdata = {'fn': fn,
                 'client_id': client_id,
                 'md5': fn_md5,
@@ -47,7 +47,7 @@ def main():
     # text-file contains name and date of fn produced
     pssdir = sys.argv[1]
     ledgerfn = sys.argv[2]
-    kantelehost = sys.argv[3]
+    kantelehost = sys.argv[3]  # http://host.com/kantele
     client_id = sys.argv[4]
     transfer_location = sys.argv[5]
     with open(ledgerfn) as fp:
