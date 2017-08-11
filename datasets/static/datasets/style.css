@@ -1,0 +1,15 @@
+nav#navMenu {
+	height: 60px;
+}
+
+div.navbar-brand {
+	height: 80px;
+}
+a.navbar-item {
+	height: 50px;
+}
+
+img#navMenuLogo {
+	max-height: 50px;
+}
+

@@ -28,8 +28,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'metadata',
+    'datasets.apps.DatasetsConfig',
     'rawstatus.apps.RawstatusConfig',
+    #'metadata',
 ]
 
 MIDDLEWARE = [
@@ -65,6 +66,7 @@ WSGI_APPLICATION = 'kantele.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
+ATOMIC_REQUESTS = True
 
 DATABASES = {
     'default': {
