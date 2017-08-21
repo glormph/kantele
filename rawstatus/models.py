@@ -17,6 +17,7 @@ class RawFile(models.Model):
     source_md5 = models.CharField(max_length=32, unique=True)
     size = models.IntegerField('size in bytes')
     date = models.DateTimeField('date created')
+    claimed = models.BooleanField()
 
     def __str__(self):
         return self.name
