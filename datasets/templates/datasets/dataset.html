@@ -1,10 +1,424 @@
 {% extends "datasets/base.html" %}
 {% block content %}
 <section>
-<div class="container">
+<div class="container" id="apps">
 
-<div class="columns">
+		<project-box></project-box>
+		<!-- make a grid of files, sortable header buttons:
+		# instrument, date, fn	
+		And a filter field for removing scrap?
+		Also, use this field to select files after the fact? 
+		And for removing? Change list after save maybe is good.
+		-->
+</div>
+</section>
+
+<script>
+	Vue.component('sampleprep-box', {
+		props: ['dset_id', 'filenames'],
+		template: `<div class="box" id="sampleprep" v-show="isOpen">
+			<article class="message is-danger" v-if="errors.length > 0">
+				<div class="message-body">
+					<ul>
+						{% verbatim %}
+						<li v-for="error in errors">{{ error }}</li>
+						{% endverbatim %}
+					</ul>
+				</div>
+			</article>
+			<!-- FIXME only show when MS data 
+			organism, organ, enrichment, mod-enrichment, treatment, channel
+			-->
+			<div class="title is-5">MS Samples and preparation
+				<a class="button is-danger is-small" v-on:click="save">Save</a>
+			</div> 
+			<div class="field">
+				<label class="label">Enzymes</label>
+				<input type="checkbox" v-model="no_enzyme">No enzyme
+				{% verbatim %}
+				<div class="control" v-for="enzyme in show_enzymes" v-show="!no_enzyme">
+					<input v-bind:value="enzyme.id" v-model="enzymes" type="checkbox">{{ enzyme.name }}
+				</div>
+				{% endverbatim %}
+			</div>
+			<template v-for="param in params">
+			<div class="field">
+			{% verbatim %}
+				<label class="label">{{ param.title }}</label>
+				<div class="control">
+					<template v-if="param.inputtype != 'select'">
+					<input type="text" v-if="param.inputtype === 'text'" class="input" v-bind:placeholder="param.placeholder" v-model="param.model">
+					<input type="number" v-if="param.inputtype === 'number'" class="input" v-bind:placeholder="param.placeholder" v-model="param.model">
+					</template>
+
+					<template v-if="param.inputtype === 'select'">
+					<div class="select">
+						<select v-model="param.model">
+							<option disabled value="">Please select one</option>
+							<template v-for="option in param.fields">
+							<option v-bind:value="option.value">
+							{{ option.text }}
+							</option>
+							</template>
+						</select>
+					</div>
+					</template>
+				</div>
+			{% endverbatim %}
+			</div>
+			</template>
+			<div class="field">
+				<label class="label">Quant type</label>
+				<div class="control">
+					<div class="select">
+						<select v-model="quanttype">
+							<option disabled value="">Please select one</option>
+							{% verbatim %}
+							<option value="labelfree">Labelfree</option>
+							<option v-for="quant in quants" v-bind:value="quant.id">{{ quant.name }}</option>
+							{% endverbatim %}
+						</select>
+					</div>
+				</div>
+			</div>
+			<div class="field" v-if="quanttype">
+				<label class="label">Sample name(s)</label>
+				<div class="control">
+					<div id="labelfree_samples" v-if="quanttype === 'labelfree'">
+						<input type="checkbox" v-model="labelfree_multisample" v-on:change="labelfree_check_samples">One sample per file?
+					</div>
+				</div>
+				<table class="table">
+					<thead>
+						<tr>
+							<th v-if="labelfree_multisample">Filename</th>
+							<th v-if="quanttype != 'labelfree'">Channel</th>
+							<th>Sample</th>
+						</tr>
+					</thead>
+					{% verbatim %}
+					<tbody>
+						<!-- FIXME v-model etc for sample names and include the file ID! -->
+						<tr v-for="channel in quants[quanttype].chans" v-if="quanttype != 'labelfree'">
+							<td>{{ channel.name }}</td>
+							<td><input class="text"></td>
+						</tr>
+						<tr v-if="labelfree_multisample && filenames.length" v-for="file in filenames">
+							<td>{{ file.name }}</td>
+							<td><input class="text"></td>
+						</tr>
+						<tr v-if="labelfree_multisample && !filenames.length">
+							<td><div class="notification is-danger">CLAIM FILES FIRST</div></td>
+						</tr>
+					</tbody>
+					{% endverbatim %}
+				</table>
+			</div>
+		</div>`,
+
+		data: function() {
+		return { 
+			errors: [],
+			no_enzyme: false,
+			isOpen: true,
+			labelfree_multisample: false,
+			show_enzymes: [],
+			quants: [],
+			params: [],
+			// models
+			enzymes: [],
+			quanttype: '',
+			}
+		},
+		mounted: function() {
+			this.fetchData()
+		},
+
+		methods: {
+			labelfree_check_samples: function() {
+				return true
+			},
+			fetchData: function() {
+			       	this.$http.get('/datasets/show/sampleprep/' + this.dset_id)
+				.then(response => {
+					return response.json()
+					}, response => {
+				       	console.log(response)
+					}).then(result => {
+					for (key in result) {
+						this[key] = result[key];
+					}
+			       	})
+	       		},
+			validate: function() {
+				this.errors = [];
+				if (!this.operator_id) {
+					this.errors.push('Operator is required');
+				}
+				for (var i = 0; i < this.params.length; i++) {
+					if (this.params[i].model === "") {
+						this.errors.push(this.params[i].title + ' is required');
+					}
+				}
+				console.log(this.errors);
+				return this.errors.length ? false : true
+
+			},
+			save: function() {
+				if (!this.validate()) {
+					return false
+				}
+				data = {
+					dataset_id: this.dset_id,
+					enzyme_id: this.enzyme_id,
+					params: this.params,
+				};
+				this.$http.post('/datasets/save/sampleprep/', data
+					).then(response => {
+						console.log(response);
+					}, response => {
+						console.log(response);
+				});
+			},
+		},
+	})
+
+	Vue.component('files-box', {
+		template: `
 	<div class="column">
+		<div class="box" v-show="isOpen">
+			<div class="title is-5">Files
+			       	<a class="button is-danger is-small" v-on:click="save">Save</a>
+
+			</div>
+			<a class="button is-danger is-outlined is-small" v-show="showDatasetFiles" v-on:click="toggleFileView">Show available files</a>
+			<a class="button is-danger is-outlined is-small" v-show="!showDatasetFiles" v-on:click="toggleFileView">
+				{% verbatim %}
+				Show {{ datasetAssociatedFiles.length }} dataset files
+				{% endverbatim %}
+			</a>
+			<input class="input"  v-model="filefilterString" type="text" placeholder="Filter files" v-show="!showDatasetFiles">
+			<table class="table">
+				<thead>
+					<tr>
+						<th>
+					<div class="control">
+						<input type="checkbox" v-show="!showDatasetFiles">
+					</div>
+			</th>
+						<th>Filename</th>
+						<th>Instrument</th>
+						<th>Production date</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr v-for="file in datasetAssociatedFiles" v-if="showDatasetFiles">
+						<td>
+							<div class="control">
+								<a class="icon">
+									<i class="fa fa-home"></i>
+								</a>
+							</div>
+						</td>
+						{% verbatim %}
+						<td>{{ file.name }}</td>
+						<td>{{ file.instrument }}</td>
+						<td>{{ file.date }}</td>
+						{% endverbatim %}
+					</tr>
+					<tr v-for="file in newFiles" v-if="!showDatasetFiles" v-show="filtered_files(file)">
+						<td>
+							<div class="control">
+								<input type="checkbox">
+							</div>
+						</td>
+						{% verbatim %}
+						<td>{{ file.name }}</td>
+						<td>{{ file.instrument }}</td>
+						<td>{{ file.date }}</td>
+						{% endverbatim %}
+					</tr>
+				</tbody>
+			</table>
+		</div>
+		<sampleprep-box v-bind:dset_id="dset_id" v-bind:filenames="datasetAssociatedFiles"></sampleprep-box>
+	</div>
+		`,
+		data: function() {return {
+			isSaved: false,
+			isOpen: true,
+			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
+			filefilterString: '',
+			newFiles: [],
+			datasetAssociatedFiles: [
+			{% for file in dataset_files %}
+			{
+				id: '{{ file.id }}',
+				name: '{{ file.name }}',
+				instrument: '{{ file.instrument }}',
+				date: '{{ file.date }}',
+			},
+			{% endfor %}
+			],
+		}
+		},
+		props: ['dset_id'],
+		mounted: function() {
+			this.fetchData()
+		},
+		methods: {
+			toggleFileView: function() {
+				this.showDatasetFiles = this.showDatasetFiles === false;
+			},
+			fetchData: function() {
+			       	this.$http.get('/datasets/show/files/' + this.dset_id)
+				.then(response => {
+					return response.json()
+					}, response => {
+				       	console.log(response)
+					}).then(result => {
+					for (key in result) {
+						this[key] = result[key];
+					}
+			       	})
+
+			},
+			save: function() {
+				console.log('implement save');
+				// POST list:[file ids] and dataset ID of course
+
+				// call save URL with vue-resource, 
+				// include values of project.
+				// Parse response ok or not.
+				// Show error or green and rollup.
+			},
+			filtered_files: function(file) {
+				return file.name.indexOf(this.filefilterString) > -1
+			},
+		}
+	})
+
+	Vue.component('acquisition-box', {
+		template: `
+		<div class="box" v-show="isOpen">
+			<article class="message is-danger" v-if="errors.length > 0">
+				<div class="message-body">
+					<ul>
+						{% verbatim %}
+						<li v-for="error in errors">{{ error }}</li>
+						{% endverbatim %}
+					</ul>
+				</div>
+			</article>
+			<div class="title is-5">Acquisition
+				<a class="button is-danger is-small" v-on:click="save">Save</a>
+		</div> 
+		<div class="field">
+			<label class="label">Operator</label>
+			<div class="control">
+				<div class="select">
+					<select v-model="operator_id">
+						<option disabled value="">Please select one</option>
+						{% verbatim %}
+						<option v-for="operator in operators" v-bind:value="operator.id">{{ operator.name }}</option>
+					        {% endverbatim %}
+					</select>
+				</div>
+			</div>
+		</div>
+		<template v-for="param in params">
+		<div class="field">
+		{% verbatim %}
+			<label class="label">{{ param.title }}</label>
+			<div class="control">
+				<template v-if="param.inputtype != 'select'">
+				<input type="text" v-if="param.inputtype === 'text'" class="input" v-bind:placeholder="param.placeholder" v-model="param.model">
+				<input type="number" v-if="param.inputtype === 'number'" class="input" v-bind:placeholder="param.placeholder" v-model="param.model">
+				</template>
+
+				<template v-if="param.inputtype === 'select'">
+				<div class="select">
+					<select v-model="param.model">
+						<option disabled value="">Please select one</option>
+						<template v-for="option in param.fields">
+						<option v-bind:value="option.value">
+						{{ option.text }}
+						</option>
+						</template>
+					</select>
+				</div>
+				</template>
+			</div>
+		{% endverbatim %}
+		</div>
+		</template>
+	</div>
+`,
+	data: function() {
+		return {
+			errors: [],
+			params: [],
+		 	operators: [],
+			operator_id: '',
+			isSaved: false,
+			isOpen: true,
+			}
+		},
+	mounted: function() {
+		this.fetchData()
+		},
+	props: ['dset_id'],
+	methods: {
+		fetchData: function() {
+			this.$http.get('/datasets/show/acquisition/' + this.dset_id)
+			.then(response => {
+				return response.json()
+				}, response => {
+				console.log(response)
+				}).then(result => {
+				for (key in result) {
+					this[key] = result[key];
+				}
+			})
+	       	},
+		validate: function() {
+			this.errors = [];
+			if (!this.operator_id) {
+				this.errors.push('Operator is required');
+			}
+			for (var i = 0; i < this.params.length; i++) {
+				if (this.params[i].model === "") {
+					this.errors.push(this.params[i].title + ' is required');
+				}
+			}
+			console.log(this.errors);
+			return this.errors.length ? false : true
+
+		},
+		save: function() {
+			if (!this.validate()) {
+				return false
+			}
+			data = {
+				dataset_id: this.dset_id,
+				operator_id: this.operator_id,
+				params: this.params,
+			};
+			this.$http.post('/datasets/save/acquisition/', data
+				).then(response => {
+					console.log(response);
+				}, response => {
+				console.log(response);
+			});
+			},
+		
+		},
+	})
+	
+	Vue.component('project-box', {
+		template: `
+	<div class="columns">
+		<div class="column">
 		<div class="box" id="project" v-if="isOpen">
 			<article class="message is-danger" v-if="errors.length > 0">
 				<div class="message-body">
@@ -20,8 +434,8 @@
 			</div>
 		<div class="field">
 			<label class="label">Name
-			<a class="button is-danger is-outlined is-small" v-show="isNewProject" v-on:click="existing_project">Existing project</a>
-			<a class="button is-danger is-outlined is-small" v-show="!isNewProject" v-on:click="new_project">New project</a>
+			<a class="button is-danger is-outlined is-small" v-show="isNewProject" v-on:click="toggle_project">Use existing project</a>
+			<a class="button is-danger is-outlined is-small" v-show="!isNewProject" v-on:click="toggle_project">Create new project</a>
 	</label>
 			<div class="control" v-if="!isNewProject">
 				<div class="select">
@@ -40,7 +454,7 @@
 		        <div class="field">
 		        	<div class="control">
 		        	<label class="checkbox">
-					<input type="checkbox" v-model="is_corefac">
+					<input type="checkbox" v-model="newproject_iscf">
 		        		Core facility project
 		        	</label>
 		        	</div>
@@ -48,8 +462,7 @@
 			</template>
 		</div>
 		
-	        <template v-if="is_corefac">
-		<div class="field">
+		<div class="field" v-if="is_corefac">
 			<label class="label">contact(s)
 				<template v-if="isNewProject">
 					<a class="button is-danger is-outlined is-small" v-show="isNewPI" v-on:click="new_pi">Use existing PI</a>
@@ -57,8 +470,9 @@
 				</template>
 				<span class="tag is-success is-medium">Core facility project</span>
 	 	      	</label>
+			<template v-if="isNewProject">
 			<div class="control" v-if="!isNewPI">
-				<div class="select" v-if="isNewProject">
+				<div class="select">
 					<select v-model="externpi">
 						<option disabled value="">Please select one</option>
 						{% verbatim %}
@@ -70,16 +484,29 @@
 			<div class="control" v-if="isNewPI">
 				<input class="input" v-model="newpiname" type="text" placeholder="PI name">
 			</div>
+			</template>
 			<div class="control">
 				<input class="input" type="text" v-model="externalcontactmail" placeholder="operational contact email (e.g. postdoc)">
 			</div>
 		</div>
-		</template>
 		
 		<div class="field">
-			<label class="label">Experiment name</label>
-			<div class="control">
-				<input class="input" type="text" placeholder="Quick summary, e.g. cell lines, sample names" v-model="expname">
+			<label class="label">Experiment name
+				<a class="button is-danger is-outlined is-small" v-show="isNewExperiment" v-on:click="toggle_experiment">Existing experiment</a>
+				<a class="button is-danger is-outlined is-small" v-show="!isNewExperiment" v-on:click="toggle_experiment">Create new experiment</a>
+	       		</label>
+			<div class="control" v-if="!isNewExperiment">
+				<div class="select">
+					<select v-model="experiment_id">
+						<option disabled value="">Please select one</option>
+						{% verbatim %}
+						<option v-for="exp in proj_experiments" v-bind:value="exp.id">{{ exp.name }}</option>
+						{% endverbatim %}
+					</select>
+				</div>
+			</div>
+			<div class="control" v-if="isNewExperiment">
+				<input class="input" v-model="newexperimentname" type="text" placeholder="Experiment name">
 			</div>
 		</div>
 		
@@ -110,202 +537,62 @@
 			</div>
 		</div>
 	</div>
-		<div class="box" id="acquisition" v-show="isOpen">
-			<!-- FIXME only show when MS data -->
-			<div class="title is-5">Acquisition
-				<a class="button is-danger is-small" v-on:click="save">Save</a>
-		</div> 
-		<div class="field">
-			<label class="label">Operator</label>
-			<div class="control">
-				<div class="select">
-					<select>
-					        {% for operator in operators %}
-						<option value="{{ operator.id }}">{{ operator.name }}</option>
-					        {% endfor %}
-					</select>
-				</div>
-			</div>
-		</div>
-		<div class="field">
-			<label class="label">Injection volume</label>
-			<div class="control">
-				<input type="number" class="input" placeholder="Injected ul">
-				<input type="number" class="input" placeholder="Total ul">
-			</div>
-		</div>
-		<div class="field">
-			<label class="label">Protein amount on plate</label>
-			<div class="control">
-				<input type="number" class="input" placeholder="microgram">
-			</div>
-		</div>
-		<div class="field">
-			<label class="label">Separation</label>
-			<div class="control">
-				<input type="number" class="input" placeholder="Reverse phase length">
-				<input type="number" class="input" placeholder="SCX length">
-			</div>
-		</div>
+	<acquisition-box v-bind:dset_id="dataset_id"></acquisition-box>
 	</div>
-	</div>
-	<div class="column">
-		<div class="box" id="files" v-show="isOpen">
-			<div class="title is-5">Files
-			       	<a class="button is-danger is-small" v-on:click="save">Save</a>
-
-			</div>
-			<a class="button is-danger is-outlined is-small" v-show="showDatasetFiles" v-on:click="toggleFileView">Show new files</a>
-			<a class="button is-danger is-outlined is-small" v-show="!showDatasetFiles" v-on:click="toggleFileView">
-				{% verbatim %}
-				Show {{ datasetAssociatedFiles.length }} dataset files
-				{% endverbatim %}
-			</a>
-			<input class="input"  v-model="filefilter" type="text" placeholder="Filter files" v-show="!showDatasetFiles">
-			<table class="table">
-				<thead>
-					<tr>
-						<th>
-					<div class="control">
-						<input type="checkbox" v-show="!showDatasetFiles">
-					</div>
-			</th>
-						<th>Filename</th>
-						<th>Instrument</th>
-						<th>Production date</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr v-for="file in datasetAssociatedFiles" v-if="showDatasetFiles">
-						<th>
-							<div class="control">
-								<a class="icon">
-									<i class="fa fa-home"></i>
-								</a>
-							</div>
-						</th>
-						{% verbatim %}
-						<th>{{ file.name }}</th>
-						<th>{{ file.instrument }}</th>
-						<th>{{ file.date }}</th>
-						{% endverbatim %}
-					</tr>
-					<tr v-for="file in newFiles" v-if="!showDatasetFiles" v-show="filtered_files(file)">
-						<th>
-							<div class="control">
-								<input type="checkbox">
-							</div>
-						</th>
-						{% verbatim %}
-						<th>{{ file.name }}</th>
-						<th>{{ file.instrument }}</th>
-						<th>{{ file.date }}</th>
-						{% endverbatim %}
-					</tr>
-				</tbody>
-			</table>
-		</div>
-		<div class="box" id="sampleprep" v-show="isOpen">
-			<!-- FIXME only show when MS data 
-			extraction, enzymes, alkylation, quant type?
-			organism, organ, enrichment, mod-enrichment, treatment, channel
-			-->
-			<div class="title is-5">MS Samples and preparation
-				<a class="button is-danger is-small" v-on:click="save">Save</a>
-			</div> 
-			<div class="field">
-				<label class="label">Extraction</label>
-				<div class="control">
-					<div class="select">
-						<select>
-						        {% for method in extract_methods %}
-							<option value="{{ method }}">{{ method }}</option>
-						        {% endfor %}
-						</select>
-					</div>
-				</div>
-			</div>
-			<div class="field">
-				<label class="label">Enzymes</label>
-				<input type="checkbox" v-model="no_enzyme">No enzyme
-				{% verbatim %}
-				{{ no_enzyme }}
-				{% endverbatim %}
-				{% for enzyme in enzymes %}
-
-				<div class="control" v-show="!no_enzyme">
-					<input type="checkbox">{{ enzyme }}
-				</div>
-				{% endfor %}
-			</div>
-			<div class="field">
-				<label class="label">Alkylation</label>
-				<div class="control">
-					<div class="select">
-						<select>
-						        {% for method in alkylation_methods %}
-							<option value="{{ method }}">{{ method }}</option>
-						        {% endfor %}
-						</select>
-					</div>
-				</div>
-			</div>
-			<div class="field">
-				<label class="label">Quant type</label>
-				<div class="control">
-					<div class="select">
-						<select>
-						        {% for method in quant_methods %}
-							<option value="{{ method }}">{{ method }}</option>
-						        {% endfor %}
-						</select>
-					</div>
-				</div>
-			</div>
-	</div>
-		<!-- make a grid of files, sortable header buttons:
-		# instrument, date, fn	
-		And a filter field for removing scrap?
-		Also, use this field to select files after the fact? 
-		And for removing? Change list after save maybe is good.
-		-->
-	</div>
+	<files-box v-bind:dset_id="dataset_id"></files-box>
 </div>
-</div>
-</section>
-
-<script>
-	var projectapp = new Vue({
-		el: '#project',
-		data: {
+`,
+		data: function() {
+		return {
 			errors: [],
 			isOpen: true,
 		       	isNewProject: false,
+		       	isNewExperiment: false,
 			isNewPI: false,
 			dataset_id: '{{ dataset_id }}',
 			newprojectname: '',
+			newexperimentname: '',
 			projects: [],
-			project_lookup: [],
 			external_pis: [],
 			datasettypes: [],
 			internal_pi_id: '',
 			hirief_ranges: [],
 			project_id: '',
+			experiment_id: '',
 			datatype_id: '',
 			hiriefrange: '',
-			expname: '',
-			is_corefac: false,
+			experiment_id: '',
+			experiments: {},
+			newproject_iscf: false,
+			existingproject_iscf: false,
 			externpi: '',
 			newpiname: '',
 			externalcontactmail: '',
+			}
 		},
 		mounted: function() {
 			this.fetchData()
 		},
+		computed: {
+		is_corefac: function() {
+			if (this.isNewProject) {return this.newproject_iscf}
+			else {return this.existingproject_iscf}
+			},
+		proj_experiments: function() {
+			return !this.project_id ? [] : this.experiments[this.project_id]
+			},
+		project_lookup: function() {
+			project_lookup = {};
+			for (var i = 0; i < this.projects.length; i++) {
+	       			project_lookup[this.projects[i].id] = {'corefac': this.projects[i].corefac, 'pi_id': this.projects[i].pi_id};
+				}
+			return project_lookup
+			},
+		},
 
 		methods: {
 			fetchData: function() {
-			       	this.$http.get('/datasets/show/project/' + '{{ dataset_id }}')
+			       	this.$http.get('/datasets/show/project/' + this.dataset_id)
 				.then(response => {
 					return response.json()
 					}, response => {
@@ -313,46 +600,34 @@
 					}).then(result => {
 					for (key in result) {
 						this[key] = result[key];
-					this.project_lookup = {};
-					for (var i = 0; i < this.projects.length; i++) {
-						this.project_lookup[this.projects[i].id] = {'corefac': this.projects[i].corefac, 'pi_id': this.projects[i].pi_id};
-					}
 					}
 			       	})
 	       		},
 			checkOpen: function() {
 				this.isOpen = this.loaded;
 			},
-		       	new_project: function() {
-				this.is_corefac = false;
-				this.project_id = '',
-				this.isNewPI = false;
-				this.isNewProject = true;
-		       	},
-			existing_project: function() {
-				project_selected();
-				this.newprojectname = '',
-				this.isNewProject = false;
-			},
 			project_selected: function() {
 				if (this.project_id) {
-					this.is_corefac = this.project_lookup[this.project_id].corefac;
+					this.existingproject_iscf = this.project_lookup[this.project_id].corefac;
 					this.pi_id = this.project_lookup[this.project_id].pi_id;
 				}
 			},
+		       	toggle_project: function() {
+				this.isNewProject = this.isNewProject === false;
+		       	},
+			toggle_experiment: function() {
+				this.isNewExperiment = this.isNewExperiment === false;
+			},
 		       	new_pi: function() {
 				this.isNewPI = this.isNewPI === false;
-				if (this.isNewPI) { 
-					this.externpi = ''; 
-				}
 			},
 			validate: function() {
 				this.errors = [];
 				if (!this.newprojectname && !this.project_id) {
 					this.errors.push('Project needs to be selected or created');
 				}
-				if (!this.expname) {
-					this.errors.push('Experiment name is required');
+				if (!this.newexperimentname && !this.experiment_id) {
+					this.errors.push('Experiment is required');
 				}
 				if (!this.datatype_id) {
 					this.errors.push('Datatype is required');
@@ -369,29 +644,37 @@
 					}
 				}
 				console.log(this.errors);
-				return this.errors ? false : true
+				return this.errors.length ? false : true
 			},
 
 			save: function() {
-				// New project etc should be handled by django,
-				// only make one http call
-				// FIXME first verify all fields are there
-				// FIXME error handling, flash something
 				if (!this.validate()) {
 					return false
 				}
 				data = {
 					dataset_id: this.dataset_id,
 					is_corefac: this.is_corefac,
-					newprojectname: this.newprojectname,
-					project_id: this.project_id,
 					datatype_id: this.datatype_id,
-					expname: this.expname,
-					newpiname: this.newpiname,
-					pi_id: this.is_corefac ? this.externpi: this.internalpi,
-					corefaccontact: this.externalcontactmail,
 					hiriefrange: this.hiriefrange,
 				};
+				if (this.isNewProject) {
+					data.newprojectname = this.newprojectname;
+					} else {
+					data.project_id = this.project_id;
+					}
+				if (this.isNewExperiment) {
+				data.newexperimentname = this.newexperimentname;
+				} else {
+			       	data.experiment_id = this.experiment_id;
+				}
+				if (this.isNewPI) {
+				data.newpiname = this.newpiname;
+				} else {
+				data.pi_id = this.is_corefac ? this.externpi: this.internalpi;
+				}
+				if (this.is_corefac) {
+				data.corefaccontact = this.externalcontactmail;
+				}
 				this.$http.post('/datasets/save/project/', data
 					).then(response => {
 						for (var key in response.body) {
@@ -399,6 +682,7 @@
 							this[key] = response.body[key];
 						}
 					       	this.isNewProject = false;
+					       	this.isNewExperiment = false;
 						this.isNewPI = false;
 					}, response => {
 					console.log(response);
@@ -407,67 +691,8 @@
 				},
 				})
 		
-
-	var filesapp = new Vue({
-		el: '#files',
-		data: {
-			isSaved: false,
-			isOpen: true,
-			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
-			filefilter: 'file',
-			newFiles: [
-			{% for file in unclaimed_files %}
-			{
-				id: '{{ file.id }}',
-				name: '{{ file.name }}',
-				instrument: '{{ file.instrument }}',
-				date: '{{ file.date }}',
-			},
-			{% endfor %}
-			],
-			datasetAssociatedFiles: [
-			{% for file in dataset_files %}
-			{
-				id: '{{ file.id }}',
-				name: '{{ file.name }}',
-				instrument: '{{ file.instrument }}',
-				date: '{{ file.date }}',
-			},
-			{% endfor %}
-			],
-		},
-		methods: {
-			toggleFileView: function() {
-				this.showDatasetFiles = this.showDatasetFiles === false;
-			},
-			save: function() {
-				console.log('implement save');
-				// call save URL with vue-resource, 
-				// include values of project.
-				// Parse response ok or not.
-				// Show error or green and rollup.
-			},
-			filtered_files: function(file) {
-				return file.name.indexOf(this.filefilter) > -1
-			},
-		}
-	})
-
-	var acquisitionapp = new Vue({
-		el: '#acquisition',
-		data: {
-			isSaved: false,
-			isOpen: true,
-		},
-		methods: {
-			save: function() {
-				console.log('implement save');
-				// call save URL with vue-resource, 
-				// include values of project.
-				// Parse response ok or not.
-				// Show error or green and rollup.
-			},
-	}
+	var motherapp = new Vue({
+	el: '#apps',
 	})
 </script>
 {% endblock content %}
