@@ -63,15 +63,10 @@ def dataset_acquisition(request, dataset_id):
     if dataset_id:
         response_json.update({'operator_id':
                               models.OperatorDataset.objects.get(
-                                  dataset_id=dataset_id).id})
-        stored = get_admin_params_for_dset(response_json['params'],
-                                           dataset_id, 'acquisition')
-        if stored['saved']:
-            response_json['params'] = [x for x in stored['params'].values()]
-            response_json['oldparams'] = [x for x in stored['old'].values()]
-            response_json['newparams'] = [x for x in stored['new'].values()]
+                                  dataset_id=dataset_id).operator_id})
+        get_admin_params_for_dset(response_json, dataset_id, 'acquisition')
+    response_json['params'] = [x for x in response_json['params'].values()]
     return JsonResponse(response_json)
-
 
 
 @login_required
