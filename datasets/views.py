@@ -76,21 +76,25 @@ def dataset_acquisition(request, dataset_id):
 
 @login_required
 def dataset_sampleprep(request, dataset_id):
-    # FIXME enzymes
     response_json = empty_sampleprep_json()
     if dataset_id:
-        stored = get_admin_params_for_dset(response_json['params'],
-                                           dataset_id, 'sampleprep')
-        if stored['saved']:
-            response_json['params'] = [x for x in stored['params'].values()]
-            response_json['oldparams'] = [x for x in stored['old'].values()]
-            response_json['newparams'] = [x for x in stored['new'].values()]
+        response_json['enzymes'] = [
+            x.enzyme.id for x in models.EnzymeDataset.objects.filter(
+                dataset_id=dataset_id).select_related('enzyme')]
+        if not response_json['enzymes']:
+            response_json['no_enzyme'] = True
+        # quanttype FIXME
+        #qtype = models.QuantDataset.objects.get(dataset_id=dataset_id).quanttype_id
+        #QuantChannelSample.objects.filter(dataset_id=dataset_id).select_related(
+        get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
+    response_json['params'] = [x for x in response_json['params'].values()]
     return JsonResponse(response_json)
 
 
 def get_admin_params_for_dset(params, dset_id, category):
     """Fetches all stored param values for a dataset and returns nice dict"""
     stored_data, oldparams, newparams = {}, {}, {}
+    params = response['params']
     params_saved = False
     for p in models.SelectParameterValue.objects.filter(
             dataset_id=dset_id,
@@ -111,15 +115,16 @@ def get_admin_params_for_dset(params, dset_id, category):
         else:
             fill_admin_fieldparam(oldparams, p.param, p.value, p.title)
     if not params_saved:
-        # not saved so dont return the params
-        return {'saved': params_saved}
+        # not saved for this dset id so dont return the params
+        return
     # Parse new params, old params
     # use list comprehension so no error: dict changes during iteration
     for p_id in [x for x in params.keys()]:
         if params[p_id]['model'] == '':
             newparams[p_id] = params.pop(p_id)
-    return {'saved': params_saved, 'params': params,
-            'old': oldparams, 'new': newparams}
+    if params_saved:
+        response['oldparams'] = [x for x in oldparams.values()]
+        response['newparams'] = [x for x in newparams.values()]
 
 
 @login_required
@@ -219,15 +224,18 @@ def hr_dataset_proj_json(hirief_ds):
 
 def empty_sampleprep_json():
     params = get_dynamic_emptyparams('sampleprep')
-    quants = {'labelfree': {}}
-    # FIXME order quant channels, test if it works, currently as inputted in DB
+    quants = {}
     for chan in models.QuantTypeChannel.objects.all().select_related(
             'quanttype', 'channel'):
         if not chan.quanttype.id in quants:
             quants[chan.quanttype.id] = {'id': chan.quanttype.id, 'chans': [],
                                          'name': chan.quanttype.name}
         quants[chan.quanttype.id]['chans'].append({'id': chan.channel.id,
-                                                   'name': chan.channel.name})
+                                                   'name': chan.channel.name,
+                                                   'model': ''})
+    labelfree = models.QuantType.objects.get(name='labelfree')
+    quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree',
+                            'model': ''}
     return {'params': params, 'quants': quants,
             'show_enzymes': [{'id': x.id, 'name': x.name}
                              for x in models.Enzyme.objects.all()]}
@@ -265,10 +273,12 @@ def get_dynamic_emptyparams(category):
     params = {}
     for p in models.SelectParameterOption.objects.select_related(
             'param').filter(param__category__labcategory=category):
-        fill_admin_selectparam(params, p)
+        if p.param.active:
+            fill_admin_selectparam(params, p)
     for p in models.FieldParameter.objects.select_related(
             'paramtype').filter(category__labcategory=category):
-        fill_admin_fieldparam(params, p)
+        if p.active:
+            fill_admin_fieldparam(params, p)
     return params
 
 
@@ -324,9 +334,19 @@ def save_acquisition(request):
 def save_sampleprep(request):
     data = json.loads(request.body.decode('utf-8'))
     dset_id = data['dataset_id']
-    # FIXME quant type/sample names
-    models.EnzymeDataset.create(dataset_id=dset_id,
-                                enzyme_id=data['enzyme_id'])
+    if data['enzymes']:
+        models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
+            dataset_id=dset_id, enzyme_id=x) for x in data['enzymes']])
+    models.QuantDataset.objects.create(dataset_id=dset_id,
+                                       quanttype_id=data['quanttype'])
+    quants = data['quants'][str(data['quanttype'])]
+    if not data['labelfree']:
+        models.QuantChannelSample.objects.bulk_create([
+            models.QuantChannelSample(dataset_id=dset_id, sample=chan['model'],
+                                      channel_id=chan['id'])
+            for chan in quants['chans']])
+    else:
+        pass
     save_admin_defined_params(data, dset_id)
     return HttpResponse()
 
@@ -336,9 +356,10 @@ def save_admin_defined_params(data, dset_id):
     for param in data['params']:
         if param['inputtype'] == 'select':
             selected = param['model']
-            text = [x['text'] for x in param['fields'] if x['id'] == selected]
+            text = [x['text'] for x in param['fields']
+                    if x['value'] == selected]
             selects.append(models.SelectParameterValue(dataset_id=dset_id,
-                                                       value=selected,
+                                                       value_id=selected,
                                                        valuename=text[0],
                                                        title=param['title']))
         else:

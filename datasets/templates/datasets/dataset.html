@@ -15,7 +15,7 @@
 
 <script>
 	Vue.component('sampleprep-box', {
-		props: ['dset_id', 'filenames'],
+		props: ['dset_id', 'assoc_filenames'],
 		template: `<div class="box" id="sampleprep" v-show="isOpen">
 			<article class="message is-danger" v-if="errors.length > 0">
 				<div class="message-body">
@@ -74,7 +74,6 @@
 						<select v-model="quanttype">
 							<option disabled value="">Please select one</option>
 							{% verbatim %}
-							<option value="labelfree">Labelfree</option>
 							<option v-for="quant in quants" v-bind:value="quant.id">{{ quant.name }}</option>
 							{% endverbatim %}
 						</select>
@@ -82,34 +81,38 @@
 				</div>
 			</div>
 			<div class="field" v-if="quanttype">
-				<label class="label">Sample name(s)</label>
+				<label class="label">Samples</label>
 				<div class="control">
-					<div id="labelfree_samples" v-if="quanttype === 'labelfree'">
-						<input type="checkbox" v-model="labelfree_multisample" v-on:change="labelfree_check_samples">One sample per file?
+					<div id="labelfree_samples" v-if="quanttype === labelfree_quant_id">
+						<input type="checkbox" v-model="labelfree_multisample">One sample per file?
 					</div>
 				</div>
-				<table class="table">
+				<table class="table is-fullwidth">
 					<thead>
 						<tr>
-							<th v-if="labelfree_multisample">Filename</th>
-							<th v-if="quanttype != 'labelfree'">Channel</th>
-							<th>Sample</th>
+							<th v-if="quanttype === labelfree_quant_id && labelfree_multisample">Filename</th>
+							<th v-if="quanttype != labelfree_quant_id">Channel</th>
+							<th>Sample name</th>
 						</tr>
 					</thead>
 					{% verbatim %}
 					<tbody>
-						<!-- FIXME v-model etc for sample names and include the file ID! -->
-						<tr v-for="channel in quants[quanttype].chans" v-if="quanttype != 'labelfree'">
+						<tr v-for="channel in quants[quanttype].chans" v-if="quanttype != labelfree_quant_id">
 							<td>{{ channel.name }}</td>
-							<td><input class="text"></td>
+							<td><input v-model="channel.model" class="input is-normal"></td>
 						</tr>
-						<tr v-if="labelfree_multisample && filenames.length" v-for="file in filenames">
-							<td>{{ file.name }}</td>
-							<td><input class="text"></td>
-						</tr>
+						<template v-if="quanttype === labelfree_quant_id">
 						<tr v-if="labelfree_multisample && !filenames.length">
 							<td><div class="notification is-danger">CLAIM FILES FIRST</div></td>
 						</tr>
+						<tr v-if="labelfree_multisample && filenames.length" v-for="file in filenames">
+							<td>{{ file.name }}</td>
+							<td><input v-model="file.sample" class="input is-normal"></td>
+						</tr>
+						<tr v-if="!labelfree_multisample && quanttype === labelfree_quant_id">
+							<td><input v-model="quants[quanttype].model" class="input is-normal"></td>
+						</tr>
+						</template>
 					</tbody>
 					{% endverbatim %}
 				</table>
@@ -125,7 +128,6 @@
 			show_enzymes: [],
 			quants: [],
 			params: [],
-			// models
 			enzymes: [],
 			quanttype: '',
 			}
@@ -133,11 +135,24 @@
 		mounted: function() {
 			this.fetchData()
 		},
-
-		methods: {
-			labelfree_check_samples: function() {
-				return true
+		computed: {
+			filenames: function() {
+				fns = [];
+				for (key in this.assoc_filenames) {
+					fns.push(this.assoc_filenames[key]);
+					}
+				return fns
 			},
+			labelfree_quant_id: function() {
+				for (qid in this.quants) {
+					if (this.quants[qid].name === 'labelfree') {
+						return this.quants[qid].id
+						}
+					}
+				},
+			},
+		
+		methods: {
 			fetchData: function() {
 			       	this.$http.get('/datasets/show/sampleprep/' + this.dset_id)
 				.then(response => {
@@ -152,9 +167,21 @@
 	       		},
 			validate: function() {
 				this.errors = [];
-				if (!this.operator_id) {
-					this.errors.push('Operator is required');
+				// FIXME quant type and sample names
+				if (!this.no_enzyme && !this.enzymes) {
+					this.errors.push('Enzyme selection is required');
 				}
+				if (!this.quanttype) {
+					this.errors.push('Quant type selection is required');
+				}
+				if (this.labelfree_quant_id === this.quanttype) {
+					if (!this.quants[this.quanttype].model) {
+						this.errors.push('Labelfree requires sample name');
+						}
+					// check smaple name(s), also check for file sample names in labelfree
+					} else {
+				// check channel sample names
+					}
 				for (var i = 0; i < this.params.length; i++) {
 					if (this.params[i].model === "") {
 						this.errors.push(this.params[i].title + ' is required');
@@ -170,8 +197,11 @@
 				}
 				data = {
 					dataset_id: this.dset_id,
-					enzyme_id: this.enzyme_id,
+					enzymes: this.enzymes,
 					params: this.params,
+					quanttype: this.quanttype,
+					labelfree: this.labelfree_quant_id === this.quanttype,
+					quants: this.quants,
 				};
 				this.$http.post('/datasets/save/sampleprep/', data
 					).then(response => {
