@@ -194,9 +194,10 @@
 			<a class="button is-danger is-outlined is-small" v-show="showDatasetFiles" v-on:click="toggleFileView">Show available files</a>
 			<a class="button is-danger is-outlined is-small" v-show="!showDatasetFiles" v-on:click="toggleFileView">
 				{% verbatim %}
-				Show {{ datasetAssociatedFiles.length }} dataset files
+				Show {{ Object.keys(showingAssociatedFiles()).length }} dataset files
 				{% endverbatim %}
 			</a>
+			<a class="button is-primary is-outlined is-small" v-show="!showDatasetFiles" v-on:click="addFiles">Add selected files</a>
 			<input class="input"  v-model="filefilterString" type="text" placeholder="Filter files" v-show="!showDatasetFiles">
 			<table class="table">
 				<thead>
@@ -212,11 +213,11 @@
 					</tr>
 				</thead>
 				<tbody>
-					<tr v-for="file in datasetAssociatedFiles" v-if="showDatasetFiles">
+					<tr v-for="file in showingAssociatedFiles()" v-if="showDatasetFiles">
 						<td>
 							<div class="control">
-								<a class="icon">
-									<i class="fa fa-home"></i>
+								<a class="has-text-danger icon" v-on:click="removeFile(file)">
+									<i class="fa fa-times"></i>
 								</a>
 							</div>
 						</td>
@@ -226,10 +227,10 @@
 						<td>{{ file.date }}</td>
 						{% endverbatim %}
 					</tr>
-					<tr v-for="file in newFiles" v-if="!showDatasetFiles" v-show="filtered_files(file)">
+					<tr v-for="file in showingNewFiles()" v-if="!showDatasetFiles" v-show="filtered_files(file)">
 						<td>
 							<div class="control">
-								<input type="checkbox">
+								<input v-model="file.checked" type="checkbox">
 							</div>
 						</td>
 						{% verbatim %}
@@ -241,7 +242,7 @@
 				</tbody>
 			</table>
 		</div>
-		<sampleprep-box v-bind:dset_id="dset_id" v-bind:filenames="datasetAssociatedFiles"></sampleprep-box>
+		<sampleprep-box v-bind:dset_id="dset_id" v-bind:assoc_filenames="datasetAssociatedFiles"></sampleprep-box>
 	</div>
 		`,
 		data: function() {return {
@@ -249,18 +250,14 @@
 			isOpen: true,
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
+			addedFiles: {},
+			removedFiles: {},
 			newFiles: [],
-			datasetAssociatedFiles: [
-			{% for file in dataset_files %}
-			{
-				id: '{{ file.id }}',
-				name: '{{ file.name }}',
-				instrument: '{{ file.instrument }}',
-				date: '{{ file.date }}',
-			},
-			{% endfor %}
-			],
+			datasetAssociatedFiles: [],
 		}
+		},
+		computed: {
+		// sort file list
 		},
 		props: ['dset_id'],
 		mounted: function() {
@@ -270,9 +267,54 @@
 			toggleFileView: function() {
 				this.showDatasetFiles = this.showDatasetFiles === false;
 			},
+			showingAssociatedFiles: function() {
+				var val = Object.assign({}, this.datasetAssociatedFiles, this.addedFiles)
+				for (key in this.removedFiles) {
+					delete val[key];
+					}
+				return val
+				},
+			showingNewFiles: function() {
+				var val = Object.assign({}, this.newFiles, this.removedFiles)
+				for (key in this.addedFiles) {
+					delete val[key];
+					}
+				return val
+				},
+			addFiles: function() {
+				shownew = this.showingNewFiles();
+				add_from_remove = []
+				for (key in shownew) {
+					if (shownew[key].checked) {
+						shownew[key].checked = false;
+						if (key in this.removedFiles) {
+							add_from_remove.push(key);
+							} else {
+							this.$set(this.addedFiles, key, shownew[key])
+							}
+					}
+				}	
+				rmf = Object.assign({}, this.removedFiles);
+				for (i=0; i<add_from_remove.length; i++) {
+					delete rmf[key];
+				}
+				this.removedFiles = rmf;
+			},
+			removeFile: function(file) {
+				file_id = 'id_' + file.id
+				if (file_id in this.addedFiles) {
+					addf = Object.assign({}, this.addedFiles)
+					delete addf[file_id];
+					this.addedFiles = addf;
+					} else {
+					this.$set(this.removedFiles, file_id, file);
+					}
+			},
 			fetchData: function() {
 			       	this.$http.get('/datasets/show/files/' + this.dset_id)
 				.then(response => {
+					this.addedFiles = {};
+					this.removedFiles = {};
 					return response.json()
 					}, response => {
 				       	console.log(response)
@@ -284,9 +326,17 @@
 
 			},
 			save: function() {
-				console.log('implement save');
-				// POST list:[file ids] and dataset ID of course
-
+				data = {
+					'dataset_id': this.dset_id,
+					'added_files': this.addedFiles,
+					'removed_files': this.removedFiles,
+					}
+				this.$http.post('/datasets/save/files/', data
+					).then(response => {
+						this.fetchData()
+					}, response => {
+					console.log(response);
+					})
 				// call save URL with vue-resource, 
 				// include values of project.
 				// Parse response ok or not.

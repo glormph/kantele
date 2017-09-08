@@ -47,12 +47,13 @@ def dataset_project(request, dataset_id):
 def dataset_files(request, dataset_id):
     response_json = empty_files_json()
     if dataset_id:
-        response_json.update({'datasetAssociatedFiles': [
-            {'id': x.id, 'name': x.rawfile.name,
-             'instrument': x.rawfile.producer.name, 'date': x.rawfile.date}
-            for x in models.DatasetRawFile.objects.select_related(
-                'rawfile__producer').filter(dataset_id=dataset_id)
-        ]})
+        response_json.update(
+            {'datasetAssociatedFiles':
+             {'id_{}'.format(x.rawfile_id):
+              {'id': x.rawfile_id, 'name': x.rawfile.name,
+               'instrument': x.rawfile.producer.name, 'date': x.rawfile.date}
+              for x in models.DatasetRawFile.objects.select_related(
+                  'rawfile__producer').filter(dataset_id=dataset_id)}})
     return JsonResponse(response_json)
 
 
@@ -284,27 +285,29 @@ def dataset_files_json(dset):
 
 
 def empty_files_json():
-    return {'newFiles': [{'id': x.id, 'name': x.name, 'date': x.date,
-                          'instrument': x.producer.name} for x in
-                         filemodels.RawFile.objects.select_related(
-                             'producer').filter(claimed=False)]}
+    return {'newFiles': {'id_{}'.format(x.id):
+                         {'id': x.id, 'name': x.name, 'date': x.date,
+                          'instrument': x.producer.name, 'checked': False}
+                         for x in filemodels.RawFile.objects.select_related(
+                             'producer').filter(claimed=False)}}
 
 
 @login_required
 def save_files(request):
-    pass
-#    data = json.loads(request.body.decode('utf-8'))
-#    newfiles = []
-#    #dbfile_ids = {x['id'] for x in models.DatasetRawFile.objects.filter(
-#        dataset_id=data['dset_id']).values()}
-#    for dsfile_id in data['dset_file_ids']:
-#        if dsfile_id not in dbfile_ids:
-#            newfiles.append(dsfile_id)
-#        else:
-#            dbfile_ids.remove(dsfile_id)
-#    # FIXME remove dbfile_ids left in set
-#    # FIXME add newfiles ids
-#    # FIXME return what? probably list of files, old files if not OK?
+    data = json.loads(request.body.decode('utf-8'))
+    dset_id = data['dataset_id']
+    added_fnids = [x['id'] for x in data['added_files'].values()]
+    models.DatasetRawFile.objects.bulk_create([
+        models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid) for fnid in
+        added_fnids])
+    filemodels.RawFile.objects.filter(pk__in=added_fnids).update(claimed=True)
+    removed_ids = [int(x['id']) for x in data['removed_files'].values()]
+    if removed_ids:
+        models.DatasetRawFile.objects.filter(
+            dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
+        filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
+            claimed=False)
+    return HttpResponse()
 
 
 @login_required
