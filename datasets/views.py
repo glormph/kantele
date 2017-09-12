@@ -340,14 +340,14 @@ def save_sampleprep(request):
                                       channel_id=chan['id'])
             for chan in data['samples']])
     else:
-        if data['multisample']:
-            models.QuantSampleFile.objects.bulk_create([
-                models.QuantSampleFile(dataset_id=dset_id, rawfile_id=fn['id'],
-                                       sample=fn['sample'])
-                for fn in data['filenames']])
-        else:
-            models.QuantSingleSampleName.objects.create(dataset_id=dset_id,
-                                                        sample=data['samples'])
+        if not data['multisample']:
+            data['samples'] = {}
+            for fn in data['filenames']:
+                data['samples'][fn['id']] = data['sample']
+        models.QuantSampleFile.objects.bulk_create([
+            models.QuantSampleFile(dataset_id=dset_id, rawfile_id=file_id,
+                                   sample=sample)
+            for file_id, sample in data['samples'].items()])
     save_admin_defined_params(data, dset_id)
     return HttpResponse()
 

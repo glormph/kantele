@@ -107,7 +107,7 @@
 						</tr>
 						<tr v-if="labelfree_multisample && filenames.length" v-for="file in filenames">
 							<td>{{ file.name }}</td>
-							<td><input v-model="file.sample" class="input is-normal"></td>
+							<td><input v-model="samples[file.id]" class="input is-normal"></td>
 						</tr>
 						<tr v-if="!labelfree_multisample && quanttype === labelfree_quant_id">
 							<td><input v-model="quants[quanttype].model" class="input is-normal"></td>
@@ -130,6 +130,7 @@
 			params: [],
 			enzymes: [],
 			quanttype: '',
+			samples: {},
 			}
 		},
 		mounted: function() {
@@ -177,7 +178,7 @@
 				if (this.labelfree_quant_id === this.quanttype) {
 					if (this.labelfree_multisample) {
 						for (fn of this.filenames) {
-							if (!('sample' in fn) || fn.sample === '') {
+							if (!this.samples[fn.id]) {
 								this.errors.push('Labelfree multi-sample requires sample name for each file');
 								break;
 							}
@@ -219,10 +220,11 @@
 					data.samples = this.quants[this.quanttype].chans;
 				} else if (this.labelfree_multisample) {
 					data.multisample = true;
-					data.samples = this.filenames;
+					data.samples = this.samples;
 				} else {
 					data.multisample = false;
-					data.samples = this.quants[this.quanttype].model;
+					data.filenames = this.filenames;
+					data.sample = this.quants[this.quanttype].model;
 				}
 				this.$http.post('/datasets/save/sampleprep/', data
 					).then(response => {
