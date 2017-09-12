@@ -229,6 +229,7 @@
 				this.$http.post('/datasets/save/sampleprep/', data
 					).then(response => {
 						console.log(response);
+						this.fetchData();
 					}, response => {
 						console.log(response);
 				});
@@ -386,7 +387,7 @@
 					}
 				this.$http.post('/datasets/save/files/', data
 					).then(response => {
-						this.fetchData()
+						this.fetchData();
 					}, response => {
 					console.log(response);
 					})
@@ -510,6 +511,7 @@
 			this.$http.post('/datasets/save/acquisition/', data
 				).then(response => {
 					console.log(response);
+					this.fetchData();
 				}, response => {
 				console.log(response);
 			});
@@ -780,10 +782,7 @@
 				}
 				this.$http.post('/datasets/save/project/', data
 					).then(response => {
-						for (var key in response.body) {
-							console.log(key);
-							this[key] = response.body[key];
-						}
+						this.fetchData();
 					       	this.isNewProject = false;
 					       	this.isNewExperiment = false;
 						this.isNewPI = false;
