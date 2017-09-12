@@ -175,13 +175,26 @@
 					this.errors.push('Quant type selection is required');
 				}
 				if (this.labelfree_quant_id === this.quanttype) {
-					if (!this.quants[this.quanttype].model) {
+					if (this.labelfree_multisample) {
+						for (fn of this.filenames) {
+							if (!('sample' in fn) || fn.sample === '') {
+								this.errors.push('Labelfree multi-sample requires sample name for each file');
+								break;
+							}
+								
+					 	}	
+					}
+					else if (!this.quants[this.quanttype].model) {
 						this.errors.push('Labelfree requires sample name');
 						}
-					// check smaple name(s), also check for file sample names in labelfree
-					} else {
-				// check channel sample names
+				} else {
+					for (ch of this.quants[this.quanttype].chans) {
+						if (ch.model === '') { 
+							this.errors.push('Sample name for each channel is required');
+							break;
+						}
 					}
+				}
 				for (var i = 0; i < this.params.length; i++) {
 					if (this.params[i].model === "") {
 						this.errors.push(this.params[i].title + ' is required');
@@ -201,8 +214,16 @@
 					params: this.params,
 					quanttype: this.quanttype,
 					labelfree: this.labelfree_quant_id === this.quanttype,
-					quants: this.quants,
 				};
+				if (!data.labelfree) {
+					data.samples = this.quants[this.quanttype].chans;
+				} else if (this.labelfree_multisample) {
+					data.multisample = true;
+					data.samples = this.filenames;
+				} else {
+					data.multisample = false;
+					data.samples = this.quants[this.quanttype].model;
+				}
 				this.$http.post('/datasets/save/sampleprep/', data
 					).then(response => {
 						console.log(response);

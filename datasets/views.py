@@ -334,14 +334,20 @@ def save_sampleprep(request):
             dataset_id=dset_id, enzyme_id=x) for x in data['enzymes']])
     models.QuantDataset.objects.create(dataset_id=dset_id,
                                        quanttype_id=data['quanttype'])
-    quants = data['quants'][str(data['quanttype'])]
     if not data['labelfree']:
         models.QuantChannelSample.objects.bulk_create([
             models.QuantChannelSample(dataset_id=dset_id, sample=chan['model'],
                                       channel_id=chan['id'])
-            for chan in quants['chans']])
+            for chan in data['samples']])
     else:
-        pass
+        if data['multisample']:
+            models.QuantSampleFile.objects.bulk_create([
+                models.QuantSampleFile(dataset_id=dset_id, rawfile_id=fn['id'],
+                                       sample=fn['sample'])
+                for fn in data['filenames']])
+        else:
+            models.QuantSingleSampleName.objects.create(dataset_id=dset_id,
+                                                        sample=data['samples'])
     save_admin_defined_params(data, dset_id)
     return HttpResponse()
 

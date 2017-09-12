@@ -132,6 +132,17 @@ class QuantDataset(models.Model):
     quanttype = models.ForeignKey(QuantType)
 
 
+class QuantSampleFile(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    rawfile = models.ForeignKey(RawFile)
+    sample = models.CharField(max_length=100)
+
+
+class QuantSingleSampleName(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    sample = models.CharField(max_length=100)
+
+
 class QuantChannelSample(models.Model):
     dataset = models.ForeignKey(Dataset)
     channel = models.ForeignKey(QuantChannel)
