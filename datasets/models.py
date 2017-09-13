@@ -128,18 +128,13 @@ class QuantTypeChannel(models.Model):
 
 
 class QuantDataset(models.Model):
-    dataset = models.ForeignKey(Dataset)
+    dataset = models.OneToOneField(Dataset)
     quanttype = models.ForeignKey(QuantType)
 
 
 class QuantSampleFile(models.Model):
     dataset = models.ForeignKey(Dataset)
-    rawfile = models.ForeignKey(RawFile)
-    sample = models.CharField(max_length=100)
-
-
-class QuantSingleSampleName(models.Model):
-    dataset = models.ForeignKey(Dataset)
+    rawfile = models.OneToOneField(RawFile)
     sample = models.CharField(max_length=100)
 
 
@@ -159,27 +154,27 @@ class HiriefRange(models.Model):
 
 
 class HiriefDataset(models.Model):
-    dataset = models.ForeignKey(Dataset)
+    dataset = models.OneToOneField(Dataset)
     hirief = models.ForeignKey(HiriefRange)
 
 
 class CorefacDatasetContact(models.Model):
-    dataset = models.ForeignKey(Dataset)
+    dataset = models.OneToOneField(Dataset)
     email = models.CharField(max_length=100)
 
 
 class DatasetRawFile(models.Model):
     dataset = models.ForeignKey(Dataset)
-    rawfile = models.ForeignKey(RawFile)
+    rawfile = models.OneToOneField(RawFile)
 
 
 class Operator(models.Model):
-    user = models.ForeignKey(User)
+    user = models.OneToOneField(User)
 
     def __str__(self):
         return '{} {}'.format(self.user.first_name, self.user.last_name)
 
 
 class OperatorDataset(models.Model):
-    dataset = models.ForeignKey(Dataset)
+    dataset = models.OneToOneField(Dataset)
     operator = models.ForeignKey(Operator)
