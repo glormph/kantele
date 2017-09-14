@@ -394,7 +394,7 @@ def save_sampleprep(request):
 
 def save_admin_defined_params(data, dset_id):
     selects, fields = [], []
-    for param in data['params']:
+    for param in data['params'].values():
         if param['inputtype'] == 'select':
             selected = param['model']
             text = [x['text'] for x in param['fields']
