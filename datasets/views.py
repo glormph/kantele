@@ -134,55 +134,89 @@ def get_files(request):
     pass
 
 
-@login_required
-def save_dataset(request):
-    # FIXME this should also be able to update the dataset, and diff against an
-    # existing dataset
-    # FIXME save hirief range, which ones exist etc? admin task or config.
-    data = json.loads(request.body.decode('utf-8'))
-    if data['dataset_id']:
-        # FIXME diff dataset and update necessary fields
-        # if a new pi or project is in data, fix that too
-        # look in django to see how to hit db least amount of times
-        pass
+def update_dataset(data):
+    # FIXME this needs to also change file location
+    dset = models.Dataset.objects.select_related().get(pk=data['dataset_id'])
+    oldexp, oldproj = dset.experiment_id, dset.experiment.project_id
     if 'newprojectname' in data:
-        if 'newpiname' in data:
-            pi = models.PrincipalInvestigator(name=data['newpiname'])
-            pi.save()
-            project = models.Project(name=data['newprojectname'], pi=pi,
-                                     corefac=data['is_corefac'])
-        else:
-            project = models.Project(name=data['newprojectname'],
-                                     pi_id=data['pi_id'],
-                                     corefac=data['is_corefac'])
-        project.save()
+        project = newproject_save(data)
+        project_id = project.id
     else:
-        project = models.Project.objects.get(pk=data['project_id'])
+        project_id = data['project_id']
     if 'newexperimentname' in data:
         experiment = models.Experiment(name=data['newexperimentname'],
-                                       project=project)
+                                       project_id=project_id)
         experiment.save()
         exp_id = experiment.id
     else:
         exp_id = data['experiment_id']
+    dset.experiment_id = exp_id
+    # update hirief, including remove hirief range binding if no longer hirief
+    hrf_id = models.Datatype.objects.get(name__icontains='hirief')
+    if dset.datatype_id == hrf_id and dset.datatype_id != data['datatype_id']:
+        models.HiriefDataset.objects.get(
+            dataset_id=data['dataset_id']).delete()
+    elif data['datatype_id'] == hrf_id:
+        if dset.hiriefdataset.hirief_id != data['hiriefrange']:
+            dset.hiriefdataset.hirief_id = data['hiriefrange']
+            dset.hiriefdataset.save()
+    dset.datatype_id = data['datatype_id']
+    dset.save()
+    if data['is_corefac']:
+        if dset.corefacdatasetcontact.email != data['corefaccontact']:
+            dset.corefacdatasetcontact.email = data['corefaccontact']
+            dset.corefacdatasetcontact.save()
+    # FIXME delete old project if no experiment? Or only admin?
+    # FIXME delete old experiment if no datasets ?
+    return HttpResponse()
 
+
+def newproject_save(data):
+    if 'newpiname' in data:
+        pi = models.PrincipalInvestigator(name=data['newpiname'])
+        pi.save()
+        project = models.Project(name=data['newprojectname'], pi=pi,
+                                 corefac=data['is_corefac'])
+    else:
+        project = models.Project(name=data['newprojectname'],
+                                 pi_id=data['pi_id'],
+                                 corefac=data['is_corefac'])
+    project.save()
+    return project
+
+
+@login_required
+def save_dataset(request):
+    # FIXME this should also be able to update the dataset, and diff against an
+    # existing dataset
+    data = json.loads(request.body.decode('utf-8'))
+    if data['dataset_id']:
+        print('Updating')
+        return update_dataset(data)
+    if 'newprojectname' in data:
+        project = newproject_save(data)
+    else:
+        project = models.Project.objects.get(pk=data['project_id'])
+    if 'newexperimentname' in data:
+        experiment = models.Experiment(name=data['newexperimentname'],
+                                       project_id=project.id)
+        experiment.save()
+        exp_id = experiment.id
+    else:
+        exp_id = data['experiment_id']
     dset = models.Dataset(user_id=request.user.id, date=datetime.now(),
                           experiment_id=exp_id,
                           datatype_id=data['datatype_id'])
     dset.save()
-    response_json = empty_dataset_proj_json()
     if dset.datatype_id == 1:
         hrds = models.HiriefDataset(dataset=dset,
                                     hirief_id=data['hiriefrange'])
         hrds.save()
-        response_json.update(hr_dataset_proj_json(hrds))
     if data['is_corefac']:
         dset_mail = models.CorefacDatasetContact(dataset=dset,
                                                  email=data['corefaccontact'])
         dset_mail.save()
-        response_json.update(cf_dataset_proj_json(dset_mail))
-    response_json.update(dataset_proj_json(dset, project))
-    return JsonResponse(response_json)
+    return HttpResponse()
 
 
 def empty_dataset_proj_json():
