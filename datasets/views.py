@@ -35,8 +35,11 @@ def dataset_project(request, dataset_id):
     response_json = empty_dataset_proj_json()
     if dataset_id:
         dset = models.Dataset.objects.select_related(
-            'experiment__project', 'datatype').get(pk=dataset_id)
+            'experiment__project', 'datatype',
+            'hiriefdataset').get(pk=dataset_id)
         response_json.update(dataset_proj_json(dset, dset.experiment.project))
+        if hasattr(dset, 'hiriefdataset'):
+            response_json.update(hr_dataset_proj_json(dset.hiriefdataset))
         if dset.experiment.project.corefac:
             mail = models.CorefacDatasetContact.objects.get(dataset_id=dset.id)
             response_json.update(cf_dataset_proj_json(mail))
@@ -61,9 +64,12 @@ def dataset_files(request, dataset_id):
 def dataset_acquisition(request, dataset_id):
     response_json = empty_acquisition_json()
     if dataset_id:
-        response_json.update({'operator_id':
-                              models.OperatorDataset.objects.get(
-                                  dataset_id=dataset_id).operator_id})
+        try:
+            response_json.update({'operator_id':
+                                  models.OperatorDataset.objects.get(
+                                      dataset_id=dataset_id).operator_id})
+        except models.OperatorDataset.DoesNotExist:
+            return JsonResponse(response_json)
         get_admin_params_for_dset(response_json, dataset_id, 'acquisition')
     response_json['params'] = [x for x in response_json['params'].values()]
     return JsonResponse(response_json)
