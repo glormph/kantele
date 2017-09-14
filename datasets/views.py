@@ -282,7 +282,8 @@ def fill_admin_selectparam(params, p, value=False, oldparamtitle=False):
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
     if not p.param.id in params:
-        params[p.param.id] = {'fields': [], 'inputtype': 'select'}
+        params[p.param.id] = {'param_id': p.param.id, 'fields': [],
+                              'inputtype': 'select'}
     params[p.param.id]['title'] = (oldparamtitle if oldparamtitle
                                    else p.param.title)
     if value:
@@ -355,10 +356,22 @@ def save_files(request):
     return HttpResponse()
 
 
+def update_acquisition(dset, data):
+    if data['operator_id'] != dset.operatordataset.operator_id:
+        dset.operatordataset.operator_id = data['operator_id']
+        dset.operatordataset.save()
+    update_admin_defined_params(dset, data, 'acquisition')
+    return HttpResponse()
+
+
 @login_required
 def save_acquisition(request):
     data = json.loads(request.body.decode('utf-8'))
     dset_id = data['dataset_id']
+    dset = models.Dataset.objects.select_related('operatordataset').get(
+        pk=data['dataset_id'])
+    if hasattr(dset, 'operatordataset'):
+        return update_acquisition(dset, data)
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
@@ -392,21 +405,55 @@ def save_sampleprep(request):
     return HttpResponse()
 
 
+def update_admin_defined_params(dset, data, category):
+    fieldparams = dset.fieldparametervalue_set.filter(
+        param__category__labcategory=category)
+    selectparams = dset.selectparametervalue_set.filter(
+        value__param__category__labcategory=category).select_related('value')
+    selectparams = {p.value.param_id: p for p in selectparams}
+    fieldparams = {p.param_id: p for p in fieldparams}
+    new_selects, new_fields = [], []
+    for param in data['params']:
+        value = param['model']
+        if param['inputtype'] == 'select':
+            pid = param['param_id']
+            if (pid in selectparams and value != selectparams[pid].value_id):
+                text = [x['text'] for x in param['fields']
+                        if x['value'] == value]
+                selectparams[pid].value_id = value
+                selectparams[pid].valuename = text[0]
+                selectparams[pid].save()
+            elif pid not in selectparams:
+                models.SelectParameterValue.objects.create(
+                    dataset_id=data['dataset_id'], value_id=value,
+                    valuename=text[0], title=param['title'])
+        else:
+            pid = param['id']
+            if pid in fieldparams and value != fieldparams[pid].value:
+                fieldparams[pid].value = value
+                fieldparams[pid].save()
+            elif pid not in fieldparams:
+                models.FieldParameterValue.objects.create(
+                    dataset_id=data['dataset_id'], param_id=pid, value=value,
+                    title=param['title'])
+    # FIXME delete old ones?
+
+
 def save_admin_defined_params(data, dset_id):
     selects, fields = [], []
     for param in data['params'].values():
+        value = param['model']
         if param['inputtype'] == 'select':
-            selected = param['model']
             text = [x['text'] for x in param['fields']
-                    if x['value'] == selected]
+                    if x['value'] == value]
             selects.append(models.SelectParameterValue(dataset_id=dset_id,
-                                                       value_id=selected,
+                                                       value_id=value,
                                                        valuename=text[0],
                                                        title=param['title']))
         else:
             fields.append(models.FieldParameterValue(dataset_id=dset_id,
                                                      param_id=param['id'],
-                                                     value=param['model'],
+                                                     value=value,
                                                      title=param['title']))
     models.SelectParameterValue.objects.bulk_create(selects)
     models.FieldParameterValue.objects.bulk_create(fields)
