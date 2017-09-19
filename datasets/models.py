@@ -35,6 +35,11 @@ class Dataset(models.Model):
     datatype = models.ForeignKey(Datatype)
 
 
+class DatasetRawFile(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    rawfile = models.OneToOneField(RawFile)
+
+
 class ParamType(models.Model):
     typename = models.CharField(max_length=100)
 
@@ -133,8 +138,7 @@ class QuantDataset(models.Model):
 
 
 class QuantSampleFile(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    rawfile = models.OneToOneField(RawFile)
+    rawfile = models.OneToOneField(DatasetRawFile)
     sample = models.CharField(max_length=100)
 
 
@@ -161,11 +165,6 @@ class HiriefDataset(models.Model):
 class CorefacDatasetContact(models.Model):
     dataset = models.OneToOneField(Dataset)
     email = models.CharField(max_length=100)
-
-
-class DatasetRawFile(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    rawfile = models.OneToOneField(RawFile)
 
 
 class Operator(models.Model):
