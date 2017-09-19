@@ -21,6 +21,11 @@ class Experiment(models.Model):
     project = models.ForeignKey(Project)
 
 
+class RunName(models.Model):
+    name = models.TextField(max_length=100)
+    experiment = models.ForeignKey(Experiment)
+
+
 class Datatype(models.Model):
     name = models.TextField(max_length=100)
 
@@ -31,7 +36,7 @@ class Datatype(models.Model):
 class Dataset(models.Model):
     user = models.ForeignKey(User)
     date = models.DateTimeField('date created')
-    experiment = models.ForeignKey(Experiment)
+    runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
 
 

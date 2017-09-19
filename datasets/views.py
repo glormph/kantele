@@ -35,12 +35,13 @@ def dataset_project(request, dataset_id):
     response_json = empty_dataset_proj_json()
     if dataset_id:
         dset = models.Dataset.objects.select_related(
-            'experiment__project', 'datatype',
+            'runname__experiment__project', 'datatype',
             'hiriefdataset').get(pk=dataset_id)
-        response_json.update(dataset_proj_json(dset, dset.experiment.project))
+        response_json.update(
+            dataset_proj_json(dset, dset.runname.experiment.project))
         if hasattr(dset, 'hiriefdataset'):
             response_json.update(hr_dataset_proj_json(dset.hiriefdataset))
-        if dset.experiment.project.corefac:
+        if dset.runname.experiment.project.corefac:
             mail = models.CorefacDatasetContact.objects.get(dataset_id=dset.id)
             response_json.update(cf_dataset_proj_json(mail))
     return JsonResponse(response_json)
@@ -158,8 +159,8 @@ def get_files(request):
 
 def update_dataset(data):
     # FIXME this needs to also change file location
-    dset = models.Dataset.objects.select_related().get(pk=data['dataset_id'])
-    oldexp, oldproj = dset.experiment_id, dset.experiment.project_id
+    dset = models.Dataset.objects.select_related(
+        'runname__experiment', 'datatype').get(pk=data['dataset_id'])
     if 'newprojectname' in data:
         project = newproject_save(data)
         project_id = project.id
@@ -170,9 +171,15 @@ def update_dataset(data):
                                        project_id=project_id)
         experiment.save()
         exp_id = experiment.id
+        dset.runname.experiment_id = exp_id
+        newexp = True
     else:
+        newexp = False
         exp_id = data['experiment_id']
-    dset.experiment_id = exp_id
+    if data['runname'] != dset.runname.name or newexp:
+        # Save if new experiment AND/OR new name Runname coupled 1-1 to dataset
+        dset.runname.name = data['runname']
+        dset.runname.save()
     # update hirief, including remove hirief range binding if no longer hirief
     hrf_id = models.Datatype.objects.get(name__icontains='hirief')
     if dset.datatype_id == hrf_id and dset.datatype_id != data['datatype_id']:
@@ -226,8 +233,10 @@ def save_dataset(request):
         exp_id = experiment.id
     else:
         exp_id = data['experiment_id']
+    runname = models.RunName(name=data['runname'], experiment_id=exp_id)
+    runname.save()
     dset = models.Dataset(user_id=request.user.id, date=datetime.now(),
-                          experiment_id=exp_id,
+                          runname_id=runname.id,
                           datatype_id=data['datatype_id'])
     dset.save()
     if dset.datatype_id == 1:
@@ -247,7 +256,10 @@ def empty_dataset_proj_json():
                 models.Project.objects.all()]
     experiments = {x['id']: [] for x in projects}
     for exp in models.Experiment.objects.select_related('project').all():
-        experiments[exp.project.id].append({'id': exp.id, 'name': exp.name})
+        run_names = [{'name': x.name, 'id': x.id} for x in
+                     models.RunName.objects.filter(experiment_id=exp.id)]
+        experiments[exp.project.id].append({'id': exp.id, 'name': exp.name,
+                                            'run_names': run_names})
     return {'projects': projects, 'experiments': experiments,
             'external_pis': [{'name': x.name, 'id': x.id} for x in
                              models.PrincipalInvestigator.objects.all()],
@@ -263,7 +275,8 @@ def empty_dataset_proj_json():
 
 def dataset_proj_json(dset, project):
     return {'dataset_id': dset.id,
-            'experiment_id': dset.experiment_id,
+            'experiment_id': dset.runname.experiment_id,
+            'runname': dset.runname.name,
             'pi_id': project.pi_id,
             'project_id': project.id,
             'existingproject_iscf': project.corefac,

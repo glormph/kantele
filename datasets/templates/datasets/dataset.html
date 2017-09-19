@@ -642,6 +642,12 @@
 				</div>
 			</div>
 		</div>
+		<div class="field">
+			<label class="label">Run name</label>
+			<div class="control">
+				<input class="input" v-model="runname" type="text" placeholder="E.g set1, run1, etc">
+			</div>
+		</div>
 	</div>
 	<acquisition-box v-bind:dset_id="dataset_id"></acquisition-box>
 	</div>
@@ -674,6 +680,7 @@
 			externpi: '',
 			newpiname: '',
 			externalcontactmail: '',
+			runname: '',
 			}
 		},
 		mounted: function() {
@@ -762,6 +769,7 @@
 					is_corefac: this.is_corefac,
 					datatype_id: this.datatype_id,
 					hiriefrange: this.hiriefrange,
+					runname: this.runname,
 				};
 				if (this.isNewProject) {
 					data.newprojectname = this.newprojectname;
