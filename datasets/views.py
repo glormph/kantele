@@ -53,7 +53,7 @@ def dataset_files(request, dataset_id):
         response_json.update(
             {'datasetAssociatedFiles':
              {'id_{}'.format(x.rawfile_id):
-              {'id': x.rawfile_id, 'name': x.rawfile.name,
+              {'id': x.rawfile_id, 'name': x.rawfile.name, 'associd': x.id,
                'instrument': x.rawfile.producer.name, 'date': x.rawfile.date}
               for x in models.DatasetRawFile.objects.select_related(
                   'rawfile__producer').filter(dataset_id=dataset_id)}})
@@ -79,14 +79,36 @@ def dataset_acquisition(request, dataset_id):
 def dataset_sampleprep(request, dataset_id):
     response_json = empty_sampleprep_json()
     if dataset_id:
+        try:
+            qtype = models.QuantDataset.objects.select_related(
+                'quanttype').get(dataset_id=dataset_id)
+        except models.QuantDataset.DoesNotExist:
+            return JsonResponse(response_json)
         response_json['enzymes'] = [
             x.enzyme.id for x in models.EnzymeDataset.objects.filter(
                 dataset_id=dataset_id).select_related('enzyme')]
         if not response_json['enzymes']:
             response_json['no_enzyme'] = True
-        # quanttype FIXME
-        #qtype = models.QuantDataset.objects.get(dataset_id=dataset_id).quanttype_id
-        #QuantChannelSample.objects.filter(dataset_id=dataset_id).select_related(
+        qtid = qtype.quanttype_id
+        response_json['quanttype'] = qtid
+        if qtype.quanttype.name == 'labelfree':
+            qfiles = models.QuantSampleFile.objects.filter(
+                rawfile__dataset_id=dataset_id)
+            if len(set([x.sample for x in qfiles])) == 1:
+                # FIXME maybe not very secure
+                response_json['labelfree_multisample'] = False
+                response_json['quants'][qtid]['model'] = qfiles[0].sample
+            else:
+                response_json['labelfree_multisample'] = True
+                response_json['samples'] = {fn.rawfile_id: fn.sample
+                                            for fn in qfiles}
+        else:
+            response_json['quants'][qtid]['chans'] = []
+            for qsc in models.QuantChannelSample.objects.filter(
+                    dataset_id=dataset_id).select_related('channel__channel'):
+                response_json['quants'][qtid]['chans'].append(
+                    {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
+                     'model': qsc.sample, 'pk': qsc.id})
         get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
     response_json['params'] = [x for x in response_json['params'].values()]
     return JsonResponse(response_json)
@@ -378,29 +400,114 @@ def save_acquisition(request):
     return HttpResponse()
 
 
+def store_new_channelsamples(data):
+    models.QuantChannelSample.objects.bulk_create([
+        models.QuantChannelSample(dataset_id=data['dataset_id'],
+                                  sample=chan['model'], channel_id=chan['id'])
+        for chan in data['samples']])
+
+
+def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
+    # switch from labelfree - tmt: remove filesample, create other channels
+    if oldqtype == 'labelfree' and updated_qtype:
+        print('Switching to isobaric')
+        store_new_channelsamples(data)
+        models.QuantSampleFile.objects.filter(
+            rawfile__dataset_id=dset_id).delete()
+    # reverse switch
+    elif data['labelfree'] and updated_qtype:
+        print('Switching isobaric-labelfree')
+        models.QuantChannelSample.objects.filter(dataset_id=dset_id).delete()
+    elif not data['labelfree']:
+        print('Updating isobaric')
+        if updated_qtype:
+            print('new quant type')
+            models.QuantChannelSample.objects.filter(
+                dataset_id=dset_id).delete()
+            store_new_channelsamples(data)
+        else:
+            print('new samples')
+            for chan in data['samples']:
+                qcs = models.QuantChannelSample.objects.get(pk=chan['pk'])
+                qcs.sample = chan['model']
+                qcs.save()
+
+
+def update_sampleprep(data, qtype):
+    dset_id = data['dataset_id']
+    new_enzymes = set(data['enzymes'])
+    for enzyme in models.EnzymeDataset.objects.filter(dataset_id=dset_id):
+        if enzyme.enzyme_id in new_enzymes:
+            new_enzymes.remove(enzyme.enzyme_id)
+        else:
+            enzyme.delete()
+    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
+        dataset_id=dset_id, enzyme_id=x) for x in new_enzymes])
+    oldqtype = qtype.quanttype.name
+    updated_qtype = False
+    if data['quanttype'] != qtype.quanttype_id:
+        qtype.quanttype_id = data['quanttype']
+        qtype.save()
+        print('Updated quanttype')
+        updated_qtype = True
+    quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id)
+    if data['labelfree']:
+        oldqsf = models.QuantSampleFile.objects.filter(
+            rawfile__dataset_id=dset_id)
+        if not data['multisample']:
+            data['samples'] = {}
+            for fn in data['filenames']:
+                data['samples'][str(fn['associd'])] = data['sample']
+        oldqsf = {x.rawfile_id: x for x in oldqsf}
+        print(data['samples'])
+        # iterate filenames because that is correct object, 'samples'
+        # can contain models that are not active
+        for fn in data['filenames']:
+            try:
+                samplefile = oldqsf.pop(fn['associd'])
+            except KeyError:
+                models.QuantSampleFile.objects.create(
+                    rawfile_id=fn['associd'],
+                    sample=data['samples'][str(fn['associd'])])
+            else:
+                if data['samples'][str(fn['associd'])] != samplefile.sample:
+                    samplefile.sample = data['samples'][str(fn['associd'])]
+                    samplefile.save()
+        # delete non-existing qsf (files have been popped)
+        [qsf.delete() for qsf in oldqsf.values()]
+    dset = models.Dataset.objects.get(pk=dset_id)
+    update_admin_defined_params(dset, data, 'sampleprep')
+    return HttpResponse()
+
+
 @login_required
 def save_sampleprep(request):
     data = json.loads(request.body.decode('utf-8'))
     dset_id = data['dataset_id']
+    try:
+        qtype = models.QuantDataset.objects.select_related(
+            'quanttype').get(dataset_id=dset_id)
+    except models.QuantDataset.DoesNotExist:
+        pass  # insert
+    else:
+        return update_sampleprep(data, qtype)
     if data['enzymes']:
         models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
             dataset_id=dset_id, enzyme_id=x) for x in data['enzymes']])
     models.QuantDataset.objects.create(dataset_id=dset_id,
                                        quanttype_id=data['quanttype'])
     if not data['labelfree']:
-        models.QuantChannelSample.objects.bulk_create([
-            models.QuantChannelSample(dataset_id=dset_id, sample=chan['model'],
-                                      channel_id=chan['id'])
-            for chan in data['samples']])
+        store_new_channelsamples(data)
     else:
+        print('Saving labelfree')
         if not data['multisample']:
             data['samples'] = {}
             for fn in data['filenames']:
-                data['samples'][fn['id']] = data['sample']
+                data['samples'][fn['associd']] = data['sample']
+            print('No multisample')
         models.QuantSampleFile.objects.bulk_create([
-            models.QuantSampleFile(dataset_id=dset_id, rawfile_id=file_id,
-                                   sample=sample)
-            for file_id, sample in data['samples'].items()])
+            models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][fid])
+            for fid in [x['associd'] for x in data['filenames'].values()]])
     save_admin_defined_params(data, dset_id)
     return HttpResponse()
 

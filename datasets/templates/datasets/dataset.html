@@ -102,14 +102,14 @@
 							<td><input v-model="channel.model" class="input is-normal"></td>
 						</tr>
 						<template v-if="quanttype === labelfree_quant_id">
-						<tr v-if="labelfree_multisample && !filenames.length">
+						<tr v-if="!filenames.length">
 							<td><div class="notification is-danger">CLAIM FILES FIRST</div></td>
 						</tr>
 						<tr v-if="labelfree_multisample && filenames.length" v-for="file in filenames">
 							<td>{{ file.name }}</td>
-							<td><input v-model="samples[file.id]" class="input is-normal"></td>
+							<td><input v-model="samples[file.associd]" class="input is-normal"></td>
 						</tr>
-						<tr v-if="!labelfree_multisample && quanttype === labelfree_quant_id">
+						<tr v-if="!labelfree_multisample && filenames.length && quanttype === labelfree_quant_id">
 							<td><input v-model="quants[quanttype].model" class="input is-normal"></td>
 						</tr>
 						</template>
@@ -178,7 +178,7 @@
 				if (this.labelfree_quant_id === this.quanttype) {
 					if (this.labelfree_multisample) {
 						for (fn of this.filenames) {
-							if (!this.samples[fn.id]) {
+							if (!this.samples[fn.associd]) {
 								this.errors.push('Labelfree multi-sample requires sample name for each file');
 								break;
 							}
@@ -220,6 +220,7 @@
 					data.samples = this.quants[this.quanttype].chans;
 				} else if (this.labelfree_multisample) {
 					data.multisample = true;
+					data.filenames = this.filenames;
 					data.samples = this.samples;
 				} else {
 					data.multisample = false;
