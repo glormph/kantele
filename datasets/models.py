@@ -144,7 +144,7 @@ class QuantSampleFile(models.Model):
 
 class QuantChannelSample(models.Model):
     dataset = models.ForeignKey(Dataset)
-    channel = models.ForeignKey(QuantChannel)
+    channel = models.ForeignKey(QuantTypeChannel)
     sample = models.CharField(max_length=100)
 
 
