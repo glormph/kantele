@@ -16,7 +16,14 @@
 <script>
 	Vue.component('sampleprep-box', {
 		props: ['dset_id', 'assoc_filenames'],
-		template: `<div class="box" id="sampleprep" v-show="isOpen">
+		template: `
+		<div>
+			<div class="box" v-if="!isOpen">
+				<div class="title is-5">MS Samples and preparation</div>
+				<article class="message is-danger"> 
+				<div class="message-body">Save definition first</div></article>
+			</div>
+		        <div class="box" id="sampleprep" v-if="isOpen">
 			<article class="message is-danger" v-if="errors.length > 0">
 				<div class="message-body">
 					<ul>
@@ -117,13 +124,12 @@
 					{% endverbatim %}
 				</table>
 			</div>
-		</div>`,
+	</div></div>`,
 
 		data: function() {
 		return { 
 			errors: [],
 			no_enzyme: false,
-			isOpen: true,
 			labelfree_multisample: false,
 			show_enzymes: [],
 			quants: [],
@@ -137,6 +143,9 @@
 			this.fetchData()
 		},
 		computed: {
+			isOpen: function() {
+				return this.dset_id !== '';
+				},
 			filenames: function() {
 				fns = [];
 				for (key in this.assoc_filenames) {
@@ -241,8 +250,14 @@
 	Vue.component('files-box', {
 		template: `
 	<div class="column">
+		<div class="box" v-show="!isOpen">
+			<div class="title is-5">Files</div>
+			<article class="message is-danger"> 
+			<div class="message-body">Save definition first</div></article>
+		</div>
 		<div class="box" v-show="isOpen">
 			<div class="title is-5">Files
+				<span class="has-text-success icon" v-show="isOk"><i class="fa fa-check"></i></span>
 			       	<a class="button is-danger is-small" v-on:click="save">Save</a>
 
 			</div>
@@ -296,13 +311,12 @@
 					</tr>
 				</tbody>
 			</table>
-		</div>
+		</div> 
 		<sampleprep-box v-bind:dset_id="dset_id" v-bind:assoc_filenames="datasetAssociatedFiles"></sampleprep-box>
-	</div>
+	</div> 
 		`,
 		data: function() {return {
 			isSaved: false,
-			isOpen: true,
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
 			addedFiles: {},
@@ -312,6 +326,12 @@
 		}
 		},
 		computed: {
+			isOpen: function() {
+				return this.dset_id !== '';
+			},
+			isOk: function() {
+				return false;
+			},
 		// sort file list
 		},
 		props: ['dset_id'],
@@ -405,6 +425,12 @@
 
 	Vue.component('acquisition-box', {
 		template: `
+		<div>
+			<div class="box" v-show="!isOpen">
+				<div class="title is-5">Acquisition</div>
+				<article class="message is-danger"> 
+				<div class="message-body">Save definition first</div></article>
+			</div>
 		<div class="box" v-show="isOpen">
 			<article class="message is-danger" v-if="errors.length > 0">
 				<div class="message-body">
@@ -457,7 +483,7 @@
 		{% endverbatim %}
 		</div>
 		</template>
-	</div>
+</div></div>
 `,
 	data: function() {
 		return {
@@ -466,13 +492,17 @@
 		 	operators: [],
 			operator_id: '',
 			isSaved: false,
-			isOpen: true,
 			}
 		},
 	mounted: function() {
 		this.fetchData()
 		},
 	props: ['dset_id'],
+	computed: {
+		isOpen: function() {
+			return this.dset_id !== '';
+		},
+	},
 	methods: {
 		fetchData: function() {
 			this.$http.get('/datasets/show/acquisition/' + this.dset_id)
@@ -798,6 +828,7 @@
 					       	this.isNewProject = false;
 					       	this.isNewExperiment = false;
 						this.isNewPI = false;
+						this.dataset_id = response.json().dataset_id;
 					}, response => {
 					console.log(response);
 				});

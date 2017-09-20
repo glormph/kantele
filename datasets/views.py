@@ -250,7 +250,7 @@ def save_dataset(request):
         dset_mail = models.CorefacDatasetContact(dataset=dset,
                                                  email=data['corefaccontact'])
         dset_mail.save()
-    return HttpResponse()
+    return JsonResponse({'dataset_id': dset.id})
 
 
 def empty_dataset_proj_json():
