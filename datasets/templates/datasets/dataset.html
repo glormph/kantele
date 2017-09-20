@@ -713,17 +713,10 @@
 					for (key in result) {
 						this[key] = result[key];
 					}
-				for (exp of this.experiments[this.project_id]) {
-					if (exp.id === this.experiment_id) {
-						expname = exp.name;
-					}
-				}
 				this.project_lookup = {};
 				for (var i = 0; i < this.projects.length; i++) {
 					this.project_lookup[this.projects[i].id] = {'corefac': this.projects[i].corefac, 'pi_id': this.projects[i].pi_id, 'name': this.projects[i].name};
 					}
-				this.storage_location = (this.project_lookup[this.project_id].name + '/' +
-				                         expname + '/' + this.runname);
 			       	})
 	       		},
 			checkOpen: function() {
