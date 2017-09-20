@@ -173,15 +173,18 @@ def update_dataset(data):
         exp_id = experiment.id
         dset.runname.experiment_id = exp_id
         newexp = True
+    elif data['experiment_id'] != dset.runname.experiment_id:
+        newexp = True
+        dset.runname.experiment_id = data['experiment_id']
     else:
         newexp = False
-        exp_id = data['experiment_id']
     if data['runname'] != dset.runname.name or newexp:
         # Save if new experiment AND/OR new name Runname coupled 1-1 to dataset
+        print('Update data')
         dset.runname.name = data['runname']
         dset.runname.save()
     # update hirief, including remove hirief range binding if no longer hirief
-    hrf_id = models.Datatype.objects.get(name__icontains='hirief')
+    hrf_id = models.Datatype.objects.get(name__icontains='HiRIEF').id
     if dset.datatype_id == hrf_id and dset.datatype_id != data['datatype_id']:
         models.HiriefDataset.objects.get(
             dataset_id=data['dataset_id']).delete()

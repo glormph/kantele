@@ -648,6 +648,12 @@
 				<input class="input" v-model="runname" type="text" placeholder="E.g set1, run1, etc">
 			</div>
 		</div>
+		<article class="message is-success"> 
+		<div class="message-header">Storage location</div>
+		{% verbatim %}
+		<div class="message-body">{{ storage_location }}</div>
+		{% endverbatim %}
+		</article>
 	</div>
 	<acquisition-box v-bind:dset_id="dataset_id"></acquisition-box>
 	</div>
@@ -681,6 +687,7 @@
 			newpiname: '',
 			externalcontactmail: '',
 			runname: '',
+			storage_location: '',
 			}
 		},
 		mounted: function() {
@@ -694,15 +701,7 @@
 		proj_experiments: function() {
 			return !this.project_id ? [] : this.experiments[this.project_id]
 			},
-		project_lookup: function() {
-			project_lookup = {};
-			for (var i = 0; i < this.projects.length; i++) {
-	       			project_lookup[this.projects[i].id] = {'corefac': this.projects[i].corefac, 'pi_id': this.projects[i].pi_id};
-				}
-			return project_lookup
-			},
 		},
-
 		methods: {
 			fetchData: function() {
 			       	this.$http.get('/datasets/show/project/' + this.dataset_id)
@@ -714,6 +713,17 @@
 					for (key in result) {
 						this[key] = result[key];
 					}
+				for (exp of this.experiments[this.project_id]) {
+					if (exp.id === this.experiment_id) {
+						expname = exp.name;
+					}
+				}
+				this.project_lookup = {};
+				for (var i = 0; i < this.projects.length; i++) {
+					this.project_lookup[this.projects[i].id] = {'corefac': this.projects[i].corefac, 'pi_id': this.projects[i].pi_id, 'name': this.projects[i].name};
+					}
+				this.storage_location = (this.project_lookup[this.project_id].name + '/' +
+				                         expname + '/' + this.runname);
 			       	})
 	       		},
 			checkOpen: function() {
