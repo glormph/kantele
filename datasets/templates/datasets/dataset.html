@@ -824,13 +824,16 @@
 				}
 				this.$http.post('/datasets/save/project/', data
 					).then(response => {
-						this.fetchData();
+						return response.json();
+					}, response => {
+					console.log(response);
+					}).then(result => {
+						console.log(result);
 					       	this.isNewProject = false;
 					       	this.isNewExperiment = false;
 						this.isNewPI = false;
-						this.dataset_id = response.json().dataset_id;
-					}, response => {
-					console.log(response);
+						this.dataset_id = result.dataset_id;
+						this.fetchData();
 				});
 			}
 				},
