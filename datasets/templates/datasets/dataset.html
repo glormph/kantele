@@ -1,21 +1,25 @@
 {% extends "datasets/base.html" %}
 {% block content %}
-<section>
-<div class="container" id="apps">
-
-		<project-box></project-box>
-		<!-- make a grid of files, sortable header buttons:
-		# instrument, date, fn	
-		And a filter field for removing scrap?
-		Also, use this field to select files after the fact? 
-		And for removing? Change list after save maybe is good.
-		-->
+<section id="apps">
+<div class="tabs is-toggle is-centered is-small">
+	<ul>
+		<li v-bind:class="tabclassDef"><a v-on:click="showDef" >Definition</a></li>
+		<li v-bind:class="tabclassFiles"><a  v-on:click="showFiles">Files</a></li>
+		<li v-bind:class="tabclassAcq"><a v-on:click="showAcquisition">Acquisition</a></li>
+		<li v-bind:class="tabclassSP"><a v-on:click="showSP">Sample prep</a></li>
+	</ul>
+</div>
+<div class="container">
+		<project-box v-show="viewtab === 'definition'" v-bind:dset_id="dataset_id" v-bind:pdata="projdata"></project-box>
+		<acquisition-box v-show="viewtab === 'acquisition'" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
+		<files-box v-show="viewtab === 'files'" v-bind:dset_id="dataset_id" v-bind:fndata="filesdata"></files-box>
+		<sampleprep-box v-show="viewtab === 'sampleprep'" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
 </div>
 </section>
 
 <script>
 	Vue.component('sampleprep-box', {
-		props: ['dset_id', 'assoc_filenames'],
+		props: ['dset_id', 'spdata', 'assoc_filenames'],
 		template: `
 		<div>
 			<div class="box" v-if="!isOpen">
@@ -33,22 +37,19 @@
 					</ul>
 				</div>
 			</article>
-			<!-- FIXME only show when MS data 
-			organism, organ, enrichment, mod-enrichment, treatment, channel
-			-->
 			<div class="title is-5">MS Samples and preparation
 				<a class="button is-danger is-small" v-on:click="save">Save</a>
 			</div> 
 			<div class="field">
 				<label class="label">Enzymes</label>
-				<input type="checkbox" v-model="no_enzyme">No enzyme
+				<input type="checkbox" v-model="spdata.o_enzyme">No enzyme
 				{% verbatim %}
-				<div class="control" v-for="enzyme in show_enzymes" v-show="!no_enzyme">
-					<input v-bind:value="enzyme.id" v-model="enzymes" type="checkbox">{{ enzyme.name }}
+				<div class="control" v-for="enzyme in spdata.show_enzymes" v-show="!spdata.o_enzyme">
+					<input v-bind:value="enzyme.id" v-model="spdata.enzymes" type="checkbox">{{ enzyme.name }}
 				</div>
 				{% endverbatim %}
 			</div>
-			<template v-for="param in params">
+			<template v-for="param in spdata.params">
 			<div class="field">
 			{% verbatim %}
 				<label class="label">{{ param.title }}</label>
@@ -78,46 +79,46 @@
 				<label class="label">Quant type</label>
 				<div class="control">
 					<div class="select">
-						<select v-model="quanttype">
+						<select v-model="spdata.quanttype">
 							<option disabled value="">Please select one</option>
 							{% verbatim %}
-							<option v-for="quant in quants" v-bind:value="quant.id">{{ quant.name }}</option>
+							<option v-for="quant in spdata.quants" v-bind:value="quant.id">{{ quant.name }}</option>
 							{% endverbatim %}
 						</select>
 					</div>
 				</div>
 			</div>
-			<div class="field" v-if="quanttype">
+			<div class="field" v-if="spdata.quanttype">
 				<label class="label">Samples</label>
 				<div class="control">
-					<div id="labelfree_samples" v-if="quanttype === labelfree_quant_id">
-						<input type="checkbox" v-model="labelfree_multisample">One sample per file?
+					<div id="labelfree_samples" v-if="spdata.quanttype === labelfree_quant_id">
+						<input type="checkbox" v-model="spdata.labelfree_multisample">One sample per file?
 					</div>
 				</div>
 				<table class="table is-fullwidth">
 					<thead>
 						<tr>
-							<th v-if="quanttype === labelfree_quant_id && labelfree_multisample">Filename</th>
-							<th v-if="quanttype != labelfree_quant_id">Channel</th>
+							<th v-if="spdata.quanttype === labelfree_quant_id && spdata.labelfree_multisample">Filename</th>
+							<th v-if="spdata.quanttype != labelfree_quant_id">Channel</th>
 							<th>Sample name</th>
 						</tr>
 					</thead>
 					{% verbatim %}
 					<tbody>
-						<tr v-for="channel in quants[quanttype].chans" v-if="quanttype != labelfree_quant_id">
+						<tr v-for="channel in spdata.quants[spdata.quanttype].chans" v-if="spdata.quanttype != labelfree_quant_id">
 							<td>{{ channel.name }}</td>
 							<td><input v-model="channel.model" class="input is-normal"></td>
 						</tr>
-						<template v-if="quanttype === labelfree_quant_id">
+						<template v-if="spdata.quanttype === labelfree_quant_id">
 						<tr v-if="!filenames.length">
 							<td><div class="notification is-danger">CLAIM FILES FIRST</div></td>
 						</tr>
-						<tr v-if="labelfree_multisample && filenames.length" v-for="file in filenames">
+						<tr v-if="spdata.labelfree_multisample && filenames.length" v-for="file in filenames">
 							<td>{{ file.name }}</td>
-							<td><input v-model="samples[file.associd]" class="input is-normal"></td>
+							<td><input v-model="spdata.samples[file.associd]" class="input is-normal"></td>
 						</tr>
-						<tr v-if="!labelfree_multisample && filenames.length && quanttype === labelfree_quant_id">
-							<td><input v-model="quants[quanttype].model" class="input is-normal"></td>
+						<tr v-if="!spdata.labelfree_multisample && filenames.length && spdata.quanttype === labelfree_quant_id">
+							<td><input v-model="spdata.quants[spdata.quanttype].model" class="input is-normal"></td>
 						</tr>
 						</template>
 					</tbody>
@@ -129,18 +130,7 @@
 		data: function() {
 		return { 
 			errors: [],
-			no_enzyme: false,
-			labelfree_multisample: false,
-			show_enzymes: [],
-			quants: [],
-			params: [],
-			enzymes: [],
-			quanttype: '',
-			samples: {},
 			}
-		},
-		mounted: function() {
-			this.fetchData()
 		},
 		computed: {
 			isOpen: function() {
@@ -154,31 +144,19 @@
 				return fns
 			},
 			labelfree_quant_id: function() {
-				for (qid in this.quants) {
-					if (this.quants[qid].name === 'labelfree') {
-						return this.quants[qid].id
+				for (qid in this.spdata.quants) {
+					if (this.spdata.quants[qid].name === 'labelfree') {
+						return this.spdata.quants[qid].id
 						}
 					}
 				},
 			},
 		
 		methods: {
-			fetchData: function() {
-			       	this.$http.get('/datasets/show/sampleprep/' + this.dset_id)
-				.then(response => {
-					return response.json()
-					}, response => {
-				       	console.log(response)
-					}).then(result => {
-					for (key in result) {
-						this[key] = result[key];
-					}
-			       	})
-	       		},
 			validate: function() {
 				this.errors = [];
 				// FIXME quant type and sample names
-				if (!this.no_enzyme && !this.enzymes) {
+				if (!this.spdata.no_enzyme && !this.enzymes) {
 					this.errors.push('Enzyme selection is required');
 				}
 				if (!this.quanttype) {
@@ -312,17 +290,14 @@
 				</tbody>
 			</table>
 		</div> 
-		<sampleprep-box v-bind:dset_id="dset_id" v-bind:assoc_filenames="datasetAssociatedFiles"></sampleprep-box>
 	</div> 
 		`,
+		props: ['dset_id', 'fndata'],
 		data: function() {return {
-			isSaved: false,
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
 			addedFiles: {},
 			removedFiles: {},
-			newFiles: [],
-			datasetAssociatedFiles: [],
 		}
 		},
 		computed: {
@@ -334,23 +309,19 @@
 			},
 		// sort file list
 		},
-		props: ['dset_id'],
-		mounted: function() {
-			this.fetchData()
-		},
 		methods: {
 			toggleFileView: function() {
 				this.showDatasetFiles = this.showDatasetFiles === false;
 			},
 			showingAssociatedFiles: function() {
-				var val = Object.assign({}, this.datasetAssociatedFiles, this.addedFiles)
+				var val = Object.assign({}, this.fndata.datasetAssociatedFiles, this.addedFiles)
 				for (key in this.removedFiles) {
 					delete val[key];
 					}
 				return val
 				},
 			showingNewFiles: function() {
-				var val = Object.assign({}, this.newFiles, this.removedFiles)
+				var val = Object.assign({}, this.fndata.newFiles, this.removedFiles)
 				for (key in this.addedFiles) {
 					delete val[key];
 					}
@@ -384,21 +355,6 @@
 					} else {
 					this.$set(this.removedFiles, file_id, file);
 					}
-			},
-			fetchData: function() {
-			       	this.$http.get('/datasets/show/files/' + this.dset_id)
-				.then(response => {
-					this.addedFiles = {};
-					this.removedFiles = {};
-					return response.json()
-					}, response => {
-				       	console.log(response)
-					}).then(result => {
-					for (key in result) {
-						this[key] = result[key];
-					}
-			       	})
-
 			},
 			save: function() {
 				data = {
@@ -448,16 +404,16 @@
 			<label class="label">Operator</label>
 			<div class="control">
 				<div class="select">
-					<select v-model="operator_id">
+					<select v-model="acqdata.operator_id">
 						<option disabled value="">Please select one</option>
 						{% verbatim %}
-						<option v-for="operator in operators" v-bind:value="operator.id">{{ operator.name }}</option>
+						<option v-for="operator in acqdata.operators" v-bind:value="operator.id">{{ operator.name }}</option>
 					        {% endverbatim %}
 					</select>
 				</div>
 			</div>
 		</div>
-		<template v-for="param in params">
+		<template v-for="param in acqdata.params">
 		<div class="field">
 		{% verbatim %}
 			<label class="label">{{ param.title }}</label>
@@ -488,16 +444,9 @@
 	data: function() {
 		return {
 			errors: [],
-			params: [],
-		 	operators: [],
-			operator_id: '',
-			isSaved: false,
 			}
 		},
-	mounted: function() {
-		this.fetchData()
-		},
-	props: ['dset_id'],
+	props: ['dset_id', 'acqdata'],
 	computed: {
 		isOpen: function() {
 			return this.dset_id !== '';
@@ -552,6 +501,7 @@
 	})
 	
 	Vue.component('project-box', {
+		props: ['dset_id', 'pdata'],
 		template: `
 	<div class="columns">
 		<div class="column">
@@ -575,10 +525,10 @@
 	</label>
 			<div class="control" v-if="!isNewProject">
 				<div class="select">
-					<select v-model="project_id" v-on:change="project_selected">
+					<select v-model="pdata.project_id" v-on:change="project_selected">
 						<option disabled value="">Please select one</option>
 					        {% verbatim %}
-						<option v-for="project in projects" v-bind:value="project.id">{{ project.name }}</option>
+						<option v-for="project in pdata.projects" v-bind:value="project.id">{{ project.name }}</option>
 					        {% endverbatim %}
 					</select>
 				</div>
@@ -612,7 +562,7 @@
 					<select v-model="externpi">
 						<option disabled value="">Please select one</option>
 						{% verbatim %}
-						<option v-for="externpi in external_pis" v-bind:value="externpi.id">{{ externpi.name }}</option>
+						<option v-for="externpi in pdata.external_pis" v-bind:value="externpi.id">{{ externpi.name }}</option>
 						{% endverbatim %}
 					</select>
 				</div>
@@ -622,7 +572,7 @@
 			</div>
 			</template>
 			<div class="control">
-				<input class="input" type="text" v-model="externalcontactmail" placeholder="operational contact email (e.g. postdoc)">
+				<input class="input" type="text" v-model="pdata.externalcontactmail" placeholder="operational contact email (e.g. postdoc)">
 			</div>
 		</div>
 		
@@ -633,7 +583,7 @@
 	       		</label>
 			<div class="control" v-if="!isNewExperiment">
 				<div class="select">
-					<select v-model="experiment_id">
+					<select v-model="pdata.experiment_id">
 						<option disabled value="">Please select one</option>
 						{% verbatim %}
 						<option v-for="exp in proj_experiments" v-bind:value="exp.id">{{ exp.name }}</option>
@@ -650,23 +600,23 @@
 			<label class="label">Dataset type</label>
 			<div class="control">
 				<div class="select">
-					<select v-model="datatype_id">
+					<select v-model="pdata.datatype_id">
 						<option disabled value="">Please select one</option>
 						{% verbatim %}
-						<option v-for="dset_type in datasettypes" v-bind:value="dset_type.id">{{ dset_type.name }}</option>
+						<option v-for="dset_type in pdata.datasettypes" v-bind:value="dset_type.id">{{ dset_type.name }}</option>
 						{% endverbatim %}
 					</select>
 				</div>
 			</div>
 		</div>
-		<div class="field" v-show="datatype_id === 1">
+		<div class="field" v-show="pdata.datatype_id === 1">
 			<label class="label">HiRIEF range</label>
 			<div class="control">
 				<div class="select">
-					<select v-model="hiriefrange">
+					<select v-model="pdata.hiriefrange">
 						<option disabled value="">Please select one</option>
 					        {% verbatim %}
-						<option v-for="range in hirief_ranges" v-bind:value="range.id">{{ range.name }}</option>
+						<option v-for="range in pdata.hirief_ranges" v-bind:value="range.id">{{ range.name }}</option>
 					        {% endverbatim %}
 					</select>
 				</div>
@@ -675,19 +625,17 @@
 		<div class="field">
 			<label class="label">Run name</label>
 			<div class="control">
-				<input class="input" v-model="runname" type="text" placeholder="E.g set1, run1, etc">
+				<input class="input" v-model="pdata.runname" type="text" placeholder="E.g set1, run1, etc">
 			</div>
 		</div>
 		<article class="message is-success"> 
 		<div class="message-header">Storage location</div>
 		{% verbatim %}
-		<div class="message-body">{{ storage_location }}</div>
+		<div class="message-body">{{ pdata.storage_location }}</div>
 		{% endverbatim %}
 		</article>
 	</div>
-	<acquisition-box v-bind:dset_id="dataset_id"></acquisition-box>
 	</div>
-	<files-box v-bind:dset_id="dataset_id"></files-box>
 </div>
 `,
 		data: function() {
@@ -697,65 +645,27 @@
 		       	isNewProject: false,
 		       	isNewExperiment: false,
 			isNewPI: false,
-			dataset_id: '{{ dataset_id }}',
 			newprojectname: '',
 			newexperimentname: '',
-			projects: [],
-			external_pis: [],
-			datasettypes: [],
-			internal_pi_id: '',
-			hirief_ranges: [],
-			project_id: '',
-			experiment_id: '',
-			datatype_id: '',
-			hiriefrange: '',
-			experiment_id: '',
-			experiments: {},
 			newproject_iscf: false,
-			existingproject_iscf: false,
 			externpi: '',
 			newpiname: '',
-			externalcontactmail: '',
-			runname: '',
-			storage_location: '',
 			}
-		},
-		mounted: function() {
-			this.fetchData()
 		},
 		computed: {
 		is_corefac: function() {
 			if (this.isNewProject) {return this.newproject_iscf}
-			else {return this.existingproject_iscf}
+			else {return this.pdata.existingproject_iscf}
 			},
 		proj_experiments: function() {
-			return !this.project_id ? [] : this.experiments[this.project_id]
+			return !this.pdata.project_id ? [] : this.pdata.experiments[this.pdata.project_id]
 			},
 		},
 		methods: {
-			fetchData: function() {
-			       	this.$http.get('/datasets/show/project/' + this.dataset_id)
-				.then(response => {
-					return response.json()
-					}, response => {
-				       	console.log(response)
-					}).then(result => {
-					for (key in result) {
-						this[key] = result[key];
-					}
-				this.project_lookup = {};
-				for (var i = 0; i < this.projects.length; i++) {
-					this.project_lookup[this.projects[i].id] = {'corefac': this.projects[i].corefac, 'pi_id': this.projects[i].pi_id, 'name': this.projects[i].name};
-					}
-			       	})
-	       		},
-			checkOpen: function() {
-				this.isOpen = this.loaded;
-			},
 			project_selected: function() {
-				if (this.project_id) {
-					this.existingproject_iscf = this.project_lookup[this.project_id].corefac;
-					this.pi_id = this.project_lookup[this.project_id].pi_id;
+				if (this.pdata.project_id) {
+					this.pdata.existingproject_iscf = this.pdata.project_lookup[this.pdata.project_id].corefac;
+					this.pdata.pi_id = this.pdata.project_lookup[this.pdata.project_id].pi_id;
 				}
 			},
 		       	toggle_project: function() {
@@ -769,23 +679,23 @@
 			},
 			validate: function() {
 				this.errors = [];
-				if (!this.newprojectname && !this.project_id) {
+				if (!this.newprojectname && !this.pdata.project_id) {
 					this.errors.push('Project needs to be selected or created');
 				}
-				if (!this.newexperimentname && !this.experiment_id) {
+				if (!this.newexperimentname && !this.pdata.experiment_id) {
 					this.errors.push('Experiment is required');
 				}
-				if (!this.datatype_id) {
+				if (!this.pdata.datatype_id) {
 					this.errors.push('Datatype is required');
 				}
-				if (this.datatype_id === '1' && !this.hiriefrange) {
+				if (this.pdata.datatype_id === '1' && !this.pdata.hiriefrange) {
 					this.errors.push('HiRIEF range is required');
 				}
 				if (this.is_corefac) {
-					if (!this.newpiname && !this.pi_id) {
+					if (!this.newpiname && !this.pdata.pi_id) {
 						this.errors.push('Need to select or create a PI');
 					}
-					if (!this.externalcontactmail) {
+					if (!this.pdata.externalcontactmail) {
 						this.errors.push('External contact is required');
 					}
 				}
@@ -838,8 +748,111 @@
 				},
 				})
 		
-	var motherapp = new Vue({
+	var datasetapp = new Vue({
 	el: '#apps',
+	data: function() {
+		return {
+			tabclassDef: 'is-active',
+			tabclassFiles: '',
+			tabclassAcq: '',
+			tabclassSP: '',
+			viewtab: 'definition',
+			projdata: {
+				projects: [],
+				external_pis: [],
+				datasettypes: [],
+				internal_pi_id: '',
+				pi_id: '',
+				hirief_ranges: [],
+				project_id: '',
+				datatype_id: '',
+				hiriefrange: '',
+				experiment_id: '',
+				experiments: {},
+				existingproject_iscf: false,
+				externalcontactmail: '',
+				runname: '',
+				storage_location: '',
+				},
+			acqdata: {
+				params: [],
+				operators: [],
+				operator_id: '',
+				},
+			filesdata: {
+				newFiles: [],
+				datasetAssociatedFiles: [],
+				},
+			sampledata: {
+				no_enzyme: false,
+				labelfree_multisample: false,
+				show_enzymes: [],
+				quants: {},
+				params: [],
+				enzymes: [],
+				quanttype: '',
+				samples: {},
+				},
+			dataset_id: '{{ dataset_id }}',
+		}
+	},
+	mounted: function() {
+		this.fetchProject();
+		this.fetchFiles();
+		this.fetchGeneral('/datasets/show/sampleprep/' + this.dataset_id, this.sampledata);
+		this.fetchGeneral('/datasets/show/acquisition/' + this.dataset_id, this.acqdata);
+	},
+	methods: {
+		showDef: function() {
+			this.viewtab = 'definition';
+		},
+		showFiles: function() {
+			this.viewtab = 'files';
+		},
+		showAcquisition: function() {
+			this.viewtab = 'acquisition';
+		},
+		showSP: function() {
+			this.viewtab = 'sampleprep';
+		},
+		fetchData: function(url) {
+			return this.$http.get(url)
+			},
+		fetchProject: function() {
+			this.fetchData('/datasets/show/project/' + this.dataset_id)
+				.then(response => {
+					return response.json()
+					}, response => {
+					console.log(response)
+					}).then(result => {
+					for (key in result) {
+						this.projdata[key] = result[key];
+					}
+				this.projdata.project_lookup = {};
+				for (var i = 0; i < result.projects.length; i++) {
+					this.project_lookup[result.projects[i].id] = {'corefac': result.projects[i].corefac, 'pi_id': result.projects[i].pi_id, 'name': result.projects[i].name};
+					}
+				})
+			},
+
+		fetchFiles: function() {
+			this.fetchGeneral('/datasets/show/files/' + this.dataset_id, this.filesdata);
+		},
+		fetchGeneral: function(url, store) {
+			this.fetchData(url)
+				.then(response => {
+					return response.json()
+					}, response => {
+					console.log(response)
+					}).then(result => {
+					for (key in result) {
+						if (key !== '') {
+							store[key] = result[key];
+						}
+					}
+				})
+			},
+	},
 	})
 </script>
 {% endblock content %}
