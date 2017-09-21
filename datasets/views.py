@@ -295,6 +295,7 @@ def dataset_proj_json(dset, project):
             'project_id': project.id,
             'existingproject_iscf': project.corefac,
             'datatype_id': dset.datatype_id,
+            'storage_location': get_storage_location(dset, project),
             }
 
 
@@ -304,6 +305,15 @@ def cf_dataset_proj_json(dset_mail):
 
 def hr_dataset_proj_json(hirief_ds):
     return {'hiriefrange': hirief_ds.hirief_id}
+
+
+def get_storage_location(dset, project):
+    exp = dset.runname.experiment.name
+    if hasattr(dset, 'hiriefdataset'):
+        return '{}/{}/{}/{}'.format(project.name, exp, str(dset.hiriefdataset),
+                                    dset.runname.name)
+    else:
+        return '{}/{}/{}'.format(project.name, exp, dset.runname.name)
 
 
 def empty_sampleprep_json():

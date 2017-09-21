@@ -182,6 +182,9 @@ class HiriefDataset(models.Model):
     dataset = models.OneToOneField(Dataset)
     hirief = models.ForeignKey(HiriefRange)
 
+    def __str__(self):
+        return '{}_{}'.format(self.hirief.start, self.hirief.end)
+
 
 class CorefacDatasetContact(models.Model):
     dataset = models.OneToOneField(Dataset)
