@@ -200,7 +200,7 @@ def update_dataset(data):
             dset.corefacdatasetcontact.save()
     # FIXME delete old project if no experiment? Or only admin?
     # FIXME delete old experiment if no datasets ?
-    return HttpResponse()
+    return JsonResponse({'dataset_id': dset.id})
 
 
 def newproject_save(data):
