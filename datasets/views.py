@@ -163,21 +163,20 @@ def update_dataset(data):
         'runname__experiment', 'datatype').get(pk=data['dataset_id'])
     if 'newprojectname' in data:
         project = newproject_save(data)
-        project_id = project.id
     else:
-        project_id = data['project_id']
+        project = models.Project.objects.get(pk=data['project_id'])
+    newexp = False
     if 'newexperimentname' in data:
         experiment = models.Experiment(name=data['newexperimentname'],
-                                       project_id=project_id)
+                                       project=project)
         experiment.save()
-        exp_id = experiment.id
-        dset.runname.experiment_id = exp_id
+        dset.runname.experiment = experiment
         newexp = True
-    elif data['experiment_id'] != dset.runname.experiment_id:
-        newexp = True
-        dset.runname.experiment_id = data['experiment_id']
     else:
-        newexp = False
+        experiment = models.Experiment.objects.get(pk=data['experiment_id'])
+        if data['experiment_id'] != dset.runname.experiment_id:
+            newexp = True
+            dset.runname.experiment = experiment
     if data['runname'] != dset.runname.name or newexp:
         # Save if new experiment AND/OR new name Runname coupled 1-1 to dataset
         print('Update data')
@@ -188,11 +187,18 @@ def update_dataset(data):
     if dset.datatype_id == hrf_id and dset.datatype_id != data['datatype_id']:
         models.HiriefDataset.objects.get(
             dataset_id=data['dataset_id']).delete()
+    elif dset.datatype_id != hrf_id and data['datatype_id'] == hrf_id:
+        hrds = models.HiriefDataset(dataset=dset,
+                                    hirief_id=data['hiriefrange'])
+        hrds.save()
     elif data['datatype_id'] == hrf_id:
         if dset.hiriefdataset.hirief_id != data['hiriefrange']:
             dset.hiriefdataset.hirief_id = data['hiriefrange']
             dset.hiriefdataset.save()
     dset.datatype_id = data['datatype_id']
+    is_hirief = True if data['datatype_id'] == hrf_id else False
+    dset.storage_loc = get_storage_location(project, experiment, dset.runname,
+                                            is_hirief, data)
     dset.save()
     if data['is_corefac']:
         if dset.corefacdatasetcontact.email != data['corefaccontact']:
@@ -217,6 +223,15 @@ def newproject_save(data):
     return project
 
 
+def get_storage_location(project, exp, runname, is_hirief, postdata):
+    if is_hirief:
+        hr = models.HiriefRange.objects.get(
+            pk=postdata['hiriefrange']).get_path()
+        return '{}/{}/{}/{}'.format(project.name, exp.name, runname.name, hr)
+    else:
+        return '{}/{}/{}'.format(project.name, exp.name, runname.name)
+
+
 @login_required
 def save_dataset(request):
     # FIXME this should also be able to update the dataset, and diff against an
@@ -233,16 +248,19 @@ def save_dataset(request):
         experiment = models.Experiment(name=data['newexperimentname'],
                                        project_id=project.id)
         experiment.save()
-        exp_id = experiment.id
     else:
-        exp_id = data['experiment_id']
-    runname = models.RunName(name=data['runname'], experiment_id=exp_id)
+        experiment = models.Experiment.objects.get(pk=data['experiment_id'])
+    runname = models.RunName(name=data['runname'], experiment=experiment)
     runname.save()
+    hrf_id = models.Datatype.objects.get(name__icontains='HiRIEF').id
+    is_hirief = True if data['datatype_id'] == hrf_id else False
     dset = models.Dataset(user_id=request.user.id, date=datetime.now(),
                           runname_id=runname.id,
+                          storage_loc=get_storage_location(
+                              project, experiment, runname, is_hirief, data),
                           datatype_id=data['datatype_id'])
     dset.save()
-    if dset.datatype_id == 1:
+    if dset.datatype_id == hrf_id:
         hrds = models.HiriefDataset(dataset=dset,
                                     hirief_id=data['hiriefrange'])
         hrds.save()
@@ -295,7 +313,7 @@ def dataset_proj_json(dset, project):
             'project_id': project.id,
             'existingproject_iscf': project.corefac,
             'datatype_id': dset.datatype_id,
-            'storage_location': get_storage_location(dset, project),
+            'storage_location': dset.storage_loc,
             }
 
 
@@ -305,15 +323,6 @@ def cf_dataset_proj_json(dset_mail):
 
 def hr_dataset_proj_json(hirief_ds):
     return {'hiriefrange': hirief_ds.hirief_id}
-
-
-def get_storage_location(dset, project):
-    exp = dset.runname.experiment.name
-    if hasattr(dset, 'hiriefdataset'):
-        return '{}/{}/{}/{}'.format(project.name, exp, str(dset.hiriefdataset),
-                                    dset.runname.name)
-    else:
-        return '{}/{}/{}'.format(project.name, exp, dset.runname.name)
 
 
 def empty_sampleprep_json():

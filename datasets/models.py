@@ -47,6 +47,7 @@ class Dataset(models.Model):
     date = models.DateTimeField('date created')
     runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
+    storage_loc = models.TextField(max_length=200)
 
 
 class DatasetComponentState(models.Model):
@@ -177,13 +178,13 @@ class HiriefRange(models.Model):
     def __str__(self):
         return '{} - {}'.format(self.start, self.end)
 
+    def get_path(self):
+        return '{}_{}'.format(self.start, self.end)
+
 
 class HiriefDataset(models.Model):
     dataset = models.OneToOneField(Dataset)
     hirief = models.ForeignKey(HiriefRange)
-
-    def __str__(self):
-        return '{}_{}'.format(self.hirief.start, self.hirief.end)
 
 
 class CorefacDatasetContact(models.Model):
