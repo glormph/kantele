@@ -33,11 +33,27 @@ class Datatype(models.Model):
         return self.name
 
 
+class DatasetComponent(models.Model):
+    name = models.TextField(max_length=50, unique=True)
+
+
+class DatatypeComponent(models.Model):
+    datatype = models.ForeignKey(Datatype)
+    component = models.ForeignKey(DatasetComponent)
+
+
 class Dataset(models.Model):
     user = models.ForeignKey(User)
     date = models.DateTimeField('date created')
     runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
+
+
+class DatasetComponentState(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    dtcomp = models.ForeignKey(DatatypeComponent)
+    state = models.TextField(max_length=20)
+    # state can be new, OK
 
 
 class DatasetRawFile(models.Model):

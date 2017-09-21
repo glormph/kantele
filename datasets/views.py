@@ -250,6 +250,17 @@ def save_dataset(request):
         dset_mail = models.CorefacDatasetContact(dataset=dset,
                                                  email=data['corefaccontact'])
         dset_mail.save()
+    dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
+                                                  component__name='definition')
+    models.DatasetComponentState.objects.create(dtcomp=dtcomp,
+                                                dataset_id=dset.id,
+                                                state=COMPSTATE_OK)
+    models.DatasetComponentState.objects.bulk_create([
+        models.DatasetComponentState(
+            dtcomp=x, dataset_id=dset.id, state=COMPSTATE_NEW) for x in
+        models.DatatypeComponent.objects.filter(
+            datatype_id=dset.datatype_id).exclude(
+            component__name='definition')])
     return JsonResponse({'dataset_id': dset.id})
 
 
@@ -391,6 +402,10 @@ def save_files(request):
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
+    comp = models.DatasetComponentState.objects.get(
+        dataset_id=dset_id, dtcomp__component__name='files')
+    comp.state = COMPSTATE_OK
+    comp.save()
     return HttpResponse()
 
 
@@ -413,6 +428,10 @@ def save_acquisition(request):
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
+    comp = models.DatasetComponentState.objects.get(
+        dataset_id=dset_id, dtcomp__component__name='acquisition')
+    comp.state = COMPSTATE_OK
+    comp.save()
     return HttpResponse()
 
 
@@ -525,6 +544,10 @@ def save_sampleprep(request):
             models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][fid])
             for fid in [x['associd'] for x in data['filenames'].values()]])
     save_admin_defined_params(data, dset_id)
+    comp = models.DatasetComponentState.objects.get(
+        dataset_id=dset_id, dtcomp__component__name='sampleprep')
+    comp.state = COMPSTATE_OK
+    comp.save()
     return HttpResponse()
 
 
