@@ -402,10 +402,13 @@ def save_files(request):
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
-    comp = models.DatasetComponentState.objects.get(
-        dataset_id=dset_id, dtcomp__component__name='files')
-    comp.state = COMPSTATE_OK
-    comp.save()
+    # If files changed and labelfree, set sampleprep component status
+    # to not good. Which should update the tab colour (green to red)
+    if (added_fnids or removed_ids) and models.Dataset.objects.select_related(
+            'quantdataset__quanttype').get(
+            pk=dset_id).quantdataset.quanttype.name == 'labelfree':
+        set_component_state(dset_id, 'sampleprep', COMPSTATE_INCOMPLETE)
+    set_component_state(dset_id, 'files', COMPSTATE_OK)
     return HttpResponse()
 
 
@@ -428,10 +431,7 @@ def save_acquisition(request):
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
-    comp = models.DatasetComponentState.objects.get(
-        dataset_id=dset_id, dtcomp__component__name='acquisition')
-    comp.state = COMPSTATE_OK
-    comp.save()
+    set_component_state(dset_id, 'acquisition', COMPSTATE_OK)
     return HttpResponse()
 
 
@@ -511,6 +511,7 @@ def update_sampleprep(data, qtype):
         # delete non-existing qsf (files have been popped)
         [qsf.delete() for qsf in oldqsf.values()]
     dset = models.Dataset.objects.get(pk=dset_id)
+    set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
     update_admin_defined_params(dset, data, 'sampleprep')
     return HttpResponse()
 
@@ -542,13 +543,17 @@ def save_sampleprep(request):
             print('No multisample')
         models.QuantSampleFile.objects.bulk_create([
             models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][fid])
-            for fid in [x['associd'] for x in data['filenames'].values()]])
+            for fid in [x['associd'] for x in data['filenames']]])
     save_admin_defined_params(data, dset_id)
-    comp = models.DatasetComponentState.objects.get(
-        dataset_id=dset_id, dtcomp__component__name='sampleprep')
-    comp.state = COMPSTATE_OK
-    comp.save()
+    set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
     return HttpResponse()
+
+
+def set_component_state(dset_id, compname, state):
+    comp = models.DatasetComponentState.objects.get(
+        dataset_id=dset_id, dtcomp__component__name=compname)
+    comp.state = state
+    comp.save()
 
 
 def update_admin_defined_params(dset, data, category):
