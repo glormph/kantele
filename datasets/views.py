@@ -55,7 +55,8 @@ def dataset_files(request, dataset_id):
             {'datasetAssociatedFiles':
              {'id_{}'.format(x.rawfile_id):
               {'id': x.rawfile_id, 'name': x.rawfile.name, 'associd': x.id,
-               'instrument': x.rawfile.producer.name, 'date': x.rawfile.date}
+               'instrument': x.rawfile.producer.name, 'date': x.rawfile.date,
+               'checked': False}
               for x in models.DatasetRawFile.objects.select_related(
                   'rawfile__producer').filter(dataset_id=dataset_id)}})
     return JsonResponse(response_json)

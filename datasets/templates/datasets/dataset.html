@@ -284,7 +284,7 @@
 					<tr>
 						<th>
 					<div class="control">
-						<input type="checkbox" v-show="!showDatasetFiles">
+						<input type="checkbox" v-show="!showDatasetFiles" v-on:click="selectAll">
 					</div>
 			</th>
 						<th>Filename</th>
@@ -307,7 +307,7 @@
 						<td>{{ file.date }}</td>
 						{% endverbatim %}
 					</tr>
-					<tr v-for="file in showingNewFiles()" v-if="!showDatasetFiles" v-show="filtered_files(file)">
+					<tr v-for="file in showingNewFiles" v-if="!showDatasetFiles" v-show="filtered_files(file)">
 						<td>
 							<div class="control">
 								<input v-model="file.checked" type="checkbox">
@@ -330,6 +330,7 @@
 		data: function() {return {
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
+			allSelector: false,
 		}
 		},
 		computed: {
@@ -339,7 +340,14 @@
 			isOk: function() {
 				return false;
 			},
-		// sort file list
+			showingNewFiles: function() {
+				var val = Object.assign({}, this.fndata.newFiles, this.fndata.removedFiles)
+				for (key in this.fndata.addedFiles) {
+					delete val[key];
+				}
+				return val
+			},
+		// FIXME sort file list
 		},
 		methods: {
 			toggleFileView: function() {
@@ -352,15 +360,19 @@
 					}
 				return val
 				},
-			showingNewFiles: function() {
-				var val = Object.assign({}, this.fndata.newFiles, this.fndata.removedFiles)
-				for (key in this.fndata.addedFiles) {
-					delete val[key];
-					}
-				return val
-				},
+			selectAll: function() {
+				this.allSelector = this.allSelector === false;
+				for (key in this.showingNewFiles) {
+					file = this.showingNewFiles[key];
+					if (this.filtered_files(file) && this.allSelector) {
+						file.checked = true;
+						} else {
+						file.checked = false;
+						}
+				}
+			},
 			addFiles: function() {
-				shownew = this.showingNewFiles();
+				shownew = this.showingNewFiles;
 				add_from_remove = []
 				for (key in shownew) {
 					if (shownew[key].checked) {
