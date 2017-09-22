@@ -3,17 +3,62 @@
 <section id="apps">
 <div class="tabs is-toggle is-centered is-small">
 	<ul>
-		<li v-bind:class="tabclassDef"><a v-on:click="showDef" >Definition</a></li>
-		<li v-bind:class="tabclassFiles"><a  v-on:click="showFiles">Files</a></li>
-		<li v-bind:class="tabclassAcq"><a v-on:click="showAcquisition">Acquisition</a></li>
-		<li v-bind:class="tabclassSP"><a v-on:click="showSP">Sample prep</a></li>
+		<li v-bind:class="tabclassDef"><a v-on:click="showDef">
+				<span v-show="definition_state === 'ok'" class="icon is-small">
+					<i  class="fa fa-check"></i>
+				</span>
+				<span v-show="definition_state === 'new'" class="icon is-small">
+					<i  class="fa fa-pencil"></i>
+				</span>
+				<span v-show="dataset_id === ''" class="icon is-small">
+					<i class="fa fa-times"></i>
+				</span>
+				<span>Definition</span>
+		</a></li>
+		<li v-bind:class="tabclassFiles">
+			<a v-on:click="showFiles">
+				<span v-show="files_state === 'ok'" class="icon is-small">
+					<i  class="fa fa-check"></i>
+				</span>
+				<span v-show="files_state === 'new'" class="icon is-small">
+					<i  class="fa fa-pencil"></i>
+				</span>
+				<span v-show="dataset_id === ''" class="icon is-small">
+					<i class="fa fa-times"></i>
+				</span>
+				<span>Files</span>
+			</a>
+		</li>
+		<li v-bind:class="tabclassAcq"><a v-on:click="showAcquisition">
+				<span v-show="acquisition_state === 'ok'" class="icon is-small">
+					<i  class="fa fa-check"></i>
+				</span>
+				<span v-show="acquisition_state === 'new'" class="icon is-small">
+					<i  class="fa fa-pencil"></i>
+				</span>
+				<span v-show="dataset_id === ''" class="icon is-small">
+					<i class="fa fa-times"></i>
+				</span>
+				<span>Acquisition</span>
+		</a></li>
+		<li v-bind:class="tabclassSP"><a v-on:click="showSP">
+				<span v-show="sampleprep_state === 'ok'" class="icon is-small">
+					<i  class="fa fa-check"></i>
+				</span>
+				<span v-show="sampleprep_state === 'new'" class="icon is-small">
+					<i  class="fa fa-pencil"></i>
+				</span>
+				<span v-show="dataset_id === '' || sampleprep_state === 'incomplete'" class="icon is-small">
+					<i class="fa fa-times"></i>
+				</span>
+				<span>Sample prep</span></a></li>
 	</ul>
 </div>
 <div class="container">
-		<project-box v-show="viewtab === 'definition'" v-bind:dset_id="dataset_id" v-bind:pdata="projdata"></project-box>
-		<acquisition-box v-show="viewtab === 'acquisition'" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
-		<files-box v-show="viewtab === 'files'" v-bind:dset_id="dataset_id" v-bind:fndata="filesdata"></files-box>
-		<sampleprep-box v-show="viewtab === 'sampleprep'" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
+		<project-box v-on:save="save_definition" v-show="viewtab === 'definition'" v-bind:dset_id="dataset_id" v-bind:pdata="projdata"></project-box>
+		<acquisition-box v-on:save="save_acquisition" v-show="viewtab === 'acquisition'" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
+		<files-box v-on:save="save_files" v-show="viewtab === 'files'" v-bind:dset_id="dataset_id" v-bind:fndata="filesdata"></files-box>
+		<sampleprep-box v-on:save="save_sampleprep" v-show="viewtab === 'sampleprep'" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
 </div>
 </section>
 
@@ -44,9 +89,9 @@
 			</div> 
 			<div class="field">
 				<label class="label">Enzymes</label>
-				<input type="checkbox" v-model="spdata.o_enzyme">No enzyme
+				<input type="checkbox" v-model="spdata.no_enzyme">No enzyme
 				{% verbatim %}
-				<div class="control" v-for="enzyme in spdata.show_enzymes" v-show="!spdata.o_enzyme">
+				<div class="control" v-for="enzyme in spdata.show_enzymes" v-show="!spdata.no_enzyme">
 					<input v-bind:value="enzyme.id" v-model="spdata.enzymes" type="checkbox">{{ enzyme.name }}
 				</div>
 				{% endverbatim %}
@@ -147,6 +192,7 @@
 				for (key in this.assoc_filenames) {
 					fns.push(this.assoc_filenames[key]);
 					}
+				this.spdata.filenames = fns;
 				return fns
 			},
 			labelfree_quant_id: function() {
@@ -162,36 +208,38 @@
 			validate: function() {
 				this.errors = [];
 				// FIXME quant type and sample names
-				if (!this.spdata.no_enzyme && !this.enzymes) {
+				if (!this.spdata.no_enzyme && !this.spdata.enzymes.length) {
 					this.errors.push('Enzyme selection is required');
 				}
-				if (!this.quanttype) {
+				if (!this.spdata.quanttype) {
 					this.errors.push('Quant type selection is required');
 				}
-				if (this.labelfree_quant_id === this.quanttype) {
-					if (this.labelfree_multisample) {
+				if (this.labelfree_quant_id === this.spdata.quanttype) {
+					this.spdata.labelfree = true;
+					if (this.spdata.labelfree_multisample) {
 						for (fn of this.filenames) {
-							if (!this.samples[fn.associd]) {
+							if (!this.spdata.samples[fn.associd]) {
 								this.errors.push('Labelfree multi-sample requires sample name for each file');
 								break;
 							}
 								
 					 	}	
 					}
-					else if (!this.quants[this.quanttype].model) {
+					else if (!this.spdata.quants[this.spdata.quanttype].model) {
 						this.errors.push('Labelfree requires sample name');
 						}
 				} else {
-					for (ch of this.quants[this.quanttype].chans) {
+					this.spdata.labelfree = false;
+					for (ch of this.spdata.quants[this.spdata.quanttype].chans) {
 						if (ch.model === '') { 
 							this.errors.push('Sample name for each channel is required');
 							break;
 						}
 					}
 				}
-				for (var i = 0; i < this.params.length; i++) {
-					if (this.params[i].model === "") {
-						this.errors.push(this.params[i].title + ' is required');
+				for (key in this.spdata.params) {
+					if (this.spdata.params[key].model === "") {
+						this.errors.push(this.spdata.params[key].title + ' is required');
 					}
 				}
 				console.log(this.errors);
@@ -202,31 +250,7 @@
 				if (!this.validate()) {
 					return false
 				}
-				data = {
-					dataset_id: this.dset_id,
-					enzymes: this.enzymes,
-					params: this.params,
-					quanttype: this.quanttype,
-					labelfree: this.labelfree_quant_id === this.quanttype,
-				};
-				if (!data.labelfree) {
-					data.samples = this.quants[this.quanttype].chans;
-				} else if (this.labelfree_multisample) {
-					data.multisample = true;
-					data.filenames = this.filenames;
-					data.samples = this.samples;
-				} else {
-					data.multisample = false;
-					data.filenames = this.filenames;
-					data.sample = this.quants[this.quanttype].model;
-				}
-				this.$http.post('/datasets/save/sampleprep/', data
-					).then(response => {
-						console.log(response);
-						this.fetchData();
-					}, response => {
-						console.log(response);
-				});
+				this.$emit('save');
 			},
 		},
 	})
@@ -306,8 +330,6 @@
 		data: function() {return {
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
-			addedFiles: {},
-			removedFiles: {},
 		}
 		},
 		computed: {
@@ -324,15 +346,15 @@
 				this.showDatasetFiles = this.showDatasetFiles === false;
 			},
 			showingAssociatedFiles: function() {
-				var val = Object.assign({}, this.fndata.datasetAssociatedFiles, this.addedFiles)
-				for (key in this.removedFiles) {
+				var val = Object.assign({}, this.fndata.datasetAssociatedFiles, this.fndata.addedFiles)
+				for (key in this.fndata.removedFiles) {
 					delete val[key];
 					}
 				return val
 				},
 			showingNewFiles: function() {
-				var val = Object.assign({}, this.fndata.newFiles, this.removedFiles)
-				for (key in this.addedFiles) {
+				var val = Object.assign({}, this.fndata.newFiles, this.fndata.removedFiles)
+				for (key in this.fndata.addedFiles) {
 					delete val[key];
 					}
 				return val
@@ -343,45 +365,31 @@
 				for (key in shownew) {
 					if (shownew[key].checked) {
 						shownew[key].checked = false;
-						if (key in this.removedFiles) {
+						if (key in this.fndata.removedFiles) {
 							add_from_remove.push(key);
 							} else {
-							this.$set(this.addedFiles, key, shownew[key])
+							this.$set(this.fndata.addedFiles, key, shownew[key])
 							}
 					}
 				}	
-				rmf = Object.assign({}, this.removedFiles);
+				rmf = Object.assign({}, this.fndata.removedFiles);
 				for (i=0; i<add_from_remove.length; i++) {
 					delete rmf[key];
 				}
-				this.removedFiles = rmf;
+				this.fndata.removedFiles = rmf;
 			},
 			removeFile: function(file) {
 				file_id = 'id_' + file.id
-				if (file_id in this.addedFiles) {
-					addf = Object.assign({}, this.addedFiles)
+				if (file_id in this.fndata.addedFiles) {
+					addf = Object.assign({}, this.fndata.addedFiles)
 					delete addf[file_id];
-					this.addedFiles = addf;
+					this.fndata.addedFiles = addf;
 					} else {
-					this.$set(this.removedFiles, file_id, file);
+					this.$set(this.fndata.removedFiles, file_id, file);
 					}
 			},
 			save: function() {
-				data = {
-					'dataset_id': this.dset_id,
-					'added_files': this.addedFiles,
-					'removed_files': this.removedFiles,
-					}
-				this.$http.post('/datasets/save/files/', data
-					).then(response => {
-						this.fetchData();
-					}, response => {
-					console.log(response);
-					})
-				// call save URL with vue-resource, 
-				// include values of project.
-				// Parse response ok or not.
-				// Show error or green and rollup.
+				this.$emit('save');
 			},
 			filtered_files: function(file) {
 				return file.name.indexOf(this.filefilterString) > -1
@@ -467,26 +475,14 @@
 		},
 	},
 	methods: {
-		fetchData: function() {
-			this.$http.get('/datasets/show/acquisition/' + this.dset_id)
-			.then(response => {
-				return response.json()
-				}, response => {
-				console.log(response)
-				}).then(result => {
-				for (key in result) {
-					this[key] = result[key];
-				}
-			})
-	       	},
 		validate: function() {
 			this.errors = [];
-			if (!this.operator_id) {
+			if (!this.acqdata.operator_id) {
 				this.errors.push('Operator is required');
 			}
-			for (var i = 0; i < this.params.length; i++) {
-				if (this.params[i].model === "") {
-					this.errors.push(this.params[i].title + ' is required');
+			for (key in this.acqdata.params) {
+				if (this.acqdata.params[key].model === "") {
+					this.errors.push(this.acqdata.params[key].title + ' is required');
 				}
 			}
 			console.log(this.errors);
@@ -497,18 +493,7 @@
 			if (!this.validate()) {
 				return false
 			}
-			data = {
-				dataset_id: this.dset_id,
-				operator_id: this.operator_id,
-				params: this.params,
-			};
-			this.$http.post('/datasets/save/acquisition/', data
-				).then(response => {
-					console.log(response);
-					this.fetchData();
-				}, response => {
-				console.log(response);
-			});
+			this.$emit	('save');
 			},
 		
 		},
@@ -530,11 +515,11 @@
 					</ul>
 				</div>
 			</article>
-			<div class="title is-5">Project
+			<div class="title is-5">Definition
 				<a class="button is-danger is-small" v-on:click="save">Save</a>
 			</div>
 		<div class="field">
-			<label class="label">Name
+			<label class="label">Project
 			<a class="button is-danger is-outlined is-small" v-show="isNewProject" v-on:click="toggle_project">Use existing project</a>
 			<a class="button is-danger is-outlined is-small" v-show="!isNewProject" v-on:click="toggle_project">Create new project</a>
 	</label>
@@ -550,7 +535,7 @@
 			</div>
 			<template v-if="isNewProject">
 			<div class="control">
-				<input class="input" v-model="newprojectname" type="text" placeholder="Project name">
+				<input class="input" v-model="pdata.newprojectname" type="text" placeholder="Project name">
 			</div>
 		        <div class="field">
 		        	<div class="control">
@@ -574,16 +559,16 @@
 			<template v-if="isNewProject">
 			<div class="control" v-if="!isNewPI">
 				<div class="select">
-					<select v-model="externpi">
+					<select v-model="pdata.externpi">
 						<option disabled value="">Please select one</option>
 						{% verbatim %}
-						<option v-for="externpi in pdata.external_pis" v-bind:value="externpi.id">{{ externpi.name }}</option>
+						<option v-for="expi in pdata.external_pis" v-bind:value="expi.id">{{ expi.name }}</option>
 						{% endverbatim %}
 					</select>
 				</div>
 			</div>
 			<div class="control" v-if="isNewPI">
-				<input class="input" v-model="newpiname" type="text" placeholder="PI name">
+				<input class="input" v-model="pdata.newpiname" type="text" placeholder="PI name">
 			</div>
 			</template>
 			<div class="control">
@@ -607,7 +592,7 @@
 				</div>
 			</div>
 			<div class="control" v-if="isNewExperiment">
-				<input class="input" v-model="newexperimentname" type="text" placeholder="Experiment name">
+				<input class="input" v-model="pdata.newexperimentname" type="text" placeholder="Experiment name">
 			</div>
 		</div>
 		
@@ -643,7 +628,7 @@
 				<input class="input" v-model="pdata.runname" type="text" placeholder="E.g set1, run1, etc">
 			</div>
 		</div>
-		<article class="message is-success"> 
+		<article class="message is-info"> 
 		<div class="message-header">Storage location</div>
 		{% verbatim %}
 		<div class="message-body">{{ pdata.storage_location }}</div>
@@ -658,20 +643,21 @@
 		return {
 			errors: [],
 			isOpen: true,
-		       	isNewProject: false,
-		       	isNewExperiment: false,
+			isNewProject: false,
+			isNewExperiment: false,
 			isNewPI: false,
-			newprojectname: '',
-			newexperimentname: '',
 			newproject_iscf: false,
-			externpi: '',
-			newpiname: '',
 			}
 		},
 		computed: {
 		is_corefac: function() {
-			if (this.isNewProject) {return this.newproject_iscf}
-			else {return this.pdata.existingproject_iscf}
+			if (this.isNewProject) {
+				this.pdata.is_corefac = this.newproject_iscf;
+				return this.newproject_iscf}
+			else {
+				this.pdata.is_corefac = this.pdata.existingproject_iscf;
+				return this.pdata.existingproject_iscf}
+			
 			},
 		proj_experiments: function() {
 			return !this.pdata.project_id ? [] : this.pdata.experiments[this.pdata.project_id]
@@ -686,19 +672,22 @@
 			},
 		       	toggle_project: function() {
 				this.isNewProject = this.isNewProject === false;
+				this.pdata.isNewProject = this.isNewProject;
 		       	},
 			toggle_experiment: function() {
 				this.isNewExperiment = this.isNewExperiment === false;
+				this.pdata.isNewExperiment = this.isNewExperiment;
 			},
 		       	new_pi: function() {
 				this.isNewPI = this.isNewPI === false;
+				this.pdata.isNewPI = this.isNewPI;
 			},
 			validate: function() {
 				this.errors = [];
-				if (!this.newprojectname && !this.pdata.project_id) {
+				if (!this.pdata.newprojectname && !this.pdata.project_id) {
 					this.errors.push('Project needs to be selected or created');
 				}
-				if (!this.newexperimentname && !this.pdata.experiment_id) {
+				if (!this.pdata.newexperimentname && !this.pdata.experiment_id) {
 					this.errors.push('Experiment is required');
 				}
 				if (!this.pdata.datatype_id) {
@@ -708,7 +697,7 @@
 					this.errors.push('HiRIEF range is required');
 				}
 				if (this.is_corefac) {
-					if (!this.newpiname && !this.pdata.pi_id) {
+					if (!this.pdata.newpiname && !this.pdata.pi_id) {
 						this.errors.push('Need to select or create a PI');
 					}
 					if (!this.pdata.externalcontactmail) {
@@ -723,43 +712,7 @@
 				if (!this.validate()) {
 					return false
 				}
-				data = {
-					dataset_id: this.dataset_id,
-					is_corefac: this.is_corefac,
-					datatype_id: this.datatype_id,
-					hiriefrange: this.hiriefrange,
-					runname: this.runname,
-				};
-				if (this.isNewProject) {
-					data.newprojectname = this.newprojectname;
-					} else {
-					data.project_id = this.project_id;
-					}
-				if (this.isNewExperiment) {
-				data.newexperimentname = this.newexperimentname;
-				} else {
-			       	data.experiment_id = this.experiment_id;
-				}
-				if (this.isNewPI) {
-				data.newpiname = this.newpiname;
-				} else {
-				data.pi_id = this.is_corefac ? this.externpi: this.internal_pi_id;
-				}
-				if (this.is_corefac) {
-				data.corefaccontact = this.externalcontactmail;
-				}
-				this.$http.post('/datasets/save/project/', data
-					).then(response => {
-					       	this.isNewProject = false;
-					       	this.isNewExperiment = false;
-						this.isNewPI = false;
-						return response.json()
-					}, response => {
-					console.log(response);
-					}).then(result => {
-						this.dataset_id = result.dataset_id;
-						this.fetchData();
-				})
+				this.$emit('save');
 			},
 				},
 				})
@@ -773,6 +726,10 @@
 			tabclassAcq: '',
 			tabclassSP: '',
 			viewtab: 'definition',
+			definition_state: '',
+			acquisition_state: '',
+			sampleprep_state: '',
+			files_state: '',
 			projdata: {
 				projects: [],
 				external_pis: [],
@@ -786,25 +743,34 @@
 				experiment_id: '',
 				experiments: {},
 				existingproject_iscf: false,
+				externpi: '',
 				externalcontactmail: '',
 				runname: '',
 				storage_location: '',
+				isNewProject: false,
+				isNewExperiment: false,
+				isNewPI: false,
+				newprojectname: '',
+				newexperimentname: '',
+				newpiname: '',
 				},
 			acqdata: {
-				params: [],
+				params: {},
 				operators: [],
 				operator_id: '',
 				},
 			filesdata: {
 				newFiles: [],
 				datasetAssociatedFiles: [],
+				addedFiles: {},
+				removedFiles: {},
 				},
 			sampledata: {
 				no_enzyme: false,
 				labelfree_multisample: false,
 				show_enzymes: [],
 				quants: {},
-				params: [],
+				params: {},
 				enzymes: [],
 				quanttype: '',
 				samples: {},
@@ -815,8 +781,9 @@
 	mounted: function() {
 		this.fetchProject();
 		this.fetchFiles();
-		this.fetchGeneral('/datasets/show/sampleprep/' + this.dataset_id, this.sampledata);
-		this.fetchGeneral('/datasets/show/acquisition/' + this.dataset_id, this.acqdata);
+		this.fetchGeneral('sampleprep', this.sampledata);
+		this.fetchGeneral('acquisition',  this.acqdata);
+		this.fetchStates();
 	},
 	methods: {
 		showDef: function() {
@@ -857,15 +824,21 @@
 					}
 				this.projdata.project_lookup = {};
 				for (var i = 0; i < result.projects.length; i++) {
-					this.project_lookup[result.projects[i].id] = {'corefac': result.projects[i].corefac, 'pi_id': result.projects[i].pi_id, 'name': result.projects[i].name};
+					this.projdata.project_lookup[result.projects[i].id] = {'corefac': result.projects[i].corefac, 'pi_id': result.projects[i].pi_id, 'name': result.projects[i].name};
 					}
 				})
 			},
 
 		fetchFiles: function() {
-			this.fetchGeneral('/datasets/show/files/' + this.dataset_id, this.filesdata);
+			this.fetchGeneral('files', this.filesdata);
+			this.filesdata.addedFiles = {};
+			this.filesdata.removedFiles = {};
 		},
-		fetchGeneral: function(url, store) {
+		fetchStates: function() {
+			this.fetchGeneral('components', this);
+		},
+		fetchGeneral: function(category, store) {
+			url = '/datasets/show/' + category + '/' + this.dataset_id;
 			this.fetchData(url)
 				.then(response => {
 					return response.json()
@@ -879,6 +852,104 @@
 					}
 				})
 			},
+
+		save_definition: function() {
+			data = {
+				dataset_id: this.dataset_id,
+				is_corefac: this.projdata.is_corefac,
+				datatype_id: this.projdata.datatype_id,
+				hiriefrange: this.projdata.hiriefrange,
+				runname: this.projdata.runname,
+			};
+			if (this.projdata.isNewProject) {
+				data.newprojectname = this.projdata.newprojectname;
+				} else {
+				data.project_id = this.projdata.project_id;
+				}
+			if (this.projdata.isNewExperiment) {
+			data.newexperimentname = this.projdata.newexperimentname;
+			} else {
+			data.experiment_id = this.projdata.experiment_id;
+			}
+			if (this.projdata.isNewPI) {
+			data.newpiname = this.projdata.newpiname;
+			} else {
+			data.pi_id = this.projdata.is_corefac ? this.projdata.externpi: this.projdata.internal_pi_id;
+			}
+			if (this.projdata.is_corefac) {
+			data.corefaccontact = this.projdata.externalcontactmail;
+			}
+			this.$http.post('/datasets/save/project/', data
+				).then(response => {
+					this.projdata.isNewProject = false;
+					this.projdata.isNewExperiment = false;
+					this.projdata.isNewPI = false;
+					return response.json()
+				}, response => {
+				console.log(response);
+				}).then(result => {
+					this.dataset_id = result.dataset_id;
+					this.fetchProject();
+					this.fetchStates();
+			})
+		},
+		save_files: function() {
+			data = {
+				'dataset_id': this.dataset_id,
+				'added_files': this.filesdata.addedFiles,
+				'removed_files': this.filesdata.removedFiles,
+				}
+			this.$http.post('/datasets/save/files/', data
+				).then(response => {
+					this.fetchFiles();
+					this.fetchStates();
+				}, response => {
+				console.log(response);
+				})
+		},
+		save_acquisition: function() {
+			data = {
+				dataset_id: this.dataset_id,
+				operator_id: this.acqdata.operator_id,
+				params: this.acqdata.params,
+			};
+			this.$http.post('/datasets/save/acquisition/', data
+				).then(response => {
+					console.log(response);
+					this.fetchGeneral('acquisition', this.acqdata);
+					this.fetchStates();
+				}, response => {
+				console.log(response);
+			});
+		},
+		save_sampleprep: function() {
+				data = {
+					dataset_id: this.dataset_id,
+					enzymes: this.sampledata.enzymes,
+					params: this.sampledata.params,
+					quanttype: this.sampledata.quanttype,
+					labelfree: this.sampledata.labelfree,
+				};
+				if (!data.labelfree) {
+					data.samples = this.sampledata.quants[this.sampledata.quanttype].chans;
+				} else if (this.labelfree_multisample) {
+					data.multisample = true;
+					data.filenames = this.sampledata.filenames;
+					data.samples = this.sampledata.samples;
+				} else {
+					data.multisample = false;
+					data.filenames = this.sampledata.filenames;
+					data.sample = this.sampledata.quants[this.sampledata.quanttype].model;
+				}
+				this.$http.post('/datasets/save/sampleprep/', data
+					).then(response => {
+						console.log(response);
+						this.fetchGeneral('sampleprep', this.sampledata);
+						this.fetchStates();
+					}, response => {
+						console.log(response);
+				});
+		},
 	},
 	})
 </script>

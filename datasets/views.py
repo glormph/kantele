@@ -72,7 +72,6 @@ def dataset_acquisition(request, dataset_id):
         except models.OperatorDataset.DoesNotExist:
             return JsonResponse(response_json)
         get_admin_params_for_dset(response_json, dataset_id, 'acquisition')
-    response_json['params'] = [x for x in response_json['params'].values()]
     return JsonResponse(response_json)
 
 
@@ -111,11 +110,21 @@ def dataset_sampleprep(request, dataset_id):
                     {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
                      'model': qsc.sample, 'pk': qsc.id})
         get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
-    response_json['params'] = [x for x in response_json['params'].values()]
     return JsonResponse(response_json)
 
 
-def get_admin_params_for_dset(params, dset_id, category):
+@login_required
+def dataset_componentstates(request, dataset_id):
+    if dataset_id:
+        return JsonResponse({
+            '{}_state'.format(x.dtcomp.component.name): x.state for x in
+            models.DatasetComponentState.objects.filter(
+                dataset_id=dataset_id).select_related('dtcomp__component')})
+    else:
+        return HttpResponse()
+
+
+def get_admin_params_for_dset(response, dset_id, category):
     """Fetches all stored param values for a dataset and returns nice dict"""
     stored_data, oldparams, newparams = {}, {}, {}
     params = response['params']
@@ -149,12 +158,6 @@ def get_admin_params_for_dset(params, dset_id, category):
     if params_saved:
         response['oldparams'] = [x for x in oldparams.values()]
         response['newparams'] = [x for x in newparams.values()]
-
-
-@login_required
-def get_files(request):
-    # FIXME return JSON for Vue:w
-    pass
 
 
 def update_dataset(data):
@@ -234,8 +237,6 @@ def get_storage_location(project, exp, runname, is_hirief, postdata):
 
 @login_required
 def save_dataset(request):
-    # FIXME this should also be able to update the dataset, and diff against an
-    # existing dataset
     data = json.loads(request.body.decode('utf-8'))
     if data['dataset_id']:
         print('Updating')
@@ -408,6 +409,7 @@ def empty_files_json():
 
 @login_required
 def save_files(request):
+    """Updates and saves files"""
     data = json.loads(request.body.decode('utf-8'))
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
@@ -423,10 +425,14 @@ def save_files(request):
             claimed=False)
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)
-    if (added_fnids or removed_ids) and models.Dataset.objects.select_related(
-            'quantdataset__quanttype').get(
-            pk=dset_id).quantdataset.quanttype.name == 'labelfree':
-        set_component_state(dset_id, 'sampleprep', COMPSTATE_INCOMPLETE)
+    try:
+        qtype = models.Dataset.objects.select_related(
+            'quantdataset__quanttype').get(pk=dset_id).quantdataset.quanttype
+    except models.QuantDataset.DoesNotExist:
+        pass
+    else:
+        if (added_fnids or removed_ids) and qtype.name == 'labelfree':
+            set_component_state(dset_id, 'sampleprep', COMPSTATE_INCOMPLETE)
     set_component_state(dset_id, 'files', COMPSTATE_OK)
     return HttpResponse()
 
@@ -513,7 +519,6 @@ def update_sampleprep(data, qtype):
             for fn in data['filenames']:
                 data['samples'][str(fn['associd'])] = data['sample']
         oldqsf = {x.rawfile_id: x for x in oldqsf}
-        print(data['samples'])
         # iterate filenames because that is correct object, 'samples'
         # can contain models that are not active
         for fn in data['filenames']:
@@ -583,7 +588,7 @@ def update_admin_defined_params(dset, data, category):
     selectparams = {p.value.param_id: p for p in selectparams}
     fieldparams = {p.param_id: p for p in fieldparams}
     new_selects, new_fields = [], []
-    for param in data['params']:
+    for param in data['params'].values():
         value = param['model']
         if param['inputtype'] == 'select':
             pid = param['param_id']

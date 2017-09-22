@@ -13,6 +13,8 @@ urlpatterns = [
         name="showprep"),
     url(r'^show/acquisition/(?P<dataset_id>[0-9]*)$',
         views.dataset_acquisition, name="showacquisition"),
+    url(r'^show/components/(?P<dataset_id>[0-9]*)$',
+        views.dataset_componentstates, name="componentstates"),
     url(r'^save/project/$', views.save_dataset, name="saveproject"),
     url(r'^save/files/$', views.save_files, name="savefiles"),
     url(r'^save/acquisition/$', views.save_acquisition, name="saveacqui"),
