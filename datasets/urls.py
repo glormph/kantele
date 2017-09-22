@@ -19,5 +19,4 @@ urlpatterns = [
     url(r'^save/files/$', views.save_files, name="savefiles"),
     url(r'^save/acquisition/$', views.save_acquisition, name="saveacqui"),
     url(r'^save/sampleprep/$', views.save_sampleprep, name="saveprep"),
-    url(r'^$', views.home, name="home"),
 ]
