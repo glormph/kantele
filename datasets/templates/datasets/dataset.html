@@ -21,7 +21,9 @@
 	Vue.component('sampleprep-box', {
 		props: ['dset_id', 'spdata', 'assoc_filenames'],
 		template: `
-		<div>
+	<div class="columns">
+			<div class="column" />
+			<div class="column is-two-thirds">
 			<div class="box" v-if="!isOpen">
 				<div class="title is-5">MS Samples and preparation</div>
 				<article class="message is-danger"> 
@@ -125,7 +127,11 @@
 					{% endverbatim %}
 				</table>
 			</div>
-	</div></div>`,
+	</div>
+</div>
+			<div class="column" />
+			</div>
+`,
 
 		data: function() {
 		return { 
@@ -227,7 +233,9 @@
 
 	Vue.component('files-box', {
 		template: `
-	<div class="column">
+			<div class="columns">
+			<div class="column" />
+			<div class="column is-two-thirds">
 		<div class="box" v-show="!isOpen">
 			<div class="title is-5">Files</div>
 			<article class="message is-danger"> 
@@ -291,6 +299,8 @@
 			</table>
 		</div> 
 	</div> 
+			<div class="column" />
+			</div>
 		`,
 		props: ['dset_id', 'fndata'],
 		data: function() {return {
@@ -381,7 +391,9 @@
 
 	Vue.component('acquisition-box', {
 		template: `
-		<div>
+			<div class="columns">
+			<div class="column" />
+			<div class="column is-two-thirds">
 			<div class="box" v-show="!isOpen">
 				<div class="title is-5">Acquisition</div>
 				<article class="message is-danger"> 
@@ -440,6 +452,8 @@
 		</div>
 		</template>
 </div></div>
+			<div class="column" />
+			</div>
 `,
 	data: function() {
 		return {
@@ -504,7 +518,8 @@
 		props: ['dset_id', 'pdata'],
 		template: `
 	<div class="columns">
-		<div class="column">
+		<div class="column"/>
+		<div class="column is-two-thirds">
 		<div class="box" id="project" v-if="isOpen">
 			<article class="message is-danger" v-if="errors.length > 0">
 				<div class="message-body">
@@ -636,6 +651,7 @@
 		</article>
 	</div>
 	</div>
+		<div class="column"/>
 </div>
 `,
 		data: function() {
@@ -805,15 +821,26 @@
 	methods: {
 		showDef: function() {
 			this.viewtab = 'definition';
+			this.activateTabClass('tabclassDef');
 		},
 		showFiles: function() {
 			this.viewtab = 'files';
+			this.activateTabClass('tabclassFiles');
 		},
 		showAcquisition: function() {
 			this.viewtab = 'acquisition';
+			this.activateTabClass('tabclassAcq');
 		},
 		showSP: function() {
 			this.viewtab = 'sampleprep';
+			this.activateTabClass('tabclassSP');
+		},
+		activateTabClass: function(tabname) {
+			tabs = ['tabclassDef', 'tabclassSP', 'tabclassAcq', 'tabclassFiles'];
+			for (offtab of tabs) {
+				this[offtab] = '';
+				}
+			this[tabname] = 'is-active';
 		},
 		fetchData: function(url) {
 			return this.$http.get(url)
