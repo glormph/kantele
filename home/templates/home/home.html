@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+<section id="apps">
+<datasets-box v-bind:username="user"></datasets-box>
+</section>
+<script>
+	{% verbatim %}
+	Vue.component('datasets-box', {
+		template: `
+		<div class="content is-small">
+			<span v-show="showYourDatasets">Showing your datasets <button v-on:click="toggleShow()" class="button is-small is-primary">Show all</button></span>
+			<span v-show="showAllDatasets">Showing all datasets <button v-on:click="toggleShow()" class="button is-small is-primary">Show mine</button></span>
+			<input class="input is-small" v-model="dsetFilter" type="text" placeholder="Filter datasets">
+			<table class="table">
+				<div class="content is-small">
+				<thead>
+					<tr>
+						<th><input type="checkbox" v-on:click="selectAll"></th>
+						<th></th>
+						<th></th>
+						<th>Experiment</th>
+						<th>Run</th>
+						<th>User</th>
+						<th>Project</th>
+						<th>Datatype</th>
+						<th v-for="comp in components"><abbr v-bind:title="comp">{{ comp[0].toUpperCase() }}</abbr></th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr v-for="ds in datasets" v-show="filteredDataset(ds)">
+						<td><input type="checkbox" v-model="ds.selected"> </td>
+						<td>
+							<span class="has-text-info icon is-small">
+								<i v-on:click="dsetInfo" class="fa fa-eye" />
+							</span>
+						</td>
+						<td>
+							<span class="has-text-info icon is-small">
+								<a v-bind:href="'/datasets/show/' + ds.id"><i class="fa fa-pencil" /></a>
+							</span>
+						</td>
+						<td>{{ ds.exp }}</td>
+						<td>{{ ds.run }}</td>
+						<td>{{ ds.usr }}</td>
+						<td>{{ ds.proj }}</td>
+						<td>
+							<span v-if="ds.dtype.indexOf('HiRIEF') === -1">{{ ds.dtype }}</span>
+							<span v-if="ds.dtype.indexOf('HiRIEF') > -1">HiRIEF {{ ds.hr }}</span>
+						</td>
+						<td v-for="comp in components">
+							<span class="has-icon" v-if="ds[comp] !== undefined">
+								<i v-if="ds[comp] === 'ok'" class="fa fa-check has-text-success"></i>
+								<i v-if="ds[comp] !== 'ok'" class="fa fa-times has-text-danger"></i>
+							</span>
+							<span v-if="ds[comp]===undefined">
+								&#x25AC;
+							</span>
+						</td>
+					</tr>
+				</tbody>
+					</div>
+			</table>
+			</div>
+		</div>
+		`,
+		props: ['username'],
+		data: function() {
+			return {
+				datasets: {},
+				components: [],
+				dsetFilter: '',
+				showYourDatasets: true,
+				showAllDatasets: false,
+				allSelector: false,
+			}
+		},
+		mounted: function() {
+			this.$http.get('/show/datasets/')
+			.then(response => {
+				return response.json()
+			}, response => {
+			}).then(result => {
+				for (key in result) {
+					this.datasets = result['dsets'];
+					this.components = result['components'];
+				}
+			})
+		},
+		methods: {
+			toggleShow: function() {
+				this.showYourDatasets = this.showYourDatasets === false;
+				this.showAllDatasets = this.showAllDatasets === false;
+			},
+			selectAll: function() {
+				this.allSelector = this.allSelector === false;
+				for (key in this.datasets) {
+					ds = this.datasets[key];
+					if (this.filteredDataset(ds) && this.allSelector) {
+						ds.selected = true;
+						} else {
+						ds.selected = false;
+						}
+				}
+			},
+			filteredDataset: function(ds) {
+				for (key of ['usr', 'proj', 'exp', 'run', 'dtype', 'hr']) {
+					if (this.showYourDatasets && ds.usr !== this.username) {
+						return false;
+					}
+					if (key in ds && ds[key].toLowerCase().indexOf(this.dsetFilter.toLowerCase()) > -1) {
+						return true
+					}
+				}
+				return false
+			},
+			dsetInfo: function(ds) {
+				console.log('heelo');
+			},
+		},
+	})
+						{% endverbatim %}
+
+	var dashboard = new Vue({
+	el: '#apps',
+	data: function() {
+		return { 
+			x: 1,
+			user: '{{ username }}',
+		}
+	},
+})
+</script>
+{% endblock content %}
