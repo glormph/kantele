@@ -9,6 +9,9 @@ from rawstatus import models as filemodels
 
 
 INTERNAL_PI_PK = 1
+COMPSTATE_OK = 'ok'
+COMPSTATE_NEW = 'new'
+COMPSTATE_INCOMPLETE = 'incomplete'
 
 
 def home(request):
