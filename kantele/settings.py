@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'home.apps.HomeConfig',
     'datasets.apps.DatasetsConfig',
     'rawstatus.apps.RawstatusConfig',
+    'jobs.apps.JobsConfig',
 ]
 
 MIDDLEWARE = [

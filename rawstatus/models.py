@@ -10,6 +10,12 @@ class Producer(models.Model):
         return self.name
 
 
+class ServerShares(models.Model):
+    name = models.CharField(max_length=50)  # storage, tmp,
+    uri = models.CharField(max_length=100)  # uri storage.mydomain.com
+    share = models.CharField(max_length=50)  # /home/disk1
+
+
 class RawFile(models.Model):
     """Data (raw) files as reported by instrument"""
     name = models.CharField(max_length=100)
@@ -23,10 +29,12 @@ class RawFile(models.Model):
         return self.name
 
 
-class TransferredFile(models.Model):
+class StoredFile(models.Model):
     """Files transferred from instrument to storage"""
     rawfile = models.ForeignKey(RawFile)
-    fnpath = models.CharField(max_length=200)
+    filetype = models.CharField(max_length=20)  # raw, fq, mzML, etc
+    servershare = models.ForeignKey(ServerShares)
+    path = models.CharField(max_length=200)
     md5 = models.CharField(max_length=32, blank=True)
 
     def __str__(self):

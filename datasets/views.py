@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
 
-from datasets import models
+from datasets import models, jobs
 from rawstatus import models as filemodels
 
 
@@ -417,16 +417,20 @@ def save_files(request):
     data = json.loads(request.body.decode('utf-8'))
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
-    models.DatasetRawFile.objects.bulk_create([
-        models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid) for fnid in
-        added_fnids])
-    filemodels.RawFile.objects.filter(pk__in=added_fnids).update(claimed=True)
+    if added_fnids:
+        models.DatasetRawFile.objects.bulk_create([
+            models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
+            for fnid in added_fnids])
+        filemodels.RawFile.objects.filter(
+            pk__in=added_fnids).update(claimed=True)
+        jobs.add_files_dataset_storage(dset_id)
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
+        jobs.remove_files_from_dataset_storagepath(fn_ids)
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)
     try:

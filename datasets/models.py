@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from rawstatus.models import RawFile
+from jobs.models import Job
 
 
 class PrincipalInvestigator(models.Model):
@@ -202,3 +203,8 @@ class Operator(models.Model):
 class OperatorDataset(models.Model):
     dataset = models.OneToOneField(Dataset)
     operator = models.ForeignKey(Operator)
+
+
+class DatasetJob(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    job = models.ForeignKey(Job)

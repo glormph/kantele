@@ -1,11 +1,11 @@
 import hashlib
 import os
-from rawstatus.models import TransferredFile
+from rawstatus.models import StoredFile
 
 
 def get_md5(fn_id):
     return  # FIXME
-    entry = TransferredFile.objects.get(rawfile_id=fn_id)
+    entry = StoredFile.objects.get(rawfile_id=fn_id)
     fnpath = os.path.join(entry.fnpath, entry.rawfile.name)
     hash_md5 = hashlib.md5()
     with open(fnpath, 'rb') as fp:

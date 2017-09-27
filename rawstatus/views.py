@@ -1,8 +1,11 @@
+import json
+
 from django.db.utils import IntegrityError
 from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponseNotAllowed)
 from django.core.exceptions import ObjectDoesNotExist
-from rawstatus.models import (RawFile, Producer, TransferredFile)
+
+from rawstatus.models import (RawFile, Producer, StoredFile)
 from rawstatus import tasks
 from datetime import datetime
 
@@ -74,11 +77,11 @@ def file_transferred(request):
         except Producer.DoesNotExist:
             return HttpResponseForbidden()
         try:
-            file_transferred = TransferredFile.objects.get(rawfile_id=fn_id)
+            file_transferred = StoredFile.objects.get(rawfile_id=fn_id)
         except ObjectDoesNotExist:
             # FIXME fnpath
             print('New transfer registered, fn_id {}'.format(fn_id))
-            file_transferred = TransferredFile(rawfile_id=fn_id)
+            file_transferred = StoredFile(rawfile_id=fn_id)
             file_transferred.save()
             # FIXME start background process for MD5, unimplemented, call w
             # delay,
