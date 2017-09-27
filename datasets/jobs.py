@@ -43,22 +43,26 @@ import config
 
 
 @app.shared_task
-def move_file_storage(fn, srcpath, dstpath, fn_id):
-    shutil.move(os.path.join(srcpath, fn), os.path.join(dstpath, fn))
+def move_file_storage(fn, srcshare, srcpath, dstpath, fn_id):
+    src = os.path.join(
+        {'storage': config.STORAGESHARE, 'tmp': config.TMPSHARE}[srcshare],
+        srcpath, fn)
+    dst = os.path.join(config.STORAGESHARE, dstpath, fn)
+    shutil.move(src, dst)
     # FIXME API call to add  new path to StoredFile in DB, OR MV BACK
-    # FIXME both src and dst need server share
     ok = True
     if not ok:
-        shutil.move(os.path.join(dstpath, fn), os.path.join(srcpath, fn))
+        shutil.move(dst, src)
         return  # FIXME ERROR for celery
 
 
 @app.shared_task
 def move_stored_file_tmp(fn, path, fn_id):
-    # FIXME path needs config.STORSHARE
-    shutil.move(os.path.join(path, fn), os.path.join(config.TMPSHARE, fn))
+    src = os.path.join(config.STORAGESHARE, path, fn)
+    dst = os.path.join(config.TMPSHARE, fn)
+    shutil.move(src, dst)
     # FIXME API call to add new path to db, MV BACK IF HTTP NOT 200
     ok = True
     if not ok:
-        shutil.move(os.path.join(config.TMPSHARE, fn), os.path.join(path, fn))
+        shutil.move(dst, src)
         return  # FIXME ERROR for celery
