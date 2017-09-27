@@ -204,8 +204,11 @@ def update_dataset(data):
             dset.hiriefdataset.save()
     dset.datatype_id = data['datatype_id']
     is_hirief = True if data['datatype_id'] == hrf_id else False
-    dset.storage_loc = get_storage_location(project, experiment, dset.runname,
-                                            is_hirief, data)
+    new_storage_loc = get_storage_location(project, experiment, dset.runname,
+                                           is_hirief, data)
+    if new_storage_loc != dset.storage_loc:
+        dset.storage_loc = new_storage_loc
+        jobs.move_files_dataset_storage(dset.id, dst_path=new_storage_loc)
     dset.save()
     if data['is_corefac']:
         if dset.corefacdatasetcontact.email != data['corefaccontact']:
@@ -423,7 +426,7 @@ def save_files(request):
             for fnid in added_fnids])
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
-        jobs.add_files_dataset_storage(dset_id)
+        jobs.move_files_dataset_storage(dset_id)
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
