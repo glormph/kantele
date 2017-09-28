@@ -10,8 +10,8 @@ class Producer(models.Model):
         return self.name
 
 
-class ServerShares(models.Model):
-    name = models.CharField(max_length=50)  # storage, tmp,
+class ServerShare(models.Model):
+    name = models.CharField(max_length=50, unique=True)  # storage, tmp,
     uri = models.CharField(max_length=100)  # uri storage.mydomain.com
     share = models.CharField(max_length=50)  # /home/disk1
 
@@ -22,7 +22,7 @@ class RawFile(models.Model):
     producer = models.ForeignKey(Producer)
     source_md5 = models.CharField(max_length=32, unique=True)
     size = models.IntegerField('size in bytes')
-    date = models.DateTimeField('date created')
+    date = models.DateTimeField('date/time created')
     claimed = models.BooleanField()
 
     def __str__(self):
@@ -33,9 +33,9 @@ class StoredFile(models.Model):
     """Files transferred from instrument to storage"""
     rawfile = models.ForeignKey(RawFile)
     filetype = models.CharField(max_length=20)  # raw, fq, mzML, etc
-    servershare = models.ForeignKey(ServerShares)
+    servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
-    md5 = models.CharField(max_length=32, blank=True)
+    md5 = models.CharField(max_length=32)
 
     def __str__(self):
         return self.rawfile.name
