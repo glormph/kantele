@@ -433,7 +433,7 @@ def save_files(request):
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
-        jobs.remove_files_from_dataset_storagepath(fn_ids)
+        jobs.remove_files_from_dataset_storagepath(removed_ids)
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)
     try:

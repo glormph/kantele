@@ -117,9 +117,20 @@ def file_transferred(request):
 
 
 def set_md5(request):
+    # FIXME login
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
     storedfile.save()
+    return HttpResponse()
+
+
+def update_storagepath_file(request):
+    # FIXME login
+    data = request.POST
+    sfile = StoredFile.objects.get(pk=data['fn_id'])
+    sfile.servershare = ServerShare.objects.get(name=data['servershare'])
+    sfile.path = data['dst_path']
+    sfile.save()
     return HttpResponse()
 
 

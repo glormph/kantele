@@ -1,68 +1,58 @@
 from datetime import datetime
 
 from rawstatus.models import StoredFile
-from datasets.models import Dataset
-from jobs.models import Job, Task
+from datasets.models import Dataset, DatasetRawFile
+from datasets.tasks import move_file_storage, move_stored_file_tmp
+from jobs.models import Job, Task, JobError
+
+
+jobmap = {'move_file_storage': move_file_storage,
+          'move_stored_file_tmp': move_stored_file_tmp,
+          }
+
+
+def create_job(name, jobtype):
+    job = Job(function=name, jobtype=jobtype, timestamp=datetime.now(),
+              state='processing')
+    job.save()
+    return job
 
 
 def move_files_dataset_storage(dset_id, dst_path=False):
-    job = Job(function=move_tmpfile_storage, type='move',
-              timestamp=datetime.now())
-    job.save()
+    print('Moving dataset files to storage')
+    name = 'move_file_storage'
     dset_files = StoredFile.objects.filter(
         rawfile__datasetrawfile__dataset_id=dset_id).select_related(
         'rawfile__datasetrawfile')
+    job = create_job(name, 'move')
+    # FIXME what if only half of the files have been SCP arrived yet? Try more
+    # later:
+    dset_registered_files = DatasetRawFile.objects.filter(dataset_id=dset_id)
+    if dset_files.count() != dset_registered_files.count():
+        job.state = 'error'
+        JobError.objects.create(
+            job_id=job.id, message='Not all files have been transferred or '
+            'registered as transferred yet. Holding this job and temporarily '
+            'retrying it', autorequeue=True)
+        job.save()
+        return
     if not dst_path:
-        dst_path = Dataset.objects.get(pk=dset_id)
+        dst_path = Dataset.objects.get(pk=dset_id).storage_loc
     task_ids = []
     for fn in dset_files:
         if fn.path != dst_path:
             task_ids.append(
-                move_tmpfile_storage.delay(fn.rawfile.name, fn.path, fn.id,
-                                           dst_path).id)
-    Task.objects.bulk_create([Task(async_id=tid, job_id=job.id)
+                jobmap[name].delay(fn.rawfile.name, fn.servershare.name,
+                                   fn.path, dst_path, fn.id).id)
+    Task.objects.bulk_create([Task(asyncid=tid, job_id=job.id)
                               for tid in task_ids])
 
 
 def remove_files_from_dataset_storagepath(fn_ids):
-    job = Job(function=move_stored_file_tmp, type='move',
-              timestamp=datetime.now())
-    job.save()
+    name = 'move_stored_file_tmp'
+    job = create_job(name, 'move')
     task_ids = []
     for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids):
-        task_ids.append(move_stored_file_tmp.delay(fn.rawfile.name, fn.path,
-                                                   fn.id).id)
-    Task.objects.bulk_create([Task(async_id=tid, job_id=job.id)
+        task_ids.append(jobmap[name].delay(fn.rawfile.name, fn.path, fn.id).id)
+    Task.objects.bulk_create([Task(asyncid=tid, job_id=job.id)
                               for tid in task_ids])
-
-
-import os
-import shutil
-import app
-import config
-
-
-@app.shared_task
-def move_file_storage(fn, srcshare, srcpath, dstpath, fn_id):
-    src = os.path.join(
-        {'storage': config.STORAGESHARE, 'tmp': config.TMPSHARE}[srcshare],
-        srcpath, fn)
-    dst = os.path.join(config.STORAGESHARE, dstpath, fn)
-    shutil.move(src, dst)
-    # FIXME API call to add  new path to StoredFile in DB, OR MV BACK
-    ok = True
-    if not ok:
-        shutil.move(dst, src)
-        return  # FIXME ERROR for celery
-
-
-@app.shared_task
-def move_stored_file_tmp(fn, path, fn_id):
-    src = os.path.join(config.STORAGESHARE, path, fn)
-    dst = os.path.join(config.TMPSHARE, fn)
-    shutil.move(src, dst)
-    # FIXME API call to add new path to db, MV BACK IF HTTP NOT 200
-    ok = True
-    if not ok:
-        shutil.move(dst, src)
-        return  # FIXME ERROR for celery
