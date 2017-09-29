@@ -22,6 +22,9 @@ def get_md5(self, sfid, path, servershare, filename):
     result = hash_md5.hexdigest()
     postdata = {'sfid': sfid, 'md5': result}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
-    requests.post(url=url, data=postdata)
-    print('MD5 is {}, registered to {}'.format(result, reverse('rawstatus-setmd5')))
-    # FIXME check if ok request, else retry task
+    req = requests.post(url=url, data=postdata)
+    if not req.status_code == 200:
+        print('Could not update database: http {}. Retrying in one '
+              'minute'.format(req.status_code))
+        self.retry(countdown=60)
+    print('MD5 of {} is {}, registered in DB'.format(fnpath, result))
