@@ -2,7 +2,9 @@ from django.db import models
 
 
 class Job(models.Model):
-    function = models.CharField(max_length=100)
+    funcname = models.CharField(max_length=100)
+    args = models.CharField(max_length=300)
+    kwargs = models.CharField(max_length=300)
     jobtype = models.CharField(max_length=50)
     timestamp = models.DateTimeField()
     # FIXME since we have joberror table maybe state is not important
@@ -19,3 +21,4 @@ class JobError(models.Model):
 class Task(models.Model):
     asyncid = models.CharField(max_length=50)
     job = models.ForeignKey(Job)
+    state = models.CharField(max_length=20)
