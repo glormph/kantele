@@ -3,50 +3,102 @@ import json
 from celery import shared_task, states
 from kantele.celery import app
 
-from jobs.models import Task
+from jobs.models import Task, Job
+from jobs.jobs import Jobstates, Jobtypes
 from datasets.models import DatasetJob
 from datasets.jobs import jobmap
 
 
-# FIXME there will also be search jobs and maybe others that span datasets
+# FIXME there will also be search jobs and maybe others that span datasets,
+# but this should be fixed now
+# There are also multi-jobs on Dset from same user action (* add and remove
+# files), they are currently waiting for the earlier job to finish.
 
 @shared_task
-def job_checker(*args):
-    # check dataset jobs:
-    dsjobs = DatasetJob.objects.select_related('job').exclude(
-        state='done').order_by('-job__timestamp')
-    activejobs = {}
-    for dsj in dsjobs:
-        try:
-            activejobs[dsj.dataset_id].append(dsj.job)
-        except:
-            activejobs[dsj.dataset_id] = [dsj.job]
-    for ds_id, jobs in activejobs.items():
-        #run_this_job = True
-        for job_to_run in jobs:
-            jobtasks = Task.objects.filter(job_id=job_to_run.id).exclude(
-                state__in=states.READY_STATES)
-            if jobtasks.count():
-                # there are tasks for this job, check tasks, update DB
-                tasks_finished = True
-                for task in jobtasks:
-                    task_state = app.AsyncResult(task.asyncid).state
-                    if task_state not in states.READY_STATES:
-                        tasks_finished = False
-                    if task.state != task_state:
-                        task.state = task_state
-                        task.save()
-                if not tasks_finished:
-                    # goto next dset
-                    # FIXME ready states includes fail and failure should
-                    # block next-job operations
-                    break
-                continue  # go to next job
+def run_ready_jobs():
+    print('Checking job queue')
+    job_ds_map, active_move_dsets, active_dsets = collect_job_activity()
+    print('{} jobs in queue, including errored jobs'.format(len(job_ds_map)))
+    for job in Job.objects.order_by('timestamp').exclude(
+            state__in=[Jobstates.DONE, Jobstates.ERROR]):
+        jobdsets = job_ds_map[job.id]
+        if job.state == Jobstates.PROCESSING:
+            tasks = Task.objects.filter(job_id=job.id)
+            if tasks.count() > 0:
+                print('Updating task status for active job {}'.format(job.id))
+                process_job_tasks(job, tasks)
+        elif job.state == Jobstates.PENDING and job.jobtype == Jobtypes.MOVE:
+            print('Found new move job')
+            # do not start move job if there is activity on dset
+            if active_dsets.intersection(jobdsets):
+                print('Deferring move job since datasets {} are being used in '
+                      'other job'.format(active_dsets.intersection(jobdsets)))
+                continue
             else:
-                # no tasks for this job, run it and go to next dataset
-                jobfunc = jobmap[job_to_run.name]
-                args = json.loads(job_to_run.args)
-                kwargs = json.loads(job_to_run.kwargs)
-                jobfunc(job_to_run, args, kwargs)
-                print('job 1 queued for dset {}: {}'.format(
-                    ds_id, job_to_run.function))
+                print('Executing move job {}'.format(job.id))
+                [active_dsets.add(ds) for ds in job_ds_map[job.id]]
+                [active_move_dsets.add(ds) for ds in job_ds_map[job.id]]
+                run_job(job, jobmap)
+        elif job.state == Jobstates.PENDING:
+            print('Found new job')
+            # do not start job if dsets are being moved
+            if active_move_dsets.intersection(jobdsets):
+                print('Deferring job since datasets {} being moved in active '
+                      'job'.format(active_move_dsets.intersection(jobdsets)))
+                continue
+            else:
+                print('Executing job {}'.format(job.id))
+                [active_dsets.add(ds) for ds in job_ds_map[job.id]]
+                run_job(job, jobmap)
+
+
+def run_job(job, jobmap):
+    job.state = Jobstates.PROCESSING
+    job.save()
+    jobfunc = jobmap[job.funcname]
+    args = json.loads(job.args)
+    kwargs = json.loads(job.kwargs)
+    jobfunc(job, *args, **kwargs)
+
+
+def collect_job_activity():
+    job_ds_map, active_move_dsets, active_dsets = {}, set(), set()
+    for dsj in DatasetJob.objects.select_related('job').exclude(
+            job__state=Jobstates.DONE):
+        try:
+            job_ds_map[dsj.job_id].add(dsj.dataset_id)
+        except KeyError:
+            job_ds_map[dsj.job_id] = set([dsj.dataset_id])
+        if (dsj.job.jobtype == Jobtypes.MOVE and
+                dsj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]):
+            active_move_dsets.add(dsj.dataset_id)
+            active_dsets.add(dsj.dataset_id)
+        elif dsj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
+            active_dsets.add(dsj.dataset_id)
+    return job_ds_map, active_move_dsets, active_dsets
+
+
+def process_job_tasks(job, jobtasks):
+    job_updated, tasks_finished, tasks_failed = False, True, False
+    for task in jobtasks:
+        task_state = app.AsyncResult(task.asyncid).state
+        if task_state != states.SUCCESS:
+            tasks_finished = False
+        if task_state == states.FAILURE:
+            tasks_failed = True
+        if task.state != task_state:
+            task.state = task_state
+            task.save()
+    if tasks_finished:
+        print('All tasks finished, job {} done'.format(job.id))
+        job.state = Jobstates.DONE
+        job_updated = True
+    elif tasks_failed:
+        print('Failed tasks for job {}, setting to error'.format(job.id))
+        job.state = Jobstates.ERROR
+        job_updated = True
+        # FIXME joberror msg needs to be set, in job or task?
+    if job_updated:
+        job.save()
+    else:
+        print('Job {} continues processing, no failed tasks'.format(job.id))

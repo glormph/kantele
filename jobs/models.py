@@ -7,9 +7,7 @@ class Job(models.Model):
     kwargs = models.CharField(max_length=300)
     jobtype = models.CharField(max_length=50)
     timestamp = models.DateTimeField()
-    # FIXME since we have joberror table maybe state is not important
-    # unless we can also have queued
-    state = models.CharField(max_length=10)  # processing or error
+    state = models.CharField(max_length=10)  # pending, processing, error, done
 
 
 class JobError(models.Model):
