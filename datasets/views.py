@@ -6,6 +6,7 @@ from django.http import JsonResponse, HttpResponse
 
 from datasets import models, jobs
 from rawstatus import models as filemodels
+from jobs import jobs as jobutils
 
 
 INTERNAL_PI_PK = 1
