@@ -428,7 +428,8 @@ def save_files(request):
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
         jobutils.create_dataset_job('move_files_storage',
-                                    jobutils.Jobtypes.MOVE, dset_id)
+                                    jobutils.Jobtypes.MOVE, dset_id,
+                                    added_fnids)
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
