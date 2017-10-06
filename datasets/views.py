@@ -208,8 +208,10 @@ def update_dataset(data):
     new_storage_loc = get_storage_location(project, experiment, dset.runname,
                                            is_hirief, data)
     if new_storage_loc != dset.storage_loc:
+        jobutils.create_dataset_job('rename_storage_loc',
+                                    jobutils.Jobtypes.MOVE, dset.id,
+                                    dset.storage_loc, new_storage_loc)
         dset.storage_loc = new_storage_loc
-        jobs.move_files_dataset_storage(dset.id, dst_path=new_storage_loc)
     dset.save()
     if data['is_corefac']:
         if dset.corefacdatasetcontact.email != data['corefaccontact']:

@@ -10,6 +10,27 @@ from kantele import settings as config
 
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
+def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
+    src = os.path.join(config.STORAGESHARE, srcpath)
+    dst = os.path.join(config.STORAGESHARE, dstpath)
+    print('Renaming dataset storage {} to {}'.format(src, dst))
+    dstdir = os.path.split(dst)[0]
+    if not os.path.exists(dst) or not os.path.isdir(dstdir):
+        os.makedirs(dstdir)
+    shutil.move(src, dst)
+    postdata = {'fn_ids': storedfn_ids, 'dst_path': dstpath}
+    url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
+    try:
+        requests.post(url=url, data=postdata)
+    except (requests.exceptions.HTTPError,
+            requests.exceptions.ConnectionError) as e:
+        msg = 'Could not update database: {}'.format(e)
+        print(msg)
+        # FIXME shutil.move(dst, src)
+        raise RuntimeError(msg)
+
+
+@shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     src = os.path.join(config.SHAREMAP[srcshare], srcpath, fn)
     dst = os.path.join(config.STORAGESHARE, dstpath, fn)
