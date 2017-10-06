@@ -22,9 +22,11 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
                 'dst_path': dstpath}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
-    req = requests.post(url=url, data=postdata)
-    if not req.status_code == 200:
-        msg = 'Could not update database: http {}'.format(req.status_code)
+    try:
+        requests.post(url=url, data=postdata)
+    except (requests.exceptions.HTTPError,
+            requests.exceptions.ConnectionError) as e:
+        msg = 'Could not update database: {}'.format(e)
         print(msg)
         shutil.move(dst, src)
         raise RuntimeError(msg)
@@ -42,10 +44,10 @@ def move_stored_file_tmp(self, fn, path, fn_id):
                 'dst_path': ''}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
-        req = requests.post(url=url, data=postdata)
+        requests.post(url=url, data=postdata)
     except (requests.exceptions.HTTPError,
-            requests.exceptions.ConnectionError):
-        msg = 'Could not update database: http {}'.format(req.status_code)
+            requests.exceptions.ConnectionError) as e:
+        msg = 'Could not update database: {}'.format(e)
         print(msg)
         shutil.move(dst, src)
         raise RuntimeError(msg)
