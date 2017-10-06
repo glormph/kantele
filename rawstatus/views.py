@@ -125,17 +125,12 @@ def set_md5(request):
 def update_storagepath_file(request):
     # FIXME login
     data = request.POST
-    sfile = StoredFile.objects.get(pk=data['fn_id'])
-    sfile.servershare = ServerShare.objects.get(name=data['servershare'])
-    sfile.path = data['dst_path']
-    sfile.save()
-    return HttpResponse()
-
-
-@login_required
-def update_filepath(request):
-    if request.method != 'POST':
-        return HttpResponseNotAllowed()
-    data = json.loads(request.body.decode('utf-8'))
-    StoredFile.objects.filter(pk=data['fn_id']).update(path=data['path'])
+    if 'fn_id' in data:
+        sfile = StoredFile.objects.get(pk=data['fn_id'])
+        sfile.servershare = ServerShare.objects.get(name=data['servershare'])
+        sfile.path = data['dst_path']
+        sfile.save()
+    elif 'fn_ids' in data:
+        StoredFile.objects.filter(pk__in=data['fn_ids']).update(
+            path=data['dst_path'])
     return HttpResponse()
