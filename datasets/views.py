@@ -4,9 +4,9 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
 
-from datasets import models, jobs
+from datasets import models
 from rawstatus import models as filemodels
-from jobs import jobs as jobutils
+from jobs.jobs import create_dataset_job
 
 
 INTERNAL_PI_PK = 1
@@ -208,9 +208,8 @@ def update_dataset(data):
     new_storage_loc = get_storage_location(project, experiment, dset.runname,
                                            is_hirief, data)
     if new_storage_loc != dset.storage_loc:
-        jobutils.create_dataset_job('rename_storage_loc',
-                                    jobutils.Jobtypes.MOVE, dset.id,
-                                    dset.storage_loc, new_storage_loc)
+        create_dataset_job('rename_storage_loc', dset.id, dset.storage_loc,
+                           new_storage_loc)
         dset.storage_loc = new_storage_loc
     dset.save()
     if data['is_corefac']:
@@ -425,17 +424,14 @@ def save_files(request):
             for fnid in added_fnids])
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
-        jobutils.create_dataset_job('move_files_storage',
-                                    jobutils.Jobtypes.MOVE, dset_id,
-                                    added_fnids)
+        create_dataset_job('move_files_storage', dset_id, added_fnids)
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
-        jobutils.create_dataset_job('move_stored_files_tmp',
-                                    jobutils.Jobtypes.MOVE, dset_id,
+        jobutils.create_dataset_job('move_stored_files_tmp', dset_id,
                                     removed_ids)
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)

@@ -50,12 +50,3 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
                                                          fn.path, fn.id).id)
     Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
                               for tid in task_ids])
-
-
-jobmap = {'move_files_storage':
-          {'func': move_files_dataset_storage, 'retry': True},
-          'move_stored_files_tmp':
-          {'func': remove_files_from_dataset_storagepath, 'retry': False},
-          'rename_storage_loc':
-          {'func': move_dataset_storage_loc, 'retry': False},
-          }

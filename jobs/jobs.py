@@ -3,6 +3,7 @@ import json
 
 from jobs.models import Job
 from datasets.models import DatasetJob
+from datasets import tasks as dstasks
 
 
 class Jobtypes(object):
@@ -19,9 +20,22 @@ class Jobstates(object):
     DONE = 'done'
 
 
-def create_dataset_job(name, jobtype, dset_id, *args, **kwargs):
+jobmap = {'move_files_storage':
+          {'type': Jobtypes.MOVE, 'func': dstasks.move_files_dataset_storage,
+           'retry': True},
+          'move_stored_files_tmp':
+          {'type': Jobtypes.MOVE, 'retry': False,
+           'func': dstasks.remove_files_from_dataset_storagepath},
+          'rename_storage_loc':
+          {'type': Jobtypes.MOVE, 'func': dstasks.move_dataset_storage_loc,
+           'retry': False},
+          }
+
+
+def create_dataset_job(name, dset_id, *args, **kwargs):
     jobargs = [dset_id] + list(args)
-    job = Job(funcname=name, jobtype=jobtype, timestamp=datetime.now(),
+    job = Job(funcname=name, jobtype=jobmap[name]['type'],
+              timestamp=datetime.now(),
               state=Jobstates.PENDING, args=json.dumps(jobargs),
               kwargs=json.dumps(kwargs))
     job.save()
