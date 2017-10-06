@@ -405,10 +405,6 @@ def empty_acquisition_json():
                 for x in models.Operator.objects.select_related('user').all()]}
 
 
-def dataset_files_json(dset):
-    pass
-
-
 def empty_files_json():
     return {'newFiles': {'id_{}'.format(x.id):
                          {'id': x.id, 'name': x.name, 'date': x.date,

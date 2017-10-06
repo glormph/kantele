@@ -31,6 +31,8 @@ def move_files_dataset_storage(job_id, dset_id, fn_ids):
     dst_path = Dataset.objects.get(pk=dset_id).storage_loc
     task_ids = []
     for fn in dset_files:
+        # TODO check for diff os.path.join(sevrershare, dst_path), not just
+        # path
         if fn.path != dst_path:
             task_ids.append(
                 tasks.move_file_storage.delay(
@@ -41,8 +43,6 @@ def move_files_dataset_storage(job_id, dset_id, fn_ids):
 
 
 def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
-    #name = 'move_stored_file_tmp'
-    #job = jobutil.create_dataset_job(name, 'move', dset_id)
     print('Moving files with ids {} from dataset to tmp'.format(fn_ids))
     task_ids = []
     for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids):

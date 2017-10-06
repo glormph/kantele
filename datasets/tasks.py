@@ -8,6 +8,9 @@ from celery import shared_task
 
 from kantele import settings as config
 
+# Updating stuff in tasks happens over the API, assume no DB is touched. This
+# avoids setting up auth for DB
+
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def rename_storage_location(self, srcpath, dstpath, storedfn_ids):

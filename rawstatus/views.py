@@ -1,5 +1,3 @@
-import json
-
 from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponseNotAllowed, HttpResponse)
 from django.contrib.auth.decorators import login_required
