@@ -14,8 +14,9 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     src = os.path.join(config.SHAREMAP[srcshare], srcpath, fn)
     dst = os.path.join(config.STORAGESHARE, dstpath, fn)
     print('Moving file {} to {}'.format(src, dst))
-    if not os.path.exists(dst) and not os.path.isdir(os.path.split(dst)[0]):
-        os.makedirs(dst)
+    dstdir = os.path.split(dst)[0]
+    if not os.path.exists(dst) or not os.path.isdir(dstdir):
+        os.makedirs(dstdir)
     shutil.move(src, dst)
     # FIXME login
     postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
