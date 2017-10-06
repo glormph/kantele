@@ -40,6 +40,8 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
                               for tid in task_ids])
 
 
-jobmap = {'move_files_storage': move_files_dataset_storage,
-          'move_stored_files_tmp': remove_files_from_dataset_storagepath,
+jobmap = {'move_files_storage': {'func': move_files_dataset_storage,
+          'retry': True},
+          'move_stored_files_tmp': {
+              'func': remove_files_from_dataset_storagepath, 'retry': False},
           }
