@@ -3,7 +3,7 @@ import json
 from celery import shared_task, states
 from kantele.celery import app
 
-from jobs.models import Task, Job
+from jobs.models import Task, Job, JobError
 from jobs.jobs import Jobstates, Jobtypes
 from datasets.models import DatasetJob
 from datasets.jobs import jobmap
@@ -54,11 +54,21 @@ def run_ready_jobs():
 
 def run_job(job, jobmap):
     job.state = Jobstates.PROCESSING
-    job.save()
-    jobfunc = jobmap[job.funcname]
+    jobfunc = jobmap[job.funcname]['func']
     args = json.loads(job.args)
     kwargs = json.loads(job.kwargs)
-    jobfunc(job, *args, **kwargs)
+    try:
+        jobfunc(job.id, *args, **kwargs)
+    except RuntimeError as e:
+        job.state = 'error'
+        JobError.objects.create(job_id=job.id, message=e,
+                                autorequeue=jobmap[job.funcname]['retry'])
+        job.save()
+    except Exception as e:
+        job.state = 'error'
+        JobError.objects.create(job_id=job.id, message=e, autorequeue=False)
+        job.save()
+    job.save()
 
 
 def collect_job_activity():
