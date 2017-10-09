@@ -19,7 +19,10 @@ ALLOWED_HOSTS = []
 
 # Application definition
 
-APPEND_SLASH = False
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
+APPEND_SLASH = True
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',

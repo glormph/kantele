@@ -6,6 +6,7 @@ from django.contrib import admin
 # admin.autodiscover()
 
 urlpatterns = [
+    url('^', include('django.contrib.auth.urls')),
     url(r'^admin/', admin.site.urls),
     url(r'^files/', include('rawstatus.urls')),
     url(r'^datasets/', include('datasets.urls')),
@@ -13,5 +14,4 @@ urlpatterns = [
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
     # Uncomment the next line to enable the admin:
-    #url(r'^kantele/admin/', include(admin.site.urls)),
 ]
