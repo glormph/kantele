@@ -55,16 +55,16 @@
 	</ul>
 </div>
 <div class="container">
-		<project-box v-on:save="save_definition" v-show="viewtab === 'definition'" v-bind:dset_id="dataset_id" v-bind:pdata="projdata"></project-box>
-		<acquisition-box v-on:save="save_acquisition" v-show="viewtab === 'acquisition'" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
-		<files-box v-on:save="save_files" v-show="viewtab === 'files'" v-bind:dset_id="dataset_id" v-bind:fndata="filesdata"></files-box>
-		<sampleprep-box v-on:save="save_sampleprep" v-show="viewtab === 'sampleprep'" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
+		<project-box v-on:save="save_definition" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:pdata="projdata"></project-box>
+		<acquisition-box v-on:save="save_acquisition" v-show="viewtab === 'acquisition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
+		<files-box v-on:save="save_files" v-show="viewtab === 'files'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:fndata="filesdata"></files-box>
+		<sampleprep-box v-on:save="save_sampleprep" v-show="viewtab === 'sampleprep'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
 </div>
 </section>
 
 <script>
 	Vue.component('sampleprep-box', {
-		props: ['dset_id', 'spdata', 'assoc_filenames'],
+		props: ['dset_id', 'is_owner', 'spdata', 'assoc_filenames'],
 		template: `
 	<div class="columns">
 			<div class="column" />
@@ -85,7 +85,7 @@
 				</div>
 			</article>
 			<div class="title is-5">MS Samples and preparation
-				<a class="button is-danger is-small" v-on:click="save">Save</a>
+				<a v-if="is_owner" class="button is-danger is-small" v-on:click="save">Save</a>
 			</div> 
 			<div class="field">
 				<label class="label">Enzymes</label>
@@ -268,7 +268,7 @@
 		<div class="box" v-show="isOpen">
 			<div class="title is-5">Files
 				<span class="has-text-success icon" v-show="isOk"><i class="fa fa-check"></i></span>
-			       	<a class="button is-danger is-small" v-on:click="save">Save</a>
+			       	<a v-if="is_owner" class="button is-danger is-small" v-on:click="save">Save</a>
 
 			</div>
 			<a class="button is-danger is-outlined is-small" v-show="showDatasetFiles" v-on:click="toggleFileView">Show available files</a>
@@ -326,7 +326,7 @@
 			<div class="column" />
 			</div>
 		`,
-		props: ['dset_id', 'fndata'],
+		props: ['dset_id', 'is_owner', 'fndata'],
 		data: function() {return {
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
@@ -430,7 +430,7 @@
 				</div>
 			</article>
 			<div class="title is-5">Acquisition
-				<a class="button is-danger is-small" v-on:click="save">Save</a>
+				<a v-if="is_owner" class="button is-danger is-small" v-on:click="save">Save</a>
 		</div> 
 		<div class="field">
 			<label class="label">Operator</label>
@@ -480,7 +480,7 @@
 			errors: [],
 			}
 		},
-	props: ['dset_id', 'acqdata'],
+	props: ['dset_id', 'is_owner', 'acqdata'],
 	computed: {
 		isOpen: function() {
 			return this.dset_id !== '';
@@ -512,7 +512,7 @@
 	})
 	
 	Vue.component('project-box', {
-		props: ['dset_id', 'pdata'],
+		props: ['dset_id', 'is_owner', 'pdata'],
 		template: `
 	<div class="columns">
 		<div class="column"/>
@@ -528,7 +528,7 @@
 				</div>
 			</article>
 			<div class="title is-5">Definition
-				<a class="button is-danger is-small" v-on:click="save">Save</a>
+				<a v-if="is_owner" class="button is-danger is-small" v-on:click="save">Save</a>
 			</div>
 		<div class="field">
 			<label class="label">Project
@@ -788,6 +788,7 @@
 				samples: {},
 				},
 			dataset_id: '{{ dataset_id }}',
+			is_owner: {{ is_owner }},
 		}
 	},
 	mounted: function() {

@@ -2,7 +2,8 @@ import json
 from datetime import datetime
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
+from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
+                         HttpResponseForbidden)
 
 from datasets import models
 from rawstatus import models as filemodels
@@ -30,7 +31,13 @@ def new_dataset(request):
 
 @login_required
 def show_dataset(request, dataset_id):
-    context = {'dataset_id': dataset_id, 'newdataset': False}
+    try:
+        dset = models.Dataset.objects.get(pk=dataset_id)
+    except models.Dataset.DoesNotExist:
+        return HttpResponseNotFound()
+    context = {'dataset_id': dataset_id, 'newdataset': False,
+               'is_owner': {True: 'true', False: 'false'}[
+                   request.user.id == dset.user_id]}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -244,9 +251,23 @@ def get_storage_location(project, exp, runname, is_hirief, postdata):
         return '{}/{}/{}'.format(project.name, exp.name, runname.name)
 
 
+def check_save_permission(dset_id, logged_in_user_id):
+    try:
+        user_ok = models.Dataset.get(pk=dset_id).user_id == logged_in_user_id
+    except models.Dataset.DoesNotExist:
+        return HttpResponseNotFound()
+    else:
+        if not user_ok:
+            return HttpResponseForbidden()
+    return False
+
+
 @login_required
 def save_dataset(request):
     data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    if user_denied:
+        return user_denied
     if data['dataset_id']:
         print('Updating')
         return update_dataset(data)
@@ -416,6 +437,9 @@ def empty_files_json():
 def save_files(request):
     """Updates and saves files"""
     data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    if user_denied:
+        return user_denied
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
     if added_fnids:
@@ -458,6 +482,9 @@ def update_acquisition(dset, data):
 @login_required
 def save_acquisition(request):
     data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    if user_denied:
+        return user_denied
     dset_id = data['dataset_id']
     dset = models.Dataset.objects.select_related('operatordataset').get(
         pk=data['dataset_id'])
@@ -553,6 +580,9 @@ def update_sampleprep(data, qtype):
 @login_required
 def save_sampleprep(request):
     data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    if user_denied:
+        return user_denied
     dset_id = data['dataset_id']
     try:
         qtype = models.QuantDataset.objects.select_related(
