@@ -6,6 +6,7 @@ from kantele.celery import app
 from jobs.models import Task, Job, JobError
 from jobs.jobs import Jobstates, Jobtypes
 from datasets.models import DatasetJob
+from rawstatus.models import FileJob
 from jobs.jobs import jobmap
 
 
@@ -14,14 +15,17 @@ from jobs.jobs import jobmap
 # There are also multi-jobs on Dset from same user action (* add and remove
 # files), they are currently waiting for the earlier job to finish.
 
+
 @shared_task
 def run_ready_jobs():
     print('Checking job queue')
-    job_ds_map, active_move_dsets, active_dsets = collect_job_activity()
+    job_ds_map, active_move_dsets, active_dsets = collect_dsjob_activity()
+    job_fn_map, active_move_files, active_files = collect_filejob_activity()
     print('{} jobs in queue, including errored jobs'.format(len(job_ds_map)))
     for job in Job.objects.order_by('timestamp').exclude(
             state__in=[Jobstates.DONE, Jobstates.ERROR]):
-        jobdsets = job_ds_map[job.id]
+        jobdsets = job_ds_map[job.id] if job.id in job_ds_map else set()
+        jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
         if job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)
             if tasks.count() > 0:
@@ -29,10 +33,13 @@ def run_ready_jobs():
                 process_job_tasks(job, tasks)
         elif job.state == Jobstates.PENDING and job.jobtype == Jobtypes.MOVE:
             print('Found new move job')
-            # do not start move job if there is activity on dset
-            if active_dsets.intersection(jobdsets):
-                print('Deferring move job since datasets {} are being used in '
-                      'other job'.format(active_dsets.intersection(jobdsets)))
+            # do not start move job if there is activity on dset or files
+            if (active_files.intersection(jobfiles) or
+                    active_dsets.intersection(jobdsets)):
+                print('Deferring move job since datasets {} or files {} are '
+                      'being used in '
+                      'other job'.format(active_dsets.intersection(jobdsets),
+                                         active_files.intersection(jobfiles)))
                 continue
             else:
                 print('Executing move job {}'.format(job.id))
@@ -42,9 +49,12 @@ def run_ready_jobs():
         elif job.state == Jobstates.PENDING:
             print('Found new job')
             # do not start job if dsets are being moved
-            if active_move_dsets.intersection(jobdsets):
-                print('Deferring job since datasets {} being moved in active '
-                      'job'.format(active_move_dsets.intersection(jobdsets)))
+            if (active_move_dsets.intersection(jobdsets) or
+                    active_move_files.intersection(jobfiles)):
+                print('Deferring job since datasets {} or files {} being '
+                      'moved in active '
+                      'job'.format(active_move_dsets.intersection(jobdsets),
+                                   active_move_files.intersection(jobfiles)))
                 continue
             else:
                 print('Executing job {}'.format(job.id))
@@ -71,7 +81,25 @@ def run_job(job, jobmap):
     job.save()
 
 
-def collect_job_activity():
+def collect_filejob_activity():
+    job_fn_map, active_move_files, active_files = {}, set(), set()
+    for fj in FileJob.objects.select_related(
+            'job', 'storedfile__rawfile__datasetrawfile__dataset').exclude(
+            job__state=Jobstates.DONE):
+        try:
+            job_fn_map[fj.job_id].add(fj.storedfile_id)
+        except KeyError:
+            job_fn_map[fj.job_id] = set([fj.storedfile.id])
+        if (fj.job.jobtype == Jobtypes.MOVE and
+                fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]):
+            active_move_files.add(fj.storedfile.id)
+            active_files.add(fj.storedfile.id)
+        elif fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
+            active_files.add(fj.storedfile.id)
+    return job_fn_map, active_move_files, active_files
+
+
+def collect_dsjob_activity():
     job_ds_map, active_move_dsets, active_dsets = {}, set(), set()
     for dsj in DatasetJob.objects.select_related('job').exclude(
             job__state=Jobstates.DONE):
