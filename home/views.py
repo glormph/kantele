@@ -27,6 +27,7 @@ def show_datasets(request):
         except KeyError:
             dsets[dcst.dataset.id] = {
                 'id': dcst.dataset.id,
+                'own': dcst.dataset.user_id == request.user.id,
                 'usr': dcst.dataset.user.username,
                 'proj': dcst.dataset.runname.experiment.project.name,
                 'exp': dcst.dataset.runname.experiment.name,

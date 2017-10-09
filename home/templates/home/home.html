@@ -48,9 +48,14 @@
 							</span>
 						</td>
 						<td>
-							<span class="has-text-info icon is-small">
-								<a v-bind:href="'/datasets/show/' + ds.id"><i class="fa fa-pencil" /></a>
+								<a v-bind:href="'/datasets/show/' + ds.id">
+							<span v-if="ds.own" class="icon has-text-info is-small">
+									<i class="fa fa-pencil"></i>
 							</span>
+							<span v-if="!ds.own" class="icon has-text-grey-light is-small">
+									<i class="fa fa-pencil"></i>
+							</span>
+								</a>
 						</td>
 						<td>{{ ds.exp }}</td>
 						<td>{{ ds.run }}</td>
@@ -74,6 +79,7 @@
 					</div>
 			</table>
 			</div>
+		</div>
 		</div>
 		`,
 		props: ['username'],
