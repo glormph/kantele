@@ -253,7 +253,7 @@ def get_storage_location(project, exp, runname, is_hirief, postdata):
 
 def check_save_permission(dset_id, logged_in_user_id):
     try:
-        user_ok = models.Dataset.get(pk=dset_id).user_id == logged_in_user_id
+        user_ok = models.Dataset.objects.get(pk=dset_id).user_id == logged_in_user_id
     except models.Dataset.DoesNotExist:
         return HttpResponseNotFound()
     else:
