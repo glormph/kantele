@@ -123,7 +123,7 @@ def set_md5(request):
     return HttpResponse()
 
 
-def create_swestore_fn(request):
+def create_swestore_backup(request):
     # FIXME login
     data = request.POST
     SwestoreBackedupFile.objects.create(storefile_id=data['sfid'],
