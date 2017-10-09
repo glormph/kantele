@@ -1,16 +1,29 @@
 {% extends "base.html" %}
 {% block content %}
 <section id="apps">
+<div class="container">
+		<div class="columns">
 <datasets-box v-bind:username="user"></datasets-box>
+<dsetinfo-box></dsetinfo-box>
+</div>
+</div>
 </section>
 <script>
 	{% verbatim %}
 	Vue.component('datasets-box', {
 		template: `
+		<div class="column">
 		<div class="content is-small">
-			<span v-show="showYourDatasets">Showing your datasets <button v-on:click="toggleShow()" class="button is-small is-primary">Show all</button></span>
-			<span v-show="showAllDatasets">Showing all datasets <button v-on:click="toggleShow()" class="button is-small is-primary">Show mine</button></span>
+			<h5 class="title is-5">Datasets</h5>
+			<div class="columns">
+		<div class="column is-two-thirds">
 			<input class="input is-small" v-model="dsetFilter" type="text" placeholder="Filter datasets">
+		</div>
+				<div class="column">
+						<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showYourDatasets">Show everyone's datasets</a>
+						<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showAllDatasets">Show my datasets</a>
+		</div>
+		</div>
 			<table class="table">
 				<div class="content is-small">
 				<thead>
@@ -116,6 +129,21 @@
 			dsetInfo: function(ds) {
 				console.log('heelo');
 			},
+		},
+	})
+	
+	Vue.component('dsetinfo-box', {
+		template: `
+		<div class="column">
+			<div class="box">
+				<div class="content is-small">
+				<h5 class="title is-5">Info</h5>
+			</div>
+			</div>
+		</div>
+		`,
+		data: function() {
+			return {}
 		},
 	})
 						{% endverbatim %}
