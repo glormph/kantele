@@ -3,8 +3,9 @@ from django.http import (JsonResponse, HttpResponseForbidden,
 from django.contrib.auth.decorators import login_required
 
 from kantele import settings as config
-from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare)
-from rawstatus import tasks
+from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
+                              SwestoreBackedupFile)
+from jobs import jobs as jobutil
 from datetime import datetime
 
 
@@ -98,8 +99,8 @@ def file_transferred(request):
                                           servershare=tmpshare, path='',
                                           md5='')
             file_transferred.save()
-            tasks.get_md5.delay(file_transferred.id, '', tmpshare.name,
-                                request.POST['filename'])
+            jobutil.create_file_job('create_swestore_backup',
+                                    file_transferred.id)
             return JsonResponse({'fn_id': request.POST['fn_id'],
                                  'md5_state': False})
         print('Transfer state requested for fn_id {}'.format(fn_id))
@@ -119,6 +120,14 @@ def set_md5(request):
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
     storedfile.save()
+    return HttpResponse()
+
+
+def create_swestore_fn(request):
+    # FIXME login
+    data = request.POST
+    SwestoreBackedupFile.objects.create(storefile_id=data['sfid'],
+                                        swestore_path=data['swestore_path'])
     return HttpResponse()
 
 

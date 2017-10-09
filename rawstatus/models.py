@@ -1,5 +1,7 @@
 from django.db import models
 
+from jobs.models import Job
+
 
 class Producer(models.Model):
     name = models.CharField(max_length=100)
@@ -32,6 +34,7 @@ class RawFile(models.Model):
 class StoredFile(models.Model):
     """Files transferred from instrument to storage"""
     rawfile = models.ForeignKey(RawFile)
+    filename = models.CharField(max_length=200)
     filetype = models.CharField(max_length=20)  # raw, fq, mzML, etc
     servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
@@ -39,3 +42,13 @@ class StoredFile(models.Model):
 
     def __str__(self):
         return self.rawfile.name
+
+
+class SwestoreBackedupFile(models.Model):
+    storedfile = models.ForeignKey(StoredFile)
+    swestore_path = models.CharField(max_length=200)
+
+
+class FileJob(models.Model):
+    storedfile = models.ForeignKey(StoredFile)
+    job = models.ForeignKey(Job)

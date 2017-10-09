@@ -3,14 +3,16 @@ import json
 
 from jobs.models import Job
 from datasets.models import DatasetJob
+from rawstatus.models import FileJob
 from datasets import jobs as dsjobs
+from rawstatus import jobs as rsjobs
 
 
 class Jobtypes(object):
     MOVE = 'move'
     CONVERT = 'convert'
     SEARCH = 'search'
-    FTP = 'ftp'
+    UPLOAD = 'upload'
 
 
 class Jobstates(object):
@@ -29,10 +31,26 @@ jobmap = {'move_files_storage':
           'rename_storage_loc':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_dataset_storage_loc,
            'retry': False},
+          'create_swestore_backup':
+          {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_swestore_backup,
+           'retry': False},
           }
 
 
+def create_file_job(name, sf_id, *args, **kwargs):
+    """MD5, backup, etc"""
+    jobargs = [sf_id] + list(args)
+    job = Job(funcname=name, jobtype=jobmap[name]['type'],
+              timestamp=datetime.now(),
+              state=Jobstates.PENDING, args=json.dumps(jobargs),
+              kwargs=json.dumps(kwargs))
+    job.save()
+    FileJob.objects.create(storedfile_id=sf_id, job_id=job.id)
+    return job
+
+
 def create_dataset_job(name, dset_id, *args, **kwargs):
+    """Move, rename, search, convert"""
     jobargs = [dset_id] + list(args)
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
               timestamp=datetime.now(),
