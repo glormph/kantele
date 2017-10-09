@@ -14,13 +14,13 @@ from kantele import settings as config
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
-    src = os.path.join(config.STORAGESHARE, srcpath)
-    dst = os.path.join(config.STORAGESHARE, dstpath)
-    print('Renaming dataset storage {} to {}'.format(src, dst))
-    dstdir = os.path.split(dst)[0]
-    if not os.path.exists(dst) or not os.path.isdir(dstdir):
-        os.makedirs(dstdir)
-    shutil.move(src, dst)
+    print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
+    dsttree = config.STORAGESHARE
+    for srcdir, dstdir in zip(srcpath.split(os.sep), dstpath.split(os.sep)):
+        if srcdir != dstdir:
+            shutil.move(os.path.join(dsttree, srcdir),
+                        os.path.join(dsttree, dstdir))
+        dsttree = os.path.join(dsttree, dstdir)
     postdata = {'fn_ids': storedfn_ids, 'dst_path': dstpath}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
@@ -39,7 +39,7 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     dst = os.path.join(config.STORAGESHARE, dstpath, fn)
     print('Moving file {} to {}'.format(src, dst))
     dstdir = os.path.split(dst)[0]
-    if not os.path.exists(dst) or not os.path.isdir(dstdir):
+    if not os.path.exists(dstdir) or not os.path.isdir(dstdir):
         os.makedirs(dstdir)
     shutil.move(src, dst)
     # FIXME login
@@ -63,7 +63,6 @@ def move_stored_file_tmp(self, fn, path, fn_id):
     dst = os.path.join(config.TMPSHARE, fn)
     print('Moving stored file {} to tmp'.format(fn_id))
     shutil.move(src, dst)
-    # FIXME API call to add new path to db, MV BACK IF HTTP NOT 200
     postdata = {'fn_id': fn_id, 'servershare': config.TMPSHARENAME,
                 'dst_path': ''}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
@@ -75,4 +74,4 @@ def move_stored_file_tmp(self, fn, path, fn_id):
         print(msg)
         shutil.move(dst, src)
         raise RuntimeError(msg)
-    print('File {}  moved to tmp'.format(fn_id))
+    print('File {} moved to tmp and DB updated'.format(fn_id))

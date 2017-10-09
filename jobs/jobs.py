@@ -3,7 +3,7 @@ import json
 
 from jobs.models import Job
 from datasets.models import DatasetJob
-from datasets import tasks as dstasks
+from datasets import jobs as dsjobs
 
 
 class Jobtypes(object):
@@ -21,13 +21,13 @@ class Jobstates(object):
 
 
 jobmap = {'move_files_storage':
-          {'type': Jobtypes.MOVE, 'func': dstasks.move_files_dataset_storage,
+          {'type': Jobtypes.MOVE, 'func': dsjobs.move_files_dataset_storage,
            'retry': True},
           'move_stored_files_tmp':
           {'type': Jobtypes.MOVE, 'retry': False,
-           'func': dstasks.remove_files_from_dataset_storagepath},
+           'func': dsjobs.remove_files_from_dataset_storagepath},
           'rename_storage_loc':
-          {'type': Jobtypes.MOVE, 'func': dstasks.move_dataset_storage_loc,
+          {'type': Jobtypes.MOVE, 'func': dsjobs.move_dataset_storage_loc,
            'retry': False},
           }
 

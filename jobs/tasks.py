@@ -6,7 +6,7 @@ from kantele.celery import app
 from jobs.models import Task, Job, JobError
 from jobs.jobs import Jobstates, Jobtypes
 from datasets.models import DatasetJob
-from datasets.jobs import jobmap
+from jobs.jobs import jobmap
 
 
 # FIXME there will also be search jobs and maybe others that span datasets,
