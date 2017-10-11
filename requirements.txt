@@ -1,0 +1,13 @@
+amqp==2.1.4
+billiard==3.5.0.2
+celery==4.0.2
+certifi==2017.7.27.1
+chardet==3.0.4
+Django==1.11.3
+django-celery-beat==1.0.1
+idna==2.6
+kombu==4.0.2
+pytz==2017.2
+requests==2.18.4
+urllib3==1.22
+vine==1.1.3
