@@ -21,7 +21,8 @@ def run_ready_jobs():
     print('Checking job queue')
     job_ds_map, active_move_dsets, active_dsets = collect_dsjob_activity()
     job_fn_map, active_move_files, active_files = collect_filejob_activity()
-    print('{} jobs in queue, including errored jobs'.format(len(job_ds_map)))
+    print('{} jobs in queue, including errored jobs'.format(len(job_ds_map) +
+                                                            len(job_fn_map)))
     for job in Job.objects.order_by('timestamp').exclude(
             state__in=[Jobstates.DONE, Jobstates.ERROR]):
         jobdsets = job_ds_map[job.id] if job.id in job_ds_map else set()
@@ -43,8 +44,12 @@ def run_ready_jobs():
                 continue
             else:
                 print('Executing move job {}'.format(job.id))
-                [active_dsets.add(ds) for ds in job_ds_map[job.id]]
-                [active_move_dsets.add(ds) for ds in job_ds_map[job.id]]
+                if job.id in job_ds_map:
+                    [active_dsets.add(ds) for ds in job_ds_map[job.id]]
+                    [active_move_dsets.add(ds) for ds in job_ds_map[job.id]]
+                if job.id in job_fn_map:
+                    [active_files.add(fn) for fn in job_fn_map[job.id]]
+                    [active_move_files.add(fn) for fn in job_fn_map[job.id]]
                 run_job(job, jobmap)
         elif job.state == Jobstates.PENDING:
             print('Found new job')
@@ -58,7 +63,10 @@ def run_ready_jobs():
                 continue
             else:
                 print('Executing job {}'.format(job.id))
-                [active_dsets.add(ds) for ds in job_ds_map[job.id]]
+                if job.id in job_ds_map:
+                    [active_dsets.add(ds) for ds in job_ds_map[job.id]]
+                if job.id in job_fn_map:
+                    [active_files.add(fn) for fn in job_fn_map[job.id]]
                 run_job(job, jobmap)
 
 

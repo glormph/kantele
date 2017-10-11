@@ -13,6 +13,7 @@ class Jobtypes(object):
     CONVERT = 'convert'
     SEARCH = 'search'
     UPLOAD = 'upload'
+    PROCESS = 'process'
 
 
 class Jobstates(object):
@@ -34,6 +35,8 @@ jobmap = {'move_files_storage':
           'create_swestore_backup':
           {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_swestore_backup,
            'retry': False},
+          'get_md5':
+          {'type': Jobtypes.PROCESS, 'func': rsjobs.get_md5, 'retry': False},
           }
 
 
