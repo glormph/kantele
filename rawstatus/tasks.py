@@ -10,17 +10,21 @@ from kantele import settings as config
 from celery import shared_task
 
 
+def calc_md5(fnpath):
+    hash_md5 = hashlib.md5()
+    with open(fnpath, 'rb') as fp:
+        for chunk in iter(lambda: fp.read(4096), b''):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
 @shared_task(queue=config.QUEUE_STORAGE, bind=True)
 def get_md5(self, sfid, fnpath, servershare):
     # This should be run on the storage server
     print('MD5 requested for file {}'.format(sfid))
     # FIXME will not have django access to DB, use API to update, needs a login
     fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
-    hash_md5 = hashlib.md5()
-    with open(fnpath, 'rb') as fp:
-        for chunk in iter(lambda: fp.read(4096), b''):
-            hash_md5.update(chunk)
-    result = hash_md5.hexdigest()
+    result = calc_md5(fnpath)
     postdata = {'sfid': sfid, 'md5': result}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
     req = requests.post(url=url, data=postdata)
@@ -45,10 +49,10 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
             '--key', config.CERTKEYLOC, '-T', fileloc, uri]
     subprocess.check_call(curl)
     try:
-        md5_upl = subprocess.check_output(['md5sum',
-                                           mountpath_fn]).split()[0]
-    except subprocess.CalledProcessError:  # most likely file not found
+        md5_upl = calc_md5(mountpath_fn)
+    except FileNotFoundError:
         # could indicate no transfer, or dav not mounted
+        # user needs to investigate and retry this
         print('Failed to get MD5 for Swestore upload of '
               '{}'.format(filepath))
         raise
