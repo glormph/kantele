@@ -18,6 +18,12 @@ def md5(fnpath):
     return hash_md5.hexdigest()
 
 
+def check_transfer_success(host, fn_id, fpath, client_id):
+    url = urljoin(host, 'files/md5/')
+    params = {'fn_id': fn_id, 'client_id': client_id, 'ftype': 'raw'}
+    return requests.get(url=url, params=params)
+
+
 def register_transfer(host, fn_id, fpath, client_id):
     url = urljoin(host, 'files/transferred/')
     postdata = {'fn_id': fn_id, 'filename': os.path.basename(fpath),
@@ -47,17 +53,19 @@ def transfer_file(fpath, transfer_location):
     print('Transferring {} to {}'.format(fpath, transfer_location))
     remote_path = os.path.join(transfer_location, os.path.basename(fpath))
     shutil.copy(fpath, remote_path)
-    # FIXME implement
+    # FIXME implement PSCP
 
 
 def collect_outbox(outbox, ledger, ledgerfn):
+    print('Checking outbox')
     for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
+        # FIXME use md5 instead of prod date
         prod_date = str(os.path.getctime(fn))
         if prod_date not in ledger:
             print('Found new file: {} produced {}'.format(fn, prod_date))
             ledger[prod_date] = {'fpath': fn, 'md5': False,
                                  'registered': False, 'transferred': False,
-                                 'remote_ok': False}
+                                 'remote_checking': False, 'remote_ok': False}
             save_ledger(ledger, ledgerfn)
     for produced_fn in ledger.values():
         if not produced_fn['md5']:
@@ -66,7 +74,7 @@ def collect_outbox(outbox, ledger, ledgerfn):
 
 
 def register_outbox_files(ledger, ledgerfn, kantelehost, client_id):
-    print('Registering files')
+    print('Checking files to register')
     for prod_date, produced_fn in ledger.items():
         if not produced_fn['registered']:
             fn = os.path.basename(produced_fn['fpath'])
@@ -90,9 +98,10 @@ def register_outbox_files(ledger, ledgerfn, kantelehost, client_id):
 
 
 def transfer_outbox_files(ledger, ledgerfn, transfer_location):
-    print('Transferring files')
+    print('Checking transfer of files')
     for produced_fn in ledger.values():
         if produced_fn['registered'] and not produced_fn['transferred']:
+            print('Transferring {}'.format(produced_fn['fpath']))
             try:
                 transfer_file(produced_fn['fpath'], transfer_location)
             except RuntimeError:
@@ -103,9 +112,9 @@ def transfer_outbox_files(ledger, ledgerfn, transfer_location):
 
 
 def register_transferred_files(ledger, ledgerfn, kantelehost, client_id):
-    print('Registering files for transfer')
+    print('Register transfer of files if necessary')
     for produced_fn in ledger.values():
-        if produced_fn['transferred'] and not produced_fn['remote_ok']:
+        if produced_fn['transferred'] and not produced_fn['remote_checking']:
             response = register_transfer(kantelehost, produced_fn['remote_id'],
                                          produced_fn['fpath'], client_id)
             try:
@@ -113,10 +122,37 @@ def register_transferred_files(ledger, ledgerfn, kantelehost, client_id):
             except JSONDecodeError:
                 print('Server error registering file, trying again later')
                 continue
+            if js_resp['state'] == 'error':
+                print('File with ID {} not registered yet'
+                      ''.format(produced_fn['remote_id']))
+                produced_fn.update({'md5': False, 'registered': False,
+                                    'transferred': False,
+                                    'remote_checking': False,
+                                    'remote_ok': False})
+            else:
+                print('Registered transfer of {}'.format(produced_fn['fpath']))
+                produced_fn['remote_checking'] = True
+            save_ledger(ledger, ledgerfn)
+
+
+def check_success_transferred_files(ledger, ledgerfn, kantelehost, client_id):
+    print('Check transfer of files')
+    for produced_fn in ledger.values():
+        if produced_fn['remote_checking'] and not produced_fn['remote_ok']:
+            response = check_transfer_success(kantelehost,
+                                              produced_fn['remote_id'],
+                                              produced_fn['fpath'], client_id)
+            try:
+                js_resp = response.json()
+            except JSONDecodeError:
+                print('Server error checking success transfer file, '
+                      'trying again later')
+                continue
             if not js_resp['md5_state']:
                 continue
             elif js_resp['md5_state'] == 'error':
                 produced_fn['transferred'] = False
+                produced_fn['remote_checking'] = False
             elif js_resp['md5_state'] == 'ok':
                 produced_fn['remote_ok'] = True
             save_ledger(ledger, ledgerfn)
@@ -139,6 +175,8 @@ def main():
         register_outbox_files(ledger, ledgerfn, kantelehost, client_id)
         transfer_outbox_files(ledger, ledgerfn, transfer_location)
         register_transferred_files(ledger, ledgerfn, kantelehost, client_id)
+        check_success_transferred_files(ledger, ledgerfn, kantelehost,
+                                        client_id)
         for file_done_ts in [k for k, x in ledger.items() if x['remote_ok']]:
             file_done = ledger[file_done_ts]['fpath']
             print('Finished with file {}: '
