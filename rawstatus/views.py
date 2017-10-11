@@ -12,6 +12,11 @@ def check_producer(producer_id):
     return Producer.objects.get(client_id=producer_id)
 
 
+def taskclient_authorized(client_id, possible_ids):
+    """Possibly use DB in future"""
+    return client_id in possible_ids
+
+
 def register_file(request):
     """Treats POST requests with:
         - client_id
@@ -120,7 +125,12 @@ def check_md5_success(request):
     try:
         fn_id = request.GET['fn_id']
         ftype = request.GET['ftype']
+        client_id = request.GET['client_id']
     except KeyError:
+        return HttpResponseForbidden()
+    try:
+        check_producer(client_id)
+    except Producer.DoesNotExist:
         return HttpResponseForbidden()
     print('Transfer state requested for fn_id {}'.format(fn_id))
     file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
@@ -137,24 +147,30 @@ def check_md5_success(request):
 
 
 def set_md5(request):
-    # FIXME login
+    if not 'client_id' in request.POST or not taskclient_authorized(
+            request.POST['client_id'], [config.STORAGECLIENT_APIKEY]):
+        return HttpResponseForbidden()
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
     storedfile.save()
     return HttpResponse()
 
 
-def create_swestore_backup(request):
-    # FIXME login
+def created_swestore_backup(request):
     data = request.POST
+    if not 'client_id' in data or not taskclient_authorized(
+            data['client_id'], [config.SWESTORECLIENT_APIKEY]):
+        return HttpResponseForbidden()
     SwestoreBackedupFile.objects.create(storefile_id=data['sfid'],
                                         swestore_path=data['swestore_path'])
     return HttpResponse()
 
 
 def update_storagepath_file(request):
-    # FIXME login
     data = request.POST
+    if not 'client_id' in data or not taskclient_authorized(
+            data['client_id'], [config.SWESTORECLIENT_APIKEY]):
+        return HttpResponseForbidden()
     if 'fn_id' in data:
         sfile = StoredFile.objects.get(pk=data['fn_id'])
         sfile.servershare = ServerShare.objects.get(name=data['servershare'])

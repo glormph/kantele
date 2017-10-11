@@ -25,7 +25,7 @@ def get_md5(self, sfid, fnpath, servershare):
     # FIXME will not have django access to DB, use API to update, needs a login
     fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
     result = calc_md5(fnpath)
-    postdata = {'sfid': sfid, 'md5': result}
+    postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
     req = requests.post(url=url, data=postdata)
     if not req.status_code == 200:
@@ -63,7 +63,8 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
         else:
             print('Successfully uploaded {} '
                   'with MD5 {}'.format(mountpath_fn, md5_upl))
-    postdata = {'sfid': fn_id, 'swestore_path': uri}
+    postdata = {'sfid': fn_id, 'swestore_path': uri,
+                'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-createswestore'))
     try:
         requests.post(url=url, data=postdata)

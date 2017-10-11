@@ -21,7 +21,8 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
             shutil.move(os.path.join(dsttree, srcdir),
                         os.path.join(dsttree, dstdir))
         dsttree = os.path.join(dsttree, dstdir)
-    postdata = {'fn_ids': storedfn_ids, 'dst_path': dstpath}
+    postdata = {'fn_ids': storedfn_ids, 'dst_path': dstpath,
+                'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
         requests.post(url=url, data=postdata)
@@ -44,7 +45,7 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     shutil.move(src, dst)
     # FIXME login
     postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
-                'dst_path': dstpath}
+                'dst_path': dstpath, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
         requests.post(url=url, data=postdata)
@@ -64,7 +65,7 @@ def move_stored_file_tmp(self, fn, path, fn_id):
     print('Moving stored file {} to tmp'.format(fn_id))
     shutil.move(src, dst)
     postdata = {'fn_id': fn_id, 'servershare': config.TMPSHARENAME,
-                'dst_path': ''}
+                'dst_path': '', 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
         requests.post(url=url, data=postdata)
