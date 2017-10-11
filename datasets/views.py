@@ -25,7 +25,7 @@ def home(request):
 def new_dataset(request):
     """Returns dataset view with Vue apps that will separately request
     forms"""
-    context = {'dataset_id': '', 'newdataset': True}
+    context = {'dataset_id': '', 'newdataset': True, 'is_owner': 'true'}
     return render(request, 'datasets/dataset.html', context)
 
 
