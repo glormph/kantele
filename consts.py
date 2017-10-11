@@ -1,2 +1,0 @@
-INFOFILE_LOCATION = '/tmp'
-TMP_INFOFILE_DIR = '/tmp'

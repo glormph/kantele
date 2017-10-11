@@ -207,7 +207,6 @@
 		methods: {
 			validate: function() {
 				this.errors = [];
-				// FIXME quant type and sample names
 				if (!this.spdata.no_enzyme && !this.spdata.enzymes.length) {
 					this.errors.push('Enzyme selection is required');
 				}

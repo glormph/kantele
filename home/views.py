@@ -1,6 +1,5 @@
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import authenticate, login
 from django.http import JsonResponse
 from collections import OrderedDict
 
@@ -38,8 +37,7 @@ def show_datasets(request):
                 dcst.dtcomp.component.name: dcst.state,
             }
             if hasattr(dcst.dataset, 'hiriefdataset'):
-                dsets[dcst.dataset.id]['hr'] = str(dcst.dataset.hiriefdataset.hirief)
+                dsets[dcst.dataset.id]['hr'] = str(
+                    dcst.dataset.hiriefdataset.hirief)
     response['dsets'] = dsets
     return JsonResponse(response)
-
-

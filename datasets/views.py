@@ -16,11 +16,6 @@ COMPSTATE_NEW = 'new'
 COMPSTATE_INCOMPLETE = 'incomplete'
 
 
-def home(request):
-    return render()
-
-
-
 @login_required
 def new_dataset(request):
     """Returns dataset view with Vue apps that will separately request
@@ -173,7 +168,6 @@ def get_admin_params_for_dset(response, dset_id, category):
 
 
 def update_dataset(data):
-    # FIXME this needs to also change file location
     dset = models.Dataset.objects.select_related(
         'runname__experiment', 'datatype').get(pk=data['dataset_id'])
     if 'newprojectname' in data:
@@ -223,8 +217,6 @@ def update_dataset(data):
         if dset.corefacdatasetcontact.email != data['corefaccontact']:
             dset.corefacdatasetcontact.email = data['corefaccontact']
             dset.corefacdatasetcontact.save()
-    # FIXME delete old project if no experiment? Or only admin?
-    # FIXME delete old experiment if no datasets ?
     return JsonResponse({'dataset_id': dset.id})
 
 

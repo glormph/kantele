@@ -43,7 +43,6 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     if not os.path.exists(dstdir) or not os.path.isdir(dstdir):
         os.makedirs(dstdir)
     shutil.move(src, dst)
-    # FIXME login
     postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
                 'dst_path': dstpath, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
