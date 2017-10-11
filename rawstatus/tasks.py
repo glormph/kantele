@@ -22,15 +22,17 @@ def calc_md5(fnpath):
 def get_md5(self, sfid, fnpath, servershare):
     # This should be run on the storage server
     print('MD5 requested for file {}'.format(sfid))
-    # FIXME will not have django access to DB, use API to update, needs a login
     fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
     result = calc_md5(fnpath)
     postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
-    req = requests.post(url=url, data=postdata)
-    if not req.status_code == 200:
-        print('Could not update database: http {}. Retrying in one '
-              'minute'.format(req.status_code))
+    try:
+        requests.post(url=url, data=postdata)
+    except (requests.exceptions.HTTPError,
+            requests.exceptions.ConnectionError) as e:
+        msg = ('Could not update database: http/connection error {}. '
+               'Retrying in one minute'.format(e))
+        print(msg)
         self.retry(countdown=60)
     print('MD5 of {} is {}, registered in DB'.format(fnpath, result))
     return result
