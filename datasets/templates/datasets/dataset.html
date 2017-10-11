@@ -696,11 +696,24 @@
 			},
 			validate: function() {
 				this.errors = [];
+				re = RegExp('^[a-z0-9-_]+$', 'i');
 				if (!this.pdata.newprojectname && !this.pdata.project_id) {
 					this.errors.push('Project needs to be selected or created');
 				}
+				else if (this.pdata.newprojectname && !re.test(this.pdata.newprojectname)) {
+					this.errors.push('Project name may only contain a-z 0-9 - _');
+				}
 				if (!this.pdata.newexperimentname && !this.pdata.experiment_id) {
 					this.errors.push('Experiment is required');
+				}
+				else if (this.pdata.newexperimentname && !re.test(this.pdata.newexperimentname)) {
+					this.errors.push('Experiment name may only contain a-z 0-9 - _');
+				}
+				if (!this.pdata.runname) {
+					this.errors.push('Run name is required');
+				}
+				else if (!re.test(this.pdata.runname)) {
+					this.errors.push('Run name may only contain a-z 0-9 - _');
 				}
 				if (!this.pdata.datatype_id) {
 					this.errors.push('Datatype is required');
