@@ -1,6 +1,5 @@
 from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponseNotAllowed, HttpResponse)
-from django.contrib.auth.decorators import login_required
 
 from kantele import settings as config
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
@@ -78,6 +77,7 @@ def file_transferred(request):
             fn_id = request.POST['fn_id']
             client_id = request.POST['client_id']
             ftype = request.POST['ftype']
+            fname = request.POST['filename']
         except KeyError as error:
             print('POST request to register_file with missing parameter, '
                   '{}'.format(error))
@@ -89,30 +89,51 @@ def file_transferred(request):
         tmpshare = ServerShare.objects.get(name=config.TMPSHARENAME)
         try:
             RawFile.objects.get(pk=fn_id)
-            file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
-                                                      filetype=ftype)
         except RawFile.DoesNotExist:
             print('File has not been registered yet, cannot transfer')
+            return JsonResponse({'fn_id': request.POST['fn_id'],
+                                 'state': 'error'})
+        try:
+            file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
+                                                      filetype=ftype)
         except StoredFile.DoesNotExist:
             print('New transfer registered, fn_id {}'.format(fn_id))
             file_transferred = StoredFile(rawfile_id=fn_id, filetype=ftype,
                                           servershare=tmpshare, path='',
-                                          md5='')
+                                          filename=fname, md5='')
             file_transferred.save()
-            jobutil.create_file_job('create_swestore_backup',
-                                    file_transferred.id)
-            return JsonResponse({'fn_id': request.POST['fn_id'],
-                                 'md5_state': False})
-        print('Transfer state requested for fn_id {}'.format(fn_id))
-        file_registered = file_transferred.rawfile
-        if not file_transferred.md5:
-            return JsonResponse({'fn_id': fn_id, 'md5_state': False})
-        if file_registered.source_md5 == file_transferred.md5:
-            return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
+            jobutil.create_file_job('get_md5', file_transferred.id)
         else:
-            return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})
+            print('File already registered as transfer, client asks for new '
+                  'MD5 check after a possible retransfer. Running MD5 check.')
+            jobutil.create_file_job('get_md5', file_transferred.id)
+        finally:
+            return JsonResponse({'fn_id': request.POST['fn_id'],
+                                 'state': 'ok'})
     else:
         return HttpResponseNotAllowed()
+
+
+def check_md5_success(request):
+    if not request.method == 'GET':
+        return HttpResponseNotAllowed()
+    try:
+        fn_id = request.GET['fn_id']
+        ftype = request.GET['ftype']
+    except KeyError:
+        return HttpResponseForbidden()
+    print('Transfer state requested for fn_id {}'.format(fn_id))
+    file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
+                                              filetype=ftype)
+    file_registered = file_transferred.rawfile
+    if not file_transferred.md5:
+        return JsonResponse({'fn_id': fn_id, 'md5_state': False})
+    if file_registered.source_md5 == file_transferred.md5:
+        jobutil.create_file_job('create_swestore_backup', file_transferred.id,
+                                file_transferred.md5)
+        return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
+    else:
+        return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})
 
 
 def set_md5(request):
