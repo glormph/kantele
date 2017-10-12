@@ -2,24 +2,11 @@
 <head>
 <title>Kantele - metadata management</title>
 {% load static %}
-<!-- <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.4.4/css/bulma.min.css">
-<script src="https://unpkg.com/vue"></script>
--->
 <script src="{% static "datasets/vue.js" %}"></script>
 <script src="{% static "datasets/vue-resource.js" %}"></script>
 <link rel="stylesheet" type="text/css" href="{% static "datasets/bulma.min.css" %}">
 <link rel="stylesheet" type="text/css" href="{% static "datasets/style.css" %}">
 <link rel="stylesheet" href="{% static "datasets/font-awesome/css/font-awesome.min.css" %}">
-
-
-<!--
-<link rel="stylesheet" type="text/css" href="{% static ui.notify.css %}">
-<script src="{{ STATIC_URL }}ui.notify.js"></script>
-<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js">
-</script>
-<script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.10.0/jquery-ui.min.js">
-</script>
---> 
 </head>
 
 <body>
@@ -33,7 +20,7 @@
 	    <div class="navbar-start">
 		    <a class="navbar-item " href="{% url 'home:home' %}">HOME</a>
 		    <a class="navbar-item " href="{% url 'datasets:new' %}">NEW DATASET</a>
-		    <a class="navbar-item " href="{% url 'logout' %}">LOGOUT</a>
+		    <a class="navbar-item " href="{% url 'logout' %}">LOGOUT {{ user }}</a>
 	    </div>
     </div>
 	{% endif %}
