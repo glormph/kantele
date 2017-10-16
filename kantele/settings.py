@@ -1,21 +1,47 @@
 # Django settings for kantele project.
 import os
 
+# local box setup
+APIKEY = os.environ.get('APIKEY')
+STORAGESHARE = os.environ.get('STORAGESHARE')
+TMPSHARE = os.environ.get('TMPSHARE')
+
+# swestore
+SWESTORE_URI = os.environ.get('SWESTOREURI')
+DAV_PATH = os.environ.get('DAVPATH')
+CACERTLOC = os.environ.get('CACERTLOC')
+CERTLOC = os.environ.get('CERTLOC')
+CERTKEYLOC = os.environ.get('CERTKEYLOC')
+CERTPASS = os.environ.get('CERTPASS')
+
+# site infra
+SWESTORECLIENT_APIKEY = ''  # SET THIS
+STORAGECLIENT_APIKEY = ''  # SET THIS
+QUEUE_STORAGE = 'mv_md5_storage'
+QUEUE_SWESTORE = 'create_swestore'
+KANTELEHOST = os.environ.get('KANTELEHOST')
+TMPSHARENAME = 'tmp'
+STORAGESHARENAME = 'storage'
+SHAREMAP = {TMPSHARENAME: TMPSHARE,
+            STORAGESHARENAME: STORAGESHARE
+            }
+CELERY_BROKER_HOST = os.environ.get('RABBITHOST')
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_BACKEND = 'rpc'
+
+# django
+SECRET_KEY = os.environ.get('SECRET_KEY')
+DEBUG = True
+ALLOWED_HOSTS = []
+#ALLOWED_HOSTS = ['.scilifelab.se']
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#CSRF_COOKIE_SECURE = True
+#SESSION_COOKIE_SECURE = True
+#X_FRAME_OPTIONS = 'DENY'
+#SECURE_CONTENT_TYPE_NOSNIFF = True
+#SECURE_BROWSER_XSS_FILTER = True
 
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/1.11/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-# FIXME
-SECRET_KEY = ''
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
 
 # Application definition
 
