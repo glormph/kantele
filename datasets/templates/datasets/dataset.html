@@ -29,7 +29,7 @@
 				<span>Files</span>
 			</a>
 		</li>
-		<li v-bind:class="tabclassAcq"><a v-on:click="showAcquisition">
+		<li v-if="componentEnabled('acquisition')" v-bind:class="tabclassAcq"><a v-on:click="showAcquisition">
 				<span v-show="acquisition_state === 'ok'" class="icon is-small">
 					<i  class="fa fa-check"></i>
 				</span>
@@ -41,7 +41,7 @@
 				</span>
 				<span>Acquisition</span>
 		</a></li>
-		<li v-bind:class="tabclassSP"><a v-on:click="showSP">
+		<li v-if="componentEnabled('sampleprep')" v-bind:class="tabclassSP"><a v-on:click="showSP">
 				<span v-show="sampleprep_state === 'ok'" class="icon is-small">
 					<i  class="fa fa-check"></i>
 				</span>
@@ -56,9 +56,9 @@
 </div>
 <div class="container">
 		<project-box v-on:save="save_definition" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:pdata="projdata"></project-box>
-		<acquisition-box v-on:save="save_acquisition" v-show="viewtab === 'acquisition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
+		<acquisition-box v-on:save="save_acquisition" v-if="componentEnabled('acquisition')" v-show="viewtab === 'acquisition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
 		<files-box v-on:save="save_files" v-show="viewtab === 'files'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:fndata="filesdata"></files-box>
-		<sampleprep-box v-on:save="save_sampleprep" v-show="viewtab === 'sampleprep'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
+		<sampleprep-box v-on:save="save_sampleprep" v-if="componentEnabled('sampleprep')" v-show="viewtab === 'sampleprep'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
 </div>
 </section>
 
@@ -801,6 +801,7 @@
 	el: '#apps',
 	data: function() {
 		return {
+			dtypecomponents: [],
 			tabclassDef: 'is-active',
 			tabclassFiles: '',
 			tabclassAcq: '',
@@ -868,6 +869,9 @@
 		this.fetchStates();
 	},
 	methods: {
+		componentEnabled: function(compname) {
+			return this.dtypecomponents.indexOf(compname) > -1
+		},
 		showDef: function() {
 			this.viewtab = 'definition';
 			this.activateTabClass('tabclassDef');
@@ -908,6 +912,7 @@
 				for (var i = 0; i < result.projects.length; i++) {
 					this.projdata.project_lookup[result.projects[i].id] = {'corefac': result.projects[i].corefac, 'pi_id': result.projects[i].pi_id, 'name': result.projects[i].name};
 					}
+				this.dtypecomponents = this.projdata.components;
 				})
 			},
 

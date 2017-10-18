@@ -45,8 +45,11 @@ def dataset_project(request, dataset_id):
             'hiriefdataset').get(pk=dataset_id)
         species = models.DatasetSpecies.objects.filter(
             dataset_id=dset.id).select_related('species')
+        components = models.DatatypeComponent.objects.filter(
+            datatype_id=dset.datatype_id).select_related('component')
         response_json.update(
-            dataset_proj_json(dset, dset.runname.experiment.project, species))
+            dataset_proj_json(dset, dset.runname.experiment.project, species,
+                              components))
         if hasattr(dset, 'hiriefdataset'):
             response_json.update(hr_dataset_proj_json(dset.hiriefdataset))
         if dset.runname.experiment.project.corefac:
@@ -349,7 +352,7 @@ def empty_dataset_proj_json():
             }
 
 
-def dataset_proj_json(dset, project, species):
+def dataset_proj_json(dset, project, species, components):
     return {'dataset_id': dset.id,
             'experiment_id': dset.runname.experiment_id,
             'runname': dset.runname.name,
@@ -362,6 +365,7 @@ def dataset_proj_json(dset, project, species):
                                             'linnean': x.species.linnean,
                                             'name': x.species.popname}
                              for x in species},
+            'components': [x.component.name for x in components],
             }
 
 
