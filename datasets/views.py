@@ -43,8 +43,10 @@ def dataset_project(request, dataset_id):
         dset = models.Dataset.objects.select_related(
             'runname__experiment__project', 'datatype',
             'hiriefdataset').get(pk=dataset_id)
+        species = models.DatasetSpecies.objects.filter(
+            dataset_id=dset.id).select_related('species')
         response_json.update(
-            dataset_proj_json(dset, dset.runname.experiment.project))
+            dataset_proj_json(dset, dset.runname.experiment.project, species))
         if hasattr(dset, 'hiriefdataset'):
             response_json.update(hr_dataset_proj_json(dset.hiriefdataset))
         if dset.runname.experiment.project.corefac:
@@ -191,6 +193,16 @@ def update_dataset(data):
         print('Update data')
         dset.runname.name = data['runname']
         dset.runname.save()
+    # update species
+    print('Update species')
+    savedspecies = {x.species_id for x in
+                    models.DatasetSpecies.objects.filter(dataset_id=dset.id)}
+    newspec = {int(x) for x in data['organism_ids']}
+    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
+        dataset_id=dset.id, species_id=spid)
+        for spid in newspec.difference(savedspecies)])
+    models.DatasetSpecies.objects.filter(
+        species_id__in=savedspecies.difference(newspec)).delete()
     # update hirief, including remove hirief range binding if no longer hirief
     hrf_id = models.Datatype.objects.get(name__icontains='HiRIEF').id
     if dset.datatype_id == hrf_id and dset.datatype_id != data['datatype_id']:
@@ -283,6 +295,9 @@ def save_dataset(request):
                               project, experiment, runname, is_hirief, data),
                           datatype_id=data['datatype_id'])
     dset.save()
+    models.DatasetSpecies.bulk_create(
+        [models.DatasetSpecies(species_id=sid, dataset_id=dset.id)
+         for sid in data['organism_ids']])
     if dset.datatype_id == hrf_id:
         hrds = models.HiriefDataset(dataset=dset,
                                     hirief_id=data['hiriefrange'])
@@ -324,11 +339,17 @@ def empty_dataset_proj_json():
             'datasettypes': [{'name': x.name, 'id': x.id} for x in
                              models.Datatype.objects.all()],
             'hirief_ranges': [{'name': str(x), 'id': x.id}
-                              for x in models.HiriefRange.objects.all()]
+                              for x in models.HiriefRange.objects.all()],
+            'organisms': [{'id': x.id, 'linnean': x.linnean, 'name': x.popname}
+                          for x in models.Species.objects.all()],
+            'mostused_organisms': [
+                {'id': x.species.id, 'linnean': x.species.linnean,
+                 'name': x.species.popname} for x in
+                models.DatasetSpecies.objects.all().select_related('species')],
             }
 
 
-def dataset_proj_json(dset, project):
+def dataset_proj_json(dset, project, species):
     return {'dataset_id': dset.id,
             'experiment_id': dset.runname.experiment_id,
             'runname': dset.runname.name,
@@ -337,6 +358,10 @@ def dataset_proj_json(dset, project):
             'existingproject_iscf': project.corefac,
             'datatype_id': dset.datatype_id,
             'storage_location': dset.storage_loc,
+            'organism_ids': {x.species_id: {'id': x.species_id,
+                                            'linnean': x.species.linnean,
+                                            'name': x.species.popname}
+                             for x in species},
             }
 
 

@@ -27,6 +27,11 @@ class RunName(models.Model):
     experiment = models.ForeignKey(Experiment)
 
 
+class Species(models.Model):
+    linnean = models.CharField(max_length=100, unique=True)
+    popname = models.CharField(max_length=100)
+
+
 class Datatype(models.Model):
     name = models.TextField(max_length=100)
 
@@ -62,6 +67,10 @@ class DatasetRawFile(models.Model):
     dataset = models.ForeignKey(Dataset)
     rawfile = models.OneToOneField(RawFile)
 
+
+class DatasetSpecies(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    species = models.ForeignKey(Species)
 
 class ParamType(models.Model):
     typename = models.CharField(max_length=100)
