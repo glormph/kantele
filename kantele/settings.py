@@ -19,7 +19,7 @@ SWESTORECLIENT_APIKEY = ''  # SET THIS
 STORAGECLIENT_APIKEY = ''  # SET THIS
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_SWESTORE = 'create_swestore'
-KANTELEHOST = os.environ.get('KANTELEHOST')
+KANTELEHOST = 'http://{}'.format(os.environ.get('KANTELEHOST'))
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
@@ -30,17 +30,16 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
 # django
+ALLOWED_HOSTS = [os.environ.get('KANTELEHOST')]
 SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = True
-ALLOWED_HOSTS = []
-#ALLOWED_HOSTS = ['.scilifelab.se']
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-#CSRF_COOKIE_SECURE = True
+#CSRF_COOKIE_SECURE = False
 #SESSION_COOKIE_SECURE = True
 #X_FRAME_OPTIONS = 'DENY'
 #SECURE_CONTENT_TYPE_NOSNIFF = True
-#SECURE_BROWSER_XSS_FILTER = True
+#SECURE_BROWSER_XSS_FILTER = False
 
 
 # Application definition
@@ -100,8 +99,12 @@ WSGI_APPLICATION = 'kantele.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'kanteledb',
+        'USER': 'kanteleuser',
+        'PASSWORD': os.environ.get('DB_PASS'),
+        'HOST': '127.0.0.1',
+        'PORT': 5432,
         'ATOMIC_REQUESTS': True,
     }
 }
@@ -144,6 +147,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
 STATIC_URL = '/static/'
+STATIC_ROOT = 'static/'
 LOGIN_URL = '/login'
 SESSION_COOKIE_EXPIRE = 1800
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
