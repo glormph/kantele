@@ -29,7 +29,7 @@
 				<span>Files</span>
 			</a>
 		</li>
-		<li v-bind:class="tabclassAcq"><a v-on:click="showAcquisition">
+		<li v-if="componentEnabled('acquisition')" v-bind:class="tabclassAcq"><a v-on:click="showAcquisition">
 				<span v-show="acquisition_state === 'ok'" class="icon is-small">
 					<i  class="fa fa-check"></i>
 				</span>
@@ -41,7 +41,7 @@
 				</span>
 				<span>Acquisition</span>
 		</a></li>
-		<li v-bind:class="tabclassSP"><a v-on:click="showSP">
+		<li v-if="componentEnabled('sampleprep')" v-bind:class="tabclassSP"><a v-on:click="showSP">
 				<span v-show="sampleprep_state === 'ok'" class="icon is-small">
 					<i  class="fa fa-check"></i>
 				</span>
@@ -56,9 +56,9 @@
 </div>
 <div class="container">
 		<project-box v-on:save="save_definition" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:pdata="projdata"></project-box>
-		<acquisition-box v-on:save="save_acquisition" v-show="viewtab === 'acquisition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
+		<acquisition-box v-on:save="save_acquisition" v-if="componentEnabled('acquisition')" v-show="viewtab === 'acquisition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
 		<files-box v-on:save="save_files" v-show="viewtab === 'files'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:fndata="filesdata"></files-box>
-		<sampleprep-box v-on:save="save_sampleprep" v-show="viewtab === 'sampleprep'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
+		<sampleprep-box v-on:save="save_sampleprep" v-if="componentEnabled('sampleprep')" v-show="viewtab === 'sampleprep'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
 </div>
 </section>
 
@@ -606,6 +606,37 @@
 				<input class="input" v-model="pdata.newexperimentname" type="text" placeholder="Experiment name">
 			</div>
 		</div>
+		<div class="field">
+			<label class="label">Run name</label>
+			<div class="control">
+				<input class="input" v-model="pdata.runname" type="text" placeholder="E.g set1, run1, etc">
+			</div>
+		</div>
+
+		<div class="field">
+			<label class="label">Organisms</label>
+			<input type="checkbox" v-model="mostusedorganisms">Pick from most used
+			<div class="tags">
+				{% verbatim %}
+				<span class="tag is-medium is-info" v-for="org in pdata.organism_ids">
+					{{ org.name }}, {{ org.linnean }}
+					<button class="delete is-small" v-on:click="removeOrganism(org.id)"></button>
+				</span>
+				{% endverbatim %}
+			</div>
+			<div class="control">
+				<input class="input" v-model="organismfilter" type="text" placeholder="Filter organisms">
+			</div>
+			<div class="dropdown is-active" v-show="organismfilter">
+				<div class="dropdown-menu" id="dropdown-menu" role="menu">
+					<div class="dropdown-content">
+					        {% verbatim %}
+						<a v-on:click="addOrganism(org)" class="dropdown-item" v-for="org in filteredorganisms">{{ org.name }}, {{ org.linnean }}</a>
+					        {% endverbatim %}
+					</div>
+				</div>
+			</div>
+		</div>
 		
 		<div class="field">
 			<label class="label">Dataset type</label>
@@ -633,12 +664,6 @@
 				</div>
 			</div>
 		</div>
-		<div class="field">
-			<label class="label">Run name</label>
-			<div class="control">
-				<input class="input" v-model="pdata.runname" type="text" placeholder="E.g set1, run1, etc">
-			</div>
-		</div>
 		<article class="message is-info"> 
 		<div class="message-header">Storage location</div>
 		{% verbatim %}
@@ -658,6 +683,8 @@
 			isNewExperiment: false,
 			isNewPI: false,
 			newproject_iscf: false,
+			organismfilter: '',
+			mostusedorganisms: true,
 			}
 		},
 		computed: {
@@ -670,6 +697,25 @@
 				return this.pdata.existingproject_iscf}
 			
 			},
+		filteredorganisms: function() {
+			filteredorgs = [];
+			if (this.mostusedorganisms) {
+				for (org of this.pdata.mostused_organisms) {
+					checkorg = org.linnean.concat(org.name).toLowerCase();
+					if (checkorg.indexOf(this.organismfilter.toLowerCase()) > -1) {
+						filteredorgs.push(org);
+					}
+				}
+			} else {
+				for (org of this.pdata.organisms) {
+					checkorg = org.linnean.concat(org.name).toLowerCase();
+					if (checkorg.indexOf(this.organismfilter.toLowerCase()) > -1) {
+						filteredorgs.push(org);
+					}
+				}
+			}
+			return filteredorgs
+		},
 		proj_experiments: function() {
 			return !this.pdata.project_id ? [] : this.pdata.experiments[this.pdata.project_id]
 			},
@@ -693,6 +739,13 @@
 				this.isNewPI = this.isNewPI === false;
 				this.pdata.isNewPI = this.isNewPI;
 			},
+			removeOrganism: function(orgid) {
+				delete this.pdata.organism_ids[orgid];
+			},
+			addOrganism: function(org) {
+				this.organismfilter = '';
+				this.pdata.organism_ids[org.id] = org;
+			},
 			validate: function() {
 				this.errors = [];
 				re = RegExp('^[a-z0-9-_]+$', 'i');
@@ -710,6 +763,9 @@
 				}
 				if (!this.pdata.runname) {
 					this.errors.push('Run name is required');
+				}
+				if (Object.keys(this.pdata.organism_ids).length === 0) {
+					this.errors.push('Organism(s) is/are required');
 				}
 				else if (!re.test(this.pdata.runname)) {
 					this.errors.push('Run name may only contain a-z 0-9 - _');
@@ -745,6 +801,7 @@
 	el: '#apps',
 	data: function() {
 		return {
+			dtypecomponents: [],
 			tabclassDef: 'is-active',
 			tabclassFiles: '',
 			tabclassAcq: '',
@@ -770,6 +827,7 @@
 				externpi: '',
 				externalcontactmail: '',
 				runname: '',
+				organism_ids: {},
 				storage_location: '',
 				isNewProject: false,
 				isNewExperiment: false,
@@ -811,6 +869,9 @@
 		this.fetchStates();
 	},
 	methods: {
+		componentEnabled: function(compname) {
+			return this.dtypecomponents.indexOf(compname) > -1
+		},
 		showDef: function() {
 			this.viewtab = 'definition';
 			this.activateTabClass('tabclassDef');
@@ -851,6 +912,7 @@
 				for (var i = 0; i < result.projects.length; i++) {
 					this.projdata.project_lookup[result.projects[i].id] = {'corefac': result.projects[i].corefac, 'pi_id': result.projects[i].pi_id, 'name': result.projects[i].name};
 					}
+				this.dtypecomponents = this.projdata.components;
 				})
 			},
 
@@ -884,6 +946,7 @@
 				is_corefac: this.projdata.is_corefac,
 				datatype_id: this.projdata.datatype_id,
 				hiriefrange: this.projdata.hiriefrange,
+				organism_ids: this.projdata.organism_ids,
 				runname: this.projdata.runname,
 			};
 			if (this.projdata.isNewProject) {
