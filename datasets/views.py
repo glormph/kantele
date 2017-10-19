@@ -272,10 +272,10 @@ def check_save_permission(dset_id, logged_in_user_id):
 @login_required
 def save_dataset(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user.id)
-    if user_denied:
-        return user_denied
     if data['dataset_id']:
+        user_denied = check_save_permission(data['dataset_id'], request.user.id)
+        if user_denied:
+            return user_denied
         print('Updating')
         return update_dataset(data)
     if 'newprojectname' in data:
