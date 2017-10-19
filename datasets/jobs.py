@@ -1,3 +1,5 @@
+from django.db.models import F
+
 from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
 from datasets import tasks
@@ -18,6 +20,7 @@ def move_files_dataset_storage(job_id, dset_id, fn_ids):
     print('Moving dataset files to storage')
     dset_files = StoredFile.objects.filter(
         rawfile__datasetrawfile__dataset_id=dset_id,
+        rawfile__source_md5=F('md5'),
         rawfile_id__in=fn_ids).select_related('rawfile__datasetrawfile',
                                               'servershare')
     # if only half of the files have been SCP arrived yet? Try more later:
@@ -26,8 +29,9 @@ def move_files_dataset_storage(job_id, dset_id, fn_ids):
     if dset_files.count() != dset_registered_files.count():
         raise RuntimeError(
             'Not all files to move have been transferred or '
-            'registered as transferred yet. Holding this job and temporarily '
-            'retrying it')
+            'registered as transferred yet, or have non-matching MD5 sums '
+            'between their registration and after transfer from input source. '
+            'Holding this job and temporarily retrying it')
     dst_path = Dataset.objects.get(pk=dset_id).storage_loc
     task_ids = []
     for fn in dset_files:
