@@ -15,8 +15,8 @@ CERTKEYLOC = os.environ.get('CERTKEYLOC')
 CERTPASS = os.environ.get('CERTPASS')
 
 # site infra
-SWESTORECLIENT_APIKEY = ''  # SET THIS
-STORAGECLIENT_APIKEY = ''  # SET THIS
+SWESTORECLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
+STORAGECLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_SWESTORE = 'create_swestore'
 KANTELEHOST = 'http://{}'.format(os.environ.get('KANTELEHOST'))
