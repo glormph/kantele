@@ -28,8 +28,8 @@ class RunName(models.Model):
 
 
 class Species(models.Model):
-    linnean = models.CharField(max_length=100, unique=True)
-    popname = models.CharField(max_length=100)
+    linnean = models.TextField(unique=True)
+    popname = models.TextField()
 
 
 class Datatype(models.Model):
