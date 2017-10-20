@@ -24,7 +24,8 @@ def get_md5(self, sfid, fnpath, servershare):
     print('MD5 requested for file {}'.format(sfid))
     fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
     result = calc_md5(fnpath)
-    postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY}
+    postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY,
+                'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
     try:
         requests.post(url=url, data=postdata)
@@ -66,7 +67,7 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
             print('Successfully uploaded {} '
                   'with MD5 {}'.format(mountpath_fn, md5_upl))
     postdata = {'sfid': fn_id, 'swestore_path': uri,
-                'client_id': config.APIKEY}
+                'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-createswestore'))
     try:
         requests.post(url=url, data=postdata)
