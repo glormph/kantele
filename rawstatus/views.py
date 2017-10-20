@@ -5,6 +5,7 @@ from kantele import settings as config
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
 from jobs import jobs as jobutil
+from jobs.views import set_task_done
 from datetime import datetime
 
 
@@ -153,16 +154,20 @@ def set_md5(request):
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
     storedfile.save()
+    if 'task' in request.post:
+        set_task_done(request.post['task'])
     return HttpResponse()
 
 
 def created_swestore_backup(request):
     data = request.POST
-    if not 'client_id' in data or not taskclient_authorized(
+    if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
     SwestoreBackedupFile.objects.create(storefile_id=data['sfid'],
                                         swestore_path=data['swestore_path'])
+    if 'task' in request.post:
+        set_task_done(request.post['task'])
     return HttpResponse()
 
 
@@ -179,4 +184,6 @@ def update_storagepath_file(request):
     elif 'fn_ids' in data:
         StoredFile.objects.filter(pk__in=data['fn_ids']).update(
             path=data['dst_path'])
+    if 'task' in request.post:
+        set_task_done(request.post['task'])
     return HttpResponse()
