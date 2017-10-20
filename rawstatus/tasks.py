@@ -28,13 +28,16 @@ def get_md5(self, sfid, fnpath, servershare):
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
     try:
-        requests.post(url=url, data=postdata)
+        r = requests.post(url=url, data=postdata)
+        r.raise_for_status()
     except (requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError) as e:
         msg = ('Could not update database: http/connection error {}. '
                'Retrying in one minute'.format(e))
         print(msg)
         self.retry(countdown=60)
+    except:
+        raise
     print('MD5 of {} is {}, registered in DB'.format(fnpath, result))
     return result
 
@@ -70,10 +73,11 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-createswestore'))
     try:
-        requests.post(url=url, data=postdata)
+        r = requests.post(url=url, data=postdata)
+        r.raise_for_status()
     except (requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError) as e:
-        msg = 'Could not update database with for fn {} with swestore URI {} :'
-        '{}'.format(filepath, uri, e)
+        msg = ('Could not update database with for fn {} with swestore URI {} :'
+               '{}'.format(filepath, uri, e))
         print(msg)
         self.retry()
