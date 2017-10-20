@@ -154,8 +154,8 @@ def set_md5(request):
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
     storedfile.save()
-    if 'task' in request.post:
-        set_task_done(request.post['task'])
+    if 'task' in request.POST:
+        set_task_done(request.POST['task'])
     return HttpResponse()
 
 
@@ -166,8 +166,8 @@ def created_swestore_backup(request):
         return HttpResponseForbidden()
     SwestoreBackedupFile.objects.create(storefile_id=data['sfid'],
                                         swestore_path=data['swestore_path'])
-    if 'task' in request.post:
-        set_task_done(request.post['task'])
+    if 'task' in request.POST:
+        set_task_done(request.POST['task'])
     return HttpResponse()
 
 
@@ -184,6 +184,6 @@ def update_storagepath_file(request):
     elif 'fn_ids' in data:
         StoredFile.objects.filter(pk__in=data['fn_ids']).update(
             path=data['dst_path'])
-    if 'task' in request.post:
-        set_task_done(request.post['task'])
+    if 'task' in request.POST:
+        set_task_done(request.POST['task'])
     return HttpResponse()

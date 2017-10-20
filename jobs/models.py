@@ -12,7 +12,7 @@ class Job(models.Model):
 
 class JobError(models.Model):
     job = models.OneToOneField(Job)
-    message = models.CharField(max_length=200)
+    message = models.TextField()
     autorequeue = models.BooleanField()
 
 
