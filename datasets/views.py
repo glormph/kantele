@@ -7,6 +7,7 @@ from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
 
 from datasets import models
 from rawstatus import models as filemodels
+from corefac import models as cfmodels
 from jobs.jobs import create_dataset_job
 
 
@@ -27,12 +28,13 @@ def new_dataset(request):
 @login_required
 def show_dataset(request, dataset_id):
     try:
-        dset = models.Dataset.objects.get(pk=dataset_id)
+        dset = models.Dataset.objects.filter(pk=dataset_id).select_related(
+            'runname__experiment__project').get()
     except models.Dataset.DoesNotExist:
         return HttpResponseNotFound()
     context = {'dataset_id': dataset_id, 'newdataset': False,
                'is_owner': {True: 'true', False: 'false'}[
-                   request.user.id == dset.user_id]}
+                   check_ownership(request.user.id, dset)]}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -258,13 +260,26 @@ def get_storage_location(project, exp, runname, is_hirief, postdata):
         return '{}/{}/{}'.format(project.name, exp.name, runname.name)
 
 
+def check_ownership(userid, dset):
+    if dset.user_id == userid:
+        return True
+    if not dset.runname.experiment.project.corefac:
+        return False
+    try:
+        cfmodels.CorefacUser.objects.get(user_id=userid)
+    except cfmodels.CorefacUser.DoesNotExist:
+        return False
+    return True
+
+
 def check_save_permission(dset_id, logged_in_user_id):
     try:
-        user_ok = models.Dataset.objects.get(pk=dset_id).user_id == logged_in_user_id
+        dset = models.Dataset.objects.filter(pk=dset_id).select_related(
+            'runname__experiment__project').get()
     except models.Dataset.DoesNotExist:
         return HttpResponseNotFound()
     else:
-        if not user_ok:
+        if not check_ownership(logged_in_user_id, dset):
             return HttpResponseForbidden()
     return False
 

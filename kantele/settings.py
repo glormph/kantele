@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'datasets.apps.DatasetsConfig',
     'rawstatus.apps.RawstatusConfig',
     'jobs.apps.JobsConfig',
+    'corefac.apps.CorefacConfig',
 ]
 
 MIDDLEWARE = [
