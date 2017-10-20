@@ -66,8 +66,8 @@ def dataset_files(request, dataset_id):
             {'datasetAssociatedFiles':
              {'id_{}'.format(x.rawfile_id):
               {'id': x.rawfile_id, 'name': x.rawfile.name, 'associd': x.id,
-               'instrument': x.rawfile.producer.name, 'date': x.rawfile.date,
-               'checked': False}
+               'instrument': x.rawfile.producer.name,
+               'date': x.rawfile.date.timestamp() * 1000, 'checked': False}
               for x in models.DatasetRawFile.objects.select_related(
                   'rawfile__producer').filter(dataset_id=dataset_id)}})
     return JsonResponse(response_json)
@@ -447,8 +447,10 @@ def empty_acquisition_json():
 
 
 def empty_files_json():
-    return {'newFiles': {'id_{}'.format(x.id):
-                         {'id': x.id, 'name': x.name, 'date': x.date,
+    return {'instruments': [x.name for x in filemodels.Producer.objects.all()],
+            'newFiles': {'id_{}'.format(x.id):
+                         {'id': x.id, 'name': x.name,
+                          'date': x.date.timestamp() * 1000,
                           'instrument': x.producer.name, 'checked': False}
                          for x in filemodels.RawFile.objects.select_related(
                              'producer').filter(claimed=False)}}

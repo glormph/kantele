@@ -282,13 +282,42 @@
 				<thead>
 					<tr>
 						<th>
-					<div class="control">
-						<input type="checkbox" v-show="!showDatasetFiles" v-on:click="selectAll">
-					</div>
-			</th>
-						<th>Filename</th>
-						<th>Instrument</th>
-						<th>Production date</th>
+							<div class="control">
+								<input type="checkbox" v-show="!showDatasetFiles" v-on:click="selectAll">
+							</div>
+				       		</th>
+						<th v-show="!showDatasetFiles">
+							<a class="button is-info is-outlined" v-on:click="toggleFileSort">Filename</a>
+						</th>
+						<th v-show="showDatasetFiles">Filename</th>
+						<th v-show="!showDatasetFiles">
+							<div class="control">
+								<div class="select">
+									<select v-model="instrumentSort">
+										<option disabled value="">Instrument</option>
+										{% verbatim %}
+										<option v-for="inst in fndata.instruments" v-bind:value="inst">{{ inst }}</option>
+										{% endverbatim %}
+									</select>
+								</div>
+							</div>
+						</th>
+						<th v-show="showDatasetFiles">Instrument</th>
+						<th v-show="!showDatasetFiles">
+							<div class="control">
+								<div class="select">
+									<select v-model="timeSort">
+										<option disabled value="">Production date</option>
+										<option value="604800000">Last week</option>
+										<option value="2629800000">Last month</option>
+										<option value="15778800000">Last half year</option>
+										<option value="31557600000">Last year</option>
+										<option value="">All</option>
+									</select>
+								</div>
+							</div>
+						</th>
+						<th v-show="showDatasetFiles">Production date</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -303,7 +332,7 @@
 						{% verbatim %}
 						<td>{{ file.name }}</td>
 						<td>{{ file.instrument }}</td>
-						<td>{{ file.date }}</td>
+						<td>{{ isoTime(file.date) }}</td>
 						{% endverbatim %}
 					</tr>
 					<tr v-for="file in showingNewFiles" v-if="!showDatasetFiles" v-show="filtered_files(file)">
@@ -315,7 +344,7 @@
 						{% verbatim %}
 						<td>{{ file.name }}</td>
 						<td>{{ file.instrument }}</td>
-						<td>{{ file.date }}</td>
+						<td>{{ isoTime(file.date) }}</td>
 						{% endverbatim %}
 					</tr>
 				</tbody>
@@ -329,6 +358,9 @@
 		data: function() {return {
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
+			sort_order: 1,
+			instrumentSort: '',
+			timeSort: '2629800000',
 			allSelector: false,
 		}
 		},
@@ -340,15 +372,33 @@
 				return false;
 			},
 			showingNewFiles: function() {
+				sort_order = this.sort_order;
 				var val = Object.assign({}, this.fndata.newFiles, this.fndata.removedFiles)
 				for (key in this.fndata.addedFiles) {
 					delete val[key];
 				}
-				return val
+				files = [];
+				for (key in val) {
+					files.push(val[key]);
+				}
+				return files.sort(function(a, b) {
+				if (a.name > b.name) {
+					return sort_order;
+					} else if (a.name < b.name) {
+					return -sort_order;
+					} else {
+					return 0;
+					}})
 			},
-		// FIXME sort file list
 		},
 		methods: {
+			isoTime: function(timestamp) {
+				x = new Date(timestamp);
+				return x.toISOString();
+			},
+			toggleFileSort: function() {
+				this.sort_order = -this.sort_order;
+			}, 
 			toggleFileView: function() {
 				this.showDatasetFiles = this.showDatasetFiles === false;
 			},
@@ -403,6 +453,13 @@
 				this.$emit('save');
 			},
 			filtered_files: function(file) {
+				if (this.instrumentSort !== '' && file.instrument !== this.instrumentSort) {
+					return false	
+					}
+				var timestamp = new Date();
+				if (this.timeSort !== '' && file.date < timestamp.valueOf() - this.timeSort){
+					return false	
+					}
 				return file.name.indexOf(this.filefilterString) > -1
 			},
 		}
