@@ -42,9 +42,9 @@ def show_dataset(request, dataset_id):
 def dataset_project(request, dataset_id):
     response_json = empty_dataset_proj_json()
     if dataset_id:
-        dset = models.Dataset.objects.select_related(
+        dset = models.Dataset.objects.filter(pk=dataset_id).select_related(
             'runname__experiment__project', 'datatype',
-            'hiriefdataset').get(pk=dataset_id)
+            'hiriefdataset').get()
         species = models.DatasetSpecies.objects.filter(
             dataset_id=dset.id).select_related('species')
         components = models.DatatypeComponent.objects.filter(
@@ -94,8 +94,8 @@ def dataset_sampleprep(request, dataset_id):
     response_json = empty_sampleprep_json()
     if dataset_id:
         try:
-            qtype = models.QuantDataset.objects.select_related(
-                'quanttype').get(dataset_id=dataset_id)
+            qtype = models.QuantDataset.objects.filter(
+                dataset_id=dataset_id).select_related('quanttype').get()
         except models.QuantDataset.DoesNotExist:
             return JsonResponse(response_json)
         response_json['enzymes'] = [
@@ -175,8 +175,8 @@ def get_admin_params_for_dset(response, dset_id, category):
 
 
 def update_dataset(data):
-    dset = models.Dataset.objects.select_related(
-        'runname__experiment', 'datatype').get(pk=data['dataset_id'])
+    dset = models.Dataset.objects.filter(pk=data['dataset_id'].select_related(
+        'runname__experiment', 'datatype').get()
     if 'newprojectname' in data:
         project = newproject_save(data)
     else:
