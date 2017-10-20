@@ -175,7 +175,7 @@ def get_admin_params_for_dset(response, dset_id, category):
 
 
 def update_dataset(data):
-    dset = models.Dataset.objects.filter(pk=data['dataset_id'].select_related(
+    dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related(
         'runname__experiment', 'datatype').get()
     if 'newprojectname' in data:
         project = newproject_save(data)
