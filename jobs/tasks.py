@@ -24,9 +24,18 @@ def run_ready_jobs():
     print('{} jobs in queue, including errored jobs'.format(len(job_ds_map) +
                                                             len(job_fn_map)))
     for job in Job.objects.order_by('timestamp').exclude(
-            state__in=[Jobstates.DONE, Jobstates.ERROR]):
+            state__in=[Jobstates.DONE]):
         jobdsets = job_ds_map[job.id] if job.id in job_ds_map else set()
         jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
+        print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
+        if job.state == Jobstates.ERROR:
+            # requeue waiting jobs
+            joberror = JobError.objects.get(job_id=job.id)
+            if joberror.autorequeue:
+                print('Retrying job with autorequeue')
+                joberror.delete()
+                job.state = Jobstates.PENDING
+                job.save() 
         if job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)
             if tasks.count() > 0:
@@ -78,11 +87,13 @@ def run_job(job, jobmap):
     try:
         jobfunc(job.id, *args, **kwargs)
     except RuntimeError as e:
+        print('Error occurred, trying again automatically in next round')
         job.state = 'error'
         JobError.objects.create(job_id=job.id, message=e,
                                 autorequeue=jobmap[job.funcname]['retry'])
         job.save()
     except Exception as e:
+        print('Error occurred, not executing this job')
         job.state = 'error'
         JobError.objects.create(job_id=job.id, message=e, autorequeue=False)
         job.save()
