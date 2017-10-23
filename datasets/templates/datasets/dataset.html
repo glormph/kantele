@@ -55,10 +55,10 @@
 	</ul>
 </div>
 <div class="container">
-		<project-box v-on:save="save_definition" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:projsaved="projsaved" v-bind:pdata="projdata"></project-box>
-		<acquisition-box v-on:save="save_acquisition" v-if="componentEnabled('acquisition')" v-show="viewtab === 'acquisition'" v-bind:acqsaved="acqsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
-		<files-box v-on:save="save_files" v-show="viewtab === 'files'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:fnsaved="fnsaved" v-bind:fndata="filesdata"></files-box>
-		<sampleprep-box v-on:save="save_sampleprep" v-if="componentEnabled('sampleprep')" v-show="viewtab === 'sampleprep'" v-bind:spsaved="spsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
+		<project-box v-on:save="save_definition" v-on:revert="fetchProject" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:projsaved="projsaved" v-bind:pdata="projdata"></project-box>
+		<acquisition-box v-on:save="save_acquisition" v-on:revert="fetchAcquisition" v-if="componentEnabled('acquisition')" v-show="viewtab === 'acquisition'" v-bind:acqsaved="acqsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
+		<files-box v-on:save="save_files" v-on:revert="fetchFiles" v-show="viewtab === 'files'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:fnsaved="fnsaved" v-bind:fndata="filesdata"></files-box>
+		<sampleprep-box v-on:save="save_sampleprep" v-on:revert="fetchSampleprep" v-if="componentEnabled('sampleprep')" v-show="viewtab === 'sampleprep'" v-bind:spsaved="spsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
 </div>
 </section>
 
@@ -86,8 +86,8 @@
 			<div class="title is-5">MS Samples and preparation
 				<a v-if="is_owner" v-show="showsave" class="button is-danger is-small" v-on:click="save">Save</a>
 				<a v-if="is_owner" v-show="!showsave" class="button is-danger is-small" disabled>Save</a>
-				<a v-if="is_owner" v-show="showsave" class="button is-info is-small" v-on:click="save">Revert</a>
-				<a v-if="is_owner" v-show="!showsave" class="button is-info is-small" disabled>Revert</a>
+				<a v-if="is_owner" v-show="showrevert" class="button is-info is-small" v-on:click="revert">Revert</a>
+				<a v-if="is_owner" v-show="!showrevert" class="button is-info is-small" disabled>Revert</a>
 			</div> 
 			<div class="field">
 				<label class="label">Enzymes</label>
@@ -188,11 +188,18 @@
 			}
 		},
 		mounted: function() {
-			this.wait();
+			this.wait_noedit();
 		},
 		computed: {
 			showsave: function() {
 				if (!this.spsaved || this.editing) {
+					return true
+				} else {
+					return false
+				}
+			},
+			showrevert: function() {
+				if (this.showsave ) {
 					return true
 				} else {
 					return false
@@ -219,7 +226,7 @@
 			},
 		
 		methods: {
-			wait: async function() {
+			wait_noedit: async function() {
 				// VERY DIRTY TRICK
 			// WAIT SO THE DATA IS LOADED WITH AN ASYNC FETCH OVER URL (triggering v-on:change in fields, leading to editing is set to true)
 			// THE SET THE EDITING BACK TO FALSE
@@ -269,6 +276,10 @@
 				return this.errors.length ? false : true
 
 			},
+			revert: function() {
+				this.$emit('revert');
+				this.wait_noedit();
+			},
 			save: function() {
 				if (!this.validate()) {
 					return false
@@ -293,8 +304,8 @@
 			<div class="title is-5">Files
 				<a v-if="is_owner" v-show="showsave" class="button is-danger is-small" v-on:click="save">Save</a>
 				<a v-if="is_owner" v-show="!showsave" class="button is-danger is-small" disabled>Save</a>
-				<a v-if="is_owner" v-show="showsave" class="button is-info is-small" v-on:click="save">Revert</a>
-				<a v-if="is_owner" v-show="!showsave" class="button is-info is-small" disabled>Revert</a>
+				<a v-if="is_owner" v-show="showrevert" class="button is-info is-small" v-on:click="revert">Revert</a>
+				<a v-if="is_owner" v-show="!showrevert" class="button is-info is-small" disabled>Revert</a>
 
 			</div>
 			<a class="button is-danger is-outlined is-small" v-show="showDatasetFiles" v-on:click="toggleFileView">Show available files</a>
@@ -400,6 +411,13 @@
 					return false
 				}
 			},
+			showrevert: function() {
+				if (this.showsave ) {
+					return true
+				} else {
+					return false
+				}
+			},
 			isOpen: function() {
 				return this.dset_id !== '';
 			},
@@ -426,6 +444,20 @@
 			},
 		},
 		methods: {
+			wait_noedit: async function() {
+				// VERY DIRTY TRICK
+				// WAIT SO THE DATA IS LOADED WITH AN ASYNC FETCH OVER URL (triggering v-on:change in fields, leading to editing is set to true)
+				// THE SET THE EDITING BACK TO FALSE
+				await this.sleep(1000);
+				this.editing = false;
+			},
+			sleep: function(ms) {
+				return new Promise(resolve => setTimeout(resolve, ms));
+			},
+			revert: function() {
+				this.$emit('revert');
+				this.wait_noedit();
+			},
 			isoTime: function(timestamp) {
 				x = new Date(timestamp);
 				return x.toISOString();
@@ -525,8 +557,8 @@
 			<div class="title is-5">Acquisition
 				<a v-if="is_owner" v-show="showsave" class="button is-danger is-small" v-on:click="save">Save</a>
 				<a v-if="is_owner" v-show="!showsave" class="button is-danger is-small" disabled>Save</a>
-				<a v-if="is_owner" v-show="showsave" class="button is-info is-small" v-on:click="save">Revert</a>
-				<a v-if="is_owner" v-show="!showsave" class="button is-info is-small" disabled>Revert</a>
+				<a v-if="is_owner" v-show="showrevert" class="button is-info is-small" v-on:click="revert">Revert</a>
+				<a v-if="is_owner" v-show="!showrevert" class="button is-info is-small" disabled>Revert</a>
 		</div> 
 		<div class="field">
 			<label class="label">Operator</label>
@@ -586,15 +618,22 @@
 				return false
 			}
 		},
+		showrevert: function() {
+			if (this.showsave ) {
+				return true
+			} else {
+				return false
+			}
+		},
 		isOpen: function() {
 			return this.dset_id !== '';
 		},
 	},
 	mounted: function() {
-		this.wait();
+		this.wait_noedit();
 		},
 	methods: {
-		wait: async function() {
+		wait_noedit: async function() {
 			// VERY DIRTY TRICK
 			// WAIT SO THE DATA IS LOADED WITH AN ASYNC FETCH OVER URL (triggering v-on:change in fields, leading to editing is set to true)
 			// THE SET THE EDITING BACK TO FALSE
@@ -603,6 +642,11 @@
 		},
 		sleep: function(ms) {
 			return new Promise(resolve => setTimeout(resolve, ms));
+		},
+		revert: function() {
+			console.log('reverting');
+			this.$emit('revert');
+			this.wait_noedit();
 		},
 		validate: function() {
 			this.errors = [];
@@ -648,8 +692,8 @@
 			<div class="title is-5">Dataset definition
 				<a v-if="is_owner" v-show="showsave" class="button is-danger is-small" v-on:click="save">Save</a>
 				<a v-if="is_owner" v-show="!showsave" class="button is-danger is-small" disabled>Save</a>
-				<a v-if="is_owner" v-show="showsave" class="button is-info is-small" v-on:click="save">Revert</a>
-				<a v-if="is_owner" v-show="!showsave" class="button is-info is-small" disabled>Revert</a>
+				<a v-if="is_owner" v-show="showrevert" class="button is-info is-small" v-on:click="revert">Revert</a>
+				<a v-if="is_owner" v-show="!showrevert" class="button is-info is-small" disabled>Revert</a>
 			</div>
 		<div class="field">
 			<label class="label">Project
@@ -818,6 +862,13 @@
 				return false
 			}
 		},
+		showrevert: function() {
+			if (this.showsave) {
+				return true
+			} else {
+				return false
+			}
+		},
 		is_corefac: function() {
 			if (this.isNewProject) {
 				this.pdata.is_corefac = this.newproject_iscf;
@@ -851,6 +902,21 @@
 			},
 		},
 		methods: {
+			wait_noedit: async function() {
+				// VERY DIRTY TRICK
+				// WAIT SO THE DATA IS LOADED WITH AN ASYNC FETCH OVER URL (triggering v-on:change in fields, leading to editing is set to true)
+				// THE SET THE EDITING BACK TO FALSE
+				await this.sleep(1000);
+				this.editing = false;
+			},
+			sleep: function(ms) {
+				return new Promise(resolve => setTimeout(resolve, ms));
+			},
+			revert: function() {
+				console.log('reverting');
+				this.$emit('revert');
+				this.wait_noedit();
+			},
 			project_selected: function() {
 				this.editing = true;
 				if (this.pdata.project_id) {
@@ -1002,8 +1068,8 @@
 	mounted: function() {
 		this.fetchProject();
 		this.fetchFiles();
-		this.fetchGeneral('sampleprep', this.sampledata);
-		this.fetchGeneral('acquisition',  this.acqdata);
+		this.fetchSampleprep();
+		this.fetchAcquisition();
 		this.fetchStates();
 	},
 	methods: {
@@ -1059,6 +1125,12 @@
 			this.filesdata.addedFiles = {};
 			this.filesdata.removedFiles = {};
 		},
+		fetchSampleprep: function() {
+			this.fetchGeneral('sampleprep', this.sampledata);
+		},
+		fetchAcquisition: function() {
+			this.fetchGeneral('acquisition',  this.acqdata);
+		},
 		fetchStates: function() {
 			this.fetchGeneral('components', this);
 		},
@@ -1077,7 +1149,6 @@
 					}
 				})
 			},
-
 		save_definition: function() {
 			data = {
 				dataset_id: this.dataset_id,
@@ -1142,7 +1213,7 @@
 			this.$http.post('/datasets/save/acquisition/', data
 				).then(response => {
 					console.log(response);
-					this.fetchGeneral('acquisition', this.acqdata);
+					this.fetchAcquisition();
 					this.fetchStates();
 				}, response => {
 				console.log(response);
@@ -1170,7 +1241,7 @@
 				this.$http.post('/datasets/save/sampleprep/', data
 					).then(response => {
 						console.log(response);
-						this.fetchGeneral('sampleprep', this.sampledata, this.sp);
+						this.fetchSampleprep();
 						this.fetchStates();
 					}, response => {
 		                		this.spsaved = false;
