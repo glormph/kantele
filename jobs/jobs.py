@@ -32,6 +32,9 @@ jobmap = {'move_files_storage':
           'rename_storage_loc':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_dataset_storage_loc,
            'retry': False},
+          'convert_mzml':
+          {'type': Jobtypes.MOVE, 'func': dsjobs.convert_tomzml,
+           'retry': False},
           'create_swestore_backup':
           {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_swestore_backup,
            'retry': False},

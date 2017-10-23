@@ -5,17 +5,12 @@ from kantele import settings as config
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
 from jobs import jobs as jobutil
-from jobs.views import set_task_done
+from jobs.views import set_task_done, taskclient_authorized
 from datetime import datetime
 
 
 def check_producer(producer_id):
     return Producer.objects.get(client_id=producer_id)
-
-
-def taskclient_authorized(client_id, possible_ids):
-    """Possibly use DB in future"""
-    return client_id in possible_ids
 
 
 def register_file(request):

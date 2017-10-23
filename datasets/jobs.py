@@ -1,5 +1,8 @@
 from django.db.models import F
+from celery import chain
+from itertools import cycle
 
+from kantele import settings
 from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
 from datasets import tasks
@@ -49,8 +52,30 @@ def move_files_dataset_storage(job_id, dset_id, fn_ids):
 def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
     print('Moving files with ids {} from dataset to tmp'.format(fn_ids))
     task_ids = []
-    for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids):
+    for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids).exclude(
+            filetype='mzml'):
+        # FIXME must delete mzMLs in same dir
         task_ids.append(tasks.move_stored_file_tmp.delay(fn.rawfile.name,
                                                          fn.path, fn.id).id)
+    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
+                              for tid in task_ids])
+
+
+def convert_tomzml(job_id, dset_id):
+    """Multiple queues for this bc multiple boxes wo shared fs"""
+    dset = Dataset.objects.get(dset_id)
+    task_ids = []
+    queues = cycle(settings.PWIZ_QUEUES)
+    for fn in StoredFile.objects.select_related('servershare', 'rawfile').filter(
+            rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
+        queue = next(queues)
+        outqueue = settings.QUEUES_PWIZOUT[queue]
+        runchain = [
+            tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
+                                    fn.servershare.name).set(queue=queue),
+            tasks.scp_storage.s(fn.id, fn.rawfile.id, dset.storage_loc,
+                                fn.servershare.name).set(queue=outqueue)
+                    ]
+        task_ids.append(chain(*runchain).delay().id)
     Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
                               for tid in task_ids])

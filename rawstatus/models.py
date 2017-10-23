@@ -35,7 +35,7 @@ class StoredFile(models.Model):
     """Files transferred from instrument to storage"""
     rawfile = models.ForeignKey(RawFile)
     filename = models.CharField(max_length=200)
-    filetype = models.CharField(max_length=20)  # raw, fq, mzML, etc
+    filetype = models.CharField(max_length=20)  # raw, fq, mzml, etc
     servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
     md5 = models.CharField(max_length=32)

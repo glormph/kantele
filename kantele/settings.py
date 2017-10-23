@@ -14,11 +14,18 @@ CERTLOC = os.environ.get('CERTLOC')
 CERTKEYLOC = os.environ.get('CERTKEYLOC')
 CERTPASS = os.environ.get('CERTPASS')
 
+# mzml converters
+PUTTYKEY = os.environ.get('PUTTYKEY')
+
+
 # site infra
 SWESTORECLIENT_APIKEY = os.environ.get('SWESTORECLIENT_APIKEY')
 STORAGECLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
+MZMLCLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_SWESTORE = 'create_swestore'
+QUEUES_PWIZ = ['pwiz1', 'pwiz2']
+QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out'}
 KANTELEHOST = 'http://{}'.format(os.environ.get('KANTELEHOST'))
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
@@ -62,6 +69,7 @@ INSTALLED_APPS = [
     'rawstatus.apps.RawstatusConfig',
     'jobs.apps.JobsConfig',
     'corefac.apps.CorefacConfig',
+    'analysis.apps.AnalysisConfig',
 ]
 
 MIDDLEWARE = [
