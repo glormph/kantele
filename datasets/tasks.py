@@ -25,13 +25,20 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
+        update_db(url, postdata)
+    except RuntimeError:
+        # FIXME shutil.move(dst, src)
+        raise
+
+
+def update_db(url, postdata):
+    try:
         r = requests.post(url=url, data=postdata)
         r.raise_for_status()
     except (requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError) as e:
         msg = 'Could not update database: {}'.format(e)
         print(msg)
-        # FIXME shutil.move(dst, src)
         raise RuntimeError(msg)
 
 
@@ -49,14 +56,10 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
-        r = requests.post(url=url, data=postdata)
-        r.raise_for_status()
-    except (requests.exceptions.HTTPError,
-            requests.exceptions.ConnectionError) as e:
-        msg = 'Could not update database: {}'.format(e)
-        print(msg)
+        update_db(url, postdata)
+    except RuntimeError:
         shutil.move(dst, src)
-        raise RuntimeError(msg)
+        raise
     print('File {} moved to {}'.format(fn_id, dst))
 
 
@@ -71,12 +74,8 @@ def move_stored_file_tmp(self, fn, path, fn_id):
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
     try:
-        r = requests.post(url=url, data=postdata)
-        r.raise_for_status()
-    except (requests.exceptions.HTTPError,
-            requests.exceptions.ConnectionError) as e:
-        msg = 'Could not update database: {}'.format(e)
-        print(msg)
+        update_db(url, postdata)
+    except RuntimeError:
         shutil.move(dst, src)
-        raise RuntimeError(msg)
+        raise
     print('File {} moved to tmp and DB updated'.format(fn_id))
