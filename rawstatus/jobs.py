@@ -1,4 +1,3 @@
-from celery import chain
 import os
 
 from rawstatus import tasks, models
@@ -19,6 +18,8 @@ def create_swestore_backup(job_id, sf_id, md5):
     print('Running swestore backup job')
     sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
         'servershare').get()
+    models.SwestoreBackedupFile.objects.create(storedfile=sfile,
+                                               swestore_path='', success=False)
     fnpath = os.path.join(sfile.path, sfile.filename)
     res = tasks.swestore_upload.delay(md5, sfile.servershare.name, fnpath,
                                       sfile.id)

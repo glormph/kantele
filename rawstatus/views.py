@@ -161,8 +161,8 @@ def created_swestore_backup(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    SwestoreBackedupFile.objects.create(storefile_id=data['sfid'],
-                                        swestore_path=data['swestore_path'])
+    backup = SwestoreBackedupFile.objects.filter(storedfile_id=data['sfid'])
+    backup.update(swestore_path=data['swestore_path'], success=True)
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
     return HttpResponse()

@@ -45,8 +45,9 @@ class StoredFile(models.Model):
 
 
 class SwestoreBackedupFile(models.Model):
-    storedfile = models.ForeignKey(StoredFile)
+    storedfile = models.OneToOneField(StoredFile)
     swestore_path = models.CharField(max_length=200)
+    success = models.BooleanField()
 
 
 class FileJob(models.Model):
