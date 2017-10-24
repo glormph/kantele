@@ -138,14 +138,10 @@ def collect_dsjob_activity():
 def process_job_tasks(job, jobtasks):
     job_updated, tasks_finished, tasks_failed = False, True, False
     for task in jobtasks:
-        task_state = app.AsyncResult(task.asyncid).state
-        if task_state != states.SUCCESS:
+        if task.state != states.SUCCESS:
             tasks_finished = False
-        if task_state == states.FAILURE:
+        if task.state == states.FAILURE:
             tasks_failed = True
-        if task.state != task_state:
-            task.state = task_state
-            task.save()
     if tasks_finished:
         print('All tasks finished, job {} done'.format(job.id))
         job.state = Jobstates.DONE
