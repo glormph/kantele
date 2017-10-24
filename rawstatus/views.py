@@ -112,12 +112,12 @@ def file_transferred(request):
             return JsonResponse({'fn_id': request.POST['fn_id'],
                                  'state': 'ok'})
     else:
-        return HttpResponseNotAllowed()
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
 
 
 def check_md5_success(request):
     if not request.method == 'GET':
-        return HttpResponseNotAllowed()
+        return HttpResponseNotAllowed(permitted_methods=['GET'])
     try:
         fn_id = request.GET['fn_id']
         ftype = request.GET['ftype']
@@ -151,8 +151,10 @@ def set_md5(request):
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
     storedfile.save()
+    print('stored file saved')
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
+        print('MD5 saved')
     return HttpResponse()
 
 
