@@ -46,7 +46,7 @@ def get_md5(self, sfid, fnpath, servershare):
 def swestore_upload(self, md5, servershare, filepath, fn_id):
     fileloc = os.path.join(config.SHAREMAP[servershare], filepath)
     print('Uploading file {} to swestore'.format(fileloc))
-    uri = os.path.join(config.SWESTORE_BILS_BASE, md5)
+    uri = os.path.join(config.SWESTORE_URI, md5)
     mountpath_fn = os.path.join(config.DAV_PATH, md5)
     # Check if proj folder exists on the /mnt/dav, mkdir if not
     # Dont upload using /mnt/dav, use curl

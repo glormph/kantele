@@ -7,7 +7,7 @@ STORAGESHARE = os.environ.get('STORAGESHARE')
 TMPSHARE = os.environ.get('TMPSHARE')
 
 # swestore
-SWESTORE_URI = os.environ.get('SWESTOREURI')
+SWESTORE_URI = os.environ.get('SWESTORE_URI')
 DAV_PATH = os.environ.get('DAVPATH')
 CACERTLOC = os.environ.get('CACERTLOC')
 CERTLOC = os.environ.get('CERTLOC')
