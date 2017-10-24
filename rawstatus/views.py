@@ -134,7 +134,9 @@ def check_md5_success(request):
     file_registered = file_transferred.rawfile
     if not file_transferred.md5:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
-    if file_registered.source_md5 == file_transferred.md5:
+    if (file_registered.source_md5 == file_transferred.md5 and
+            SwestoreBackedupFile.objects.filter(
+            storedfile_id=file_transferred.id).count() == 0):
         jobutil.create_file_job('create_swestore_backup', file_transferred.id,
                                 file_transferred.md5)
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
