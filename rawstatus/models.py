@@ -23,7 +23,7 @@ class RawFile(models.Model):
     name = models.CharField(max_length=100)
     producer = models.ForeignKey(Producer)
     source_md5 = models.CharField(max_length=32, unique=True)
-    size = models.IntegerField('size in bytes')
+    size = models.BigIntegerField('size in bytes')
     date = models.DateTimeField('date/time created')
     claimed = models.BooleanField()
 
