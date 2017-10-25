@@ -3,6 +3,7 @@ import os
 import requests
 import subprocess
 from urllib.parse import urljoin
+from time import sleep
 
 from django.urls import reverse
 
@@ -54,6 +55,9 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
             '--cert',  '{}:{}'.format(config.CERTLOC, config.CERTPASS),
             '--key', config.CERTKEYLOC, '-T', fileloc, uri]
     subprocess.check_call(curl)
+    # if the upload is REALLY quick sometimes the DAV hasnt refreshed and you
+    # will get filenotfound
+    sleep(5)
     try:
         md5_upl = calc_md5(mountpath_fn)
     except FileNotFoundError:
