@@ -333,6 +333,7 @@
 								<div class="select">
 									<select v-model="instrumentSort">
 										<option disabled value="">Instrument</option>
+										<option v-bind:value="''">All</option>
 										{% verbatim %}
 										<option v-for="inst in fndata.instruments" v-bind:value="inst">{{ inst }}</option>
 										{% endverbatim %}
