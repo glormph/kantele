@@ -29,7 +29,7 @@ def get_md5(self, sfid, fnpath, servershare):
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
     try:
-        r = requests.post(url=url, data=postdata)
+        r = requests.post(url=url, data=postdata, verify=config.CERTFILE)
         r.raise_for_status()
     except (requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError) as e:
@@ -77,7 +77,7 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-createswestore'))
     try:
-        r = requests.post(url=url, data=postdata)
+        r = requests.post(url=url, data=postdata, verify=config.CERTFILE)
         r.raise_for_status()
     except (requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError) as e:

@@ -27,6 +27,7 @@ QUEUE_SWESTORE = 'create_swestore'
 QUEUES_PWIZ = ['pwiz1', 'pwiz2']
 QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out'}
 PROTOCOL = 'https://'
+CERTFILE = os.environ.get('KANTELECERT')
 KANTELEHOST = '{}{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'

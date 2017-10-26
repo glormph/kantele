@@ -43,7 +43,7 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
 
 def update_db(url, postdata):
     try:
-        r = requests.post(url=url, data=postdata)
+        r = requests.post(url=url, data=postdata, verify=config.CERTFILE)
         r.raise_for_status()
     except (requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError) as e:
