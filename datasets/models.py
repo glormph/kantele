@@ -42,6 +42,8 @@ class Datatype(models.Model):
 class DatasetComponent(models.Model):
     name = models.TextField(max_length=50, unique=True)
 
+    def __str__(self):
+        return self.name
 
 class DatatypeComponent(models.Model):
     datatype = models.ForeignKey(Datatype)
