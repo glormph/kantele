@@ -574,6 +574,13 @@
 				</div>
 			</div>
 		</div>
+		<div class="field">
+			<label class="label">Reverse phase length</label>
+			<div class="control">
+				<input type="checkbox" v-on:change="editing=true" v-model="acqdata.dynamic_rp">Dynamic
+				<input type="number" v-on:input="editing=true" class="input" placeholder="in minutes" v-model="acqdata.rp_length" v-show="!acqdata.dynamic_rp">
+			</div>
+		</div>
 		<template v-for="param in acqdata.params">
 		<div class="field">
 		{% verbatim %}
@@ -653,6 +660,9 @@
 			this.errors = [];
 			if (!this.acqdata.operator_id) {
 				this.errors.push('Operator is required');
+			}
+			if (!this.acqdata.dynamic_rp && !this.acqdata.rp_length) {
+				this.errors.push('Reverse phase is required');
 			}
 			for (key in this.acqdata.params) {
 				if (this.acqdata.params[key].model === "") {
@@ -1084,6 +1094,8 @@
 				params: {},
 				operators: [],
 				operator_id: '',
+				dynamic_rp: false,
+				rp_length: '',
 				},
 			filesdata: {
 				newFiles: [],
@@ -1255,9 +1267,8 @@
 			data = {
 				dataset_id: this.dataset_id,
 				operator_id: this.acqdata.operator_id,
-				prefrac_id: this.acqdata.prefrac_id,
-				hiriefrange: this.acqdata.hiriefrange,
 				params: this.acqdata.params,
+				rp_length: this.acqdata.dynamic_rp ? '' : this.acqdata.rp_length,
 			};
 			this.$http.post('/datasets/save/acquisition/', data
 				).then(response => {

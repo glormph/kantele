@@ -90,8 +90,14 @@ def dataset_acquisition(request, dataset_id):
             response_json.update({'operator_id':
                                   models.OperatorDataset.objects.get(
                                       dataset_id=dataset_id).operator_id})
+
+            response_json['rp_length'] = models.ReversePhaseDataset.objects.get(
+                dataset_id=dataset_id).length
         except models.OperatorDataset.DoesNotExist:
             return JsonResponse(response_json)
+        except models.ReversePhaseDataset.DoesNotExist:
+            response_json['dynamic_rp'] = True
+            response_json['rp_length'] = ''
         get_admin_params_for_dset(response_json, dataset_id, 'acquisition')
     return JsonResponse(response_json)
 
@@ -610,6 +616,17 @@ def update_acquisition(dset, data):
     if data['operator_id'] != dset.operatordataset.operator_id:
         dset.operatordataset.operator_id = data['operator_id']
         dset.operatordataset.save()
+    if not hasattr(dset, 'reversephasedataset'):
+        if data['rp_length']:
+            models.ReversePhaseDataset.objects.create(dataset_id=dset.id,
+                                                      length=data['rp_length'])
+    elif not data['rp_length']:
+            dset.reversephasedataset.delete()
+#            models.ReversePhaseDataset.objects.filter(
+#                dataset_id=dset.id).delete()
+    elif data['rp_length'] != dset.reversephasedataset.length:
+        dset.reversephasedataset.length = data['rp_length']
+        dset.reversephasedataset.save()
     update_admin_defined_params(dset, data, 'acquisition')
     return HttpResponse()
 
@@ -621,10 +638,13 @@ def save_acquisition(request):
     if user_denied:
         return user_denied
     dset_id = data['dataset_id']
-    dset = models.Dataset.objects.select_related('operatordataset').get(
-        pk=data['dataset_id'])
+    dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related(
+        'operatordataset', 'reversephasedataset').get()
     if hasattr(dset, 'operatordataset'):
         return update_acquisition(dset, data)
+    if data['rp_length']:
+        models.ReversePhaseDataset.objects.create(dataset_id=dset_id,
+                                                  length=data['rplength'])
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)

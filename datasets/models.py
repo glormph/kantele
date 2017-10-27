@@ -210,6 +210,11 @@ class OperatorDataset(models.Model):
     operator = models.ForeignKey(Operator)
 
 
+class ReversePhaseDataset(models.Model):
+    dataset = models.OneToOneField(Dataset)
+    length = models.CharField(max_length=20)
+
+
 class Prefractionation(models.Model):
     name = models.CharField(max_length=20)
 
