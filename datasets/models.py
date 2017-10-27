@@ -47,6 +47,10 @@ class DatatypeComponent(models.Model):
     datatype = models.ForeignKey(Datatype)
     component = models.ForeignKey(DatasetComponent)
 
+    def __str__(self):
+        return '{} has component {}'.format(self.datatype.name,
+                                            self.component.name)
+
 
 class Dataset(models.Model):
     user = models.ForeignKey(User)

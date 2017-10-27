@@ -1,11 +1,10 @@
 from django.contrib import admin
 
-from datasets.models import (HiriefRange, Datatype, PrincipalInvestigator,
-                             SelectParameter,
-                             SelectParameterOption,
+from datasets.models import (Datatype, PrincipalInvestigator, DatatypeComponent,
+                             SelectParameter, SelectParameterOption,
                              FieldParameter,
                              Enzyme, QuantType, QuantChannel, QuantTypeChannel,
-                             Operator, Prefractionation,
+                             Operator, Prefractionation, HiriefRange,
                              )
 
 # Register your models here.
@@ -22,3 +21,4 @@ admin.site.register(QuantChannel)
 admin.site.register(QuantTypeChannel)
 admin.site.register(Operator)
 admin.site.register(Prefractionation)
+admin.site.register(DatatypeComponent)
