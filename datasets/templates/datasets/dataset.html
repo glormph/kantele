@@ -1282,7 +1282,7 @@
 		save_sampleprep: function() {
 				data = {
 					dataset_id: this.dataset_id,
-					enzymes: this.sampledata.enzymes,
+					enzymes: this.sampledata.no_enzyme ? [] : this.sampledata.enzymes,
 					params: this.sampledata.params,
 					quanttype: this.sampledata.quanttype,
 					labelfree: this.sampledata.labelfree,
