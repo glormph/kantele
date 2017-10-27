@@ -62,8 +62,9 @@
 						<td>{{ ds.usr }}</td>
 						<td>{{ ds.proj }}</td>
 						<td>
-							<span v-if="ds.dtype.indexOf('HiRIEF') === -1">{{ ds.dtype }}</span>
-							<span v-if="ds.dtype.indexOf('HiRIEF') > -1">HiRIEF {{ ds.hr }}</span>
+							<span v-if="!ds.prefrac">{{ ds.dtype }}</span>
+							<span v-else-if="ds.hr">{{ ds.hr }}</span>
+							<span v-else-if="ds.prefrac">{{ ds.prefrac }}</span>
 						</td>
 						<td v-for="comp in components">
 							<span class="has-icon" v-if="ds[comp] !== undefined">

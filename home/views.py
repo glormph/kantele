@@ -21,7 +21,7 @@ def show_datasets(request):
     dsets = OrderedDict()
     for dcst in dsmodels.DatasetComponentState.objects.select_related(
             'dataset__runname__experiment__project', 'dtcomp__component',
-            'dataset__hiriefdataset__hirief'):
+            'dataset__prefractionationdataset'):
         try:
             dsets[dcst.dataset.id][dcst.dtcomp.component.name] = dcst.state
         except KeyError:

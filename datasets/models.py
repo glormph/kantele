@@ -72,6 +72,7 @@ class DatasetSpecies(models.Model):
     dataset = models.ForeignKey(Dataset)
     species = models.ForeignKey(Species)
 
+
 class ParamType(models.Model):
     typename = models.CharField(max_length=100)
 
@@ -192,11 +193,6 @@ class HiriefRange(models.Model):
         return '{}_{}'.format(self.start, self.end)
 
 
-class HiriefDataset(models.Model):
-    dataset = models.OneToOneField(Dataset)
-    hirief = models.ForeignKey(HiriefRange)
-
-
 class CorefacDatasetContact(models.Model):
     dataset = models.OneToOneField(Dataset)
     email = models.CharField(max_length=100)
@@ -212,6 +208,33 @@ class Operator(models.Model):
 class OperatorDataset(models.Model):
     dataset = models.OneToOneField(Dataset)
     operator = models.ForeignKey(Operator)
+
+
+class Prefractionation(models.Model):
+    name = models.CharField(max_length=20)
+
+    def __str__(self):
+        return self.name
+
+
+class PrefractionationDataset(models.Model):
+    dataset = models.OneToOneField(Dataset)
+    prefractionation = models.ForeignKey(Prefractionation)
+
+
+class HiriefDataset(models.Model):
+    pfdataset = models.OneToOneField(PrefractionationDataset)
+    hirief = models.ForeignKey(HiriefRange)
+
+
+class PrefractionationLength(models.Model):
+    pfdataset = models.OneToOneField(PrefractionationDataset)
+    length = models.CharField(max_length=20)
+
+
+class PrefractionationFractionAmount(models.Model):
+    pfdataset = models.OneToOneField(PrefractionationDataset)
+    fractions = models.IntegerField()
 
 
 class DatasetJob(models.Model):

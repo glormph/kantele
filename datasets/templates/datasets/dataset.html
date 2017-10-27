@@ -779,6 +779,44 @@
 				<input class="input" v-on:input="editing=true" v-model="pdata.runname" type="text" placeholder="E.g set1, run1, etc">
 			</div>
 		</div>
+		<div class="field">
+			<label class="label">Prefractionation</label>
+			<div class="control">
+				<div class="select">
+					<select v-model="pdata.prefrac_id" v-on:change="editing=true">
+						<option value="">None</option>
+						{% verbatim %}
+						<option v-for="prefrac in pdata.prefracs" v-bind:value="prefrac.id">{{ prefrac.name }}</option>
+					        {% endverbatim %}
+					</select>
+				</div>
+			</div>
+		</div>
+		<div class="field" v-show="hiriefselected">
+			<label class="label">HiRIEF range</label>
+			<div class="control">
+				<div class="select">
+					<select v-on:change="editing=true" v-model="pdata.hiriefrange">
+						<option disabled value="">Please select one</option>
+					        {% verbatim %}
+						<option v-for="range in pdata.hirief_ranges" v-bind:value="range.id">{{ range.name }}</option>
+					        {% endverbatim %}
+					</select>
+				</div>
+			</div>
+		</div>
+		<div class="field" v-show="pdata.prefrac_id && !hiriefselected">
+			<label class="label">Prefractionation length</label>
+			<div class="control">
+				<input type="number" v-on:input="editing=true" class="input" placeholder="in minutes" v-model="pdata.prefrac_length">
+			</div>
+		</div>
+		<div class="field" v-show="pdata.prefrac_id">
+			<label class="label">Fraction amount</label>
+			<div class="control">
+				<input type="number" v-on:input="editing=true" class="input" placeholder="How many fractions of prefractionation" v-model="pdata.prefrac_amount">
+			</div>
+		</div>
 
 		<div class="field">
 			<label class="label">Organisms</label>
@@ -814,19 +852,6 @@
 						{% verbatim %}
 						<option v-for="dset_type in pdata.datasettypes" v-bind:value="dset_type.id">{{ dset_type.name }}</option>
 						{% endverbatim %}
-					</select>
-				</div>
-			</div>
-		</div>
-		<div class="field" v-show="pdata.datatype_id === 1">
-			<label class="label">HiRIEF range</label>
-			<div class="control">
-				<div class="select">
-					<select v-on:change="editing=true" v-model="pdata.hiriefrange">
-						<option disabled value="">Please select one</option>
-					        {% verbatim %}
-						<option v-for="range in pdata.hirief_ranges" v-bind:value="range.id">{{ range.name }}</option>
-					        {% endverbatim %}
 					</select>
 				</div>
 			</div>
@@ -901,6 +926,14 @@
 		proj_experiments: function() {
 			return !this.pdata.project_id ? [] : this.pdata.experiments[this.pdata.project_id]
 			},
+		hiriefselected: function() {
+			for (pf of this.pdata.prefracs) {
+				if (this.pdata.prefrac_id === pf.id && pf.name.toLowerCase().indexOf('hirief') > -1) {
+					return true
+				}
+			}
+			return false;
+		},
 		},
 		methods: {
 			wait_noedit: async function() {
@@ -964,6 +997,15 @@
 				if (!this.pdata.runname) {
 					this.errors.push('Run name is required');
 				}
+				if (this.hiriefselected && !this.pdata.hiriefrange) {
+					this.errors.push('HiRIEF range is required');
+				}
+				else if (!this.hiriefselected && this.pdata.prefrac_id && !this.pdata.prefrac_length) {
+					this.errors.push('Prefractionation length is required');
+				}
+				if (this.pdata.prefrac_id && !this.pdata.prefrac_amount) {
+					this.errors.push('Prefractionation fraction amount is required');
+				}
 				if (Object.keys(this.pdata.organism_ids).length === 0) {
 					this.errors.push('Organism(s) is/are required');
 				}
@@ -972,9 +1014,6 @@
 				}
 				if (!this.pdata.datatype_id) {
 					this.errors.push('Datatype is required');
-				}
-				if (this.pdata.datatype_id === '1' && !this.pdata.hiriefrange) {
-					this.errors.push('HiRIEF range is required');
 				}
 				if (this.is_corefac) {
 					if (!this.pdata.newpiname && !this.pdata.pi_id) {
@@ -1018,16 +1057,20 @@
 				datasettypes: [],
 				internal_pi_id: '',
 				pi_id: '',
-				hirief_ranges: [],
 				project_id: '',
 				datatype_id: '',
-				hiriefrange: '',
 				experiment_id: '',
 				experiments: {},
 				existingproject_iscf: false,
 				externpi: '',
 				externalcontactmail: '',
 				runname: '',
+				prefracs: [],
+				prefrac_id: '',
+				prefrac_amount: '',
+				prefrac_length: '',
+				hirief_ranges: [],
+				hiriefrange: '',
 				organism_ids: {},
 				storage_location: '',
 				isNewProject: false,
@@ -1155,9 +1198,12 @@
 				dataset_id: this.dataset_id,
 				is_corefac: this.projdata.is_corefac,
 				datatype_id: this.projdata.datatype_id,
-				hiriefrange: this.projdata.hiriefrange,
 				organism_ids: this.projdata.organism_ids,
 				runname: this.projdata.runname,
+				prefrac_id: this.projdata.prefrac_id,
+				prefrac_length: this.projdata.prefrac_length,
+				prefrac_amount: this.projdata.prefrac_amount,
+				hiriefrange: this.projdata.hiriefrange,
 			};
 			if (this.projdata.isNewProject) {
 				data.newprojectname = this.projdata.newprojectname;
@@ -1209,6 +1255,8 @@
 			data = {
 				dataset_id: this.dataset_id,
 				operator_id: this.acqdata.operator_id,
+				prefrac_id: this.acqdata.prefrac_id,
+				hiriefrange: this.acqdata.hiriefrange,
 				params: this.acqdata.params,
 			};
 			this.$http.post('/datasets/save/acquisition/', data

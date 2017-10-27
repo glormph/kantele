@@ -1,4 +1,6 @@
 import json
+import re
+import os
 from datetime import datetime
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -44,7 +46,11 @@ def dataset_project(request, dataset_id):
     if dataset_id:
         dset = models.Dataset.objects.filter(pk=dataset_id).select_related(
             'runname__experiment__project', 'datatype',
-            'hiriefdataset').get()
+            'prefractionationdataset__prefractionation',
+            'prefractionationdataset__hiriefdataset',
+            'prefractionationdataset__prefractionationfractionamount',
+            'prefractionationdataset__prefractionationlength'
+        ).get()
         species = models.DatasetSpecies.objects.filter(
             dataset_id=dset.id).select_related('species')
         components = models.DatatypeComponent.objects.filter(
@@ -52,8 +58,9 @@ def dataset_project(request, dataset_id):
         response_json.update(
             dataset_proj_json(dset, dset.runname.experiment.project, species,
                               components))
-        if hasattr(dset, 'hiriefdataset'):
-            response_json.update(hr_dataset_proj_json(dset.hiriefdataset))
+        if hasattr(dset, 'prefractionationdataset'):
+            response_json.update(pf_dataset_proj_json(
+                dset.prefractionationdataset))
         if dset.runname.experiment.project.corefac:
             mail = models.CorefacDatasetContact.objects.get(dataset_id=dset.id)
             response_json.update(cf_dataset_proj_json(mail))
@@ -208,23 +215,31 @@ def update_dataset(data):
         for spid in newspec.difference(savedspecies)])
     models.DatasetSpecies.objects.filter(
         species_id__in=savedspecies.difference(newspec)).delete()
-    # update hirief, including remove hirief range binding if no longer hirief
-    hrf_id = models.Datatype.objects.get(name__icontains='HiRIEF').id
-    if dset.datatype_id == hrf_id and dset.datatype_id != data['datatype_id']:
-        models.HiriefDataset.objects.get(
-            dataset_id=data['dataset_id']).delete()
-    elif dset.datatype_id != hrf_id and data['datatype_id'] == hrf_id:
-        hrds = models.HiriefDataset(dataset=dset,
-                                    hirief_id=data['hiriefrange'])
-        hrds.save()
-    elif data['datatype_id'] == hrf_id:
-        if dset.hiriefdataset.hirief_id != data['hiriefrange']:
-            dset.hiriefdataset.hirief_id = data['hiriefrange']
-            dset.hiriefdataset.save()
     dset.datatype_id = data['datatype_id']
-    is_hirief = True if data['datatype_id'] == hrf_id else False
+    # update prefrac
+    try:
+        pfds = models.PrefractionationDataset.objects.filter(
+            dataset_id=dset.id).select_related(
+            'hiriefdataset', 'prefractionationfractionamount',
+            'prefractionationlength').get()
+    except models.PrefractionationDataset.DoesNotExist:
+        pfds = False
+    hrf_id = get_hirief_id()
+    if not pfds and not data['prefrac_id']:
+        pass
+    elif not pfds and data['prefrac_id']:
+        save_dataset_prefrac(dset.id, data, hrf_id)
+    elif pfds and not data['prefrac_id']:
+        models.PrefractionationDataset.objects.get(
+            dataset_id=data['dataset_id']).delete()
+    else:
+        update_dataset_prefrac(pfds, data, hrf_id)
+    dtype = get_datatype(data['datatype_id'])
+    prefrac = get_prefrac(data['prefrac_id'])
+    qprot_id = get_quantprot_id()
     new_storage_loc = get_storage_location(project, experiment, dset.runname,
-                                           is_hirief, data)
+                                           qprot_id, hrf_id, dtype, prefrac,
+                                           data)
     if new_storage_loc != dset.storage_loc:
         create_dataset_job('rename_storage_loc', dset.id, dset.storage_loc,
                            new_storage_loc)
@@ -251,13 +266,36 @@ def newproject_save(data):
     return project
 
 
-def get_storage_location(project, exp, runname, is_hirief, postdata):
-    if is_hirief:
-        hr = models.HiriefRange.objects.get(
-            pk=postdata['hiriefrange']).get_path()
-        return '{}/{}/{}/{}'.format(project.name, exp.name, runname.name, hr)
-    else:
-        return '{}/{}/{}'.format(project.name, exp.name, runname.name)
+def get_hirief_id():
+    return models.Prefractionation.objects.get(name__icontains='hirief').id
+
+
+def get_quantprot_id():
+    return models.Datatype.objects.get(name__icontains='quantitative').id
+
+
+def get_prefrac(pfid):
+    if pfid:
+        return models.Prefractionation.objects.get(pk=pfid)
+    return False
+
+
+def get_datatype(dtype_id):
+    return models.Datatype.objects.get(pk=dtype_id)
+
+
+def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
+                         prefrac, postdata):
+    subdir = ''
+    if postdata['datatype_id'] != quantprot_id:
+        subdir = os.path.join(subdir, dtype.name)
+    if prefrac and prefrac.id == hrf_id:
+        subdir = os.path.join(subdir, models.HiriefRange.objects.get(
+            pk=postdata['hiriefrange']).get_path())
+    elif prefrac:
+        subdir = os.path.join(prefrac.name)
+    subdir = re.sub('[^a-zA-Z0-9_\-\/\.]', '_', subdir)
+    return '{}/{}/{}/{}'.format(project.name, exp.name, subdir, runname.name)
 
 
 def check_ownership(userid, dset):
@@ -305,21 +343,22 @@ def save_dataset(request):
         experiment = models.Experiment.objects.get(pk=data['experiment_id'])
     runname = models.RunName(name=data['runname'], experiment=experiment)
     runname.save()
-    hrf_id = models.Datatype.objects.get(name__icontains='HiRIEF').id
-    is_hirief = True if data['datatype_id'] == hrf_id else False
+    hrf_id = get_hirief_id()
+    dtype = get_datatype(data['datatype_id'])
+    prefrac = get_prefrac(data['prefrac_id'])
+    qprot_id = get_quantprot_id()
     dset = models.Dataset(user_id=request.user.id, date=datetime.now(),
                           runname_id=runname.id,
-                          storage_loc=get_storage_location(
-                              project, experiment, runname, is_hirief, data),
-                          datatype_id=data['datatype_id'])
+                          storage_loc= get_storage_location(
+                              project, experiment, runname, qprot_id, hrf_id,
+                              dtype, prefrac, data),
+                          datatype=dtype)
     dset.save()
     models.DatasetSpecies.bulk_create(
         [models.DatasetSpecies(species_id=sid, dataset_id=dset.id)
          for sid in data['organism_ids']])
-    if dset.datatype_id == hrf_id:
-        hrds = models.HiriefDataset(dataset=dset,
-                                    hirief_id=data['hiriefrange'])
-        hrds.save()
+    if data['prefrac_id']:
+        save_dataset_prefrac(dset.id, data)
     if data['is_corefac']:
         dset_mail = models.CorefacDatasetContact(dataset=dset,
                                                  email=data['corefaccontact'])
@@ -336,6 +375,55 @@ def save_dataset(request):
             datatype_id=dset.datatype_id).exclude(
             component__name='definition')])
     return JsonResponse({'dataset_id': dset.id})
+
+
+def save_dataset_prefrac(dset_id, data, hrf_id):
+    pfds = models.PrefractionationDataset(
+        dataset_id=dset_id, prefractionation_id=data['prefrac_id'])
+    pfds.save()
+    models.PrefractionationFractionAmount.objects.create(
+        pfdataset=pfds, fractions=data['prefrac_amount'])
+    if data['prefrac_id'] == hrf_id:
+        models.HiriefDataset.objects.create(pfdataset=pfds,
+                                            hirief_id=data['hiriefrange'])
+    else:
+        models.PrefractionationLength.objects.create(
+            pfdataset=pfds, length=data['prefrac_length'])
+
+
+def update_prefrac_len(pfds, data):
+    pass
+
+
+def update_dataset_prefrac(pfds, data, hrf_id):
+    if pfds.prefractionation_id != data['prefrac_id']:
+        if pfds.prefractionation_id == hrf_id:
+            models.HiriefDataset.objects.filter(pfdataset=pfds).delete()
+            models.PrefractionationLength.objects.create(
+                pfdataset=pfds, length=data['prefrac_length'])
+        elif data['prefrac_id'] == hrf_id:
+            models.PrefractionationLength.objects.filter(pfdataset=pfds).delete()
+            models.HiriefDataset.objects.create(pfdataset=pfds,
+                                                hirief_id=data['hiriefrange'])
+        else:
+            models.PrefractionationLength.objects.filter(pfdataset=pfds).update(
+                length=data['prefrac_length'])
+        pfds.prefractionation_id = data['prefrac_id']
+        pfds.save()
+    else:
+        if data['prefrac_id'] == hrf_id:
+            if pfds.hiriefdataset != data['hiriefrange']:
+                pfds.hiriefdataset.hirief_id = data['hiriefrange']
+                pfds.hiriefdataset.save()
+        else:
+            if pfds.prefractionationlength.length != data['prefrac_length']:
+                pfds.prefractionationlength.length = data['prefrac_length']
+                pfds.prefractionationlength.save()
+    # update fr amount if neccessary
+    pffa = pfds.prefractionationfractionamount
+    if (pffa.fractions != data['prefrac_amount']):
+        pffa.fractions = data['prefrac_amount']
+        pffa.save()
 
 
 def empty_dataset_proj_json():
@@ -356,10 +444,12 @@ def empty_dataset_proj_json():
             'internal_pi_id': INTERNAL_PI_PK,
             'datasettypes': [{'name': x.name, 'id': x.id} for x in
                              models.Datatype.objects.all()],
-            'hirief_ranges': [{'name': str(x), 'id': x.id}
-                              for x in models.HiriefRange.objects.all()],
             'organisms': [{'id': x.id, 'linnean': x.linnean, 'name': x.popname}
                           for x in models.Species.objects.all()],
+            'prefracs': [{'id': x.id, 'name': x.name}
+                          for x in models.Prefractionation.objects.all()],
+            'hirief_ranges': [{'name': str(x), 'id': x.id}
+                              for x in models.HiriefRange.objects.all()],
             'mostused_organisms': [
                 {'id': x.species.id, 'linnean': x.species.linnean,
                  'name': x.species.popname} for x in
@@ -388,8 +478,14 @@ def cf_dataset_proj_json(dset_mail):
     return {'externalcontactmail': dset_mail.email}
 
 
-def hr_dataset_proj_json(hirief_ds):
-    return {'hiriefrange': hirief_ds.hirief_id}
+def pf_dataset_proj_json(pfds):
+    resp_json = {'prefrac_id': pfds.prefractionation.id,
+                 'prefrac_amount': pfds.prefractionationfractionamount.fractions}
+    if hasattr(pfds, 'hiriefdataset'):
+        resp_json.update({'hiriefrange': pfds.hiriefdataset.hirief.id})
+    else:
+        resp_json.update({'prefrac_length': pfds.prefractionationlength.length})
+    return resp_json
 
 
 def empty_sampleprep_json():
@@ -458,7 +554,9 @@ def empty_acquisition_json():
     return {'params': params,
             'operators': [{'id': x.user.id, 'name': '{} {}'.format(
                 x.user.first_name, x.user.last_name)}
-                for x in models.Operator.objects.select_related('user').all()]}
+                for x in models.Operator.objects.select_related('user').all()],
+            }
+
 
 
 def empty_files_json():

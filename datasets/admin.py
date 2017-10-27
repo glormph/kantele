@@ -5,7 +5,7 @@ from datasets.models import (HiriefRange, Datatype, PrincipalInvestigator,
                              SelectParameterOption,
                              FieldParameter,
                              Enzyme, QuantType, QuantChannel, QuantTypeChannel,
-                             Operator,
+                             Operator, Prefractionation,
                              )
 
 # Register your models here.
@@ -21,3 +21,4 @@ admin.site.register(QuantType)
 admin.site.register(QuantChannel)
 admin.site.register(QuantTypeChannel)
 admin.site.register(Operator)
+admin.site.register(Prefractionation)
