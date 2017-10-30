@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container">
+	<h5 class="title is-4">Latest 100 files</h3>
+				<table class="table is-fullwidth">
+					<thead>
+						<tr>
+							<th>File name</th>
+							<th>Producer</th>
+							<th>Date</th>
+							<th>Size</th>
+							<th>Transferred</th>
+							<th>Backed up</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for fn in files %}
+						<tr>
+							<td>{{ fn.name }}</td>
+							<td>{{ fn.prod }}</td>
+							<td>{{ fn.date }}</td>
+							<td>{{ fn.size }} MB</td>
+							<td>{{ fn.transfer }}</td>
+							<td>{{ fn.backup }}</td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+{% endblock content %}

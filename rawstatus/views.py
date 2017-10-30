@@ -1,5 +1,6 @@
 from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponseNotAllowed, HttpResponse)
+from django.shortcuts import render
 
 from kantele import settings as config
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
@@ -7,6 +8,19 @@ from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
 from jobs import jobs as jobutil
 from jobs.views import set_task_done, taskclient_authorized
 from datetime import datetime
+
+
+def show_files(request):
+    storedfiles = {x.rawfile.id: hasattr(x, 'swestorebackedupfile') for x in
+                   StoredFile.objects.exclude(md5='').select_related(
+                       'rawfile', 'swestorebackedupfile')}
+    files = []
+    for fn in RawFile.objects.order_by('date').select_related(
+            'producer').reverse()[:100]:
+        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
+                      'size': round(fn.size / (2**20), 1), 'transfer': fn.id in storedfiles,
+                      'backup': fn.id in storedfiles and storedfiles[fn.id]})
+    return render(request, 'rawstatus/files.html', {'files': files})
 
 
 def check_producer(producer_id):
@@ -145,7 +159,7 @@ def check_md5_success(request):
 
 
 def set_md5(request):
-    if not 'client_id' in request.POST or not taskclient_authorized(
+    if 'client_id' not in request.POST or not taskclient_authorized(
             request.POST['client_id'], [config.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
@@ -172,7 +186,7 @@ def created_swestore_backup(request):
 
 def update_storagepath_file(request):
     data = request.POST
-    if not 'client_id' in data or not taskclient_authorized(
+    if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
     if 'fn_id' in data:
