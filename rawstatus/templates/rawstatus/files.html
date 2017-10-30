@@ -21,8 +21,26 @@
 							<td>{{ fn.prod }}</td>
 							<td>{{ fn.date }}</td>
 							<td>{{ fn.size }} MB</td>
-							<td>{{ fn.transfer }}</td>
-							<td>{{ fn.backup }}</td>
+							<td>{% if fn.transfer %}
+								<span class="icon has-text-success">
+									<i  class="fa fa-check"></i>
+								</span>
+								{% else %}
+								<span class="icon has-text-danger">
+									<i  class="fa fa-times"></i>
+								</span>
+								{% endif %}
+							</td>
+							<td>{% if fn.backup %}
+								<span class="icon has-text-success">
+									<i  class="fa fa-check"></i>
+								</span>
+								{% else %}
+								<span class="icon has-text-danger">
+									<i  class="fa fa-times"></i>
+								</span>
+								{% endif %}
+							</td>
 						</tr>
 						{% endfor %}
 					</tbody>
