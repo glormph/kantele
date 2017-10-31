@@ -165,6 +165,15 @@ def get_admin_params_for_dset(response, dset_id, category):
             fill_admin_selectparam(params, p.value, p.value.id)
         else:
             fill_admin_selectparam(oldparams, p.value, p.value.id, p.title)
+    for p in models.CheckboxParameterValue.objects.filter(
+            dataset_id=dset_id,
+            value__param__category__labcategory=category).select_related(
+            'value__param__category'):
+        params_saved = True
+        if p.value.param.active:
+            fill_admin_checkboxparam(params, p.value, p.value.id)
+        else:
+            fill_admin_checkboxparam(oldparams, p.value, p.value.id, p.title)
     for p in models.FieldParameterValue.objects.filter(
             dataset_id=dset_id,
             param__category__labcategory=category).select_related(
@@ -531,6 +540,27 @@ def fill_admin_selectparam(params, p, value=False, oldparamtitle=False):
         params[p.param.id]['fields'].append({'value': p.id, 'text': p.value})
 
 
+def fill_admin_checkboxparam(params, p, value=False, oldparamtitle=False):
+    """Fills params dict with select parameters passed, in proper JSON format
+    for Vue app.
+    This takes care of both empty params (for new dataset), filled parameters,
+    and old parameters"""
+    if not p.param.id in params:
+        params[p.param.id] = {'param_id': p.param.id, 'fields': [],
+                              'inputtype': 'checkbox'}
+    params[p.param.id]['title'] = (oldparamtitle if oldparamtitle
+                                   else p.param.title)
+    if value:
+        # fields key is already populated
+        try:
+            params[p.param.id]['model'].append(value)
+        except KeyError:
+            params[p.param.id]['model'] = [value]
+    else:
+        params[p.param.id]['model'] = []
+        params[p.param.id]['fields'].append({'value': p.id, 'text': p.value})
+
+
 def fill_admin_fieldparam(params, p, value=False, oldparamtitle=False):
     """Fills params dict with field parameters passed, in proper JSON format
     for Vue app.
@@ -552,6 +582,10 @@ def get_dynamic_emptyparams(category):
             'paramtype').filter(category__labcategory=category):
         if p.active:
             fill_admin_fieldparam(params, p)
+    for p in models.CheckboxParameterOption.objects.select_related(
+            'param').filter(param__category__labcategory=category):
+        if p.param.active:
+            fill_admin_checkboxparam(params, p)
     return params
 
 
@@ -780,16 +814,24 @@ def update_admin_defined_params(dset, data, category):
         param__category__labcategory=category)
     selectparams = dset.selectparametervalue_set.filter(
         value__param__category__labcategory=category).select_related('value')
+    checkboxparamvals = dset.checkboxparametervalue_set.filter(
+        value__param__category__labcategory=category).select_related('value')
     selectparams = {p.value.param_id: p for p in selectparams}
     fieldparams = {p.param_id: p for p in fieldparams}
+    checkboxparams = {}
+    for p in checkboxparamvals:
+        try:
+            checkboxparams[p.value.param_id][p.value_id] = p
+        except KeyError:
+            checkboxparams[p.value.param_id] = {p.value_id: p}
     new_selects, new_fields = [], []
     for param in data['params'].values():
         value = param['model']
+        pid = param['param_id']
         if param['inputtype'] == 'select':
-            pid = param['param_id']
+            text = [x['text'] for x in param['fields']
+                    if x['value'] == value]
             if (pid in selectparams and value != selectparams[pid].value_id):
-                text = [x['text'] for x in param['fields']
-                        if x['value'] == value]
                 selectparams[pid].value_id = value
                 selectparams[pid].valuename = text[0]
                 selectparams[pid].save()
@@ -797,8 +839,21 @@ def update_admin_defined_params(dset, data, category):
                 models.SelectParameterValue.objects.create(
                     dataset_id=data['dataset_id'], value_id=value,
                     valuename=text[0], title=param['title'])
+        elif param['inputtype'] == 'checkbox':
+            if pid in checkboxparams:
+                oldvals = {val_id: pval for val_id, pval in checkboxparams[pid].items()}
+                models.CheckboxParameterValue.objects.bulk_create([
+                    models.CheckboxParameterValue(dataset_id=data['dataset_id'],
+                                                  value_id=newval)
+                    for newval in set(value).difference(oldvals)])
+                for removeval in set(oldvals.keys()).difference(value):
+                    oldvals[removeval].delete()
+            elif pid not in checkboxparams:
+                models.CheckboxParameterValue.objects.bulk_create([
+                    models.CheckboxParameterValue(
+                        dataset_id=data['dataset_id'], value_id=val)
+                    for val in value])
         else:
-            pid = param['id']
             if pid in fieldparams and value != fieldparams[pid].value:
                 fieldparams[pid].value = value
                 fieldparams[pid].save()
@@ -810,7 +865,7 @@ def update_admin_defined_params(dset, data, category):
 
 
 def save_admin_defined_params(data, dset_id):
-    selects, fields = [], []
+    selects, checkboxes, fields = [], [], []
     for param in data['params'].values():
         value = param['model']
         if param['inputtype'] == 'select':
@@ -820,10 +875,19 @@ def save_admin_defined_params(data, dset_id):
                                                        value_id=value,
                                                        valuename=text[0],
                                                        title=param['title']))
+        elif param['inputtype'] == 'checkbox':
+            text = [x['text'] for x in param['fields']
+                    if x['value'] == value]
+            checkboxes.append(models.CheckboxParameterValue(dataset_id=dset_id,
+                                                            value_id=value,
+                                                            valuename=text[0],
+                                                            title=param['title']
+                                                            ))
         else:
             fields.append(models.FieldParameterValue(dataset_id=dset_id,
                                                      param_id=param['id'],
                                                      value=value,
                                                      title=param['title']))
     models.SelectParameterValue.objects.bulk_create(selects)
+    models.CheckboxParameterValue.objects.bulk_create(checkboxes)
     models.FieldParameterValue.objects.bulk_create(fields)

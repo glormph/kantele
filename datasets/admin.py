@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from datasets.models import (Datatype, PrincipalInvestigator, DatatypeComponent,
                              SelectParameter, SelectParameterOption,
+                             CheckboxParameter, CheckboxParameterOption,
                              FieldParameter,
                              Enzyme, QuantType, QuantChannel, QuantTypeChannel,
                              Operator, Prefractionation, HiriefRange,
@@ -12,6 +13,8 @@ from datasets.models import (Datatype, PrincipalInvestigator, DatatypeComponent,
 admin.site.register(FieldParameter)
 admin.site.register(SelectParameter)
 admin.site.register(SelectParameterOption)
+admin.site.register(CheckboxParameter)
+admin.site.register(CheckboxParameterOption)
 admin.site.register(HiriefRange)
 admin.site.register(Datatype)
 admin.site.register(PrincipalInvestigator)

@@ -103,7 +103,7 @@
 			{% verbatim %}
 				<label class="label">{{ param.title }}</label>
 				<div class="control">
-					<template v-if="param.inputtype != 'select'">
+					<template v-if="param.inputtype === 'text'|| param.inputtype === 'number'">
 					<input type="text" v-on:input="editing=true" v-if="param.inputtype === 'text'" class="input" v-bind:placeholder="param.placeholder" v-model="param.model">
 					<input type="number" v-on:input="editing=true" v-if="param.inputtype === 'number'" class="input" v-bind:placeholder="param.placeholder" v-model="param.model">
 					</template>
@@ -118,6 +118,11 @@
 							</option>
 							</template>
 						</select>
+					</div>
+					</template>
+					<template v-if="param.inputtype === 'checkbox'">
+				<div class="control" v-for="option in param.fields">
+					<input v-on:change="editing=true" v-bind:value="option.value" v-model="param.model" type="checkbox">{{ option.text }}
 					</div>
 					</template>
 				</div>

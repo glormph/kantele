@@ -137,6 +137,29 @@ class FieldParameterValue(models.Model):
     title = models.CharField(max_length=100)
 
 
+class CheckboxParameter(models.Model):
+    # adminable
+    title = models.CharField(max_length=100)
+    category = models.ForeignKey(ParamLabcategory)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.title
+
+
+class CheckboxParameterOption(models.Model):
+    param = models.ForeignKey(CheckboxParameter)
+    value = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.value
+
+
+class CheckboxParameterValue(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    value = models.ForeignKey(CheckboxParameterOption)
+
+
 class Enzyme(models.Model):
     name = models.CharField(max_length=30)
 
