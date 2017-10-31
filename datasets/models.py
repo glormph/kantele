@@ -131,6 +131,7 @@ class SelectParameterValue(models.Model):
 class FieldParameterValue(models.Model):
     dataset = models.ForeignKey(Dataset)
     param = models.ForeignKey(FieldParameter)
+    value = models.CharField(max_length=100)
 
 
 class CheckboxParameter(models.Model):
