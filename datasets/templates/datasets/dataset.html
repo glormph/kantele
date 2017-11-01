@@ -313,14 +313,21 @@
 				<a v-if="is_owner" v-show="!showrevert" class="button is-info is-small" disabled>Revert</a>
 
 			</div>
-			<a class="button is-danger is-outlined is-small" v-show="showDatasetFiles" v-on:click="toggleFileView">Show available files</a>
-			<a class="button is-danger is-outlined is-small" v-show="!showDatasetFiles" v-on:click="toggleFileView">
+			<div v-show="showDatasetFiles">
 				{% verbatim %}
+				<a class="button is-danger is-outlined is-small" v-on:click="toggleFileView">Show available files</a>
+				<div class="content is-small">{{ Object.keys(showingAssociatedFiles()).length }} dataset files</div>
+			</div>
+			
+			<div v-show="!showDatasetFiles">
+				<a class="button is-danger is-outlined is-small" v-on:click="toggleFileView">
 				Show {{ Object.keys(showingAssociatedFiles()).length }} dataset files
+				</a>
+				<a class="button is-primary is-outlined is-small" v-on:click="addFiles">Add {{ countSelectedFiles }} selected files</a>
+				<input class="input"  v-model="filefilterString" type="text" placeholder="Filter files">
+				<div class="content is-small">{{ Object.keys(showingNewFiles).length }} available files</div>
 				{% endverbatim %}
-			</a>
-			<a class="button is-primary is-outlined is-small" v-show="!showDatasetFiles" v-on:click="addFiles">Add selected files</a>
-			<input class="input"  v-model="filefilterString" type="text" placeholder="Filter files" v-show="!showDatasetFiles">
+			</div>
 			<table class="table">
 				<thead>
 					<tr>
@@ -426,6 +433,15 @@
 			},
 			isOpen: function() {
 				return this.dset_id !== '';
+			},
+			countSelectedFiles: function() {
+				count = 0;
+				for (key in this.showingNewFiles) {
+					if (this.showingNewFiles[key].checked) {
+						count += 1;
+					}
+				}
+				return count
 			},
 			showingNewFiles: function() {
 				sort_order = this.sort_order;
