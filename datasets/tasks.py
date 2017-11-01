@@ -1,7 +1,6 @@
 import sys
 import os
 import shutil
-import requests
 import subprocess
 from urllib.parse import urljoin
 from time import sleep
@@ -11,6 +10,7 @@ from celery import shared_task
 
 from kantele import settings as config
 from rawstatus import tasks as rstasks
+from jobs.post import update_db
 
 # Updating stuff in tasks happens over the API, assume no DB is touched. This
 # avoids setting up auth for DB
@@ -39,17 +39,6 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
     except RuntimeError:
         # FIXME shutil.move(dst, src)
         raise
-
-
-def update_db(url, postdata):
-    try:
-        r = requests.post(url=url, data=postdata, verify=config.CERTFILE)
-        r.raise_for_status()
-    except (requests.exceptions.HTTPError,
-            requests.exceptions.ConnectionError) as e:
-        msg = 'Could not update database: {}'.format(e)
-        print(msg)
-        raise RuntimeError(msg)
 
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
