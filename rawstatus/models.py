@@ -26,6 +26,7 @@ class RawFile(models.Model):
     size = models.BigIntegerField('size in bytes')
     date = models.DateTimeField('date/time created')
     claimed = models.BooleanField()
+    deleted = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -35,7 +36,8 @@ class StoredFile(models.Model):
     """Files transferred from instrument to storage"""
     rawfile = models.ForeignKey(RawFile)
     filename = models.CharField(max_length=200)
-    filetype = models.CharField(max_length=20)  # raw, fq, mzml, etc
+    # filetype raw==produced and has a rawfile entry, mzml etc is derivate
+    filetype = models.CharField(max_length=20)
     servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
     md5 = models.CharField(max_length=32)

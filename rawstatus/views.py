@@ -200,3 +200,17 @@ def update_storagepath_file(request):
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
     return HttpResponse()
+
+
+def delete_storedfile(request):
+    data = request.POST
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [config.SWESTORECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    sfile = StoredFile.objects.filter(pk=data['fn_id']).select_related(
+        'rawfile').get()
+    if sfile.filetype == 'raw':
+        sfile.rawfile.deleted = True
+        sfile.rawfile.save()
+    sfile.delete()
+    return HttpResponse()

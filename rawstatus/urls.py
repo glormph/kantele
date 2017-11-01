@@ -13,4 +13,6 @@ urlpatterns = [
         name='rawstatus-createswestore'),
     url(r'^storagepath/$', views.update_storagepath_file,
         name='rawstatus-updatestorage'),
+    url(r'^delete/$', views.delete_storedfile,
+        name='rawstatus-deletefile'),
 ]

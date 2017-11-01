@@ -1,6 +1,5 @@
 import hashlib
 import os
-import requests
 import subprocess
 from urllib.parse import urljoin
 from time import sleep
@@ -9,6 +8,7 @@ from django.urls import reverse
 
 from kantele import settings as config
 from celery import shared_task
+from jobs.post import update_db
 
 
 def calc_md5(fnpath):
@@ -28,19 +28,36 @@ def get_md5(self, sfid, fnpath, servershare):
     postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY,
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
+    msg = ('Could not update database: http/connection error {}. '
+           'Retrying in one minute')
     try:
-        r = requests.post(url=url, data=postdata, verify=config.CERTFILE)
-        r.raise_for_status()
-    except (requests.exceptions.HTTPError,
-            requests.exceptions.ConnectionError) as e:
-        msg = ('Could not update database: http/connection error {}. '
-               'Retrying in one minute'.format(e))
-        print(msg)
+        update_db(url, postdata, msg)
+    except RuntimeError:
         self.retry(countdown=60)
     except:
         raise
     print('MD5 of {} is {}, registered in DB'.format(fnpath, result))
     return result
+
+
+@shared_task(bind=True, queue=config.QUEUE_SWESTORE)
+def delete_file(self, servershare, filepath, fn_id):
+    fileloc = os.path.join(config.SHAREMAP[servershare], filepath)
+    try:
+        os.remove(fileloc)
+    except FileNotFoundError:
+        # File is already deleted or just not where it is, pass for now,
+        # will be registered as deleted
+        pass
+    msg = ('Could not update database with deletion of fn {} :'
+           '{}'.format(filepath, '{}'))
+    url = urljoin(config.KANTELEHOST, reverse('rawstatus-deletefile'))
+    postdata = {'sfid': fn_id, 'task': self.request.id,
+                'client_id': config.APIKEY}
+    try:
+        update_db(url, postdata, msg)
+    except RuntimeError:
+        self.retry(countdown=60)
 
 
 @shared_task(bind=True, queue=config.QUEUE_SWESTORE)
@@ -76,12 +93,9 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
     postdata = {'sfid': fn_id, 'swestore_path': uri,
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('rawstatus-createswestore'))
+    msg = ('Could not update database with for fn {} with swestore URI {} :'
+           '{}'.format(filepath, uri, '{}'))
     try:
-        r = requests.post(url=url, data=postdata, verify=config.CERTFILE)
-        r.raise_for_status()
-    except (requests.exceptions.HTTPError,
-            requests.exceptions.ConnectionError) as e:
-        msg = ('Could not update database with for fn {} with swestore URI {} :'
-               '{}'.format(filepath, uri, e))
-        print(msg)
-        self.retry()
+        update_db(url, postdata, msg)
+    except RuntimeError:
+        self.retry(countdown=60)

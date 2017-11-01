@@ -1,11 +1,14 @@
+import os
+from itertools import cycle
+
 from django.db.models import F
 from celery import chain
-from itertools import cycle
 
 from kantele import settings
 from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
 from datasets import tasks
+from rawstatus import tasks as filetasks
 from jobs.models import Task
 
 
@@ -52,11 +55,14 @@ def move_files_dataset_storage(job_id, dset_id, fn_ids):
 def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
     print('Moving files with ids {} from dataset to tmp'.format(fn_ids))
     task_ids = []
-    for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids).exclude(
-            filetype='mzml'):
-        # FIXME must delete mzMLs in same dir
-        task_ids.append(tasks.move_stored_file_tmp.delay(fn.rawfile.name,
-                                                         fn.path, fn.id).id)
+    for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids):
+        if fn.filetype == 'mzml':
+            fullpath = os.path.join(fn.path, fn.filename)
+            task_ids.append(filetasks.delete_file.delay(fn.servershare.name,
+                                                        fullpath, fn.id))
+        else:
+            task_ids.append(tasks.move_stored_file_tmp.delay(fn.rawfile.name,
+                                                             fn.path, fn.id).id)
     Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
                               for tid in task_ids])
 
