@@ -369,7 +369,7 @@ def save_dataset(request):
                               dtype, prefrac, data),
                           datatype=dtype)
     dset.save()
-    models.DatasetSpecies.bulk_create(
+    models.DatasetSpecies.objects.bulk_create(
         [models.DatasetSpecies(species_id=sid, dataset_id=dset.id)
          for sid in data['organism_ids']])
     if data['prefrac_id']:
