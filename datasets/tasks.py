@@ -47,8 +47,16 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     dst = os.path.join(config.STORAGESHARE, dstpath, fn)
     print('Moving file {} to {}'.format(src, dst))
     dstdir = os.path.split(dst)[0]
-    if not os.path.exists(dstdir) or not os.path.isdir(dstdir):
-        os.makedirs(dstdir)
+    if not os.path.exists(dstdir):
+        try:
+            os.makedirs(dstdir)
+        except FileExistsError:
+            # Race conditions may happen
+            pass
+    elif not os.path.isdir(dstdir):
+        raise RuntimeError('Directory {} is already on disk as a file name. '
+                           'Not moving files.')
+        # FIXME should update DB and set job to error
     shutil.move(src, dst)
     postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
                 'dst_path': dstpath, 'client_id': config.APIKEY,
