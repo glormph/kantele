@@ -373,7 +373,7 @@ def save_dataset(request):
         [models.DatasetSpecies(species_id=sid, dataset_id=dset.id)
          for sid in data['organism_ids']])
     if data['prefrac_id']:
-        save_dataset_prefrac(dset.id, data)
+        save_dataset_prefrac(dset.id, data, hrf_id)
     if data['is_corefac']:
         dset_mail = models.CorefacDatasetContact(dataset=dset,
                                                  email=data['corefaccontact'])
@@ -862,8 +862,8 @@ def save_admin_defined_params(data, dset_id):
             selects.append(models.SelectParameterValue(dataset_id=dset_id,
                                                        value_id=value))
         elif param['inputtype'] == 'checkbox':
-            checkboxes.append(models.CheckboxParameterValue(dataset_id=dset_id,
-                                                            value_id=value))
+            checkboxes.extend([models.CheckboxParameterValue(dataset_id=dset_id,
+                                                            value_id=val) for val in value])
         else:
             fields.append(models.FieldParameterValue(dataset_id=dset_id,
                                                      param_id=param['id'],
