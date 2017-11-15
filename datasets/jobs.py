@@ -2,6 +2,7 @@ import os
 from itertools import cycle
 
 from django.db.models import F
+from django.urls import reverse
 from celery import chain
 
 from kantele import settings
@@ -80,7 +81,8 @@ def convert_tomzml(job_id, dset_id):
             tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
                                     fn.servershare.name).set(queue=queue),
             tasks.scp_storage.s(fn.id, fn.rawfile.id, dset.storage_loc,
-                                fn.servershare.name).set(queue=outqueue)
+                                fn.servershare.name,
+                                reverse('files:createmzml')).set(queue=outqueue)
                     ]
         task_ids.append(chain(*runchain).delay().id)
     Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
