@@ -27,7 +27,7 @@ def get_md5(self, sfid, fnpath, servershare):
     result = calc_md5(fnpath)
     postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY,
                 'task': self.request.id}
-    url = urljoin(config.KANTELEHOST, reverse('rawstatus-setmd5'))
+    url = urljoin(config.KANTELEHOST, reverse('files:setmd5'))
     msg = ('Could not update database: http/connection error {}. '
            'Retrying in one minute')
     try:
@@ -51,7 +51,7 @@ def delete_file(self, servershare, filepath, fn_id):
         pass
     msg = ('Could not update database with deletion of fn {} :'
            '{}'.format(filepath, '{}'))
-    url = urljoin(config.KANTELEHOST, reverse('rawstatus-deletefile'))
+    url = urljoin(config.KANTELEHOST, reverse('files:deletefile'))
     postdata = {'sfid': fn_id, 'task': self.request.id,
                 'client_id': config.APIKEY}
     try:
@@ -92,7 +92,7 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
                   'with MD5 {}'.format(mountpath_fn, md5_upl))
     postdata = {'sfid': fn_id, 'swestore_path': uri,
                 'task': self.request.id, 'client_id': config.APIKEY}
-    url = urljoin(config.KANTELEHOST, reverse('rawstatus-createswestore'))
+    url = urljoin(config.KANTELEHOST, reverse('files:createswestore'))
     msg = ('Could not update database with for fn {} with swestore URI {} :'
            '{}'.format(filepath, uri, '{}'))
     try:

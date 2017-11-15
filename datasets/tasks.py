@@ -33,7 +33,7 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
         dsttree = os.path.join(dsttree, dstdir)
     postdata = {'fn_ids': storedfn_ids, 'dst_path': dstpath,
                 'task': self.request.id, 'client_id': config.APIKEY}
-    url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
+    url = urljoin(config.KANTELEHOST, reverse('files:updatestorage'))
     try:
         update_db(url, postdata)
     except RuntimeError:
@@ -53,7 +53,7 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
     postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
                 'dst_path': dstpath, 'client_id': config.APIKEY,
                 'task': self.request.id}
-    url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
+    url = urljoin(config.KANTELEHOST, reverse('files:updatestorage'))
     try:
         update_db(url, postdata)
     except RuntimeError:
@@ -71,7 +71,7 @@ def move_stored_file_tmp(self, fn, path, fn_id):
     postdata = {'fn_id': fn_id, 'servershare': config.TMPSHARENAME,
                 'dst_path': '', 'client_id': config.APIKEY,
                 'task': self.request.id}
-    url = urljoin(config.KANTELEHOST, reverse('rawstatus-updatestorage'))
+    url = urljoin(config.KANTELEHOST, reverse('files:updatestorage'))
     try:
         update_db(url, postdata)
     except RuntimeError:
@@ -176,7 +176,7 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare):
     postdata = {'rawfile_id': rawfn_id, 'task': self.request.id, 'md5': dst_md5,
                 'servershare': servershare, 'path': dsetdir,
                 'client_id': config.APIKEY}
-    url = urljoin(config.KANTELEHOST, reverse('rawstatus-createmzml'))
+    url = urljoin(config.KANTELEHOST, reverse('files:createmzml'))
     try:
         update_db(url, postdata)
     except RuntimeError:
