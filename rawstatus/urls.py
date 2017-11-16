@@ -13,6 +13,7 @@ urlpatterns = [
         name='createswestore'),
     url(r'^storagepath/$', views.update_storagepath_file,
         name='updatestorage'),
+    url(r'^mzml/set/$', views.created_mzml, name='createmzml'),
     url(r'^delete/$', views.delete_storedfile,
         name='deletefile'),
 ]

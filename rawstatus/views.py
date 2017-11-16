@@ -214,3 +214,18 @@ def delete_storedfile(request):
         sfile.rawfile.save()
     sfile.delete()
     return HttpResponse()
+
+
+def created_mzml(request):
+    data = request.POST
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [config.STORAGECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    sfile = StoredFile(rawfile_id=data['rawfile_id'], filetype='mzml',
+                       path=data['path'], filename=data['filename'],
+                       md5=data['md5'])
+    sfile.servershare = ServerShare.objects.get(name=data['servershare'])
+    sfile.save()
+    if 'task' in request.POST:
+        set_task_done(request.POST['task'])
+    return HttpResponse()
