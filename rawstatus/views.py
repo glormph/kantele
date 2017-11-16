@@ -219,7 +219,7 @@ def delete_storedfile(request):
 def created_mzml(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [config.STORAGECLIENT_APIKEY]):
+            data['client_id'], [config.MZMLCLIENT_APIKEY]):
         return HttpResponseForbidden()
     sfile = StoredFile(rawfile_id=data['rawfile_id'], filetype='mzml',
                        path=data['path'], filename=data['filename'],

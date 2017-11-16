@@ -70,9 +70,9 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
 
 def convert_tomzml(job_id, dset_id):
     """Multiple queues for this bc multiple boxes wo shared fs"""
-    dset = Dataset.objects.get(dset_id)
+    dset = Dataset.objects.get(pk=dset_id)
     task_ids = []
-    queues = cycle(settings.PWIZ_QUEUES)
+    queues = cycle(settings.QUEUES_PWIZ)
     for fn in StoredFile.objects.select_related('servershare', 'rawfile').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
         queue = next(queues)
@@ -80,7 +80,7 @@ def convert_tomzml(job_id, dset_id):
         runchain = [
             tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
                                     fn.servershare.name).set(queue=queue),
-            tasks.scp_storage.s(fn.id, fn.rawfile.id, dset.storage_loc,
+            tasks.scp_storage.s(fn.rawfile.id, dset.storage_loc,
                                 fn.servershare.name,
                                 reverse('files:createmzml')).set(queue=outqueue)
                     ]

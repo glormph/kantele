@@ -21,7 +21,7 @@ PUTTYKEY = os.environ.get('PUTTYKEY')
 # site infra
 SWESTORECLIENT_APIKEY = os.environ.get('SWESTORECLIENT_APIKEY')
 STORAGECLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
-MZMLCLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
+MZMLCLIENT_APIKEY = os.environ.get('MZMLCLIENT_APIKEY')
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_SWESTORE = 'create_swestore'
 QUEUES_PWIZ = ['pwiz1', 'pwiz2']
