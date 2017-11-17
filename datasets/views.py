@@ -511,7 +511,7 @@ def empty_sampleprep_json():
         if not chan.quanttype.id in quants:
             quants[chan.quanttype.id] = {'id': chan.quanttype.id, 'chans': [],
                                          'name': chan.quanttype.name}
-        quants[chan.quanttype.id]['chans'].append({'id': chan.channel.id,
+        quants[chan.quanttype.id]['chans'].append({'id': chan.id,
                                                    'name': chan.channel.name,
                                                    'model': ''})
     labelfree = models.QuantType.objects.get(name='labelfree')
