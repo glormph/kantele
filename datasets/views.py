@@ -562,7 +562,7 @@ def fill_admin_fieldparam(params, p, value=False):
     for Vue app.
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
-    params[p.id] = {'id': p.id, 'placeholder': p.placeholder,
+    params[p.id] = {'param_id': p.id, 'placeholder': p.placeholder,
                     'inputtype': p.paramtype.typename, 'title': p.title}
     params[p.id]['model'] = value if value else ''
 
@@ -673,7 +673,7 @@ def save_acquisition(request):
         return update_acquisition(dset, data)
     if data['rp_length']:
         models.ReversePhaseDataset.objects.create(dataset_id=dset_id,
-                                                  length=data['rplength'])
+                                                  length=data['rp_length'])
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
@@ -866,7 +866,7 @@ def save_admin_defined_params(data, dset_id):
                                                             value_id=val) for val in value])
         else:
             fields.append(models.FieldParameterValue(dataset_id=dset_id,
-                                                     param_id=param['id'],
+                                                     param_id=param['param_id'],
                                                      value=value))
     models.SelectParameterValue.objects.bulk_create(selects)
     models.CheckboxParameterValue.objects.bulk_create(checkboxes)
