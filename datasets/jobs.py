@@ -75,13 +75,18 @@ def convert_tomzml(job_id, dset_id):
     queues = cycle(settings.QUEUES_PWIZ)
     for fn in StoredFile.objects.select_related('servershare', 'rawfile').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
+        if StoredFile.objects.filter(rawfile_id=fn.rawfile_id,
+                                     filetype='mzml').exclude(md5='').count():
+            continue
+        StoredFile.create(rawfile_id=fn.rawfile_id, filetype='mzml',
+                          path=fn.path, servershare=fn.servershare,
+                          filename=fn.filename, md5='')
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = [
             tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
                                     fn.servershare.name).set(queue=queue),
-            tasks.scp_storage.s(fn.rawfile.id, dset.storage_loc,
-                                fn.servershare.name,
+            tasks.scp_storage.s(fn.id, dset.storage_loc, fn.servershare.name,
                                 reverse('files:createmzml')).set(queue=outqueue)
                     ]
         task_ids.append(chain(*runchain).delay().id)

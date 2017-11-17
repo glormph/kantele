@@ -221,11 +221,9 @@ def created_mzml(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.MZMLCLIENT_APIKEY]):
         return HttpResponseForbidden()
-    sfile = StoredFile(rawfile_id=data['rawfile_id'], filetype='mzml',
-                       path=data['path'], filename=data['filename'],
-                       md5=data['md5'])
-    sfile.servershare = ServerShare.objects.get(name=data['servershare'])
+    sfile = StoredFile.objects.get(pk=data['sfid'])
+    sfile.md5 = data['md5']
     sfile.save()
-    if 'task' in request.POST:
-        set_task_done(request.POST['task'])
+    if 'task' in data:
+        set_task_done(data['task'])
     return HttpResponse()
