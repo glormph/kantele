@@ -78,9 +78,9 @@ def convert_tomzml(job_id, dset_id):
         if StoredFile.objects.filter(rawfile_id=fn.rawfile_id,
                                      filetype='mzml').exclude(md5='').count():
             continue
-        StoredFile.create(rawfile_id=fn.rawfile_id, filetype='mzml',
-                          path=fn.path, servershare=fn.servershare,
-                          filename=fn.filename, md5='')
+        StoredFile.objects.create(rawfile_id=fn.rawfile_id, filetype='mzml',
+                                  path=fn.path, servershare=fn.servershare,
+                                  filename=fn.filename, md5='')
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = [
