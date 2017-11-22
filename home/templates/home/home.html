@@ -236,6 +236,7 @@
 				<div>
 					{{ infoshown.backupfiles.length }} backed up files
 				</div>
+				<a v-if="mzmlAble" class="button is-small is-primary" v-on:click="createMzml">Create (missing) mzMLs</a>
 
 				<hr>
 				<div>
@@ -256,16 +257,17 @@
 		},
 		computed: {
 			mzmlAble: function() {
-				rawlen = this.infoshown.storedfiles.raw.length;
-				if (rawlen && this.infoshown.storedfiles.mzML.length < rawlen) {
-					return true
-				} else {
+				if (!'mzml' in this.infoshown.storedfiles || this.infoshown.storedfiles.mzml.length === this.infoshown.storedfiles.raw.length) {
 					return false
+				} else if (this.infoshown.jobnames.indexOf('convert_mzml') > -1) {
+					return false
+				} else {
+					return true
 				}
 			}
 		},
 		methods: {
-			convertMzml: function() {
+			createMzml: function() {
 				console.log('iw want mzml');
 			}
 		},

@@ -81,9 +81,9 @@ def get_dset_info(request, dataset_id):
                                        dataset_id=dataset_id).select_related(
                                            'dtcomp__component')}
                     }
-
+    dsjobs = dsmodels.DatasetJob.objects.select_related('job').filter(
+        dataset_id=dataset_id)
+    info['jobnames'] = [x.job.funcname for x in dsjobs]
     info['jobs'] = [{'name': x.job.funcname, 'state': x.job.state,
-                     'time': x.job.timestamp}
-                    for x in dsmodels.DatasetJob.objects.select_related(
-                        'job').filter(dataset_id=dataset_id)]
+                     'time': x.job.timestamp} for x in dsjobs]
     return JsonResponse(info)
