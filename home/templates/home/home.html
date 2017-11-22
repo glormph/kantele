@@ -2,65 +2,81 @@
 {% block content %}
 <section id="apps">
 <div class="container">
-		<div class="columns">
-<datasets-box v-bind:username="user"></datasets-box>
-<dsetinfo-box></dsetinfo-box>
-</div>
+<main-box v-bind:username="user"></main-box>
 </div>
 </section>
 <script>
 	{% verbatim %}
-	Vue.component('datasets-box', {
+	Vue.component('main-box', {
 		template: `
+		<div class="columns">
 		<div class="column">
-		<div class="content is-small">
-			<h5 class="title is-5">Datasets</h5>
+		<div class="content">
+			<div class="tabs is-toggle is-centered is-small">
+				<ul>
+					<li v-bind:class="tabclassDatasets">
+						<a v-on:click="showDatasets"><span>Datasets</span></a>
+					</li>
+					<li v-bind:class="tabclassProjects">
+						<a v-on:click="showProjects"><span>Projects (TBD)</span></a>
+					</li>
+					<li v-bind:class="tabclassSearches">
+						<a v-on:click="showSearches"><span>Searches (TBD)</span></a>
+					</li>
+				</ul>
+			</div>
+			<!-- here starts datasets list box, component or container? -->
+			<div class="content" v-show="tabclassDatasets!==''">
 			<div class="columns">
-		<div class="column is-two-thirds">
-			<input class="input is-small" v-model="dsetFilter" type="text" placeholder="Filter datasets">
-		</div>
+				<div class="column is-two-thirds">
+					<input class="input is-small" v-model="dsetFilter" type="text" placeholder="Filter datasets">
+				</div>
 				<div class="column">
-						<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showYourDatasets">Show everyone's datasets</a>
-						<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showAllDatasets">Show my datasets</a>
-		</div>
-		</div>
+					<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showYourDatasets">Show everyone's datasets</a>
+					<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showAllDatasets">Show my datasets</a>
+				</div>
+			</div>
+			<a v-show="selectedDsets.length > 0" class="button is-small is-primary" v-on:click="multidsetInfo">Get info</a>
+			<a v-show="selectedDsets.length === 0" class="button is-small" disabled>Get info</a>
 			<table class="table">
 				<div class="content is-small">
 				<thead>
 					<tr>
-						<th><input type="checkbox" v-on:click="selectAll"></th>
+						<th><input type="checkbox" v-model="allSelector" v-on:click="selectAll"></th>
 						<th></th>
 						<th></th>
+						<th>Project</th>
 						<th>Experiment</th>
 						<th>Run</th>
 						<th>User</th>
-						<th>Project</th>
 						<th>Datatype</th>
 						<th v-for="comp in components"><abbr v-bind:title="comp">{{ comp[0].toUpperCase() }}</abbr></th>
 					</tr>
 				</thead>
 				<tbody>
 					<tr v-for="ds in datasets" v-show="filteredDataset(ds)">
-						<td><input type="checkbox" v-model="ds.selected"> </td>
+						<td><input type="checkbox" v-bind:value="ds.id" v-model="selectedDsets"> </td>
 						<td>
-							<span class="has-text-info icon is-small">
-								<i v-on:click="dsetInfo" class="fa fa-eye" />
-							</span>
+							<a v-on:click="dsetInfo(ds.id)">
+								<span class="has-text-info icon is-small">
+								<i class="fa fa-eye" />
+								</span>
+							</a>
 						</td>
 						<td>
 								<a v-bind:href="'/datasets/show/' + ds.id">
 							<span v-if="ds.own" class="icon has-text-info is-small">
 									<i class="fa fa-pencil"></i>
 							</span>
-							<span v-if="!ds.own" class="icon has-text-grey-light is-small">
+							<span v-else-if="!ds.own" class="icon has-text-grey-light is-small">
 									<i class="fa fa-pencil"></i>
 							</span>
 								</a>
 						</td>
+						<td>{{ ds.proj }}</td>
 						<td>{{ ds.exp }}</td>
 						<td>{{ ds.run }}</td>
 						<td>{{ ds.usr }}</td>
-						<td>{{ ds.proj }}</td>
 						<td>
 							<span v-if="!ds.prefrac">{{ ds.dtype }}</span>
 							<span v-else-if="ds.hr">{{ ds.hr }}</span>
@@ -69,7 +85,7 @@
 						<td v-for="comp in components">
 							<span class="has-icon" v-if="ds[comp] !== undefined">
 								<i v-if="ds[comp] === 'ok'" class="fa fa-check has-text-success"></i>
-								<i v-if="ds[comp] !== 'ok'" class="fa fa-times has-text-danger"></i>
+								<i v-else-if="ds[comp] !== 'ok'" class="fa fa-times has-text-danger"></i>
 							</span>
 							<span v-if="ds[comp]===undefined">
 								&#x25AC;
@@ -79,9 +95,15 @@
 				</tbody>
 					</div>
 			</table>
+		</div><!-- container dsets end -->
+		</div>
+		</div>
+		<div class="column">
+			<div class="box">
+				<dsinfo-box v-show="tabclassDatasets!==''" v-bind:infoshown="infoshown"></dsinfo-box>
 			</div>
 		</div>
-		</div>
+</div>
 		`,
 		props: ['username'],
 		data: function() {
@@ -92,7 +114,12 @@
 				showYourDatasets: true,
 				showAllDatasets: false,
 				allSelector: false,
-			}
+				tabclassDatasets: 'is-active',
+				tabclassProjects: '',
+				tabclassSearches: '',
+				selectedDsets: [],
+				infoshown: {},
+				}
 		},
 		mounted: function() {
 			this.$http.get('/show/datasets/')
@@ -113,12 +140,15 @@
 			},
 			selectAll: function() {
 				this.allSelector = this.allSelector === false;
+				this.selectedDsets = [];
+				this.infoshown = {};
+				if (!this.allSelector) {
+					return;
+				}
 				for (key in this.datasets) {
 					ds = this.datasets[key];
 					if (this.filteredDataset(ds) && this.allSelector) {
-						ds.selected = true;
-						} else {
-						ds.selected = false;
+						this.selectedDsets.push(ds.id);
 						}
 				}
 			},
@@ -133,27 +163,127 @@
 				}
 				return false
 			},
-			dsetInfo: function(ds) {
-				console.log('heelo');
+			showDatasets: function() {
+				this.activateTabClass('tabclassDatasets');
+			},
+			showProjects: function() {
+				this.activateTabClass('tabclassProjects');
+			},
+			showSearches: function() {
+				this.activateTabClass('tabclassSearches');
+			},
+			activateTabClass: function(tabname) {
+				tabs = ['tabclassDatasets', 'tabclassProjects', 'tabclassSearches'];
+				for (offtab of tabs) {
+					this[offtab] = '';
+					}
+				this[tabname] = 'is-active';
+			},
+			multidsetInfo: function() {
+				this.$http.get('/show/datasets/', 
+				{params: {dsets: this.selectedDsets.join(',')}})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.infoshown = result;
+				})
+			},
+			dsetInfo: function(ds_id) {
+				this.selectedDsets = [];
+				this.allSelector = false;
+				this.$http.get(`/show/dataset/${ds_id}`)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.infoshown = result;
+				})
 			},
 		},
 	})
-	
-	Vue.component('dsetinfo-box', {
+	Vue.component('dsinfo-box', {
 		template: `
-		<div class="column">
-			<div class="box">
-				<div class="content is-small">
-				<h5 class="title is-5">Info</h5>
-			</div>
+		<div class="content">
+			<div v-if="infoshown.num_dsets === 1">
+				<div class="tags">
+				<span class="tag is-info">{{ infoshown.dset.type }}</span>
+				<span v-if="infoshown.dset.is_corefac" class="tag is-success">Core facility</span>
+				</div>
+				<div class="tags">
+					<span v-for="(color, comp) in infoshown.dset.compstates" class="tag" v-bind:class="color">{{ comp }}</span>
+				</div>
+				<div>
+					<b>Project</b>: {{ infoshown.dset.project }}
+				</div>
+				<div>
+					<b>Experiment</b>: {{ infoshown.dset.experiment }}
+				</div>
+				<div>
+					<b>Run</b>: {{ infoshown.dset.runname }}
+				</div>
+				<div>
+					<b>Storage location</b>: {{ infoshown.dset.storage_location }}
+				</div>
+				<hr>
+				<b>Files</b>
+				<div>
+					{{ infoshown.rawfiles.length }} claimed files
+				</div>
+				<div v-for="(files, ftype) in infoshown.storedfiles">
+					{{ files.length }} stored files of type {{ ftype }}
+				</div>
+				<div>
+					{{ infoshown.backupfiles.length }} backed up files
+				</div>
+
+				<hr>
+				<div>
+					<b>Jobs</b>
+				</div>
+				<span v-for="job in infoshown.jobs" v-if="Object.keys(infoshown.jobs).length">
+					<a v-if="job.state==='error'" class="button is-danger">{{ job.name }}</a>
+					<a v-if="job.state==='processing'" class="button is-info">{{ job.name }} SHOULD BE YELLOW</a>
+				</span>
+				<span v-if="!Object.keys(infoshown.jobs).length"> - </span>
 			</div>
 		</div>
 		`,
+		props: ['infoshown'],
 		data: function() {
-			return {}
+			return {
+			}
+		},
+		computed: {
+			mzmlAble: function() {
+				rawlen = this.infoshown.storedfiles.raw.length;
+				if (rawlen && this.infoshown.storedfiles.mzML.length < rawlen) {
+					return true
+				} else {
+					return false
+				}
+			}
+		},
+		methods: {
+			convertMzml: function() {
+				console.log('iw want mzml');
+			}
 		},
 	})
-						{% endverbatim %}
+	Vue.component('search-box', {
+		template: `
+		<div class="content is-small">
+		Not yet implemented
+		</div>
+		`,
+		data: function() {
+			return {
+			}
+		},
+		methods: {
+		},
+	})
+	{% endverbatim %}
 
 	var dashboard = new Vue({
 	el: '#apps',
