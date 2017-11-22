@@ -61,10 +61,10 @@ def get_dset_info(request, dataset_id):
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dataset_id)
     info['rawfiles'] = [x.name for x in raws]
     storedfiles = {}
-    primaryfiles = [x.filename for x in files if x.filetype == 'raw'],
+    primaryfiles = [x.filename for x in files if x.filetype == 'raw']
     if dset.datatype_id not in nonms_dtypes:
         storedfiles['raw'] = primaryfiles
-        storedfiles['mzML'] = [x.filename for x in files if x.filetype == 'mzml'],
+        storedfiles['mzML'] = [x.filename for x in files if x.filetype == 'mzml']
     else:
         storedfiles[nonms_dtypes[dset.datatype_id]] = primaryfiles
     info['storedfiles'] = storedfiles
