@@ -79,7 +79,7 @@ def get_dset_info(request, dataset_id):
                     'project': dset.runname.experiment.project.name,
                     'experiment': dset.runname.experiment.name,
                     'runname': dset.runname.name,
-                    'compstates': {x.dtcomp.component.name: {'ok': 'is-success', 'error': 'is-danger', 'new': 'is-danger'}[x.state] for x in
+                    'compstates': {x.dtcomp.component.name: x.state for x in
                                    dsmodels.DatasetComponentState.objects.filter(
                                        dataset_id=dataset_id).select_related(
                                            'dtcomp__component')}

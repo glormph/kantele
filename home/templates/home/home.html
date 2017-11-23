@@ -211,7 +211,7 @@
 				<span v-if="infoshown.dset.is_corefac" class="tag is-success">Core facility</span>
 				</div>
 				<div class="tags">
-					<span v-for="(color, comp) in infoshown.dset.compstates" class="tag" v-bind:class="color">{{ comp }}</span>
+					<span v-for="(state, comp) in infoshown.dset.compstates" class="tag" v-bind:class="compStateColor(state)">{{ comp }}</span>
 				</div>
 				<div>
 					<b>Project</b>: {{ infoshown.dset.project }}
@@ -276,6 +276,12 @@
 					console.log(response);
 					// error code
 				})
+			},
+			compStateColor: function(state) {
+ 				console.log(state);
+ 				statecolors = {'ok': 'is-success', 'error': 'is-danger', 'new': 'is-danger'};
+ 				console.log(statecolors);
+				return statecolors[state]
 			},
 		},
 	})
