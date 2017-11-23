@@ -236,15 +236,16 @@
 				<div>
 					{{ infoshown.backupfiles.length }} backed up files
 				</div>
-				<a v-if="mzmlAble" class="button is-small is-primary" v-on:click="createMzml">Create (missing) mzMLs</a>
+				<a v-if="mzmlAble === 'ready'" class="button is-small is-primary" v-on:click="createMzml(infoshown.dset.id)">Create (missing) mzMLs</a>
+				<a v-if="mzmlAble === 'blocked'" class="button is-small is-primary" disabled>mzML job running</a>
 
 				<hr>
 				<div>
-					<b>Jobs</b>
+					<b>Jobs running/error</b>
 				</div>
 				<span v-for="job in infoshown.jobs" v-if="Object.keys(infoshown.jobs).length">
-					<a v-if="job.state==='error'" class="button is-danger">{{ job.name }}</a>
-					<a v-if="job.state==='processing'" class="button is-info">{{ job.name }} SHOULD BE YELLOW</a>
+					<a v-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
+					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
 				</span>
 				<span v-if="!Object.keys(infoshown.jobs).length"> - </span>
 			</div>
@@ -257,19 +258,25 @@
 		},
 		computed: {
 			mzmlAble: function() {
-				if (!'mzml' in this.infoshown.storedfiles || this.infoshown.storedfiles.mzml.length === this.infoshown.storedfiles.raw.length) {
+				if (!('mzML' in this.infoshown.storedfiles) || this.infoshown.storedfiles.mzML.length === this.infoshown.storedfiles.raw.length) {
 					return false
 				} else if (this.infoshown.jobnames.indexOf('convert_mzml') > -1) {
-					return false
+					return 'blocked'
 				} else {
-					return true
+					return 'ready'
 				}
 			}
 		},
 		methods: {
-			createMzml: function() {
-				console.log('iw want mzml');
-			}
+			createMzml: function(ds_id) {
+				this.$http.get(`/createmzml/${ds_id}`)
+				.then(response => {
+					this.dsetInfo(ds_id);
+				}, response => {
+					console.log(response);
+					// error code
+				})
+			},
 		},
 	})
 	Vue.component('search-box', {

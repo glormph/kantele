@@ -1,10 +1,12 @@
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from collections import OrderedDict
 
 from datasets import models as dsmodels
+from datasets import jobs as dsjobs
 from rawstatus import models as filemodels
+from jobs.jobs import create_dataset_job, Jobstates
 
 
 @login_required
@@ -64,13 +66,14 @@ def get_dset_info(request, dataset_id):
     primaryfiles = [x.filename for x in files if x.filetype == 'raw']
     if dset.datatype_id not in nonms_dtypes:
         storedfiles['raw'] = primaryfiles
-        storedfiles['mzML'] = [x.filename for x in files if x.filetype == 'mzml']
+        storedfiles['mzML'] = [x.filename for x in files if x.filetype == 'mzml'
+                               and x.md5 != '']
     else:
         storedfiles[nonms_dtypes[dset.datatype_id]] = primaryfiles
     info['storedfiles'] = storedfiles
     info['backupfiles'] = [x.id for x in filemodels.SwestoreBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dataset_id)]
-    info['dset'] = {'type': dset.datatype.name,
+    info['dset'] = {'id': dset.id, 'type': dset.datatype.name,
                     'is_corefac': dset.runname.experiment.project.corefac,
                     'storage_location': dset.storage_loc,
                     'project': dset.runname.experiment.project.name,
@@ -82,8 +85,15 @@ def get_dset_info(request, dataset_id):
                                            'dtcomp__component')}
                     }
     dsjobs = dsmodels.DatasetJob.objects.select_related('job').filter(
-        dataset_id=dataset_id)
+        dataset_id=dataset_id).exclude(job__state=Jobstates.DONE)
     info['jobnames'] = [x.job.funcname for x in dsjobs]
     info['jobs'] = [{'name': x.job.funcname, 'state': x.job.state,
                      'time': x.job.timestamp} for x in dsjobs]
     return JsonResponse(info)
+
+
+@login_required
+def create_mzmls(request, dataset_id):
+    create_dataset_job('convert_mzml', dataset_id)
+    return HttpResponse()
+     
