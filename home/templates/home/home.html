@@ -100,7 +100,7 @@
 		</div>
 		<div class="column">
 			<div class="box">
-				<dsinfo-box v-show="tabclassDatasets!==''" v-bind:infoshown="infoshown"></dsinfo-box>
+				<dsinfo-box v-show="tabclassDatasets!==''" v-bind:infoshown="infoshown" v-on:dsinfo="refreshDsInfo"></dsinfo-box>
 			</div>
 		</div>
 </div>
@@ -200,6 +200,9 @@
 					this.infoshown = result;
 				})
 			},
+                        refreshDsInfo: function() {
+				this.dsetInfo(this.infoshown.dset.id);
+			},
 		},
 	})
 	Vue.component('dsinfo-box', {
@@ -243,11 +246,12 @@
 				<div>
 					<b>Jobs running/error</b>
 				</div>
-				<span v-for="job in infoshown.jobs" v-if="Object.keys(infoshown.jobs).length">
+				<span v-for="job in infoshown.jobs" v-if="infoshown.jobs.length">
 					<a v-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
 					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
+					<a v-if="job.state==='pending'" class="button is-small is-warning">{{ job.name }}</a>
 				</span>
-				<span v-if="!Object.keys(infoshown.jobs).length"> - </span>
+				<span v-if="!infoshown.jobs.length"> - </span>
 			</div>
 		</div>
 		`,
@@ -271,16 +275,16 @@
 			createMzml: function(ds_id) {
 				this.$http.get(`/createmzml/${ds_id}`)
 				.then(response => {
-					this.dsetInfo(ds_id);
+					return response
 				}, response => {
 					console.log(response);
 					// error code
+				}).then(result => {
+					this.$emit('dsinfo');
 				})
 			},
 			compStateColor: function(state) {
- 				console.log(state);
  				statecolors = {'ok': 'is-success', 'error': 'is-danger', 'new': 'is-danger'};
- 				console.log(statecolors);
 				return statecolors[state]
 			},
 		},
