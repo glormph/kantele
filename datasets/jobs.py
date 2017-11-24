@@ -75,15 +75,19 @@ def convert_tomzml(job_id, dset_id):
     dset = Dataset.objects.get(pk=dset_id)
     task_ids = []
     queues = cycle(settings.QUEUES_PWIZ)
-    for fn in StoredFile.objects.select_related('servershare', 'rawfile').filter(
+    for fn in StoredFile.objects.select_related('servershare').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
-        if StoredFile.objects.filter(rawfile_id=fn.rawfile_id,
-                                     filetype='mzml').exclude(md5='').count():
-            continue
-        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
-                          path=fn.path, servershare=fn.servershare,
-                          filename=fn.filename, md5='')
-       	mzsf.save() 
+        try:
+            mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
+                                          filetype='mzml')
+        except StoredFile.DoesNotExist:
+            mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
+                              path=fn.path, servershare=fn.servershare,
+                              filename=fn.filename, md5='')
+            mzsf.save()
+        else:
+            if mzsf.md5 != '':
+                continue
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = [
