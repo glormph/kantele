@@ -92,9 +92,11 @@ def convert_tomzml(job_id, dset_id):
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = [
             tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
-                                    fn.servershare.name).set(queue=queue),
+                                    fn.servershare.name,
+                                    reverse('jobs:taskfail')).set(queue=queue),
             tasks.scp_storage.s(mzsf.id, dset.storage_loc, fn.servershare.name,
-                                reverse('files:createmzml')).set(queue=outqueue)
+                                reverse('files:createmzml'),
+                                reverse('jobs:taskfail')).set(queue=outqueue)
                     ]
         task_ids.append(chain(*runchain).delay().id)
     Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
