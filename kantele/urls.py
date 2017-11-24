@@ -10,8 +10,8 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^files/', include('rawstatus.urls')),
     url(r'^datasets/', include('datasets.urls')),
+    url(r'^jobs/', include('jobs.urls')),
     url('', include('home.urls')),
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
-    # Uncomment the next line to enable the admin:
 ]

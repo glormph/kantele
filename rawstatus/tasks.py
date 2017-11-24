@@ -8,7 +8,8 @@ from django.urls import reverse
 
 from kantele import settings as config
 from celery import shared_task
-from jobs.post import update_db
+from celery.exceptions import MaxRetriesExceededError
+from jobs.post import update_db, taskfail_update_db
 
 
 def calc_md5(fnpath):
@@ -24,7 +25,11 @@ def get_md5(self, sfid, fnpath, servershare):
     # This should be run on the storage server
     print('MD5 requested for file {}'.format(sfid))
     fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
-    result = calc_md5(fnpath)
+    try:
+        result = calc_md5(fnpath)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
     postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY,
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('files:setmd5'))
@@ -33,9 +38,11 @@ def get_md5(self, sfid, fnpath, servershare):
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
-        self.retry(countdown=60)
-    except:
-        raise
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            update_db(url, postdata, msg)
+            raise
     print('MD5 of {} is {}, registered in DB'.format(fnpath, result))
     return result
 
@@ -49,6 +56,9 @@ def delete_file(self, servershare, filepath, fn_id):
         # File is already deleted or just not where it is, pass for now,
         # will be registered as deleted
         pass
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
     msg = ('Could not update database with deletion of fn {} :'
            '{}'.format(filepath, '{}'))
     url = urljoin(config.KANTELEHOST, reverse('files:deletefile'))
@@ -57,7 +67,11 @@ def delete_file(self, servershare, filepath, fn_id):
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
-        self.retry(countdown=60)
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            update_db(url, postdata, msg)
+            raise
 
 
 @shared_task(bind=True, queue=config.QUEUE_SWESTORE)
@@ -71,7 +85,10 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
     curl = ['curl', '-1', '--location', '--cacert', config.CACERTLOC,
             '--cert',  '{}:{}'.format(config.CERTLOC, config.CERTPASS),
             '--key', config.CERTKEYLOC, '-T', fileloc, uri]
-    subprocess.check_call(curl)
+    try:
+        subprocess.check_call(curl)
+    except:
+        taskfail_update_db(self.request.id)
     # if the upload is REALLY quick sometimes the DAV hasnt refreshed and you
     # will get filenotfound
     sleep(5)
@@ -82,11 +99,12 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
         # user needs to investigate and retry this
         print('Failed to get MD5 for Swestore upload of '
               '{}'.format(filepath))
+        taskfail_update_db(self.request.id)
         raise
     else:
         if not md5_upl == md5:
             print('Swestore upload failed with incorrect MD5, retrying')
-            self.retry()
+            taskfail_update_db(self.request.id)
         else:
             print('Successfully uploaded {} '
                   'with MD5 {}'.format(mountpath_fn, md5_upl))
@@ -98,4 +116,8 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
-        self.retry(countdown=60)
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            update_db(url, postdata, msg)
+            raise
