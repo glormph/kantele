@@ -54,9 +54,11 @@ def move_files_dataset_storage(job_id, dset_id, fn_ids):
 
 
 def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
-    print('Moving files with ids {} from dataset to tmp'.format(fn_ids))
+    print('Moving files with ids {} from dataset storage to tmp, '
+          'if not already there. Deleting if mzml'.format(fn_ids))
     task_ids = []
-    for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids):
+    for fn in StoredFile.objects.filter(rawfile_id__in=fn_ids).exclude(
+            servershare__name=settings.TMPSHARENAME):
         if fn.filetype == 'mzml':
             fullpath = os.path.join(fn.path, fn.filename)
             task_ids.append(filetasks.delete_file.delay(fn.servershare.name,
