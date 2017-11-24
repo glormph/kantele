@@ -87,8 +87,9 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
             '--key', config.CERTKEYLOC, '-T', fileloc, uri]
     try:
         subprocess.check_call(curl)
-    except:
+    except Exception:
         taskfail_update_db(self.request.id)
+        raise
     # if the upload is REALLY quick sometimes the DAV hasnt refreshed and you
     # will get filenotfound
     sleep(5)
@@ -105,6 +106,7 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
         if not md5_upl == md5:
             print('Swestore upload failed with incorrect MD5, retrying')
             taskfail_update_db(self.request.id)
+            raise
         else:
             print('Successfully uploaded {} '
                   'with MD5 {}'.format(mountpath_fn, md5_upl))
