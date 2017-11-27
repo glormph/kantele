@@ -11,7 +11,7 @@
 		</tr>
 		{% for job in jobs.error %}
 		<tr>
-			<td>{{ job.name }}</td>
+			<td><a class="button is-small is-danger">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
@@ -23,7 +23,7 @@
 		{% endfor %}
 		{% for job in jobs.processing %}
 		<tr>
-			<td>{{ job.name }}</td>
+			<td><a class="button is-warning">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
@@ -35,7 +35,7 @@
 		{% endfor %}
 		{% for job in jobs.pending %}
 		<tr>
-			<td>{{ job.name }}</td>
+			<td><a class="button is-info">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
