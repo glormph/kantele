@@ -1,7 +1,8 @@
 from datetime import datetime
 import json
+from celery import states
 
-from jobs.models import Job
+from jobs.models import Job, Task
 from datasets.models import DatasetJob
 from rawstatus.models import FileJob
 from datasets import jobs as dsjobs
@@ -27,19 +28,19 @@ jobmap = {'move_files_storage':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_files_dataset_storage,
            'retry': True},
           'move_stored_files_tmp':
-          {'type': Jobtypes.MOVE, 'retry': False,
+          {'type': Jobtypes.MOVE, 'retry': True,
            'func': dsjobs.remove_files_from_dataset_storagepath},
           'rename_storage_loc':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_dataset_storage_loc,
            'retry': False},
           'convert_mzml':
           {'type': Jobtypes.MOVE, 'func': dsjobs.convert_tomzml,
-           'retry': False},
+           'retry': True},
           'create_swestore_backup':
           {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_swestore_backup,
-           'retry': False},
+           'retry': True},
           'get_md5':
-          {'type': Jobtypes.PROCESS, 'func': rsjobs.get_md5, 'retry': False},
+          {'type': Jobtypes.PROCESS, 'func': rsjobs.get_md5, 'retry': True},
           }
 
 
@@ -65,3 +66,17 @@ def create_dataset_job(name, dset_id, *args, **kwargs):
     job.save()
     DatasetJob.objects.create(dataset_id=dset_id, job_id=job.id)
     return job
+
+
+def is_job_retryable(job, tasks=False):
+    if jobmap[job.funcname]['retry'] and is_job_ready(job):
+        return True
+    return False
+
+
+def is_job_ready(job=False, tasks=False):
+    if tasks is False:
+        tasks = Task.objects.filter(job_id=job.id)
+    if {t.state for t in tasks}.difference(states.READY_STATES):
+        return False
+    return True

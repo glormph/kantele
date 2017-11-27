@@ -247,7 +247,8 @@
 					<b>Jobs running/error</b>
 				</div>
 				<span v-for="job in infoshown.jobs" v-if="infoshown.jobs.length">
-					<a v-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
+					<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
+					<a v-else-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
 					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
 					<a v-if="job.state==='pending'" class="button is-small is-warning">{{ job.name }}</a>
 				</span>
@@ -283,6 +284,17 @@
 					this.$emit('dsinfo');
 				})
 			},
+                        retryJob: function(job_id) {
+				this.$http.post(`jobs/retry/${job_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.$emit('dsinfo');
+				})
+                        },
 			compStateColor: function(state) {
  				statecolors = {'ok': 'is-success', 'error': 'is-danger', 'new': 'is-danger'};
 				return statecolors[state]

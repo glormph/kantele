@@ -6,7 +6,7 @@ from collections import OrderedDict
 from datasets import models as dsmodels
 from datasets import jobs as dsjobs
 from rawstatus import models as filemodels
-from jobs.jobs import create_dataset_job, Jobstates
+from jobs import jobs
 
 
 @login_required
@@ -85,15 +85,15 @@ def get_dset_info(request, dataset_id):
                                            'dtcomp__component')}
                     }
     dsjobs = dsmodels.DatasetJob.objects.select_related('job').filter(
-        dataset_id=dataset_id).exclude(job__state=Jobstates.DONE)
+        dataset_id=dataset_id).exclude(job__state=jobs.Jobstates.DONE)
     info['jobnames'] = [x.job.funcname for x in dsjobs]
     info['jobs'] = [{'name': x.job.funcname, 'state': x.job.state,
+                     'retry': jobs.is_job_retryable(x.job), 'id': x.job.id,
                      'time': x.job.timestamp} for x in dsjobs]
     return JsonResponse(info)
 
 
 @login_required
 def create_mzmls(request, dataset_id):
-    create_dataset_job('convert_mzml', dataset_id)
+    jobs.create_dataset_job('convert_mzml', dataset_id)
     return HttpResponse()
-     

@@ -13,7 +13,6 @@ class Job(models.Model):
 class JobError(models.Model):
     job = models.OneToOneField(Job)
     message = models.TextField()
-    autorequeue = models.BooleanField()
 
 
 class Task(models.Model):

@@ -30,12 +30,10 @@ def run_ready_jobs():
         print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
         if job.state == Jobstates.ERROR:
             # requeue waiting jobs
-            joberror = JobError.objects.get(job_id=job.id)
-            if joberror.autorequeue:
-                print('Retrying job with autorequeue')
-                joberror.delete()
-                job.state = Jobstates.PENDING
-                job.save() 
+            print('ERRROR MESSAGES:')
+            for joberror in JobError.objects.filter(job_id=job.id):
+                print(joberror.message)
+            print('END messages')
         if job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)
             if tasks.count() > 0:
@@ -89,13 +87,12 @@ def run_job(job, jobmap):
     except RuntimeError as e:
         print('Error occurred, trying again automatically in next round')
         job.state = 'error'
-        JobError.objects.create(job_id=job.id, message=e,
-                                autorequeue=jobmap[job.funcname]['retry'])
+        JobError.objects.create(job_id=job.id, message=e)
         job.save()
     except Exception as e:
         print('Error occurred, not executing this job')
         job.state = 'error'
-        JobError.objects.create(job_id=job.id, message=e, autorequeue=False)
+        JobError.objects.create(job_id=job.id, message=e)
         job.save()
     job.save()
 

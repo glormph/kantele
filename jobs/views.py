@@ -1,7 +1,9 @@
 from celery import states
 from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed)
+from django.contrib.auth.decorators import login_required
 from jobs import models
+from jobs.jobs import Jobstates, is_job_ready
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile)
 from kantele import settings as config
@@ -24,7 +26,8 @@ def task_failed(request):
     if 'client_id' not in request.POST or not taskclient_authorized(
             request.POST['client_id'], config.CLIENT_APIKEYS):
         return HttpResponseForbidden()
-    task = models.Task.objects.get(asyncid=request.POST['task_id'])
+    print('Failed task registered task id {}'.format(request.POST['task']))
+    task = models.Task.objects.get(asyncid=request.POST['task'])
     task.state = states.FAILURE
     task.save()
     return HttpResponse()
@@ -93,9 +96,38 @@ def created_mzml(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.MZMLCLIENT_APIKEY]):
         return HttpResponseForbidden()
+    if 'task' in data:
+        set_task_done(data['task'])
+    return HttpResponse()
+
+
+def scp_mzml(request):
+    data = request.POST
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [config.MZMLCLIENT_APIKEY]):
+        return HttpResponseForbidden()
     sfile = StoredFile.objects.get(pk=data['sfid'])
     sfile.md5 = data['md5']
     sfile.save()
     if 'task' in data:
         set_task_done(data['task'])
+    return HttpResponse()
+
+
+@login_required
+def retry_job(request, job_id):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    job = models.Job.objects.get(pk=job_id)
+    tasks = models.Task.objects.filter(job_id=job_id)
+    if not is_job_ready(job=job, tasks=tasks):
+        print('Tasks not all ready yet, will not retry, try again later')
+        return HttpResponse()
+    tasks.delete()
+    try:
+        job.joberror.delete()
+    except models.JobError.DoesNotExist:
+        pass
+    job.state = Jobstates.PENDING
+    job.save()
     return HttpResponse()

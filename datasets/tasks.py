@@ -14,7 +14,7 @@ from jobs.post import update_db, taskfail_update_db
 
 
 @shared_task(bind=True)
-def convert_to_mzml(self, fn, fnpath, servershare):
+def convert_to_mzml(self, fn, fnpath, servershare, reporturl, failurl):
     """This will run on remote in other repo (proteomics-tasks) so there is no
     need to be no code in here, the task is an empty shell with only the
     task name"""
@@ -22,7 +22,7 @@ def convert_to_mzml(self, fn, fnpath, servershare):
 
 
 @shared_task(bind=True)
-def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl):
+def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failurl):
     """This will run on remote in other repo (proteomics-tasks) so there is no
     need to be no code in here, the task is an empty shell with only the
     task name"""

@@ -1,6 +1,7 @@
 import os
 from itertools import cycle
 
+from celery import states
 from django.db.models import F
 from django.urls import reverse
 from celery import chain
@@ -66,7 +67,8 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
         else:
             task_ids.append(tasks.move_stored_file_tmp.delay(fn.rawfile.name,
                                                              fn.path, fn.id).id)
-    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
+    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id,
+                                   state=states.PENDING)
                               for tid in task_ids])
 
 
@@ -92,12 +94,17 @@ def convert_tomzml(job_id, dset_id):
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = [
             tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
-                                    fn.servershare.name,
+                                    fn.servershare.name, 
+                                    reverse('jobs:createmzml'),
                                     reverse('jobs:taskfail')).set(queue=queue),
             tasks.scp_storage.s(mzsf.id, dset.storage_loc, fn.servershare.name,
-                                reverse('files:createmzml'),
+                                reverse('jobs:scpmzml'),
                                 reverse('jobs:taskfail')).set(queue=outqueue)
                     ]
-        task_ids.append(chain(*runchain).delay().id)
-    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id)
+        #task_ids.append(chain(*runchain).delay().id)
+        lastnode = chain(*runchain).delay()
+        task_ids.extend([lastnode.id, lastnode.parent.id])
+    print('task ids', task_ids)
+    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id,
+                                   state=states.PENDING)
                               for tid in task_ids])
