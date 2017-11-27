@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     'jobs.apps.JobsConfig',
     'corefac.apps.CorefacConfig',
     'analysis.apps.AnalysisConfig',
+    'dashboard.apps.DashboardConfig',
 ]
 
 MIDDLEWARE = [

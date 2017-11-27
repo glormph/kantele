@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+
+<table class="table">
+	<thead>
+		<tr>
+			<th>Job</th>
+			<th>User</th>
+			<th>Date</th>
+			<th>Tasks</th>
+		</tr>
+		{% for job in jobs.error %}
+		<tr>
+			<td>{{ job.name }}</td>
+			<td>{{ job.user }}</td>
+			<td>{{ job.date }}</td>
+			<td>
+				<a class="button is-info">{{ job.tasks.PENDING }}</a>
+				<a class="button is-danger">{{ job.tasks.FAILURE }}</a>
+				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
+			</td>
+		</tr>
+		{% endfor %}
+		{% for job in jobs.processing %}
+		<tr>
+			<td>{{ job.name }}</td>
+			<td>{{ job.user }}</td>
+			<td>{{ job.date }}</td>
+			<td>
+				<a class="button is-info">{{ job.tasks.PENDING }}</a>
+				<a class="button is-danger">{{ job.tasks.FAILURE }}</a>
+				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
+			</td>
+		</tr>
+		{% endfor %}
+		{% for job in jobs.pending %}
+		<tr>
+			<td>{{ job.name }}</td>
+			<td>{{ job.user }}</td>
+			<td>{{ job.date }}</td>
+			<td>
+				<a class="button is-info">{{ job.tasks.PENDING }}</a>
+				<a class="button is-danger">{{ job.tasks.FAILURE }}</a>
+				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
+			</td>
+		</tr>
+		{% endfor %}
+
+</table>
+{% endblock content %}

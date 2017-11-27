@@ -11,6 +11,7 @@ urlpatterns = [
     url(r'^files/', include('rawstatus.urls')),
     url(r'^datasets/', include('datasets.urls')),
     url(r'^jobs/', include('jobs.urls')),
+    url(r'^dash/', include('dashboard.urls')),
     url('', include('home.urls')),
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
