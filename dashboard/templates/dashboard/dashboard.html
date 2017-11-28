@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+<section id="apps">
+<div class="container">
+<job-box></job-box>
+</div>
+</section>
 
+<script>
+	{% verbatim %}
+	Vue.component('job-box', {
+		template: `
 <table class="table">
 	<thead>
 		<tr>
@@ -9,9 +18,12 @@
 			<th>Date</th>
 			<th>Tasks</th>
 		</tr>
-		{% for job in jobs.error %}
-		<tr>
-			<td><a class="button is-small is-danger">{{ job.name }}</a></td>
+	</thead>
+		<tr v-for="job in error">
+			<td>
+				<a v-if="job.retry" class="button is-outlined is-small is-danger">{{ job.name }}</a>
+				<a v-if="!job.retry" class="button is-small is-danger">{{ job.name }}</a>
+			</td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
@@ -20,10 +32,8 @@
 				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
-		{% endfor %}
-		{% for job in jobs.processing %}
-		<tr>
-			<td><a class="button is-warning">{{ job.name }}</a></td>
+		<tr v-for="job in processing">
+			<td><a class="button is-small is-warning">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
@@ -32,10 +42,8 @@
 				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
-		{% endfor %}
-		{% for job in jobs.pending %}
-		<tr>
-			<td><a class="button is-info">{{ job.name }}</a></td>
+		<tr v-for="job in pending">
+			<td><a class="button is-small is-info">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
@@ -44,7 +52,38 @@
 				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
-		{% endfor %}
 
 </table>
+		`,
+		data: function() {
+			return {
+                        	processing: [],
+                        	pending: [],
+                        	error: [],
+			}
+		},
+		mounted: function() {
+			this.$http.get('/dash/jobs/')
+			.then(response => {
+				return response.json()
+			}, response => {
+			}).then(result => {
+				for (key in result) {
+					this[key] = result[key];
+				}
+			})
+		},
+		methods: {
+		},
+	})
+	{% endverbatim %}
+
+	var dashboard = new Vue({
+	el: '#apps',
+	data: function() {
+		return { 
+		}
+	},
+})
+</script>
 {% endblock content %}
