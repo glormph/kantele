@@ -11,7 +11,7 @@ from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
 from datasets import tasks
 from rawstatus import tasks as filetasks
-from jobs.models import Task
+from jobs.models import Task, TaskChain
 
 
 def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path):
@@ -75,7 +75,6 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
 def convert_tomzml(job_id, dset_id):
     """Multiple queues for this bc multiple boxes wo shared fs"""
     dset = Dataset.objects.get(pk=dset_id)
-    task_ids = []
     queues = cycle(settings.QUEUES_PWIZ)
     for fn in StoredFile.objects.select_related('servershare').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
@@ -94,17 +93,24 @@ def convert_tomzml(job_id, dset_id):
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = [
             tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
-                                    fn.servershare.name, 
+                                    fn.servershare.name,
                                     reverse('jobs:createmzml'),
                                     reverse('jobs:taskfail')).set(queue=queue),
             tasks.scp_storage.s(mzsf.id, dset.storage_loc, fn.servershare.name,
                                 reverse('jobs:scpmzml'),
                                 reverse('jobs:taskfail')).set(queue=outqueue)
                     ]
-        #task_ids.append(chain(*runchain).delay().id)
         lastnode = chain(*runchain).delay()
-        task_ids.extend([lastnode.id, lastnode.parent.id])
-    print('task ids', task_ids)
-    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id,
-                                   state=states.PENDING)
-                              for tid in task_ids])
+        save_task_chain(lastnode, job_id)
+
+
+def save_task_chain(taskchain, job_id):
+    chain_ids = []
+    while taskchain.parent:
+        chain_ids.append(taskchain.id)
+        lastnode = taskchain.parent
+    chain_ids.append(lastnode.id)
+    for chain_id in chain_ids:
+        t = Task(asyncid=chain_id, job_id=job_id, state=states.PENDING)
+        t.save()
+        TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])

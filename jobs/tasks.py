@@ -3,7 +3,7 @@ import json
 from celery import shared_task, states
 from kantele.celery import app
 
-from jobs.models import Task, Job, JobError
+from jobs.models import Task, Job, JobError, TaskChain
 from jobs.jobs import Jobstates, Jobtypes
 from datasets.models import DatasetJob
 from rawstatus.models import FileJob
@@ -29,12 +29,11 @@ def run_ready_jobs():
         jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
         print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
         if job.state == Jobstates.ERROR:
-            # requeue waiting jobs
             print('ERRROR MESSAGES:')
             for joberror in JobError.objects.filter(job_id=job.id):
                 print(joberror.message)
             print('END messages')
-        if job.state == Jobstates.PROCESSING:
+        elif job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)
             if tasks.count() > 0:
                 print('Updating task status for active job {}'.format(job.id))
@@ -132,12 +131,22 @@ def collect_dsjob_activity():
     return job_ds_map, active_move_dsets, active_dsets
 
 
+def check_task_chain(task):
+    chaintask = TaskChain.objects.filter(task=task)
+    if chaintask:
+        Task.objects.filter(pk__in=[
+            tc.task_id for tc in TaskChain.objects.filter(
+                lasttask=chaintask.get().lasttask)]).update(
+                    state=states.FAILURE)
+
+
 def process_job_tasks(job, jobtasks):
     job_updated, tasks_finished, tasks_failed = False, True, False
     for task in jobtasks:
         if task.state != states.SUCCESS:
             tasks_finished = False
         if task.state == states.FAILURE:
+            check_task_chain(task)
             tasks_failed = True
     if tasks_finished:
         print('All tasks finished, job {} done'.format(job.id))
