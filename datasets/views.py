@@ -468,7 +468,7 @@ def empty_dataset_proj_json():
             'mostused_organisms': [
                 {'id': x.species.id, 'linnean': x.species.linnean,
                  'name': x.species.popname} for x in
-                models.DatasetSpecies.objects.all().select_related('species')],
+                models.DatasetSpecies.objects.all().distinct('species').select_related('species')],
             }
 
 
