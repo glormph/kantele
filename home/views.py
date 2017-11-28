@@ -39,6 +39,7 @@ def show_datasets(request):
                 'exp': dcst.dataset.runname.experiment.name,
                 'run': dcst.dataset.runname.name,
                 'dtype': dcst.dataset.datatype.name,
+                'jobs': [],
                 'selected': False,
                 dcst.dtcomp.component.name: dcst.state,
             }
@@ -47,6 +48,8 @@ def show_datasets(request):
                 dsets[dcst.dataset.id]['prefrac'] = str(pf.prefractionation.name)
                 if 'hirief' in pf.prefractionation.name.lower():
                     dsets[dcst.dataset.id]['hr'] = '{} {}'.format('HiRIEF', str(pf.hiriefdataset.hirief))
+    for dsjob in dsmodels.DatasetJob.objects.select_related('job').exclude(job__state=jobs.Jobstates.DONE):
+        dsets[dsjob.dataset_id]['jobs'].append({'name': dsjob.job.funcname, 'state': dsjob.job.state})
     response['dsets'] = dsets
     return JsonResponse(response)
 

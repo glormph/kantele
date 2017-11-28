@@ -51,6 +51,7 @@
 						<th>User</th>
 						<th>Datatype</th>
 						<th v-for="comp in components"><abbr v-bind:title="comp">{{ comp[0].toUpperCase() }}</abbr></th>
+						<th>Jobs</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -91,6 +92,9 @@
 								&#x25AC;
 							</span>
 						</td>
+                                                <td>
+<div v-if="ds.jobs.length" class="tags"><span class="tag" v-bind:class="jobTaskStateColor(job.state)" v-for="job in ds.jobs">{{ job.name }}</span></div>
+                                                </td>
 					</tr>
 				</tbody>
 					</div>
@@ -202,6 +206,10 @@
 			},
                         refreshDsInfo: function() {
 				this.dsetInfo(this.infoshown.dset.id);
+			},
+			jobTaskStateColor: function(state) {
+ 				statecolors = {'pending': 'is-info', 'error': 'is-danger', 'processing': 'is-warning'};
+				return statecolors[state]
 			},
 		},
 	})
@@ -320,7 +328,6 @@
 	el: '#apps',
 	data: function() {
 		return { 
-			x: 1,
 			user: '{{ username }}',
 		}
 	},
