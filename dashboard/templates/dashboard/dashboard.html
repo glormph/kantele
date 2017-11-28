@@ -21,7 +21,7 @@
 	</thead>
 		<tr v-for="job in error">
 			<td>
-				<a v-if="job.retry" class="button is-outlined is-small is-danger">{{ job.name }}</a>
+				<a v-if="job.retry" v-on:click="retryJob(job.id)" class="button is-outlined is-small is-danger">{{ job.name }}</a>
 				<a v-if="!job.retry" class="button is-small is-danger">{{ job.name }}</a>
 			</td>
 			<td>{{ job.user }}</td>
@@ -63,17 +63,31 @@
 			}
 		},
 		mounted: function() {
-			this.$http.get('/dash/jobs/')
-			.then(response => {
-				return response.json()
-			}, response => {
-			}).then(result => {
-				for (key in result) {
-					this[key] = result[key];
-				}
-			})
+			this.getJobs();
 		},
 		methods: {
+			getJobs: function() {
+				this.$http.get('/dash/jobs/')
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this[key] = result[key];
+					}
+				})
+			},
+                        retryJob: function(job_id) {
+				this.$http.post(`/jobs/retry/${job_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.getJobs();
+				})
+                        },
 		},
 	})
 	{% endverbatim %}

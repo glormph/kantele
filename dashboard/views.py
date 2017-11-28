@@ -18,7 +18,7 @@ def show_jobs(request):
                         Jobstates.ERROR]):
         freshjob = {'name': task.job.funcname, 'user': 'TBD',
                     'date': datetime.strftime(task.job.timestamp, '%Y%m%d'),
-                    'retry': is_job_retryable(task.job),
+                    'retry': is_job_retryable(task.job), 'id': task.job.id,
                     'tasks': {'PENDING': 0, 'FAILURE': 0, 'SUCCESS': 0}}
         if not task.job.state in jobs:
             jobs[task.job.state] = {task.job.id: freshjob}
