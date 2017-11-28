@@ -10,15 +10,26 @@ from datetime import datetime
 
 
 def show_files(request):
-    storedfiles = {x.rawfile.id: hasattr(x, 'swestorebackedupfile') for x in
-                   StoredFile.objects.exclude(md5='').select_related(
-                       'rawfile', 'swestorebackedupfile')}
     files = []
-    for fn in RawFile.objects.order_by('date').select_related(
-            'producer').reverse()[:100]:
+    for sfn in StoredFile.objects.filter(filetype='raw', md5='').select_related('rawfile'):
+        fn = sfn.rawfile
         files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
-                      'size': round(fn.size / (2**20), 1), 'transfer': fn.id in storedfiles,
-                      'backup': fn.id in storedfiles and storedfiles[fn.id]})
+                      'size': round(fn.size / (2**20), 1), 'transfer': False,
+                      'backup': False})
+    for sfn in SwestoreBackedupFile.objects.select_related(
+            'storedfile__rawfile').filter(success=False):
+        fn  = sfn.storedfile.rawfile 
+        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
+                      'size': round(fn.size / (2**20), 1), 'backup': False,
+                      'transfer': sfn.storedfile.md5 != ''})
+    for sfn in SwestoreBackedupFile.objects.order_by(
+            'storedfile__rawfile__date').select_related(
+            'storedfile__rawfile').filter(success=True).exclude(
+            storedfile__md5='').reverse()[:100]:
+        fn  = sfn.storedfile.rawfile 
+        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
+                      'size': round(fn.size / (2**20), 1), 'backup': True,
+                      'transfer': True})
     return render(request, 'rawstatus/files.html', {'files': files})
 
 
