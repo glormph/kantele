@@ -21,8 +21,8 @@
 	</thead>
 		<tr v-for="job in error">
 			<td>
-				<a v-if="job.retry" v-on:click="retryJob(job.id)" class="button is-outlined is-small is-danger">{{ job.name }}</a>
-				<a v-if="!job.retry" class="button is-small is-danger">{{ job.name }}</a>
+				<a v-bind:title="job.alttexts.join(',')" v-if="job.retry" v-on:click="retryJob(job.id)" class="button is-outlined is-small is-danger">{{ job.name }}</a>
+				<a v-bind:title="job.alttexts.join(',')" v-if="!job.retry" class="button is-small is-danger">{{ job.name }}</a>
 			</td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
@@ -33,7 +33,7 @@
 			</td>
 		</tr>
 		<tr v-for="job in processing">
-			<td><a class="button is-small is-warning">{{ job.name }}</a></td>
+			<td><a v-bind:title="job.alttexts.join(',')" class="button is-small is-warning">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
@@ -42,7 +42,7 @@
 				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
-		<tr v-for="job in pending">
+		<tr v-bind:title="job.alttexts.join(',')" v-for="job in pending">
 			<td><a class="button is-small is-info">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
