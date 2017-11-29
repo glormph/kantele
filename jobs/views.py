@@ -123,7 +123,7 @@ def retry_job(request, job_id):
     if not is_job_ready(job=job, tasks=tasks):
         print('Tasks not all ready yet, will not retry, try again later')
         return HttpResponse()
-    tasks.delete()
+    tasks.exclude(state=states.SUCCESS).delete()
     try:
         job.joberror.delete()
     except models.JobError.DoesNotExist:
