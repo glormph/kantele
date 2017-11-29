@@ -26,8 +26,10 @@ def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path):
 
 def move_files_dataset_storage(job_id, dset_id, fn_ids):
     print('Moving dataset files to storage')
+    # Use both checked=True and md5=sourcemd5 to avoid getting mzmls, other
+    # derived files
     dset_files = StoredFile.objects.filter(
-        rawfile__datasetrawfile__dataset_id=dset_id,
+        checked=True, rawfile__datasetrawfile__dataset_id=dset_id,
         rawfile__source_md5=F('md5'),
         rawfile_id__in=fn_ids).select_related('rawfile__datasetrawfile',
                                               'servershare')
@@ -84,10 +86,10 @@ def convert_tomzml(job_id, dset_id):
         except StoredFile.DoesNotExist:
             mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
                               path=fn.path, servershare=fn.servershare,
-                              filename=fn.filename, md5='')
+                              filename=fn.filename, md5='', checked=False)
             mzsf.save()
         else:
-            if mzsf.md5 != '':
+            if mzsf.checked:
                 continue
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
@@ -98,7 +100,8 @@ def convert_tomzml(job_id, dset_id):
                                     reverse('jobs:taskfail')).set(queue=queue),
             tasks.scp_storage.s(mzsf.id, dset.storage_loc, fn.servershare.name,
                                 reverse('jobs:scpmzml'),
-                                reverse('jobs:taskfail')).set(queue=outqueue)
+                                reverse('jobs:taskfail')).set(queue=outqueue),
+            filetasks.get_md5.s(mzsf.id, mzsf.path, fn.servershare.name),
                     ]
         lastnode = chain(*runchain).delay()
         save_task_chain(lastnode, job_id)

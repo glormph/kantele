@@ -57,6 +57,7 @@ def set_md5(request):
         return HttpResponseForbidden()
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
+    storedfile.checked = request.POST['source_md5'] == request.POST['md5']
     storedfile.save()
     print('stored file saved')
     if 'task' in request.POST:
@@ -106,9 +107,6 @@ def scp_mzml(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.MZMLCLIENT_APIKEY]):
         return HttpResponseForbidden()
-    sfile = StoredFile.objects.get(pk=data['sfid'])
-    sfile.md5 = data['md5']
-    sfile.save()
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()

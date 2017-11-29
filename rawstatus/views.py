@@ -11,22 +11,23 @@ from datetime import datetime
 
 def show_files(request):
     files = []
-    for sfn in StoredFile.objects.filter(filetype='raw', md5='').select_related('rawfile'):
+    for sfn in StoredFile.objects.filter(
+            filetype='raw', checked=False).select_related('rawfile'):
         fn = sfn.rawfile
-        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
-                      'size': round(fn.size / (2**20), 1), 'transfer': False,
-                      'backup': False})
+        files.append({'name': fn.name, 'prod': fn.producer.name,
+                      'date': fn.date, 'backup': False,
+                      'size': round(fn.size / (2**20), 1), 'transfer': False})
     for sfn in SwestoreBackedupFile.objects.select_related(
             'storedfile__rawfile').filter(success=False):
-        fn  = sfn.storedfile.rawfile 
+        fn  = sfn.storedfile.rawfile
         files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
                       'size': round(fn.size / (2**20), 1), 'backup': False,
-                      'transfer': sfn.storedfile.md5 != ''})
+                      'transfer': sfn.storedfile.checked})
     for sfn in SwestoreBackedupFile.objects.order_by(
             'storedfile__rawfile__date').select_related(
             'storedfile__rawfile').filter(success=True).exclude(
-            storedfile__md5='').reverse()[:100]:
-        fn  = sfn.storedfile.rawfile 
+            storedfile__checked=False).reverse()[:100]:
+        fn  = sfn.storedfile.rawfile
         files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
                       'size': round(fn.size / (2**20), 1), 'backup': True,
                       'transfer': True})
@@ -125,7 +126,7 @@ def file_transferred(request):
             print('New transfer registered, fn_id {}'.format(fn_id))
             file_transferred = StoredFile(rawfile_id=fn_id, filetype=ftype,
                                           servershare=tmpshare, path='',
-                                          filename=fname, md5='')
+                                          filename=fname, md5='', checked=False)
             file_transferred.save()
             jobutil.create_file_job('get_md5', file_transferred.id)
         else:
@@ -158,11 +159,14 @@ def check_md5_success(request):
     file_registered = file_transferred.rawfile
     if not file_transferred.md5:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
-    if (file_registered.source_md5 == file_transferred.md5 and
-            SwestoreBackedupFile.objects.filter(
-            storedfile_id=file_transferred.id).count() == 0):
-        jobutil.create_file_job('create_swestore_backup', file_transferred.id,
-                                file_transferred.md5)
+    elif file_registered.source_md5 == file_transferred.md5:
+        if not file_transferred.checked:
+            file_transferred.checked = True
+            file_transferred.save()
+        if SwestoreBackedupFile.objects.filter(
+                storedfile_id=file_transferred.id).count() == 0:
+            jobutil.create_file_job('create_swestore_backup',
+                                    file_transferred.id, file_transferred.md5)
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
     else:
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})

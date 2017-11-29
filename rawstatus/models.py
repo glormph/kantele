@@ -41,6 +41,7 @@ class StoredFile(models.Model):
     servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
     md5 = models.CharField(max_length=32)
+    checked = models.BooleanField()
 
     def __str__(self):
         return self.rawfile.name

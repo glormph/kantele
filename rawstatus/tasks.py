@@ -21,7 +21,7 @@ def calc_md5(fnpath):
 
 
 @shared_task(queue=config.QUEUE_STORAGE, bind=True)
-def get_md5(self, sfid, fnpath, servershare):
+def get_md5(self, source_md5, sfid, fnpath, servershare):
     # This should be run on the storage server
     print('MD5 requested for file {}'.format(sfid))
     fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
@@ -31,7 +31,7 @@ def get_md5(self, sfid, fnpath, servershare):
         taskfail_update_db(self.request.id)
         raise
     postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY,
-                'task': self.request.id}
+                'task': self.request.id, 'source_md5': source_md5}
     url = urljoin(config.KANTELEHOST, reverse('jobs:setmd5'))
     msg = ('Could not update database: http/connection error {}. '
            'Retrying in one minute')

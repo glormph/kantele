@@ -6,7 +6,6 @@ from django.urls import reverse
 from celery import shared_task
 
 from kantele import settings as config
-from rawstatus import tasks as rstasks
 from jobs.post import update_db, taskfail_update_db
 
 # Updating stuff in tasks happens over the API, assume no DB is touched. This
@@ -108,18 +107,3 @@ def move_stored_file_tmp(self, fn, path, fn_id):
         shutil.move(dst, src)
         raise
     print('File {} moved to tmp and DB updated'.format(fn_id))
-
-
-@shared_task(bind=True, queue=config.QUEUE_STORAGE)
-def md5_check_arrived_file(self, fnpath, servershare):
-    """This task is called from proteomics-tasks repo from a windows running
-    conversion task. That is why there is no error reporting on failing"""
-    fullpath = os.path.join(config.SHAREMAP[servershare], fnpath)
-    print('Calculating MD5 for {}'.format(fullpath))
-    try:
-        dst_md5 = rstasks.calc_md5(fullpath)
-    except Exception:
-        print('MD5 calculation failed, check file {}'.format(fullpath))
-        self.retry(countdown=60)
-    print('MD5 for {} is {}'.format(fullpath, dst_md5))
-    return dst_md5
