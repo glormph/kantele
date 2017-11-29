@@ -70,7 +70,7 @@ def get_dset_info(request, dataset_id):
     if dset.datatype_id not in nonms_dtypes:
         storedfiles['raw'] = primaryfiles
         storedfiles['mzML'] = [x.filename for x in files if x.filetype == 'mzml'
-                               and x.md5 != '']
+                               and x.checked]
     else:
         storedfiles[nonms_dtypes[dset.datatype_id]] = primaryfiles
     info['storedfiles'] = storedfiles
