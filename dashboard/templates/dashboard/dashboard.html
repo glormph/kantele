@@ -27,9 +27,9 @@
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
-				<a class="button is-info">{{ job.tasks.PENDING }}</a>
-				<a class="button is-danger">{{ job.tasks.FAILURE }}</a>
-				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
+				<a v-if="job.tasks.PENDING" class="button is-info">{{ job.tasks.PENDING }}</a>
+				<a v-if="job.tasks.FAILURE" class="button is-danger">{{ job.tasks.FAILURE }}</a>
+				<a v-if="job.tasks.SUCCESS" class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
 		<tr v-for="job in processing">
@@ -37,9 +37,9 @@
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
-				<a class="button is-info">{{ job.tasks.PENDING }}</a>
-				<a class="button is-danger">{{ job.tasks.FAILURE }}</a>
-				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
+				<a v-if="job.tasks.PENDING" class="button is-info">{{ job.tasks.PENDING }}</a>
+				<a v-if="job.tasks.FAILURE" class="button is-danger">{{ job.tasks.FAILURE }}</a>
+				<a v-if="job.tasks.SUCCESS" class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
 		<tr v-bind:title="job.alttexts.join(',')" v-for="job in pending">
@@ -47,9 +47,6 @@
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
 			<td>
-				<a class="button is-info">{{ job.tasks.PENDING }}</a>
-				<a class="button is-danger">{{ job.tasks.FAILURE }}</a>
-				<a class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
 
