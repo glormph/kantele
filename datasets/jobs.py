@@ -108,8 +108,8 @@ def save_task_chain(taskchain, job_id):
     chain_ids = []
     while taskchain.parent:
         chain_ids.append(taskchain.id)
-        lastnode = taskchain.parent
-    chain_ids.append(lastnode.id)
+        taskchain = taskchain.parent
+    chain_ids.append(taskchain.id)
     for chain_id in chain_ids:
         t = Task(asyncid=chain_id, job_id=job_id, state=states.PENDING)
         t.save()
