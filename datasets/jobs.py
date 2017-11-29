@@ -101,7 +101,8 @@ def convert_tomzml(job_id, dset_id):
             tasks.scp_storage.s(mzsf.id, dset.storage_loc, fn.servershare.name,
                                 reverse('jobs:scpmzml'),
                                 reverse('jobs:taskfail')).set(queue=outqueue),
-            filetasks.get_md5.s(mzsf.id, mzsf.path, fn.servershare.name),
+            filetasks.get_md5.s(mzsf.id, os.path.join(mzsf.path, mzsf.filename),
+                                fn.servershare.name),
                     ]
         lastnode = chain(*runchain).delay()
         save_task_chain(lastnode, job_id)
