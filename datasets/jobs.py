@@ -86,7 +86,7 @@ def convert_tomzml(job_id, dset_id):
         except StoredFile.DoesNotExist:
             mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
                               path=fn.path, servershare=fn.servershare,
-                              filename=fn.filename, md5='', checked=False)
+                              filename='', md5='', checked=False)
             mzsf.save()
         else:
             if mzsf.checked:
@@ -95,7 +95,7 @@ def convert_tomzml(job_id, dset_id):
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = [
             tasks.convert_to_mzml.s(fn.rawfile.name, fn.path,
-                                    fn.servershare.name,
+                                    mzsf.id, fn.servershare.name,
                                     reverse('jobs:createmzml'),
                                     reverse('jobs:taskfail')).set(queue=queue),
             tasks.scp_storage.s(mzsf.id, dset.storage_loc, fn.servershare.name,
