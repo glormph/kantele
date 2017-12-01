@@ -587,7 +587,7 @@ def get_dynamic_emptyparams(category):
 def empty_acquisition_json():
     params = get_dynamic_emptyparams('acquisition')
     return {'params': params,
-            'operators': [{'id': x.user.id, 'name': '{} {}'.format(
+            'operators': [{'id': x.id, 'name': '{} {}'.format(
                 x.user.first_name, x.user.last_name)}
                 for x in models.Operator.objects.select_related('user').all()],
             }
