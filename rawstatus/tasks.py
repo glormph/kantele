@@ -47,7 +47,7 @@ def get_md5(self, source_md5, sfid, fnpath, servershare):
     return result
 
 
-@shared_task(bind=True, queue=config.QUEUE_SWESTORE)
+@shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def delete_file(self, servershare, filepath, fn_id):
     fileloc = os.path.join(config.SHAREMAP[servershare], filepath)
     try:
