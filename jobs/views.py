@@ -119,11 +119,16 @@ def scp_mzml(request):
 def retry_job(request, job_id):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
+    do_retry_job(job_id)
+    return HttpResponse()
+
+
+def do_retry_job(job_id):
     job = models.Job.objects.get(pk=job_id)
     tasks = models.Task.objects.filter(job_id=job_id)
     if not is_job_ready(job=job, tasks=tasks):
         print('Tasks not all ready yet, will not retry, try again later')
-        return HttpResponse()
+        return
     tasks.exclude(state=states.SUCCESS).delete()
     try:
         job.joberror.delete()
@@ -131,4 +136,3 @@ def retry_job(request, job_id):
         pass
     job.state = Jobstates.PENDING
     job.save()
-    return HttpResponse()
