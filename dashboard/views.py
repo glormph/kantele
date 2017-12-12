@@ -2,12 +2,14 @@ from datetime import datetime
 import os
 
 from django.shortcuts import render
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse
+from bokeh.embed import components
 
 from jobs.jobs import Jobstates, is_job_retryable
 from jobs.models import Task
 from datasets.models import DatasetJob
 from rawstatus.models import FileJob
+from dashboard import tasks, qcplots
 
 
 def dashboard(request):
