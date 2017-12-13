@@ -1,3 +1,9 @@
 from django.db import models
 
-# Create your models here.
+
+class AnalysisResult(models.Model):
+    date = models.DateTimeField()
+
+
+class GalaxyResult(models.Model):
+    analysis = models.ForeignKey(AnalysisResult)

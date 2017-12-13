@@ -1,6 +1,13 @@
+from sqlite3 import Connection
+from urllib.parse import urljoin
+
 import pandas as pd
 import re
-from sqlite3 import Connection
+from django.urls import reverse
+
+from jobs.post import update_db, taskfail_update_db
+from dashboard.qcplots import PLOTNAMES
+from kantele import settings
 
 
 def calc_boxplot(vals):
@@ -14,18 +21,14 @@ def calc_boxplot(vals):
             'upper': q3 + 1.5 * iqr, 'lower': q1 - 1.5 * iqr}
 
 
-def calc_qc():
-    # TO be made a task, PUT IN ANALYSIS? yes, with the normal search QC will
-    # also be there
-    sqltablefn = 'spectra.sql'
-    psmtablefn = 'psm_table.txt'
-    prottablefn = 'peptide_table.txt'
-    peptablefn = 'peptide_table.txt'
+def calc_qc(infiles, analysis_id, rf_id):
+    # FIXME move to analysis, make it task
     qcmap = {'miscleav': {}}
     qcpsms = []
-    con = Connection(sqltablefn)
-    qcmap['nr_scans'] = con.execute('SELECT COUNT(*) FROM mzml').fetchone()[0]
-    psms = parse_psms(psmtablefn, is_instrument_qc=True)
+    con = Connection(infiles['sqltable'])
+    qcmap['nr_psms'] = {'scans':
+                        con.execute('SELECT COUNT(*) FROM mzml').fetchone()[0]}
+    psms = parse_psms(infiles['psmtable'], is_instrument_qc=True)
     header = next(psms)
     perrorix = header.index('PrecursorError(ppm)')
     qvalix = header.index('QValue')
@@ -44,9 +47,9 @@ def calc_qc():
     qcmap['perror'] = calc_boxplot([psm[perrorix] for psm in qcpsms])
     qcmap['msgfscore'] = calc_boxplot([psm[msgfix] for psm in qcpsms])
     qcmap['rt'] = calc_boxplot([psm[rtix] for psm in qcpsms])
-    qcmap['nr_psms'] = len(qcpsms)
+    qcmap['nr_psms']['psms'] = len(qcpsms)
     peps = []
-    with open(peptablefn) as fp:
+    with open(infiles['peptable']) as fp:
         header, lines = table_reader(fp)
         areaix = header.index('MS1 area (highest of all PSMs)')
         protix = header.index('Protein(s)')
@@ -61,12 +64,19 @@ def calc_qc():
             except ValueError:
                 pass
     qcmap['peparea'] = calc_boxplot([x[areaix] for x in peps])
-    qcmap['nr_peptides'] = count
-    qcmap['nr_unique_peptides'] = unicount
-    with open(prottablefn) as fp:
+    qcmap['nr_peptides'] = {'peptides': count, 'unique_peptides': unicount}
+    with open(infiles['prottable']) as fp:
         # FIXME may need to filter proteins on FDR
-        qcmap['nr_proteins'] = sum(1 for _ in fp) - 1  # first line is header
-
+        # first line is header
+        qcmap['nr_proteins'] = {'proteins': sum(1 for _ in fp) - 1}
+    postdata = {'client_id': settings.APIKEY, 'rf_id': rf_id,
+                'analysis_id': analysis_id, 'plots': qcmap}
+    url = urljoin(settings.KANTELEHOST, reverse('dash:storeqc'))
+    print(postdata)
+    try:
+        update_db(url, json=postdata)
+    except RuntimeError:
+        raise
     return qcmap
 
 
