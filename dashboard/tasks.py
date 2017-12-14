@@ -5,8 +5,7 @@ import pandas as pd
 import re
 from django.urls import reverse
 
-from jobs.post import update_db, taskfail_update_db
-from dashboard.qcplots import PLOTNAMES
+from jobs.post import update_db
 from kantele import settings
 
 
@@ -40,10 +39,11 @@ def calc_qc(infiles, analysis_id, rf_id):
         if float(line[qvalix]) > 0.01:
             continue
         qcpsms.append(line)
-        try:
-            qcmap['miscleav'][line[misclix]] += 1
-        except KeyError:
-            qcmap['miscleav'][line[misclix]] = 1
+        if int(line[misclix]) < 4:
+            try:
+                qcmap['miscleav'][line[misclix]] += 1
+            except KeyError:
+                qcmap['miscleav'][line[misclix]] = 1
     qcmap['perror'] = calc_boxplot([psm[perrorix] for psm in qcpsms])
     qcmap['msgfscore'] = calc_boxplot([psm[msgfix] for psm in qcpsms])
     qcmap['rt'] = calc_boxplot([psm[rtix] for psm in qcpsms])
