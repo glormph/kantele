@@ -74,9 +74,7 @@
 					for (key in result) {
 						this[key] = result[key];
 					}
-					console.log('loaded');
 					eval(this.bokeh_code.script);
-					console.log('evaled');
 				})
 			},
 		},
