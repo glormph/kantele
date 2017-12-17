@@ -6,13 +6,7 @@ from analysis import models as analysismodels
 
 class QCData(models.Model):
     rawfile = models.ForeignKey(filemodels.RawFile)
-    analysis = models.ForeignKey(analysismodels.AnalysisResult)
-    """
-    ? probably not ?
-    nr_peptides =
-    nr_unipep
-    precursor_box = x
-    """
+    analysis = models.ForeignKey(analysismodels.Analysis)
 
 
 class Plot(models.Model):

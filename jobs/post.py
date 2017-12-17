@@ -5,9 +5,12 @@ from django.urls import reverse
 from kantele import settings as config
 
 
-def update_db(url, postdata, msg=False):
+def update_db(url, form=False, json=False, msg=False):
     try:
-        r = requests.post(url=url, data=postdata, verify=config.CERTFILE)
+        if form:
+            r = requests.post(url=url, data=form, verify=config.CERTFILE)
+        elif json:
+            r = requests.post(url=url, json=json, verify=config.CERTFILE)
         r.raise_for_status()
     except (requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError) as e:
