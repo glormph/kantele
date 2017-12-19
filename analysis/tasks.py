@@ -17,6 +17,7 @@ def get_galaxy_instance(inputstore):
     return GalaxyInstance(settings.GALAXY_URL, inputstore['apikey'])
 
 
+@shared_task
 def runtime_and_upload(wf_json, run):
     print('Filling in runtime values...')
     gi = get_galaxy_instance(run)

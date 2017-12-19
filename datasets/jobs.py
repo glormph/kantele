@@ -11,7 +11,8 @@ from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
 from datasets import tasks
 from rawstatus import tasks as filetasks
-from jobs.models import Task, TaskChain
+from jobs.models import Task
+from jobs.post import save_task_chain
 
 
 def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path):
@@ -107,15 +108,3 @@ def convert_tomzml(job_id, dset_id):
                     ]
         lastnode = chain(*runchain).delay()
         save_task_chain(lastnode, job_id)
-
-
-def save_task_chain(taskchain, job_id):
-    chain_ids = []
-    while taskchain.parent:
-        chain_ids.append(taskchain.id)
-        taskchain = taskchain.parent
-    chain_ids.append(taskchain.id)
-    for chain_id in chain_ids:
-        t = Task(asyncid=chain_id, job_id=job_id, state=states.PENDING)
-        t.save()
-        TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])
