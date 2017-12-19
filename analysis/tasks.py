@@ -59,7 +59,7 @@ def store_summary(self, run):
     return run
 
 
-@shared_task(queue=settings.QUEUE_PROD_STAGE, bind=True)
+@shared_task(queue=settings.QUEUE_GALAXY_STAGE, bind=True)
 def stage_infile(self, run, number):
     rawfile = run['raw'][number]
     print('Staging {} to production'.format(rawfile))
@@ -190,7 +190,7 @@ def download_results(self, run, qc=False):
     return run
 
 
-@shared_task(queue=settings.QUEUE_PROD_STAGE, bind=True)
+@shared_task(queue=settings.QUEUE_GALAXY_STAGE, bind=True)
 def cleanup(self, run):
     gi = get_galaxy_instance(run)
     print('Deleting history {}'.format(run['history']))

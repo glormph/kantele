@@ -30,19 +30,27 @@ class Analysis(models.Model):
 
 class SearchMzmlFiles(models.Model):
     analysis = models.ForeignKey(Analysis)
-    mzml = filemodels.ForeignKey(StoredFile)
+    mzml = models.ForeignKey(filemodels.StoredFile)
 
 
 class GalaxyResult(models.Model):
     analysis = models.ForeignKey(Analysis)
 
 
+class GalaxyLibrary(models.Model):
+    name = models.CharField(max_length=100)
+    galaxy_id = models.CharField(max_length=16)
+
+
 class GalaxyLibDataset(models.Model):
     name = models.CharField(max_length=100)
     galaxy_id = models.CharField(max_length=16)
+    library_id = models.ForeignKey(GalaxyLibrary)
     active = models.BooleanField(default=True)
 
 
 class QCParams(models.Model):
-    targetdb = models.ForeignKey(GalaxyLibDataset)
-    decoydb = models.ForeignKey(GalaxyLibDataset)
+    """Fixed params for QC runs: target, decoy DB, not instrument etc
+    paramjson = {'target db': GalaxyLibDataset.id, 'decoy db': etc"""
+    creationdate = models.DateTimeField(auto_now=True)
+    paramjson = models.TextField()

@@ -13,7 +13,8 @@ def run_qc_workflow(job_id, analysis_id, mzmlfiles_id, qcparams_id):
     analysis = models.Analysis.objects.select_related(
         'search__workflow', 'account').get(pk=analysis_id)
     mzmlfiles = models.SearchMzmlFiles.objects.select_related(
-        'mzml__rawfile__producer').filter(analysis_id=analysis_id).
+        'mzml__rawfile__producer').filter(analysis_id=analysis_id)
+    qcparams = json.loads(QCParams.objects.get(pk=qcparams_id).paramjson)
     run = galaxy.initialize_run(analysis)
     instrumenttypes = set(['velos' if 'elos' in smz.mzml.rawfile.producer.name
                            else 'qe' for smz in mzmlfiles])
@@ -21,12 +22,12 @@ def run_qc_workflow(job_id, analysis_id, mzmlfiles_id, qcparams_id):
         raise RuntimeError('Only one instrument type allowed per search '
                            'at the moment')
     run['params']['instrument'] = instrumenttypes.pop()
-    run['datasets']['target db'] = {'galaxy_name': qcparams.targetdb.name,
-                                    'id': qcparams.targetdb.galaxy_id,
-                                    'src': 'ld'}
-    run['datasets']['decoy db'] = {'galaxy_name': qcparams.targetdb.name,
-                                   'id': qcparams.targetdb.galaxy_id,
-                                   'src': 'ld'}
+    targetdb = models.GalaxyLibDataset.objects.get(pk=qcparams['target db'])
+    decoydb = models.GalaxyLibDataset.objects.get(pk=qcparams['decoy db'])
+    run['datasets']['target db'] = {'galaxy_name': targetdb.name,
+                                    'id': targetdb.galaxy_id, 'src': 'ld'}
+    run['datasets']['decoy db'] = {'galaxy_name': decoydb.name,
+                                   'id': decoydb.galaxy_id, 'src': 'ld'}
     run['params']['MS-GF+'] = galaxy.get_msgf_inputs(run['params'])
     timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
     run['galaxyname'] = '{}_{}'.format(analysis.name, timestamp)
