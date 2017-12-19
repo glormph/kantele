@@ -1,12 +1,7 @@
 from sqlite3 import Connection
-from urllib.parse import urljoin
 
 import pandas as pd
 import re
-from django.urls import reverse
-
-from jobs.post import update_db
-from kantele import settings
 
 
 def calc_boxplot(vals):
@@ -20,8 +15,7 @@ def calc_boxplot(vals):
             'upper': q3 + 1.5 * iqr, 'lower': q1 - 1.5 * iqr}
 
 
-def calc_qc(infiles, analysis_id, rf_id):
-    # FIXME move to analysis, make it task
+def calc_longitudinal_qc(infiles):
     qcmap = {'miscleav': {}}
     qcpsms = []
     con = Connection(infiles['sqltable'])
@@ -69,14 +63,6 @@ def calc_qc(infiles, analysis_id, rf_id):
         # FIXME may need to filter proteins on FDR
         # first line is header
         qcmap['nr_proteins'] = {'proteins': sum(1 for _ in fp) - 1}
-    postdata = {'client_id': settings.APIKEY, 'rf_id': rf_id,
-                'analysis_id': analysis_id, 'plots': qcmap}
-    url = urljoin(settings.KANTELEHOST, reverse('dash:storeqc'))
-    print(postdata)
-    try:
-        update_db(url, json=postdata)
-    except RuntimeError:
-        raise
     return qcmap
 
 

@@ -42,6 +42,8 @@ CELERY_BROKER_HOST = os.environ.get('RABBITHOST')
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
+GALAXY_URL = os.environ.get('GALAXY_URL')
+
 # django
 ALLOWED_HOSTS = [os.environ.get('KANTELEHOST')]
 SECRET_KEY = os.environ.get('SECRET_KEY')

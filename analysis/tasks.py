@@ -2,7 +2,6 @@ import os
 import json
 import shutil
 import subprocess
-from time import sleep
 from urllib.parse import urljoin
 
 from django.urls import reverse
@@ -11,11 +10,22 @@ from bioblend.galaxy import GalaxyInstance
 
 from jobs.post import update_db
 from kantele import settings
-from analysis import qc
+from analysis import qc, galaxy
 
 
 def get_galaxy_instance(inputstore):
-    return GalaxyInstance(inputstore['galaxy_url'], inputstore['apikey'])
+    return GalaxyInstance(settings.GALAXY_URL, inputstore['apikey'])
+
+
+def runtime_and_upload(wf_json, run):
+    print('Filling in runtime values...')
+    gi = get_galaxy_instance(run)
+    for step in wf_json['steps'].values():
+        galaxy.fill_runtime_params(step, run['params'])
+    print('Uploading workflow...')
+    run['galaxy_wf_id'] = gi.workflows.import_workflow_json(wf_json)
+    run['wf'] = wf_json
+    return run
 
 
 @shared_task(queue=settings.QUEUE_STORAGE, bind=True)
@@ -86,7 +96,7 @@ def import_staged_file(self, run, number):
         run['source_history'], 'testtoolshed.g2.bx.psu.edu/repos/jorritb/'
         'lehtio_input_output/locallink/0.2',
         tool_inputs=tool_inputs)
-    state = wait_for_copyjob(dset, gi)
+    state = galaxy.wait_for_copyjob(dset, gi)
     if state == 'ok':
         print('File {} imported'.format(rawfile))
         sourceinfo['galaxy_id'] = dset['outputs'][0]['id']
@@ -98,21 +108,22 @@ def import_staged_file(self, run, number):
 
 
 @shared_task(queue=settings.QUEUE_GALAXY_WORKFLOW, bind=True)
-def run_search_wf(self, run, wf_id):
+def run_search_wf(self, run):
     print('Workflow start task: Preparing inputs for workflow '
-          'module {}'.format(wf_id))
+          'module {}'.format(run['galaxy_wf_id']))
     gi = get_galaxy_instance(run)
     if run['datasets']['spectra']['id'] is None:
-        run = collect_spectra(run, gi)
+        run = galaxy.collect_spectra(run, gi)
     try:
         run['history'] = gi.histories.create_history(
             name=run['galaxyname'])['id']
     except:
         self.retry(countdown=60)
-    mod_inputs = get_input_map_from_json(run['wf'], run['datasets'])
-    print('Invoking workflow {} with id {}'.format(run['wf']['name'], wf_id))
+    mod_inputs = galaxy.get_input_map_from_json(run['wf'], run['datasets'])
+    print('Invoking workflow {} with id {}'.format(run['wf']['name'],
+                                                   run['galaxy_wf_id']))
     try:
-        gi.workflows.invoke_workflow(wf_id, inputs=mod_inputs,
+        gi.workflows.invoke_workflow(run['galaxy_wf_id'], inputs=mod_inputs,
                                      history_id=run['history'])
     except Exception as e:
         # Workflows are invoked so requests are fast, no significant
@@ -154,15 +165,15 @@ def download_results(self, run, qc=False):
     outpath_full = os.path.join(settings.ANALYSIS_STORAGESHARE,
                                 run['outdir'])
     try:
-        run = get_datasets_to_download(run, outpath_full, gi)
-        run = wait_for_completion(run, gi)
+        run = galaxy.get_datasets_to_download(run, outpath_full, gi)
+        run = galaxy.wait_for_completion(run, gi)
     except Exception as e:
         print('Problem downloading datasets, retrying in 60s. '
               'Problem message:', e)
         self.retry(countdown=60, exc=e)
     for dset in run['output_dsets'].values():
         if dset['download_url'][:4] != 'http':
-            dset['download_url'] = '{}{}'.format(run['galaxy_url'],
+            dset['download_url'] = '{}{}'.format(settings.GALAXY_URL,
                                                  dset['download_url'])
         dlcmd = ['curl', '-o', dset['download_dest'], dset['download_url']]
         print('running: {}'.format(dlcmd))
@@ -239,7 +250,7 @@ def misc_files_copy(self, inputstore, filelist):
         dset = gi.tools.run_tool(inputstore['source_history'],
         'testtoolshed.g2.bx.psu.edu/repos/jorritb/lehtio_input_output/locallink/0.2',
                                  tool_inputs=tool_inputs)
-        state = wait_for_copyjob(dset, gi)
+        state = galaxy.wait_for_copyjob(dset, gi)
         if state == 'ok':
             print('File {} imported'.format(dsets[dset_name]['id'][0]))
             dsets[dset_name]['id'] = dset['outputs'][0]['id']
@@ -250,163 +261,3 @@ def misc_files_copy(self, inputstore, filelist):
             print(errormsg)
             self.retry(exc=errormsg)
     return inputstore
-
-def wait_for_copyjob(dset, gi):
-    state = dset['jobs'][0]['state']
-    while state in ['new', 'queued', 'running']:
-        sleep(3)
-        state = gi.jobs.show_job(dset['jobs'][0]['id'])['state']
-    return state
-
-
-def collect_spectra(inputstore, gi):
-    print('Putting files from source histories {} in collection in search '
-          'history {}'.format(inputstore['source_history'],
-                              inputstore['history']))
-    name_id_hdas = []
-    for mzml in inputstore['raw']:
-        name_id_hdas.append((mzml['filename'], mzml['galaxy_id']))
-    if 'sort_specfiles' in inputstore['params']:
-        name_id_hdas = sorted(name_id_hdas, key=lambda x: x[0])
-    coll_spec = {
-        'name': 'spectra', 'collection_type': 'list',
-        'element_identifiers': [{'name': name, 'id': g_id, 'src': 'hda'}
-                                for name, g_id in name_id_hdas]}
-    collection = gi.histories.create_dataset_collection(inputstore['history'],
-                                                        coll_spec)
-    inputstore['datasets']['spectra'] = {'src': 'hdca', 'id': collection['id'],
-                                         'history': inputstore['history']}
-    return inputstore
-
-
-def get_datasets_to_download(run, outpath_full, gi):
-    print('Collecting datasets to download')
-    download_dsets = {}
-    for step in run['wf']['steps'].values():
-        if 'post_job_actions' not in step:
-            continue
-        pj = step['post_job_actions']
-        for pjk in pj:
-            if pjk[:19] == 'RenameDatasetAction':
-                nn = pj[pjk]['action_arguments']['newname']
-                if nn[:4] == 'out:':
-                    outname = nn[5:].replace(' ', '_')
-                    download_dsets[nn] = {
-                        'download_state': False, 'download_id': False,
-                        'id': None, 'src': 'hda',
-                        'download_dest': os.path.join(outpath_full, outname)}
-    run['output_dsets'] = download_dsets
-    print('Defined datasets from workflow: {}'.format(download_dsets.keys()))
-    update_inputstore_from_history(gi, run['output_dsets'],
-                                   run['output_dsets'].keys(), run['history'],
-                                   'download')
-    print('Found datasets to download, {}'.format(download_dsets))
-    return run
-
-
-def get_workflow_inputs_json(wfjson):
-    """From workflow JSON returns (name, uuid) of the input steps"""
-    for step in wfjson['steps'].values():
-        if (step['tool_id'] is None and step['name'] in
-                ['Input dataset', 'Input dataset collection']):
-            yield(step['label'], step['uuid'])
-
-
-def update_inputstore_from_history(gi, datasets, dsetnames, history_id,
-                                   modname):
-    print('Getting history contents')
-    while not check_inputs_ready(datasets, dsetnames, modname):
-        his_contents = gi.histories.show_history(history_id, contents=True,
-                                                 deleted=False)
-        # FIXME reverse contents so we start with newest dsets?
-        for index, dset in enumerate(his_contents):
-            if not dset_usable(dset):
-                continue
-            name = dset['name']
-            if name in dsetnames and datasets[name]['id'] is None:
-                print('found dset {}'.format(name))
-                datasets[name]['history'] = history_id
-                if datasets[name]['src'] == 'hdca':
-                    datasets[name]['id'] = get_collection_id_in_his(
-                        his_contents, name, dset['id'], gi, index)
-                elif datasets[name]['src'] == 'hda':
-                    datasets[name]['id'] = dset['id']
-        sleep(10)
-
-
-def dset_usable(dset):
-    state_ok = True
-    if 'state' in dset and dset['state'] == 'error':
-        state_ok = False
-    if dset['deleted'] or not state_ok:
-        return False
-    else:
-        return True
-
-
-def get_collection_id_in_his(his_contents, dset_name, named_dset_id, gi,
-                             his_index=False, direction=False):
-    """Search through history contents (passed) to find a collection that
-    contains the named_dset_id. When passing direction=-1, the history will
-    be searched backwards. Handy when having tools that do discover_dataset
-    and populate a collection after creating it."""
-    print('Trying to find collection ID belonging to dataset {}'
-          'and ID {}'.format(dset_name, named_dset_id))
-    if his_index:
-        search_start = his_index
-        direction = 1
-    elif direction == -1:
-        search_start = -1
-    for dset in his_contents[search_start::direction]:
-        if dset['type'] == 'collection':
-            dcol = gi.histories.show_dataset_collection(dset['history_id'],
-                                                        dset['id'])
-            if named_dset_id in [x['object']['id'] for x in dcol['elements']]:
-                print('Correct, using {} id {}'.format(dset['name'],
-                                                       dset['id']))
-                return dset['id']
-    print('No matching collection in history (yet)')
-    return None
-
-
-def check_inputs_ready(datasets, inputnames, modname):
-    print('Checking inputs {} for module {}'.format(inputnames, modname))
-    ready, missing = True, []
-    for name in inputnames:
-        if datasets[name]['id'] is None:
-            missing.append(name)
-            ready = False
-    if not ready:
-        print('Missing inputs for module {}: '
-              '{}'.format(modname, ', '.join(missing)))
-    else:
-        print('All inputs found for module {}'.format(modname))
-    return ready
-
-
-def get_input_map_from_json(module, inputstore):
-    inputmap = {}
-    for label, uuid in get_workflow_inputs_json(module):
-        inputmap[uuid] = {
-            'id': inputstore[label]['id'],
-            'src': inputstore[label]['src'],
-        }
-    return inputmap
-
-
-def wait_for_completion(inputstore, gi):
-    """Waits for all output data to be finished before continuing with
-    download steps"""
-    print('Wait for completion of datasets to download')
-    workflow_ok = True
-    while workflow_ok and False in [x['download_id'] for x in
-                                    inputstore['output_dsets'].values()]:
-        print('Datasets not ready yet, checking')
-        workflow_ok = check_outputs_workflow_ok(gi, inputstore)
-        sleep(60)
-    if workflow_ok:
-        print('Datasets ready for downloading in history '
-              '{}'.format(inputstore['history']))
-        return inputstore
-    else:
-        raise RuntimeError('Output datasets are in error or deleted state!')
