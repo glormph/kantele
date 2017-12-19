@@ -1,19 +1,49 @@
 import json
 
 from celery import shared_task, states
-from kantele.celery import app
 
 from jobs.models import Task, Job, JobError, TaskChain
-from jobs.jobs import Jobstates, Jobtypes
+from jobs.jobs import Jobstates, Jobtypes, jobmap
 from datasets.models import DatasetJob
 from rawstatus.models import FileJob
-from jobs.jobs import jobmap
+from analysis.models import GalaxyLibDataset, GalaxyLibrary
 
 
 # FIXME there will also be search jobs and maybe others that span datasets,
 # but this should be fixed now
 # There are also multi-jobs on Dset from same user action (* add and remove
 # files), they are currently waiting for the earlier job to finish.
+
+
+@shared_task
+def update_db_galaxy_libraries():
+    """Fetch lib datasets and libraries from galaxy server for storage in
+    Kantele DB"""
+    gi = GalaxyInstance(settings.GALAXY_URL, settings.GALAXY_ADMIN_APIKEY)
+    libraries = GalaxyLibrary.objects.all()
+    libdsets = {x.galaxy_id: x for x in GalaxyLibDataset.objects.all()}
+    for lib in gi.libraries.get_libraries():
+        try:
+            lib = GalaxyLibrary.objects.get(galaxy_id=lib['id'])
+        except GalaxyLibrary.DoesNotExist:
+            lib = GalaxyLibrary(galaxy_id=lib['id'], name=lib['name'])
+            lib.save()
+        for libdset in gi.libraries.show_library(lib['id'], contents=True):
+            # FIXME if we move a dataset inside Galaxy to a different library
+            # does that create a new dset id or is only the library changed? In
+            # the latter case we need to update here too. In the former of
+            # course not
+            try:
+                libdsets.pop(libdset['id'])
+            except KeyError:
+                GalaxyLibDataset.objects.create(galaxy_id=libdset['id'],
+                                                        name=libdset['name'],
+                                                        active=True,
+                                                        library_id=lib.id)
+    # disable old librarydatasets
+    for olddset in libdsets.values():
+        olddset.active = False
+        olddset.save()
 
 
 @shared_task

@@ -37,12 +37,12 @@ class GalaxyResult(models.Model):
     analysis = models.ForeignKey(Analysis)
 
 
-class GalaxyDB(models.Model):
+class GalaxyLibDataset(models.Model):
     name = models.CharField(max_length=100)
     galaxy_id = models.CharField(max_length=16)
     active = models.BooleanField(default=True)
 
 
 class QCParams(models.Model):
-    targetdb = models.ForeignKey(GalaxyDB)
-    decoydb = models.ForeignKey(GalaxyDB)
+    targetdb = models.ForeignKey(GalaxyLibDataset)
+    decoydb = models.ForeignKey(GalaxyLibDataset)

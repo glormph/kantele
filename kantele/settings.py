@@ -43,6 +43,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
 GALAXY_URL = os.environ.get('GALAXY_URL')
+GALAXY_ADMIN_APIKEY = os.environ.get('GALAXY_ADMIN_APIKEY')
 
 # django
 ALLOWED_HOSTS = [os.environ.get('KANTELEHOST')]
