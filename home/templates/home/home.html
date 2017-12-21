@@ -126,18 +126,21 @@
 				}
 		},
 		mounted: function() {
-			this.$http.get('/show/datasets/')
-			.then(response => {
-				return response.json()
-			}, response => {
-			}).then(result => {
-				for (key in result) {
-					this.datasets = result['dsets'];
-					this.components = result['components'];
-				}
-			})
+			this.fetchDatasets();
 		},
 		methods: {
+			fetchDatasets: function() {
+				this.$http.get('/show/datasets/')
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.datasets = result['dsets'];
+						this.components = result['components'];
+					}
+				})
+			},
 			toggleShow: function() {
 				this.showYourDatasets = this.showYourDatasets === false;
 				this.showAllDatasets = this.showAllDatasets === false;

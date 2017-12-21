@@ -241,7 +241,7 @@ def update_dataset(data):
             'prefractionationlength').get()
     except models.PrefractionationDataset.DoesNotExist:
         pfds = False
-    hrf_id = get_hirief_id()
+    hrf_id, hiph_id = get_prefrac_ids()
     if not pfds and not data['prefrac_id']:
         pass
     elif not pfds and data['prefrac_id']:
@@ -283,8 +283,10 @@ def newproject_save(data):
     return project
 
 
-def get_hirief_id():
-    return models.Prefractionation.objects.get(name__icontains='hirief').id
+def get_prefrac_ids():
+    return (models.Prefractionation.objects.get(name__icontains='hirief').id,
+            models.Prefractionation.objects.get(name__icontains='high pH').id)
+            
 
 
 def get_quantprot_id():
@@ -356,7 +358,7 @@ def get_or_create_qc_dataset(data):
 
 
 def save_new_dataset(data, project, experiment, runname, user_id):
-    hrf_id = get_hirief_id()
+    hrf_id, hiph_id = get_prefrac_ids()
     dtype = get_datatype(data['datatype_id'])
     prefrac = get_prefrac(data['prefrac_id'])
     qprot_id = get_quantprot_id()
@@ -524,6 +526,7 @@ def cf_dataset_proj_json(dset_mail):
 
 
 def pf_dataset_proj_json(pfds):
+    
     resp_json = {'prefrac_id': pfds.prefractionation.id,
                  'prefrac_amount': pfds.prefractionationfractionamount.fractions}
     if hasattr(pfds, 'hiriefdataset'):
