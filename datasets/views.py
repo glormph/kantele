@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
                          HttpResponseForbidden)
 
+from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
 from corefac import models as cfmodels
@@ -465,12 +466,19 @@ def empty_dataset_proj_json():
             'prefracs': [{'id': x.id, 'name': x.name}
                           for x in models.Prefractionation.objects.all()],
             'hirief_ranges': [{'name': str(x), 'id': x.id}
-                              for x in models.HiriefRange.objects.all()],
-            'mostused_organisms': [
-                {'id': x.species.id, 'linnean': x.species.linnean,
-                 'name': x.species.popname} for x in
-                models.DatasetSpecies.objects.all().distinct('species').select_related('species')],
-            }
+                              for x in models.HiriefRange.objects.all()]}
+    if settings.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+        edpr['mostused_organisms'] = [
+            {'id': x.id, 'linnean': x.linnean, 'name': x.popname} for x in
+            set([dsp.species for dsp in
+                 models.DatasetSpecies.objects.select_related('species')])]
+    else:
+        edpr['mostused_organisms'] = [
+            {'id': x.species.id, 'linnean': x.species.linnean,
+             'name': x.species.popname} for x in
+                models.DatasetSpecies.objects.all().distinct(
+                    'species').select_related('species')]
+    return edpr
 
 
 def dataset_proj_json(dset, project, species, components):
