@@ -345,7 +345,8 @@ def check_save_permission(dset_id, logged_in_user_id):
 
 def get_or_create_qc_dataset(data):
     qcds = models.Dataset.objects.filter(
-        runname__experiment_id=data['experiment_id'], runname=data['runname'])
+        runname__experiment_id=data['experiment_id'],
+        runname_id=data['runname_id'])
     if qcds:
         return qcds.get()
     else:
@@ -640,13 +641,7 @@ def empty_files_json():
                              'producer').filter(claimed=False)}}
 
 
-@login_required
-def save_files(request):
-    """Updates and saves files"""
-    data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user.id)
-    if user_denied:
-        return user_denied
+def save_or_update_files(data):
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
     if added_fnids:
@@ -674,6 +669,16 @@ def save_files(request):
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
             set_component_state(dset_id, 'sampleprep', COMPSTATE_INCOMPLETE)
     set_component_state(dset_id, 'files', COMPSTATE_OK)
+
+
+@login_required
+def save_files(request):
+    """Updates and saves files"""
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    if user_denied:
+        return user_denied
+    save_or_update_files(data)    
     return HttpResponse()
 
 
