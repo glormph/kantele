@@ -46,6 +46,15 @@ CELERY_BROKER_HOST = os.environ.get('RABBITHOST')
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
+# qc datasets
+QC_USER_ID = os.environ.get('QC_USER_ID')
+QC_DATATYPE = os.environ.get('QC_DATATYPE')
+QC_ORGANISM = os.environ.get('QC_ORGANISM')
+INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
+INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
+INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
+
+# galaxy
 GALAXY_URL = os.environ.get('GALAXY_URL')
 GALAXY_ADMIN_APIKEY = os.environ.get('GALAXY_ADMIN_APIKEY')
 
