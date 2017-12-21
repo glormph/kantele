@@ -81,6 +81,8 @@ def delete_storedfile(request):
         sfile.rawfile.deleted = True
         sfile.rawfile.save()
     sfile.delete()
+    if 'task' in data:
+        set_task_done(data['task'])
     return HttpResponse()
 
 
