@@ -15,12 +15,9 @@ from jobs.models import Task
 from jobs.post import save_task_chain
 
 
-def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path):
+def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path, storedfn_ids):
     # within a server share
     print('Renaming dataset storage location job')
-    storedfn_ids = [x.id for x in StoredFile.objects.select_related(
-        'rawfile__datasetrawfile').filter(
-        rawfile__datasetrawfile__dataset_id=dset_id)]
     t = tasks.rename_storage_location.delay(src_path, dst_path, storedfn_ids)
     Task.objects.create(asyncid=t.id, job_id=job_id, state='PENDING')
 
