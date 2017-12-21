@@ -339,34 +339,30 @@ def check_save_permission(dset_id, logged_in_user_id):
     return False
 
 
-@login_required
-def save_dataset(request):
-    data = json.loads(request.body.decode('utf-8'))
-    if data['dataset_id']:
-        user_denied = check_save_permission(data['dataset_id'], request.user.id)
-        if user_denied:
-            return user_denied
-        print('Updating')
-        return update_dataset(data)
-    if 'newprojectname' in data:
-        project = newproject_save(data)
+def get_or_create_qc_dataset(data):
+    qcds = models.Dataset.objects.filter(
+        runname__experiment_id=data['experiment_id'], runname=data['runname'])
+    if qcds:
+        return qcds.get()
     else:
-        project = models.Project.objects.get(pk=data['project_id'])
-    if 'newexperimentname' in data:
-        experiment = models.Experiment(name=data['newexperimentname'],
-                                       project_id=project.id)
-        experiment.save()
-    else:
-        experiment = models.Experiment.objects.get(pk=data['experiment_id'])
-    runname = models.RunName(name=data['runname'], experiment=experiment)
-    runname.save()
+        project = models.Project.objects.get(pk=settings.INSTRUMENT_QC_PROJECT)
+        exp = models.Experiment.objects.get(pk=settings.INSTRUMENT_QC_EXP)
+        run = models.RunName.objects.get(pk=data['runname_id'])
+        data['datatype_id'] = settings.QC_DATATYPE
+        data['prefrac_id'] = False
+        data['is_corefac'] = False
+        data['organism_ids'] = [settings.QC_ORGANISM]
+        return save_new_dataset(data, project, exp, run, settings.QC_USER_ID)
+
+
+def save_new_dataset(data, project, experiment, runname, user_id):
     hrf_id = get_hirief_id()
     dtype = get_datatype(data['datatype_id'])
     prefrac = get_prefrac(data['prefrac_id'])
     qprot_id = get_quantprot_id()
-    dset = models.Dataset(user_id=request.user.id, date=datetime.now(),
+    dset = models.Dataset(user_id=user_id, date=datetime.now(),
                           runname_id=runname.id,
-                          storage_loc= get_storage_location(
+                          storage_loc=get_storage_location(
                               project, experiment, runname, qprot_id, hrf_id,
                               dtype, prefrac, data),
                           datatype=dtype)
@@ -391,6 +387,31 @@ def save_dataset(request):
         models.DatatypeComponent.objects.filter(
             datatype_id=dset.datatype_id).exclude(
             component__name='definition')])
+    return dset
+
+
+@login_required
+def save_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if data['dataset_id']:
+        user_denied = check_save_permission(data['dataset_id'], request.user.id)
+        if user_denied:
+            return user_denied
+        print('Updating')
+        return update_dataset(data)
+    if 'newprojectname' in data:
+        project = newproject_save(data)
+    else:
+        project = models.Project.objects.get(pk=data['project_id'])
+    if 'newexperimentname' in data:
+        experiment = models.Experiment(name=data['newexperimentname'],
+                                       project_id=project.id)
+        experiment.save()
+    else:
+        experiment = models.Experiment.objects.get(pk=data['experiment_id'])
+    runname = models.RunName(name=data['runname'], experiment=experiment)
+    runname.save()
+    dset = save_new_dataset(data, project, experiment, runname, request.user.id)
     return JsonResponse({'dataset_id': dset.id})
 
 

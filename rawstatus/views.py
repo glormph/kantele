@@ -170,3 +170,18 @@ def check_md5_success(request):
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
     else:
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})
+
+
+def add_to_qc(rawfile, storedfile):
+    # add file to dataset if not exist ds yet: proj:QC, exp:Hela, run:instrument
+    data['dataset_id'] = False
+    data['experiment_id'] = settings.INSTRUMENT_QC_EXP
+    data['project_id'] = settings.INSTRUMENT_QC_PROJECT
+    data['runname_id'] = settings.INSTRUMENT_QC_RUNNAME
+    dset = dsviews.get_or_create_qc_dataset(data)
+    create_dataset_job('move_files_storage', dset.id, [file_registered.id])
+    create_dataset_job('convert_to_mzml', dset.id, [file_registered.id])
+    # create analysis
+    # create_file_job('run_longit_qc_workflow', file_transferred.id,
+    # analysis_id, qcparams_id)
+
