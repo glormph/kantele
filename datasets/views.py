@@ -453,7 +453,7 @@ def empty_dataset_proj_json():
                      models.RunName.objects.filter(experiment_id=exp.id)]
         experiments[exp.project.id].append({'id': exp.id, 'name': exp.name,
                                             'run_names': run_names})
-    return {'projects': projects, 'experiments': experiments,
+    edpr = {'projects': projects, 'experiments': experiments,
             'external_pis': [{'name': x.name, 'id': x.id} for x in
                              models.PrincipalInvestigator.objects.all()],
             'datatypes': [{'name': x.name, 'id': x.id} for x in
