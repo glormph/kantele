@@ -37,7 +37,7 @@ def task_failed(request):
 
 def update_storagepath_file(request):
     data = json.loads(request.body.decode('utf-8'))
-    print('Updating storage task finished', data)
+    print('Updating storage task finished')
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
@@ -49,8 +49,8 @@ def update_storagepath_file(request):
     elif 'fn_ids' in data:
         sfns = StoredFile.objects.filter(pk__in=[int(x) for x in data['fn_ids']])
         sfns.update(path=data['dst_path'])
-    if 'task' in request.POST:
-        set_task_done(request.POST['task'])
+    if 'task' in data:
+        set_task_done(data['task'])
     return HttpResponse()
 
 
