@@ -45,7 +45,7 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
-        update_db(url, postdata)
+        update_db(url, json=postdata)
     except RuntimeError:
         # FIXME cannot move back shutil.move(dst, src)
         raise
@@ -80,7 +80,7 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id):
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
-        update_db(url, postdata)
+        update_db(url, json=postdata)
     except RuntimeError:
         shutil.move(dst, src)
         raise
@@ -102,7 +102,7 @@ def move_stored_file_tmp(self, fn, path, fn_id):
                 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
-        update_db(url, postdata)
+        update_db(url, json=postdata)
     except RuntimeError:
         shutil.move(dst, src)
         raise

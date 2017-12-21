@@ -1,3 +1,5 @@
+import json
+
 from celery import states
 from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed)
@@ -34,7 +36,8 @@ def task_failed(request):
 
 
 def update_storagepath_file(request):
-    data = request.POST
+    data = json.loads(request.body.decode('utf-8'))
+    print('Updating storage task finished', data)
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [config.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
@@ -44,8 +47,8 @@ def update_storagepath_file(request):
         sfile.path = data['dst_path']
         sfile.save()
     elif 'fn_ids' in data:
-        StoredFile.objects.filter(pk__in=data['fn_ids']).update(
-            path=data['dst_path'])
+        sfns = StoredFile.objects.filter(pk__in=[int(x) for x in data['fn_ids']])
+        sfns.update(path=data['dst_path'])
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
     return HttpResponse()
