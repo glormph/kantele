@@ -72,9 +72,10 @@ def set_md5(request):
 def delete_storedfile(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [config.SWESTORECLIENT_APIKEY]):
+            data['client_id'], [config.STORAGECLIENT_APIKEY,
+                                config.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    sfile = StoredFile.objects.filter(pk=data['fn_id']).select_related(
+    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related(
         'rawfile').get()
     if sfile.filetype == 'raw':
         sfile.rawfile.deleted = True
