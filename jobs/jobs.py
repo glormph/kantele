@@ -7,6 +7,7 @@ from datasets.models import DatasetJob
 from rawstatus.models import FileJob
 from datasets import jobs as dsjobs
 from rawstatus import jobs as rsjobs
+from analysis import jobs as anjobs
 
 
 class Jobtypes(object):
@@ -24,6 +25,10 @@ class Jobstates(object):
     DONE = 'done'
 
 
+"""Jobmap contains all jobs in system by name. The retry field indicates a
+job is retryable, which means the job should be side-effect free, i.e. possible
+to retry without messing things up.
+"""
 jobmap = {'move_files_storage':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_files_dataset_storage,
            'retry': True},
@@ -41,6 +46,9 @@ jobmap = {'move_files_storage':
            'retry': True},
           'get_md5':
           {'type': Jobtypes.PROCESS, 'func': rsjobs.get_md5, 'retry': True},
+          'run_longit_qc_workflow':
+          {'type': Jobtypes.PROCESS, 'func': anjobs.auto_run_qc_workflow,
+           'retry': True},
           }
 
 

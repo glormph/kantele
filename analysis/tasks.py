@@ -172,6 +172,8 @@ def download_results(self, run, qc=False):
         print('Problem downloading datasets, retrying in 60s. '
               'Problem message:', e)
         self.retry(countdown=60, exc=e)
+    if qc:
+        return run
     for dset in run['output_dsets'].values():
         if dset['download_url'][:4] != 'http':
             dset['download_url'] = '{}{}'.format(settings.GALAXY_URL,
@@ -185,8 +187,7 @@ def download_results(self, run, qc=False):
             self.retry(countdown=60)
     print('Finished downloading results to disk for history '
           '{}. Writing up stdout'.format(run['history']))
-    if not qc:
-        write_stdouts(run, outpath_full, gi)
+    write_stdouts(run, outpath_full, gi)
     return run
 
 

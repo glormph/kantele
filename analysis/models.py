@@ -19,13 +19,19 @@ class GalaxyAccount(models.Model):
     apikey = models.CharField(max_length=32)
 
 
+class AnalysisParams(models.Model):
+    """paramjson = {'target db': GalaxyLibDataset.id, 'decoy db': etc"""
+    creationdate = models.DateTimeField(auto_now=True)
+    paramjson = models.TextField()
+
+
 class Analysis(models.Model):
-    date = models.DateTimeField()
+    date = models.DateTimeField(auto_now=True)
     user = models.ForeignKey(User)
     name = models.CharField(max_length=100)
     search = models.ForeignKey(GalaxySearch)
     account = models.ForeignKey(GalaxyAccount)
-    params = models.TextField()  # Json
+    params = models.ForeignKey(AnalysisParams)
 
 
 class SearchMzmlFiles(models.Model):
@@ -39,18 +45,11 @@ class GalaxyResult(models.Model):
 
 class GalaxyLibrary(models.Model):
     name = models.CharField(max_length=100)
-    galaxy_id = models.CharField(max_length=16)
+    galaxyid = models.CharField(max_length=16)
 
 
 class GalaxyLibDataset(models.Model):
     name = models.CharField(max_length=100)
-    galaxy_id = models.CharField(max_length=16)
-    library_id = models.ForeignKey(GalaxyLibrary)
+    galaxyid = models.CharField(max_length=16)
+    library = models.ForeignKey(GalaxyLibrary)
     active = models.BooleanField(default=True)
-
-
-class QCParams(models.Model):
-    """Fixed params for QC runs: target, decoy DB, not instrument etc
-    paramjson = {'target db': GalaxyLibDataset.id, 'decoy db': etc"""
-    creationdate = models.DateTimeField(auto_now=True)
-    paramjson = models.TextField()
