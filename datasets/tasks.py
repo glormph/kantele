@@ -31,16 +31,22 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
-    dsttree = config.STORAGESHARE
-    for srcdir, dstdir in zip(srcpath.split(os.sep), dstpath.split(os.sep)):
-        if srcdir != dstdir:
+    try:
+        shutil.move(os.path.join(config.STORAGESHARE, srcpath), os.path.join(config.STORAGESHARE, dstpath))
+    except:
+        taskfail_update_db(self.request.id)
+        raise
+    # Go through dirs in path and delete empty ones caused by move
+    splitpath = srcpath.split(os.sep)
+    for pathlen in range(0, len(splitpath))[::-1]:
+        # no rmdir on the leaf dir (would be pathlen+1) since that's been moved
+        checkpath = os.path.join(config.STORAGESHARE, os.sep.join(splitpath[:pathlen]))
+        if not os.listdir(checkpath):
             try:
-                shutil.move(os.path.join(dsttree, srcdir),
-                            os.path.join(dsttree, dstdir))
-            except Exception:
+                os.rmdir(checkpath)
+            except:
                 taskfail_update_db(self.request.id)
                 raise
-        dsttree = os.path.join(dsttree, dstdir)
     postdata = {'fn_ids': storedfn_ids, 'dst_path': dstpath,
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
