@@ -37,7 +37,7 @@ def show_dataset(request, dataset_id):
         return HttpResponseNotFound()
     context = {'dataset_id': dataset_id, 'newdataset': False,
                'is_owner': {True: 'true', False: 'false'}[
-                   check_ownership(request.user.id, dset)]}
+                   check_ownership(request.user, dset)]}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -319,26 +319,26 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
     return '{}/{}/{}/{}'.format(project.name, exp.name, subdir, runname.name)
 
 
-def check_ownership(userid, dset):
-    if dset.user_id == userid:
+def check_ownership(user, dset):
+    if dset.user_id == user.id or user.is_staff:
         return True
     if not dset.runname.experiment.project.corefac:
         return False
     try:
-        cfmodels.CorefacUser.objects.get(user_id=userid)
+        cfmodels.CorefacUser.objects.get(user_id=user.id)
     except cfmodels.CorefacUser.DoesNotExist:
         return False
     return True
 
 
-def check_save_permission(dset_id, logged_in_user_id):
+def check_save_permission(dset_id, logged_in_user):
     try:
         dset = models.Dataset.objects.filter(pk=dset_id).select_related(
             'runname__experiment__project').get()
     except models.Dataset.DoesNotExist:
         return HttpResponseNotFound()
     else:
-        if not check_ownership(logged_in_user_id, dset):
+        if not check_ownership(logged_in_user, dset):
             return HttpResponseForbidden()
     return False
 
@@ -399,7 +399,7 @@ def save_new_dataset(data, project, experiment, runname, user_id):
 def save_dataset(request):
     data = json.loads(request.body.decode('utf-8'))
     if data['dataset_id']:
-        user_denied = check_save_permission(data['dataset_id'], request.user.id)
+        user_denied = check_save_permission(data['dataset_id'], request.user)
         if user_denied:
             return user_denied
         print('Updating')
@@ -675,7 +675,7 @@ def save_or_update_files(data):
 def save_files(request):
     """Updates and saves files"""
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
     save_or_update_files(data)    
@@ -704,7 +704,7 @@ def update_acquisition(dset, data):
 @login_required
 def save_acquisition(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
     dset_id = data['dataset_id']
@@ -805,7 +805,7 @@ def update_sampleprep(data, qtype):
 @login_required
 def save_sampleprep(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user.id)
+    user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
     dset_id = data['dataset_id']
