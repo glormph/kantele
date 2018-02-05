@@ -17,3 +17,4 @@ numpy==1.13.3
 pandas==0.21.0
 bokeh==0.12.12
 bioblend==0.10.0
+dulwich==0.18.6

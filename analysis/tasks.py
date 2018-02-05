@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 from urllib.parse import urljoin
+from dulwich.porcelain import clone
 
 from django.urls import reverse
 from celery import shared_task
@@ -133,6 +134,36 @@ def run_search_wf(self, run):
         self.retry(countdown=60, exc=e)
     print('Workflow invoked')
     return run
+
+
+@shared_task(queue=settings.QUEUE_STORAGE, bind=True)
+def run_nextflow_longitude_qc(timestamp, commit, nffile, params):
+    """Fairly generalized code for kantele celery task to run a WF in NXF"""
+    rundir = 'nxf_longqc_{}'.format(timestamp)
+    # FIXME this will be in kantele or so ceelery dir. checkout stuff in home/etc
+    os.makedirs(rundir)
+    clone('https://github.com/lehtiolab/galaxy-workflows', 'gitwfs',
+          checkout=commit)
+    # There will be files inside data dir of WF repo so we must be in
+    # that dir for WF to find them
+    os.chdir(os.path.join(rundir, gitwfs))
+    try:
+        subprocess.check_call(['nextflow', 'run', nffile, *params, '--outdir', 'output'])
+    except subprocess.CalledProcessError:
+        # FIXME report failure of wf to kantele
+        raise
+    # after this line it will be QC specific
+    infiles = {}
+    for exp_out, expfn in {'sqltable': 'mslookup_db.sqlite',
+                           'psmtable': 'psmtable.txt',
+                           'peptable': 'peptable.txt',
+                           'prottable': 'prottable.txt'}
+        outfile = os.path.join('output', expfn)
+        if not os.path.exists(outfile):
+            # FIXME no need to raise but need to report FAIL with message
+            raise RuntimeError
+        infiles[exp_out] = os.path.abspath(outfile)
+    calc_longitudinal_qc(infiles)
 
 
 @shared_task(queue=settings.QUEUE_STORAGE, bind=True)
