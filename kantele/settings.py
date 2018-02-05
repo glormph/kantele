@@ -58,6 +58,9 @@ INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
 GALAXY_URL = os.environ.get('GALAXY_URL')
 GALAXY_ADMIN_APIKEY = os.environ.get('GALAXY_ADMIN_APIKEY')
 
+# nextflow
+NEXTFLOW_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
+
 # django
 ALLOWED_HOSTS = [os.environ.get('KANTELEHOST')]
 SECRET_KEY = os.environ.get('SECRET_KEY')

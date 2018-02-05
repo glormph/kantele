@@ -3,7 +3,7 @@ import json
 import shutil
 import subprocess
 from urllib.parse import urljoin
-from dulwich.porcelain import clone
+from dulwich.porcelain import clone, reset
 
 from django.urls import reverse
 from celery import shared_task
@@ -136,34 +136,50 @@ def run_search_wf(self, run):
     return run
 
 
-@shared_task(queue=settings.QUEUE_STORAGE, bind=True)
-def run_nextflow_longitude_qc(timestamp, commit, nffile, params):
+@shared_task(queue=settings.QUEUE_STORAGE)
+def run_nextflow_longitude_qc(run, commit, nffile, params):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
-    rundir = 'nxf_longqc_{}'.format(timestamp)
-    # FIXME this will be in kantele or so ceelery dir. checkout stuff in home/etc
-    os.makedirs(rundir)
-    clone('https://github.com/lehtiolab/galaxy-workflows', 'gitwfs',
-          checkout=commit)
+    runname = 'longqc_{}'.format(run['timestamp'])
+    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname)
+    if not os.path.exists(rundir):
+        os.makedirs(rundir)
+    gitwfdir = os.path.join(rundir, 'gitwfs') 
+    try:
+        clone('https://github.com/lehtiolab/galaxy-workflows',
+              gitwfdir, checkout=commit)
+    except FileExistsError:
+        reset(gitwfdir, 'hard', commit)
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
-    os.chdir(os.path.join(rundir, gitwfs))
+    os.chdir(gitwfdir)
     try:
-        subprocess.check_call(['nextflow', 'run', nffile, *params, '--outdir', 'output'])
+        subprocess.check_call(['/Z/jorrit/hirief2-pipeline/nextflow', 'run', '-resume', nffile, *params, '--outdir', 'output'])
     except subprocess.CalledProcessError:
-        # FIXME report failure of wf to kantele
-        raise
-    # after this line it will be QC specific
+        taskfail_update_db(self.request.id)
+        raise RuntimeError('Error occurred running QC workflow {}'.format(rundir))
+    # after this line this task will be QC specific. Reuse previous part for other NXF runs
     infiles = {}
     for exp_out, expfn in {'sqltable': 'mslookup_db.sqlite',
                            'psmtable': 'psmtable.txt',
                            'peptable': 'peptable.txt',
-                           'prottable': 'prottable.txt'}
+                           'prottable': 'prottable.txt'}.items():
         outfile = os.path.join('output', expfn)
         if not os.path.exists(outfile):
-            # FIXME no need to raise but need to report FAIL with message
-            raise RuntimeError
+            taskfail_update_db(self.request.id)
+            raise RuntimeError('Ran QC workflow but output file {} not '
+                               'found'.format(outfile))
         infiles[exp_out] = os.path.abspath(outfile)
-    calc_longitudinal_qc(infiles)
+    qcreport = qc.calc_longitudinal_qc(infiles)
+    postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
+                'analysis_id': run['analysis_id'], 'plots': qcreport,
+                'task': self.request.id}
+    url = urljoin(settings.KANTELEHOST, reverse('dash:storeqc'))
+    try:
+        update_db(url, json=postdata)
+    except RuntimeError:
+        taskfail_update_db(self.request.id)
+        raise
+    return run
 
 
 @shared_task(queue=settings.QUEUE_STORAGE, bind=True)

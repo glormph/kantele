@@ -60,8 +60,6 @@ def calc_longitudinal_qc(infiles):
     qcmap['peparea'] = calc_boxplot([x[areaix] for x in peps])
     qcmap['nr_peptides'] = {'peptides': count, 'unique_peptides': unicount}
     with open(infiles['prottable']) as fp:
-        # FIXME may need to filter proteins on FDR
-        # first line is header
         qcmap['nr_proteins'] = {'proteins': sum(1 for _ in fp) - 1}
     return qcmap
 
