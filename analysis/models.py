@@ -9,6 +9,12 @@ class GalaxyWorkflow(models.Model):
     wfjson = models.TextField()
 
 
+class NextflowWorkflow(models.Model):
+    repo = models.TextField()
+    commit = models.CharField(max_length=50)
+    filename = models.CharField(max_length=50)
+
+
 class GalaxySearch(models.Model):
     searchtype = models.CharField(max_length=10)
     workflow = models.ForeignKey(GalaxyWorkflow)
@@ -43,13 +49,8 @@ class GalaxyResult(models.Model):
     analysis = models.ForeignKey(Analysis)
 
 
-class GalaxyLibrary(models.Model):
+class LibraryFiles(models.Model):
     name = models.CharField(max_length=100)
-    galaxyid = models.CharField(max_length=16)
-
-
-class GalaxyLibDataset(models.Model):
-    name = models.CharField(max_length=100)
-    galaxyid = models.CharField(max_length=16)
-    library = models.ForeignKey(GalaxyLibrary)
-    active = models.BooleanField(default=True)
+    filetype = models.CharField(max_length=20)
+    servershare = models.ForeignKey(ServerShare)
+    path = models.CharField(max_length=200)

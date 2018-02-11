@@ -136,14 +136,16 @@ def run_search_wf(self, run):
     return run
 
 
-@shared_task(queue=settings.QUEUE_STORAGE)
-def run_nextflow_longitude_qc(run, commit, nffile, params):
+def run_nextflow(run, commit, nffile, params, stagefiles):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     runname = 'longqc_{}'.format(run['timestamp'])
     rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname)
+    stagedir = os.path.join(rundir, 'stage')
+    gitwfdir = os.path.join(rundir, 'gitwfs') 
     if not os.path.exists(rundir):
         os.makedirs(rundir)
-    gitwfdir = os.path.join(rundir, 'gitwfs') 
+    if not os.path.exists(stagedir):
+        os.makedirs(stagedir)
     try:
         clone('https://github.com/lehtiolab/galaxy-workflows',
               gitwfdir, checkout=commit)
@@ -152,12 +154,22 @@ def run_nextflow_longitude_qc(run, commit, nffile, params):
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
     os.chdir(gitwfdir)
+    for fn in stagefiles.values():
+        shutil.copy(fn, os.path.join(stagedir, os.path.basename(fn)))
+    cmdparams = [os.path.join(stagedir, x) if x in stagefiles else x for x in params]
     try:
-        subprocess.check_call(['/Z/jorrit/hirief2-pipeline/nextflow', 'run', '-resume', nffile, *params, '--outdir', 'output'])
+        subprocess.check_call(['/Z/jorrit/hirief2-pipeline/nextflow', 'run',
+                               nffile, *cmdparams, '--outdir', 'output',
+                               '-resume'])
     except subprocess.CalledProcessError:
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow {}'.format(rundir))
-    # after this line this task will be QC specific. Reuse previous part for other NXF runs
+
+
+@shared_task(queue=settings.QUEUE_STORAGE)
+def run_nextflow_longitude_qc(run, commit, nffile, params, stagefiles):
+    # FIXME need cleanup method, copy output (?)
+    run_nextflow(run, commit, nffile, params, stagefiles)
     infiles = {}
     for exp_out, expfn in {'sqltable': 'mslookup_db.sqlite',
                            'psmtable': 'psmtable.txt',
@@ -170,6 +182,8 @@ def run_nextflow_longitude_qc(run, commit, nffile, params):
                                'found'.format(outfile))
         infiles[exp_out] = os.path.abspath(outfile)
     qcreport = qc.calc_longitudinal_qc(infiles)
+    # FIXME copy files to outdir
+    # cleanup 
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'plots': qcreport,
                 'task': self.request.id}
