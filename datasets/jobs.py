@@ -72,6 +72,21 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids):
                               for tid in task_ids])
 
 
+def get_mzmlconversion_taskchain(sfile, mzmlentry, dset, queue, outqueue):
+    return [
+        tasks.convert_to_mzml.s(sfile.rawfile.name, sfile.path,
+                                mzmlentry.filename, mzmlentry.id,
+                                sfile.servershare.name,
+                                reverse('jobs:createmzml'),
+                                reverse('jobs:taskfail')).set(queue=queue),
+        tasks.scp_storage.s(mzmlentry.id, dset.storage_loc,
+                            sfile.servershare.name, reverse('jobs:scpmzml'),
+                            reverse('jobs:taskfail')).set(queue=outqueue),
+        filetasks.get_md5.s(mzmlentry.id,
+                            os.path.join(mzmlentry.path, mzmlentry.filename),
+                            sfile.servershare.name)]
+
+
 def convert_tomzml(job_id, dset_id):
     """Multiple queues for this bc multiple boxes wo shared fs"""
     dset = Dataset.objects.get(pk=dset_id)
@@ -92,16 +107,6 @@ def convert_tomzml(job_id, dset_id):
                 continue
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
-        runchain = [
-            tasks.convert_to_mzml.s(fn.rawfile.name, fn.path, mzsf.filename,
-                                    mzsf.id, fn.servershare.name,
-                                    reverse('jobs:createmzml'),
-                                    reverse('jobs:taskfail')).set(queue=queue),
-            tasks.scp_storage.s(mzsf.id, dset.storage_loc, fn.servershare.name,
-                                reverse('jobs:scpmzml'),
-                                reverse('jobs:taskfail')).set(queue=outqueue),
-            filetasks.get_md5.s(mzsf.id, os.path.join(mzsf.path, mzsf.filename),
-                                fn.servershare.name),
-                    ]
+        runchain = get_mzmlconversion_taskchain(fn, mzsf, dset, queue, outqueue)
         lastnode = chain(*runchain).delay()
         save_task_chain(lastnode, job_id)
