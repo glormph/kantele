@@ -4,7 +4,7 @@ import os
 # local box setup
 APIKEY = os.environ.get('APIKEY')
 STORAGESHARE = os.environ.get('STORAGESHARE')
-ANALYSIS_STORAGESHARE = os.environ.get('ANALYSIS_STORAGESHARE')
+ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
 TMPSHARE = os.environ.get('TMPSHARE')
 
 # swestore
@@ -28,9 +28,6 @@ CLIENT_APIKEYS = [SWESTORECLIENT_APIKEY, STORAGECLIENT_APIKEY, MZMLCLIENT_APIKEY
                   ANALYSISCLIENT_APIKEY]
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_SWESTORE = 'create_swestore'
-QUEUE_GALAXY_STAGE = 'galaxy-stage'
-QUEUE_GALAXY_TOOLS = 'galaxy-tools'
-QUEUE_GALAXY_WORKFLOW = 'galaxy-workflow'
 
 QUEUES_PWIZ = ['pwiz1', 'pwiz2']
 QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out'}
@@ -39,8 +36,10 @@ CERTFILE = os.environ.get('KANTELECERT')
 KANTELEHOST = '{}{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
+ANALYSISSHARENAME = 'analysis'
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
-            STORAGESHARENAME: STORAGESHARE
+            STORAGESHARENAME: STORAGESHARE,
+            ANALYSISSHARENAME: ANALYSISSHARE,
             }
 CELERY_BROKER_HOST = os.environ.get('RABBITHOST')
 CELERY_TASK_SERIALIZER = 'json'
@@ -54,12 +53,10 @@ INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
 INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
 INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
 
-# galaxy
-GALAXY_URL = os.environ.get('GALAXY_URL')
-GALAXY_ADMIN_APIKEY = os.environ.get('GALAXY_ADMIN_APIKEY')
-
 # nextflow
 NEXTFLOW_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
+LONGQC_NXF_WF_ID = os.environ.get('LONGQC_WFID')
+LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
 
 # django
 ALLOWED_HOSTS = [os.environ.get('KANTELEHOST')]
