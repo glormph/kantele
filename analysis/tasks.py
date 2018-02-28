@@ -50,7 +50,7 @@ def run_nextflow(run, params, stagefiles, task_id):
     return rundir
 
 
-@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
+@shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_longitude_qc(self, run, params, stagefiles):
     rundir = run_nextflow(run, params, stagefiles, self.request.id)
     outfiles = {}

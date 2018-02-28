@@ -1,57 +1,18 @@
 import json
 
 from celery import shared_task, states
-from bioblend.galaxy import GalaxyInstance
 
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
 from jobs.jobs import Jobstates, Jobtypes, jobmap
 from datasets.models import DatasetJob
 from rawstatus.models import FileJob
-from analysis.models import GalaxyLibDataset, GalaxyLibrary
 
 
 # FIXME there will also be search jobs and maybe others that span datasets,
 # but this should be fixed now
 # There are also multi-jobs on Dset from same user action (* add and remove
 # files), they are currently waiting for the earlier job to finish.
-
-
-@shared_task
-def update_db_galaxy_libraries():
-    """Fetch lib datasets and libraries from galaxy server for storage in
-    Kantele DB"""
-    print('Updating Galaxy libraries')
-    gi = GalaxyInstance(settings.GALAXY_URL, key=settings.GALAXY_ADMIN_APIKEY)
-    libraries = GalaxyLibrary.objects.all()
-    libdsets = {x.galaxy_id: x for x in GalaxyLibDataset.objects.all()}
-    for lib in gi.libraries.get_libraries():
-        try:
-            lib = GalaxyLibrary.objects.get(galaxyid=lib['id'])
-        except GalaxyLibrary.DoesNotExist:
-            print('Found new library', lib['name'])
-            lib = GalaxyLibrary(galaxyid=lib['id'], name=lib['name'])
-            lib.save()
-        for libdset in gi.libraries.show_library(lib.galaxyid, contents=True):
-            if not libdset['type'] == 'file':
-                # Some libdset are folders
-                continue
-            # FIXME if we move a dataset inside Galaxy to a different library
-            # does that create a new dset id or is only the library changed? In
-            # the latter case we need to update here too. In the former of
-            # course not
-            try:
-                libdsets.pop(libdset['id'])
-            except KeyError:
-                print('Found new library dataset', libdset['name'])
-                GalaxyLibDataset.objects.create(galaxyid=libdset['id'],
-                                                name=libdset['name'],
-                                                active=True,
-                                                library_id=lib.id)
-    # disable old librarydatasets
-    for olddset in libdsets.values():
-        olddset.active = False
-        olddset.save()
 
 
 @shared_task

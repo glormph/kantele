@@ -1,3 +1,6 @@
 from django.contrib import admin
 
-# Register your models here.
+from analysis.models import NextflowWorkflow
+
+
+admin.site.register(NextflowWorkflow)

@@ -5,7 +5,7 @@ from django.shortcuts import render
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
-from analysis.models import Analysis, SearchMzmlFiles
+from analysis.models import Analysis, SearchFiles
 from datasets import views as dsviews
 from jobs import jobs as jobutil
 from datetime import datetime

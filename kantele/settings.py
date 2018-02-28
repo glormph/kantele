@@ -28,6 +28,7 @@ CLIENT_APIKEYS = [SWESTORECLIENT_APIKEY, STORAGECLIENT_APIKEY, MZMLCLIENT_APIKEY
                   ANALYSISCLIENT_APIKEY]
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_SWESTORE = 'create_swestore'
+QUEUE_NXF = 'nextflow'
 
 QUEUES_PWIZ = ['pwiz1', 'pwiz2']
 QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out'}

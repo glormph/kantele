@@ -5,9 +5,13 @@ from rawstatus import models as filemodels
 
 
 class NextflowWorkflow(models.Model):
-    repo = models.TextField()
+    description = models.CharField(max_length=200, help_text='Description of workflow update')
+    repo = models.CharField(max_length=100)
     commit = models.CharField(max_length=50)
     filename = models.CharField(max_length=50)
+    
+    def __str__(self):
+        return self.description
 
 
 class AnalysisParams(models.Model):
@@ -38,6 +42,6 @@ class SearchResultFile(models.Model):
     analysis = models.ForeignKey(Analysis)
 
 
-class LibraryFiles(models.Model):
+class LibraryFile(models.Model):
     description = models.CharField(max_length=100)
     sfile = models.ForeignKey(filemodels.StoredFile)
