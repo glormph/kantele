@@ -40,13 +40,13 @@ def auto_run_qc_workflow(job_id, dset_id, sf_id, analysis_id):
 
 def create_nf_search_entries(analysis, nfwf, params, mzmls, dbs):
     try:
-        models.NextflowSearch.objects.get(analysis=analysis)
+        nfs = models.NextflowSearch.objects.get(analysis=analysis)
     except models.NextflowSearch.DoesNotExist:
-        models.NextflowSearch.objects.create(
-            nfworkflow=nfwf, params=json.dumps(params), analysis=analysis)
+        nfs = models.NextflowSearch(nfworkflow=nfwf, params=json.dumps(params),
+                                    analysis=analysis)
+        nfs.save()
     for searchfile in mzmls + dbs:
         try:
-            models.SearchFile.objects.get(analysis=analysis, sfile=searchfile)
+            models.SearchFile.objects.get(search=nfs, sfile=searchfile)
         except models.SearchFile.DoesNotExist:
-            models.SearchFile.objects.create(analysis=analysis,
-                                             sfile=searchfile)
+            models.SearchFile.objects.create(search=nfs, sfile=searchfile)

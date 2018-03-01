@@ -27,7 +27,7 @@ class NextflowSearch(models.Model):
 
 
 class SearchFile(models.Model):
-    analysis = models.ForeignKey(Analysis)
+    search = models.ForeignKey(NextflowSearch)
     sfile = models.ForeignKey(filemodels.StoredFile)
 
 
