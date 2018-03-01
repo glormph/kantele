@@ -7,7 +7,6 @@ from dulwich.porcelain import clone, reset
 
 from django.urls import reverse
 from celery import shared_task
-from bioblend.galaxy import GalaxyInstance
 
 from jobs.post import update_db, taskfail_update_db
 from kantele import settings
@@ -20,15 +19,16 @@ def run_nextflow(run, params, stagefiles, task_id):
     rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname)
     stagedir = os.path.join(rundir, 'stage')
     gitwfdir = os.path.join(rundir, 'gitwfs')
+    outdir = os.path.join(rundir, 'output')
     if not os.path.exists(rundir):
         os.makedirs(rundir)
     if not os.path.exists(stagedir):
         os.makedirs(stagedir)
     try:
         clone('https://github.com/lehtiolab/galaxy-workflows',
-              gitwfdir, checkout=run['commit'])
+              gitwfdir, checkout=run['wf_commit'])
     except FileExistsError:
-        reset(gitwfdir, 'hard', run['commit'])
+        reset(gitwfdir, 'hard', run['wf_commit'])
     for fn, fndata in stagefiles.items():
         fpath = os.path.join(settings.SHAREMAP[fndata[0]], fndata[1], fn)
         dst = os.path.join(stagedir, fn)
@@ -41,7 +41,7 @@ def run_nextflow(run, params, stagefiles, task_id):
         # There will be files inside data dir of WF repo so we must be in
         # that dir for WF to find them
         subprocess.run(['nextflow', 'run', run['nxf_wf_fn'], *cmdparams,
-                        '--outdir', 'output', '-resume'], check=True,
+                        '--outdir', outdir, '-resume'], check=True,
                        cwd=gitwfdir)
     except subprocess.CalledProcessError:
         taskfail_update_db(task_id)
