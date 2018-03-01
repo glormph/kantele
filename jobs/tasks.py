@@ -47,9 +47,8 @@ def run_ready_jobs():
             print('END messages')
         elif job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)
-            if tasks.count() > 0:
-                print('Updating task status for active job {}'.format(job.id))
-                process_job_tasks(job, tasks)
+            print('Updating task status for active job {} - {}'.format(job.id, job.funcname))
+            process_job_tasks(job, tasks)
         elif job.state == Jobstates.PENDING and job.jobtype == Jobtypes.MOVE:
             print('Found new move job')
             # do not start move job if there is activity on dset or files
@@ -154,6 +153,9 @@ def check_task_chain(task):
 
 def process_job_tasks(job, jobtasks):
     job_updated, tasks_finished, tasks_failed = False, True, False
+    # In case the job did not create tasks it may have been obsolete
+    tasks_finished = True
+    tasks_failed = False
     for task in jobtasks:
         if task.state != states.SUCCESS:
             tasks_finished = False
