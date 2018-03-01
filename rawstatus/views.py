@@ -210,10 +210,15 @@ def manyfile_qc(rawfiles, storedfiles):
 
 def add_to_qc(rawfile, storedfile):
     # add file to dataset: proj:QC, exp:Hela, run:instrument
-    # TODO divide the QC project into insturments and years
+    try:
+        runname = dsmodels.RunName.objects.get(
+            experiment_id=settings.INSTRUMENT_QC_EXP, name=rawfile.producer.name)
+    except dsmodels.RunName.DoesNotExist:
+        runname = dsmodels.RunName.objects.create(
+            experiment_id=settings.INSTRUMENT_QC_EXP, name=rawfile.producer.name)
     data = {'dataset_id': False, 'experiment_id': settings.INSTRUMENT_QC_EXP,
             'project_id': settings.INSTRUMENT_QC_PROJECT,
-            'runname_id': settings.INSTRUMENT_QC_RUNNAME}
+            'runname_id': runname.id}
     dset = dsviews.get_or_create_qc_dataset(data)
     data['dataset_id'] = dset.id
     data['removed_files'] = {}
