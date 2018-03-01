@@ -130,6 +130,8 @@ def store_longitudinal_qc(request):
             return HttpResponseForbidden()
         else:
             dashviews.store_longitudinal_qc(data)
+            if 'task' in data:
+                set_task_done(data['task'])
             return HttpResponse()
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
