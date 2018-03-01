@@ -12,11 +12,11 @@ from jobs.models import Task
 # rerun qc data and displaying qcdata for a given qc file, how? 
 # run should check if already ran with same commit/analysis
 
-def auto_run_qc_workflow(job_id, dset_id, sf_id, analysis_id):
+def auto_run_qc_workflow(job_id, dset_id, sf_id, analysis_id, wf_id, dbfn_id):
     """Assumes one file, one analysis"""
     analysis = models.Analysis.objects.get(pk=analysis_id)
-    nfwf = models.NextflowWorkflow.objects.get(pk=settings.LONGQC_NXF_WF_ID)
-    dbfn = models.LibraryFile.objects.get(pk=settings.LONGQC_FADB_ID)
+    nfwf = models.NextflowWorkflow.objects.get(pk=wf_id)
+    dbfn = models.LibraryFile.objects.get(pk=dbfn_id)
     rawfn = filemodels.RawFile.objects.get(storedfile__id=sf_id)
     mzml = filemodels.StoredFile.objects.filter(
         rawfile_id=rawfn.id, filetype='mzml').select_related(

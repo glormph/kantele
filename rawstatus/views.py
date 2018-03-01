@@ -5,8 +5,9 @@ from django.shortcuts import render
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
-from analysis.models import Analysis
+from analysis.models import Analysis, NextflowWorkflow, NextflowSearch, SearchFile
 from datasets import views as dsviews
+from datasets import models as dsmodels
 from jobs import jobs as jobutil
 from datetime import datetime
 
@@ -174,8 +175,42 @@ def check_md5_success(request):
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})
 
 
+def check_if_singlefile_qc(rawfile, storedfile):
+    """This method is only run for detecting new incoming QC files"""
+    # FIXME add detection regex
+    dset = add_to_qc(rawfile, storedfile)
+    jobutil.create_dataset_job('convert_mzml', dset.id)
+    start_qc_analysis(dset, rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
+                      settings.LONGQC_FADB_ID)
+
+
+def manyfile_qc(rawfiles, storedfiles):
+    """For reanalysis or batching by hand"""
+    for rawfn, sfn in zip(rawfiles, storedfiles):
+        try:
+            dset = dsmodels.DatasetRawFile.objects.select_related(
+                'dataset').filter(rawfile=rawfn).get().dataset
+        except dsmodels.DatasetRawFile.DoesNotExist:
+            dset = add_to_qc(rawfile, sfn)
+            print('Added QC file {} to QC dataset {}'.format(rawfn.id, dset.id))
+    jobutil.create_dataset_job('convert_mzml', dset.id)
+    # Do not rerun with the same workflow as previously
+    nfwf = NextflowWorkflow.objects.get(pk=settings.LONGQC_NXF_WF_ID)
+    for rawfn, sfn in zip(rawfiles, storedfiles):
+        searchfiles_with_current_qcnf = SearchFile.objects.filter(
+            sfile=StoredFile.objects.select_related('rawfile').get(
+                filetype='mzml', rawfile_id=rawfn.id),
+            search__in=NextflowSearch.objects.filter(nfworkflow=nfwf))
+        if not searchfiles_with_current_qcnf.count():
+            start_qc_analysis(dset, rawfn, sfn, nfwf.id, settings.LONGQC_FADB_ID)
+        else:
+            print('QC has already been done with this workflow (id: {}) for '
+                  'rawfile id {}'.format(nfwf.id, rawfn.id))
+
+
 def add_to_qc(rawfile, storedfile):
-    # add file to dataset if not exist ds yet: proj:QC, exp:Hela, run:instrument
+    # add file to dataset: proj:QC, exp:Hela, run:instrument
+    # TODO divide the QC project into insturments and years
     data = {'dataset_id': False, 'experiment_id': settings.INSTRUMENT_QC_EXP,
             'project_id': settings.INSTRUMENT_QC_PROJECT,
             'runname_id': settings.INSTRUMENT_QC_RUNNAME}
@@ -184,10 +219,14 @@ def add_to_qc(rawfile, storedfile):
     data['removed_files'] = {}
     data['added_files'] = {1: {'id': rawfile.id}}
     dsviews.save_or_update_files(data)
-    jobutil.create_dataset_job('convert_mzml', dset.id)
+    return dset
+
+
+def start_qc_analysis(dset, rawfile, storedfile, wf_id, dbfn_id):
     analysis = Analysis(user_id=settings.QC_USER_ID, 
-                        name='{}_{}'.format(rawfile.producer.name,
-                                            dset.runname.experiment.name))
+                        name='{}_{}_{}'.format(rawfile.producer.name,
+                                            dset.runname.experiment.name,
+                                            rawfile.name))
     analysis.save()
     jobutil.create_dataset_job('run_longit_qc_workflow', dset.id, storedfile.id,
-                               analysis.id)
+                               analysis.id, wf_id, dbfn_id)
