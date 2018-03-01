@@ -87,24 +87,28 @@ def get_mzmlconversion_taskchain(sfile, mzmlentry, dset, queue, outqueue):
                             sfile.servershare.name)]
 
 
+def get_or_create_mzmlentry(fn):
+    try:
+        mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
+                                      filetype='mzml')
+    except StoredFile.DoesNotExist:
+        mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
+        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
+                          path=fn.path, servershare=fn.servershare,
+                          filename=mzmlfilename, md5='', checked=False)
+        mzsf.save()
+    return mzsf
+
+
 def convert_tomzml(job_id, dset_id):
     """Multiple queues for this bc multiple boxes wo shared fs"""
     dset = Dataset.objects.get(pk=dset_id)
     queues = cycle(settings.QUEUES_PWIZ)
     for fn in StoredFile.objects.select_related('servershare').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
-        try:
-            mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
-                                          filetype='mzml')
-        except StoredFile.DoesNotExist:
-            mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-            mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
-                              path=fn.path, servershare=fn.servershare,
-                              filename=mzmlfilename, md5='', checked=False)
-            mzsf.save()
-        else:
-            if mzsf.checked:
-                continue
+        mzsf = get_or_create_mzmlentry(fn)
+        if mzsf.checked:
+            continue
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
         runchain = get_mzmlconversion_taskchain(fn, mzsf, dset, queue, outqueue)
