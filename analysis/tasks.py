@@ -15,7 +15,7 @@ from analysis import qc, galaxy
 
 def run_nextflow(run, params, stagefiles, task_id):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
-    runname = 'longqc_{}'.format(run['timestamp'])
+    runname = 'longqc_{}_{}'.format(run['analysis_id'], run['timestamp'])
     rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname)
     stagedir = os.path.join(rundir, 'stage')
     gitwfdir = os.path.join(rundir, 'gitwfs')
