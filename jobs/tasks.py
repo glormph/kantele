@@ -44,13 +44,13 @@ def run_ready_jobs():
             print('ERRROR MESSAGES:')
             for joberror in JobError.objects.filter(job_id=job.id):
                 print(joberror.message)
-            print('END messages')
+            print('END error messages')
         elif job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)
             print('Updating task status for active job {} - {}'.format(job.id, job.funcname))
             process_job_tasks(job, tasks)
         elif job.state == Jobstates.PENDING and job.jobtype == Jobtypes.MOVE:
-            print('Found new move job')
+            print('Found new move job {} - {}'.format(job.id, job.funcname))
             # do not start move job if there is activity on dset or files
             if (active_files.intersection(jobfiles) or
                     active_dsets.intersection(jobdsets)):
@@ -69,7 +69,7 @@ def run_ready_jobs():
                     [active_move_files.add(fn) for fn in job_fn_map[job.id]]
                 run_job(job, jobmap)
         elif job.state == Jobstates.PENDING:
-            print('Found new job')
+            print('Found new job {} - {}'.format(job.id, job.funcname))
             # do not start job if dsets are being moved
             if (active_move_dsets.intersection(jobdsets) or
                     active_move_files.intersection(jobfiles)):
@@ -96,12 +96,12 @@ def run_job(job, jobmap):
         jobfunc(job.id, *args, **kwargs)
     except RuntimeError as e:
         print('Error occurred, trying again automatically in next round')
-        job.state = 'error'
+        job.state = Jobstates.ERROR
         JobError.objects.create(job_id=job.id, message=e)
         job.save()
     except Exception as e:
         print('Error occurred, not executing this job')
-        job.state = 'error'
+        job.state = Jobstates.ERROR
         JobError.objects.create(job_id=job.id, message=e)
         job.save()
     job.save()
