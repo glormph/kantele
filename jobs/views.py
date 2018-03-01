@@ -9,7 +9,7 @@ from jobs.jobs import Jobstates, is_job_ready
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile)
 from dashboard import views as dashviews
-from kantele import settings as config
+from kantele import settings
 
 
 def set_task_done(task_id):
@@ -27,7 +27,7 @@ def task_failed(request):
     if not request.method == 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     if 'client_id' not in request.POST or not taskclient_authorized(
-            request.POST['client_id'], config.CLIENT_APIKEYS):
+            request.POST['client_id'], settings.CLIENT_APIKEYS):
         return HttpResponseForbidden()
     print('Failed task registered task id {}'.format(request.POST['task']))
     task = models.Task.objects.get(asyncid=request.POST['task'])
@@ -40,7 +40,7 @@ def update_storagepath_file(request):
     data = json.loads(request.body.decode('utf-8'))
     print('Updating storage task finished')
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [config.STORAGECLIENT_APIKEY]):
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     if 'fn_id' in data:
         sfile = StoredFile.objects.get(pk=data['fn_id'])
@@ -57,7 +57,7 @@ def update_storagepath_file(request):
 
 def set_md5(request):
     if 'client_id' not in request.POST or not taskclient_authorized(
-            request.POST['client_id'], [config.STORAGECLIENT_APIKEY]):
+            request.POST['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.md5 = request.POST['md5']
@@ -73,8 +73,8 @@ def set_md5(request):
 def delete_storedfile(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [config.STORAGECLIENT_APIKEY,
-                                config.SWESTORECLIENT_APIKEY]):
+            data['client_id'], [settings.STORAGECLIENT_APIKEY,
+                                settings.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.filter(pk=data['sfid']).select_related(
         'rawfile').get()
@@ -90,7 +90,7 @@ def delete_storedfile(request):
 def created_swestore_backup(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [config.SWESTORECLIENT_APIKEY]):
+            data['client_id'], [settings.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
     backup = SwestoreBackedupFile.objects.filter(storedfile_id=data['sfid'])
     backup.update(swestore_path=data['swestore_path'], success=True)
@@ -102,7 +102,7 @@ def created_swestore_backup(request):
 def created_mzml(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [config.MZMLCLIENT_APIKEY]):
+            data['client_id'], [settings.MZMLCLIENT_APIKEY]):
         return HttpResponseForbidden()
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.filename = request.POST['filename']
@@ -115,7 +115,7 @@ def created_mzml(request):
 def scp_mzml(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [config.MZMLCLIENT_APIKEY]):
+            data['client_id'], [settings.MZMLCLIENT_APIKEY]):
         return HttpResponseForbidden()
     if 'task' in data:
         set_task_done(data['task'])
