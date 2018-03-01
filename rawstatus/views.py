@@ -191,14 +191,14 @@ def manyfile_qc(rawfiles, storedfiles):
             dset = dsmodels.DatasetRawFile.objects.select_related(
                 'dataset').filter(rawfile=rawfn).get().dataset
         except dsmodels.DatasetRawFile.DoesNotExist:
-            dset = add_to_qc(rawfile, sfn)
+            dset = add_to_qc(rawfn, sfn)
             print('Added QC file {} to QC dataset {}'.format(rawfn.id, dset.id))
     jobutil.create_dataset_job('convert_mzml', dset.id)
     # Do not rerun with the same workflow as previously
     nfwf = NextflowWorkflow.objects.get(pk=settings.LONGQC_NXF_WF_ID)
     for rawfn, sfn in zip(rawfiles, storedfiles):
         searchfiles_with_current_qcnf = SearchFile.objects.filter(
-            sfile=StoredFile.objects.select_related('rawfile').get(
+            sfile__in=StoredFile.objects.select_related('rawfile').filter(
                 filetype='mzml', rawfile_id=rawfn.id),
             search__in=NextflowSearch.objects.filter(nfworkflow=nfwf))
         if not searchfiles_with_current_qcnf.count():
