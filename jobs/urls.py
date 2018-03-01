@@ -15,4 +15,5 @@ urlpatterns = [
         name='createswestore'),
     url(r'^set/mzmlcreate/$', views.created_mzml, name='createmzml'),
     url(r'^set/mzmldone/$', views.scp_mzml, name='scpmzml'),
+    url(r'^set/longqc/$', views.store_longitudinal_qc, name='storelongqc'),
 ]

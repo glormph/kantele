@@ -19,28 +19,19 @@ def dashboard(request):
     return render(request, 'dashboard/dashboard.html')
 
 
-def store_longitudinal_qc(request):
-    """This method is fed JSON over POST"""
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-        if ('client_id' not in data or
-                data['client_id'] not in settings.CLIENT_APIKEYS):
-            return HttpResponseForbidden()
-        try:
-            qcrun = models.QCData.objects.get(rawfile_id=data['rf_id'])
-        except models.QCData.DoesNotExist:
-            qcrun = models.QCData(rawfile_id=data['rf_id'],
-                                  analysis_id=data['analysis_id'])
-            qcrun.save()
-            plotmap = {p.shortname: p.id for p in models.Plot.objects.all()}
-            for plotname, qcdata in data['plots'].items():
-                plot_id = plotmap[plotname]
-                create_newplot(qcrun, qcdata, plot_id)
-        else:
-            update_qcdata(qcrun, data)
-        return HttpResponse()
+def store_longitudinal_qc(data):
+    try:
+        qcrun = models.QCData.objects.get(rawfile_id=data['rf_id'])
+    except models.QCData.DoesNotExist:
+        qcrun = models.QCData(rawfile_id=data['rf_id'],
+                              analysis_id=data['analysis_id'])
+        qcrun.save()
+        plotmap = {p.shortname: p.id for p in models.Plot.objects.all()}
+        for plotname, qcdata in data['plots'].items():
+            plot_id = plotmap[plotname]
+            create_newplot(qcrun, qcdata, plot_id)
     else:
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+        update_qcdata(qcrun, data)
 
 
 def create_newplot(qcrun, qcdata, plot_id):

@@ -69,7 +69,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'plots': qcreport,
                 'task': self.request.id}
-    url = urljoin(settings.KANTELEHOST, reverse('dash:storeqc'))
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
     try:
         update_db(url, json=postdata)
         transfer_resultfiles('internal_results', rundir, outfiles)

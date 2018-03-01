@@ -8,6 +8,7 @@ from jobs import models
 from jobs.jobs import Jobstates, is_job_ready
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile)
+from dashboard import views as dashviews
 from kantele import settings as config
 
 
@@ -119,6 +120,19 @@ def scp_mzml(request):
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
+
+
+def store_longitudinal_qc(request):
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        if ('client_id' not in data or
+                data['client_id'] not in settings.CLIENT_APIKEYS):
+            return HttpResponseForbidden()
+        else:
+            dashviews.store_longitudinal_qc(data)
+            return HttpResponse()
+    else:
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
 
 
 @login_required
