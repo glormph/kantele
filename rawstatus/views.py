@@ -189,5 +189,5 @@ def add_to_qc(rawfile, storedfile):
                         name='{}_{}'.format(rawfile.producer.name,
                                             dset.runname.experiment.name))
     analysis.save()
-    jobutil.create_file_job('run_longit_qc_workflow', storedfile.id,
-                            analysis.id, dset.id)
+    jobutil.create_dataset_job('run_longit_qc_workflow', dset.id, storedfile.id,
+                               analysis.id)

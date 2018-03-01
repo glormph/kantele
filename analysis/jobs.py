@@ -7,17 +7,13 @@ from rawstatus import models as filemodels
 from jobs.models import Task
 
 # FIXMEs
-# search must wait for convert, why does it not?
-# store qc data does not finish tasks
+# DONE? search must wait for convert, why does it not?
+# DONE? store qc data does not finish tasks
 # rerun qc data and displaying qcdata for a given qc file, how? 
 # run should check if already ran with same commit/analysis
 
-def auto_run_qc_workflow(job_id, sf_id, analysis_id):
+def auto_run_qc_workflow(job_id, dset_id, sf_id, analysis_id):
     """Assumes one file, one analysis"""
-    # FIXME job runner executes jobs: move, convert, search:
-    # both wait for move, but search does not wait for convert, why not?
-    # prob need to use that broken out taskchain thing for this with conversion?
-    # only convert ONE file, not the whole Dset, and only if it is not yet converted
     analysis = models.Analysis.objects.get(pk=analysis_id)
     nfwf = models.NextflowWorkflow.objects.get(pk=settings.LONGQC_NXF_WF_ID)
     dbfn = models.LibraryFile.objects.get(pk=settings.LONGQC_FADB_ID)

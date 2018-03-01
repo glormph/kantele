@@ -1,3 +1,22 @@
+"""
+These tasks are to be run by the celery beat automatic task runner every 10 seconds or so.
+It contains a very simple job scheduler. The more advanced job scheduling is to be done by
+celery chains etc, Nextflow, or Galaxy or whatever one likes.
+
+The scheduling here includes:
+
+file jobs (jobs executed on an existing file)
+dataset jobs (jobs executed on a part of or a full dataset)
+
+Dataset jobs that are of type MOVE will wait for other dataset jobs of that type, same for file jobs.
+Jobs that are of another type (PROCESS, UPLOAD), will wait for MOVE jobs (also only 
+inside its job or dataset jobclass)
+
+This makes it hard to mix dataset and file jobs in a chain but please use a nicer framework for that.
+The job scheduler here is only to make sure that multiple jobs clicked by the user wait
+for eachother.
+"""
+
 import json
 
 from celery import shared_task, states
@@ -7,12 +26,6 @@ from jobs.models import Task, Job, JobError, TaskChain
 from jobs.jobs import Jobstates, Jobtypes, jobmap
 from datasets.models import DatasetJob
 from rawstatus.models import FileJob
-
-
-# FIXME there will also be search jobs and maybe others that span datasets,
-# but this should be fixed now
-# There are also multi-jobs on Dset from same user action (* add and remove
-# files), they are currently waiting for the earlier job to finish.
 
 
 @shared_task
