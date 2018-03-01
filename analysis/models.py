@@ -14,17 +14,10 @@ class NextflowWorkflow(models.Model):
         return self.description
 
 
-class AnalysisParams(models.Model):
-    """paramjson = {'target db': GalaxyLibDataset.id, 'decoy db': etc"""
-    creationdate = models.DateTimeField(auto_now=True)
-    paramjson = models.TextField()
-
-
 class Analysis(models.Model):
     date = models.DateTimeField(auto_now=True)
     user = models.ForeignKey(User)
     name = models.CharField(max_length=100)
-    params = models.ForeignKey(AnalysisParams)
 
 
 class NextflowSearch(models.Model):
@@ -33,7 +26,7 @@ class NextflowSearch(models.Model):
     analysis = models.OneToOneField(Analysis)
 
 
-class SearchFiles(models.Model):
+class SearchFile(models.Model):
     analysis = models.ForeignKey(Analysis)
     sfile = models.ForeignKey(filemodels.StoredFile)
 

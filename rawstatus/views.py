@@ -5,7 +5,7 @@ from django.shortcuts import render
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
-from analysis.models import Analysis, SearchFiles
+from analysis.models import Analysis
 from datasets import views as dsviews
 from jobs import jobs as jobutil
 from datetime import datetime
@@ -185,13 +185,9 @@ def add_to_qc(rawfile, storedfile):
     data['added_files'] = {1: {'id': rawfile.id}}
     dsviews.save_or_update_files(data)
     jobutil.create_dataset_job('convert_mzml', dset.id)
-    analysis = Analysis(
-        user_id=settings.QC_USER_ID, search_id=settings.QC_SEARCH_ID,
-        account_id=settings.GALAXY_ACCOUNT_ID, params=settings.QC_PARAMS_ID,
-        name='{}_{}'.format(storedfile.rawfile.producer.name,
-                            dset.runname.experiment.name))
+    analysis = Analysis(user_id=settings.QC_USER_ID, 
+                        name='{}_{}'.format(rawfile.producer.name,
+                                            dset.runname.experiment.name))
     analysis.save()
-    SearchMzmlFiles.objects.create(analysis_id=analysis.id,
-                                   mzml_id=file_transferred.id)
-    jobutil.create_file_job('run_longit_qc_workflow', file_transferred.id,
-                            analysis.id)
+    jobutil.create_file_job('run_longit_qc_workflow', storedfile.id,
+                            analysis.id, dset.id)
