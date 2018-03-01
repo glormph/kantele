@@ -10,7 +10,7 @@ class QCData(models.Model):
 
 
 class Plot(models.Model):
-    shortname = models.CharField(max_length=10)
+    shortname = models.CharField(max_length=15)
     title = models.CharField(max_length=50)
 
 
