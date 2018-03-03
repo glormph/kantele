@@ -31,7 +31,7 @@ def boxplotrange(qcdata, qckey, instruments):
     return row(*plots)
 
 
-def timeseries_line(qcdata, key, instruments):
+def timeseries_line(qcdata, keys, instruments):
     plots = []
     firstplot = False
     legcolors, colors = {}, cycle(d3['Category10'][10])
