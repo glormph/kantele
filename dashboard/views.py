@@ -85,27 +85,23 @@ def get_longitud_qcdata():
             long_qc[instru] = {}
         for lplot in qcrun.lineplotdata_set.all():
             try:
-                long_qc[instru][lplot.plot.shortname][lplot.category].append(
-                    (date, lplot.value))
+                long_qc[instru][lplot.shortname].append((date, lplot.value))
             except KeyError:
                 try:
-                    long_qc[instru][lplot.plot.shortname][lplot.category] = [
-                        (date, lplot.value)]
+                    long_qc[instru][lplot.shortname] = [(date, lplot.value)]
                 except KeyError:
-                    long_qc[instru][lplot.plot.shortname] = {
-                        lplot.category: [(date, lplot.value)]}
+                    long_qc[instru][lplot.shortname] = {[(date, lplot.value)]}
         for boxplot in qcrun.boxplotdata_set.all():
             bplot = {'q1': boxplot.q1, 'q2': boxplot.q2, 'q3': boxplot.q3,
                      'upper': boxplot.upper, 'lower': boxplot.lower}
             try:
-                long_qc[instru][boxplot.plot.shortname][date] = bplot
+                long_qc[instru][boxplot.shortname][date] = bplot
             except KeyError:
-                long_qc[instru][boxplot.plot.shortname] = {date: bplot}
+                long_qc[instru][boxplot.shortname] = {date: bplot}
     return long_qc
 
 
 def show_qc(request):
-    print('It is run')
     """
     QC data:
         Date, Instrument, RawFile, AnalysisResult
@@ -113,14 +109,10 @@ def show_qc(request):
     instruments = [x.name for x in Producer.objects.all()]
     dateddata = get_longitud_qcdata()
     plot = {
-        'amount_peptides': qcplots.timeseries_line(dateddata, 'nr_peptides',
+        'amount_peptides': qcplots.timeseries_line(dateddata, ['peptides', 'proteins', 'unique_peptides'],
                                                    instruments),
-        'amount_proteins': qcplots.timeseries_line(dateddata, 'nr_proteins',
-                                                   instruments),
-        'amount_psms': qcplots.timeseries_line(dateddata, 'nr_psms',
+        'amount_psms': qcplots.timeseries_line(dateddata, ['scans', 'psms', 'miscleav1', 'miscleav2'],
                                                instruments),
-        'missed_cleav': qcplots.timeseries_line(dateddata, 'miscleav',
-                                                instruments),
         'precursorarea': qcplots.boxplotrange(dateddata, 'peparea',
                                               instruments),
         'prec_error': qcplots.boxplotrange(dateddata, 'perror', instruments),

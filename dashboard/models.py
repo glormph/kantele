@@ -9,20 +9,14 @@ class QCData(models.Model):
     analysis = models.ForeignKey(analysismodels.Analysis)
 
 
-class Plot(models.Model):
-    shortname = models.CharField(max_length=15)
-    title = models.CharField(max_length=50)
-
-
 class LineplotData(models.Model):
-    plot = models.ForeignKey(Plot)
     qcrun = models.ForeignKey(QCData)
     value = models.FloatField()
-    category = models.CharField(max_length=20)
+    shortname = models.CharField(max_length=20)
 
 
 class BoxplotData(models.Model):
-    plot = models.ForeignKey(Plot)
+    shortname = models.CharField(max_length=15)
     qcrun = models.ForeignKey(QCData)
     upper = models.FloatField()
     lower = models.FloatField()

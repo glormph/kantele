@@ -43,21 +43,21 @@ def timeseries_line(qcdata, key, instruments):
             continue
         leglines = {}
         plot = figure(x_axis_type='datetime', height=200)
-        for category, catdata in qcdata[instrument][key].items():
-            datesorted = sorted(catdata, key=lambda x: x[0])
-            # category = eg unique peptides / total peptides
-            # catdata = (date, value)
+        for key in keys:
+            datesorted = sorted(qcdata[instrument][key], key=lambda x: x[0])
             try:
-                col = legcolors[category]
+                col = legcolors[key]
             except KeyError:
                 col = next(colors)
-                legcolors[category] = col
-            leglines[category] = plot.line([dpoint[0] for dpoint in datesorted],
-                                           [dpoint[1] for dpoint in datesorted],
-                                           color=col)
+                legcolors[key] = col
+            leglines[key] = plot.line(
+                [dpoint[0] for dpoint in datesorted], 
+                [dpoint[1] for dpoint in datesorted], color=col)
         if not firstplot:
             firstplot = plot
         plots.append(plot)
-    firstplot.add_layout(Legend(items=[(cat, [line]) for cat, line in
-                                       sorted(leglines.items())]), 'left')
+    
+#    print([(cat, [line]) for cat, line in sorted(leglines.items())])
+#    firstplot.add_layout(Legend(items=[(cat, [line]) for cat, line in
+#                                       sorted(leglines.items())]), 'left')
     return row(*plots)
