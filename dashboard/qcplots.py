@@ -13,25 +13,22 @@ def boxplotrange(qcdata, qckey, instruments):
     for instrument in instruments:
         if instrument not in qcdata:
             continue
+        color = 'lightblue'
         plot = figure(x_axis_type='datetime', height=200, width=300,
                       title=instrument, toolbar_location='above')
-        for date, data in qcdata[instrument][qckey].items():
-            boxplot(plot, date, data, width, 'blue')
+        qcd = qcdata[instrument][qckey]
+        xs = [date for date in qcd]
+        ups = [qcd[x]['upper'] for x in xs]
+        lows = [qcd[x]['lower'] for x in xs]
+        q3s= [qcd[x]['q3'] for x in xs]
+        q2s = [qcd[x]['q2'] for x in xs]
+        q1s = [qcd[x]['q1'] for x in xs]
+        plot.segment(xs, ups, xs, q3s, line_width=2, line_color=color)
+        plot.segment(xs, lows, xs, q1s, line_width=2, line_color=color)
+        plot.vbar(xs, width, q2s, q3s, line_width=2, line_color='black', fill_color=color)
+        plot.vbar(xs, width, q1s, q2s, line_width=2, line_color='black', fill_color=color)
         plots.append(plot)
     return row(*plots)
-
-
-def boxplot(plot, x, data, width, color='black'):
-    plot.segment(x, data['upper'], x, data['q3'], line_width=2,
-                 line_color=color)
-    plot.segment(x, data['lower'], x, data['q1'], line_width=2,
-                 line_color=color)
-    plot.rect(x, (data['q3'] + data['q2']) / 2, width,
-              (data['q3'] - data['q2']), line_width=2, line_color='black',
-              fill_color=color)
-    plot.rect(x, (data['q2'] + data['q1']) / 2, width,
-              (data['q2'] - data['q1']), line_width=2, line_color='black',
-              fill_color=color)
 
 
 def timeseries_line(qcdata, key, instruments):
