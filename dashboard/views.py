@@ -47,13 +47,12 @@ def create_newplot(qcrun, qcdata, name):
 
 
 def update_qcdata(qcrun, data):
-    # FIXME rerun old data on new plots at qc task update --> what happens?
-    plotmap = {p.shortname: p.id for p in models.Plot.objects.all()}
-    old_plots = {p.plot.shortname: p for p in
-                 qcrun.boxplotdata_set.all().select_related('plot')}
-    for lpd in qcrun.lineplotdata_set.all().select_related('plot'):
-        if lpd.plot.shortname not in old_plots:
-            old_plots[lpd.plot.shortname] = [lpd]
+    # FIXME rerun old data on new plots or methods at qc task update --> what happens?
+    # also FIXME if no changes in msgf etc do recalculation on the analysed files
+    old_plots = {p.shortname: p for p in qcrun.boxplotdata_set.all()}
+    for lpd in qcrun.lineplotdata_set.all():
+        if lpd.shortname not in old_plots:
+            old_plots[lpd.shortname] = [lpd]
         else:
             old_plots[lpd.shortname].append(lpd)
     for plotname, qcdata in data['plots'].items():
