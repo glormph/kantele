@@ -26,25 +26,21 @@ def store_longitudinal_qc(data):
         qcrun = models.QCData(rawfile_id=data['rf_id'],
                               analysis_id=data['analysis_id'])
         qcrun.save()
-        plotmap = {p.shortname: p.id for p in models.Plot.objects.all()}
         for plotname, qcdata in data['plots'].items():
-            plot_id = plotmap[plotname]
-            create_newplot(qcrun, qcdata, plot_id)
+            create_newplot(qcrun, qcdata, plotname)
     else:
         update_qcdata(qcrun, data)
 
 
-def create_newplot(qcrun, qcdata, plot_id):
-    if 'q1' in qcdata:
-        models.BoxplotData.objects.create(plot_id=plot_id, qcrun=qcrun,
+def create_newplot(qcrun, qcdata, name):
+    if type(qcdata) == dict and 'q1' in qcdata:
+        models.BoxplotData.objects.create(shortname=name, qcrun=qcrun,
                                           upper=qcdata['upper'],
                                           lower=qcdata['lower'],
                                           q1=qcdata['q1'], q2=qcdata['q2'],
                                           q3=qcdata['q3'])
     else:
-        for cat, val in qcdata.items():
-            models.LineplotData.objects.create(plot_id=plot_id, qcrun=qcrun,
-                                               value=val, category=cat)
+        models.LineplotData.objects.create(qcrun=qcrun, value=qcdata, shortname=name)
 
 
 def update_qcdata(qcrun, data):
@@ -56,15 +52,14 @@ def update_qcdata(qcrun, data):
         if lpd.plot.shortname not in old_plots:
             old_plots[lpd.plot.shortname] = [lpd]
         else:
-            old_plots[lpd.plot.shortname].append(lpd)
+            old_plots[lpd.shortname].append(lpd)
     for plotname, qcdata in data['plots'].items():
-        plot_id = plotmap[plotname]
         try:
             oldp = old_plots[plotname]
         except KeyError:
-            create_newplot(qcrun, qcdata, plot_id)
+            create_newplot(qcrun, qcdata, plotname)
         else:
-            if 'q1' in qcdata:
+            if type(qcdata) == dict and 'q1' in qcdata:
                 oldp.upper = qcdata['upper']
                 oldp.lower = qcdata['lower']
                 oldp.q1 = qcdata['q1']
