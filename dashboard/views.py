@@ -71,7 +71,7 @@ def update_qcdata(qcrun, data):
                 oldp.save()
             else:
                 for op in oldp:
-                    op.value = qcdata[op.category]
+                    op.value = qcdata[plotname]
                     op.save()
 
 
