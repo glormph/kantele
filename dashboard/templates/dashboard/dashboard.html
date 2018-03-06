@@ -13,11 +13,11 @@
 	</ul>
 </div>
 <div class="container">
+<a class="button is-info is-small" v-on:click="reload">Refresh</a>
+<hr>
 	<section>
 		<instrument-plot v-for="(instr, instr_id) in instruments" v-bind:key="instr_id" v-bind:instrument_id="instr_id" v-bind:active="instrTabOpenStatus[instr_id]" v-bind:bokeh_code="qcdata[instr_id].bokeh_code"></instrument-plot>
-	</section>
-	<section>
-		<job-box v-bind:active="otherTabStatus.jobs"></job-box>
+		<job-box v-bind:jobdata="jobdata" v-bind:active="otherTabStatus.jobs" v-on:getjobs="getJobs"></job-box>
 	</section>
 </div>
 </section>
@@ -25,7 +25,7 @@
 <script>
 	Vue.component('instrument-plot', {
 		template: `
-		<div class="bk-root" v-show="active">
+		<div class="bk-root" v-if="active">
 			<h5 class="title is-5"># Identifications</h5>
 			<div class="bk-plotdiv" v-bind:id="bokeh_code.div.amount_peptides.elementid"></div>
 			<hr>
@@ -64,7 +64,7 @@
 			<th>Tasks</th>
 		</tr>
 	</thead>
-		<tr v-for="job in error">
+		<tr v-for="job in jobdata.error">
 			<td>
 				<a v-bind:title="job.alttexts.join(',')" v-if="job.retry" v-on:click="retryJob(job.id)" class="button is-outlined is-small is-danger">{{ job.name }}</a>
 				<a v-bind:title="job.alttexts.join(',')" v-if="!job.retry" class="button is-small is-danger">{{ job.name }}</a>
@@ -77,7 +77,7 @@
 				<a v-if="job.tasks.SUCCESS" class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
-		<tr v-for="job in processing">
+		<tr v-for="job in jobdata.processing">
 			<td><a v-bind:title="job.alttexts.join(',')" class="button is-small is-warning">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
@@ -87,7 +87,7 @@
 				<a v-if="job.tasks.SUCCESS" class="button is-success">{{ job.tasks.SUCCESS }}</a>
 			</td>
 		</tr>
-		<tr v-bind:title="job.alttexts.join(',')" v-for="job in pending">
+		<tr v-bind:title="job.alttexts.join(',')" v-for="job in jobdata.pending">
 			<td><a class="button is-small is-info">{{ job.name }}</a></td>
 			<td>{{ job.user }}</td>
 			<td>{{ job.date }}</td>
@@ -97,7 +97,7 @@
 
 </table>
 		`,
-		props: ['active'],
+		props: ['active', 'jobdata'],
 		data: function() {
 			return {
                         	processing: [],
@@ -105,21 +105,7 @@
                         	error: [],
 			}
 		},
-		mounted: function() {
-			this.getJobs();
-		},
 		methods: {
-			getJobs: function() {
-				this.$http.get('/dash/jobs/')
-				.then(response => {
-					return response.json()
-				}, response => {
-				}).then(result => {
-					for (key in result) {
-						this[key] = result[key];
-					}
-				})
-			},
                         retryJob: function(job_id) {
 				this.$http.post(`/jobs/retry/${job_id}`)
 				.then(response => {
@@ -128,7 +114,7 @@
 					console.log(response);
 					// error code
 				}).then(result => {
-					this.getJobs();
+					this.$emit('getjobs');
 				})
                         },
 		},
@@ -144,6 +130,9 @@
                         qcdata: { {% for inst_id in instrument_ids %} {{ inst_id}}: {'loaded': false, 'bokeh_code': {'div': {'amount_peptides': 1, 'amount_psms': 1, 'precursorarea': 1, 'prec_error': 1, 'msgfscore': 1, 'rt': 1 } } }, {% endfor %}
 },
 			otherTabStatus: {'jobs': false},
+			activeTab: false,
+			activeInstrument: false,
+			jobdata: {'processing': [], 'error': [], 'pending': []},
 		}
 	},
 	methods: {
@@ -154,17 +143,31 @@
 			}, response => { console.log('error');
 			}).then(result => {
 				this.qcdata[instr_id] = {};
-				console.log('instr id has been set');
 				for (key in result) {
 					this.qcdata[instr_id][key] = result[key];
 				}
-				console.log('evalling');
 				eval(this.qcdata[instr_id].bokeh_code.script);
-				console.log('loaded and done');
 				this.qcdata[instr_id].loaded = true;
 				this.instrTabOpenStatus[instr_id] = true;
-				console.log('gone live');
 			})
+		},
+		getJobs: function() {
+			this.$http.get('/dash/jobs/')
+			.then(response => {
+				return response.json()
+			}, response => {
+			}).then(result => {
+				for (key in result) {
+					this.jobdata[key] = result[key];
+				}
+			})
+		},
+		reload: function() {
+			this.instrTabOpenStatus[this.activeInstrument] = false;
+			if (this.activeTab === 'instrument') {
+				this.getInstrumentQC(this.activeInstrument);
+			} else if (this.activeTab === 'jobs') {
+			}
 		},
 		deactivateTabs: function() {
 			for (instId in this.instrTabOpenStatus) {
@@ -173,18 +176,20 @@
 			this.otherTabStatus.jobs = false;
 		},
                 activateInstrTab: function(instr_id) {
-			console.log('deactivating');
 			this.deactivateTabs();
                         if (!this.qcdata[instr_id].loaded) {
-				console.log('get qc');
 				this.getInstrumentQC(instr_id);
  			} else {
 				this.instrTabOpenStatus[instr_id] = true;
 			}
+			this.activeTab = 'instrument';
+			this.activeInstrument = instr_id;
                 },
 		activateJobTab: function() {
+			this.getJobs();
 			this.deactivateTabs();
 			this.otherTabStatus.jobs = true;
+			this.activeTab = 'jobs';
 		},
 	},
 })
