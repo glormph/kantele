@@ -16,7 +16,10 @@ from kantele import settings
 
 
 def dashboard(request):
-    return render(request, 'dashboard/dashboard.html')
+    instruments = Producer.objects.filter(name__in=['Luke', 'Leia', 'Barbie', 'Velos'])
+    return render(request, 'dashboard/dashboard.html',
+                  {'instruments': zip([x.name for x in instruments], [x.id for x in instruments]),
+                  'instrument_ids': [x.id for x in instruments]})
 
 
 def store_longitudinal_qc(data):
@@ -72,50 +75,44 @@ def update_qcdata(qcrun, data):
                     op.save()
 
 
-def get_longitud_qcdata():
+def get_longitud_qcdata(instrument):
     long_qc = {}
-    for qcrun in models.QCData.objects.select_related('rawfile__producer'):
-        date, instru = qcrun.rawfile.date, qcrun.rawfile.producer.name
-        if instru not in long_qc:
-            long_qc[instru] = {}
+    for qcrun in models.QCData.objects.filter(rawfile__producer=instrument):
+        date = qcrun.rawfile.date
         for lplot in qcrun.lineplotdata_set.all():
             try:
-                long_qc[instru][lplot.shortname].append((date, lplot.value))
+                long_qc[lplot.shortname].append((date, lplot.value))
             except KeyError:
                 try:
-                    long_qc[instru][lplot.shortname] = [(date, lplot.value)]
+                    long_qc[lplot.shortname] = [(date, lplot.value)]
                 except KeyError:
-                    long_qc[instru][lplot.shortname] = {[(date, lplot.value)]}
+                    long_qc[lplot.shortname] = {[(date, lplot.value)]}
         for boxplot in qcrun.boxplotdata_set.all():
             bplot = {'q1': boxplot.q1, 'q2': boxplot.q2, 'q3': boxplot.q3,
                      'upper': boxplot.upper, 'lower': boxplot.lower}
             try:
-                long_qc[instru][boxplot.shortname][date] = bplot
+                long_qc[boxplot.shortname][date] = bplot
             except KeyError:
-                long_qc[instru][boxplot.shortname] = {date: bplot}
+                long_qc[boxplot.shortname] = {date: bplot}
     return long_qc
 
 
-def show_qc(request):
+def show_qc(request, instrument_id):
     """
     QC data:
         Date, Instrument, RawFile, AnalysisResult
     """
-    instruments = [x.name for x in Producer.objects.all()]
-    dateddata = get_longitud_qcdata()
+    instrument = Producer.objects.get(pk=instrument_id)
+    dateddata = get_longitud_qcdata(instrument)
     plot = {
-        'amount_peptides': qcplots.timeseries_line(dateddata, ['peptides', 'proteins', 'unique_peptides'],
-                                                   instruments),
-        'amount_psms': qcplots.timeseries_line(dateddata, ['scans', 'psms', 'miscleav1', 'miscleav2'],
-                                               instruments),
-        'precursorarea': qcplots.boxplotrange(dateddata, 'peparea',
-                                              instruments),
-        'prec_error': qcplots.boxplotrange(dateddata, 'perror', instruments),
-        'msgfscore': qcplots.boxplotrange(dateddata, 'msgfscore', instruments),
-        'rt': qcplots.boxplotrange(dateddata, 'rt', instruments),
+        'amount_peptides': qcplots.timeseries_line(dateddata, ['peptides', 'proteins', 'unique_peptides']),
+        'amount_psms': qcplots.timeseries_line(dateddata, ['scans', 'psms', 'miscleav1', 'miscleav2']),
+        'precursorarea': qcplots.boxplotrange(dateddata, 'peparea'),
+        'prec_error': qcplots.boxplotrange(dateddata, 'perror'),
+        'msgfscore': qcplots.boxplotrange(dateddata, 'msgfscore'),
+        'rt': qcplots.boxplotrange(dateddata, 'rt'),
             }
     script, div = components(plot, wrap_script=False, wrap_plot_info=False)
-    print(JsonResponse({'bokeh_code': {'script': script, 'div': div}}))
     return JsonResponse({'bokeh_code': {'script': script, 'div': div}})
 
 
