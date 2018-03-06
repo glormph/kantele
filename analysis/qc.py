@@ -16,11 +16,8 @@ def calc_boxplot(vals):
 
 
 def calc_longitudinal_qc(infiles):
-    qcmap = {'miscleav': {}}
+    qcmap = {}
     qcpsms = []
-    con = Connection(infiles['sqltable'])
-    qcmap['nr_psms'] = {'scans':
-                        con.execute('SELECT COUNT(*) FROM mzml').fetchone()[0]}
     psms = parse_psms(infiles['psmtable'], is_instrument_qc=True)
     header = next(psms)
     perrorix = header.index('PrecursorError(ppm)')
@@ -34,14 +31,17 @@ def calc_longitudinal_qc(infiles):
             continue
         qcpsms.append(line)
         if int(line[misclix]) < 4:
+            mckey = 'miscleav{}'.format(line[misclix])
             try:
-                qcmap['miscleav'][line[misclix]] += 1
+                qcmap[mckey] += 1
             except KeyError:
-                qcmap['miscleav'][line[misclix]] = 1
+                qcmap[mckey] = 1
     qcmap['perror'] = calc_boxplot([psm[perrorix] for psm in qcpsms])
     qcmap['msgfscore'] = calc_boxplot([psm[msgfix] for psm in qcpsms])
     qcmap['rt'] = calc_boxplot([psm[rtix] for psm in qcpsms])
-    qcmap['nr_psms']['psms'] = len(qcpsms)
+    con = Connection(infiles['sqltable'])
+    qcmap.update({'psms': len(qcpsms), 
+                  'scans': con.execute('SELECT COUNT(*) FROM mzml').fetchone()[0]})
     peps = []
     with open(infiles['peptable']) as fp:
         header, lines = table_reader(fp)
@@ -58,9 +58,9 @@ def calc_longitudinal_qc(infiles):
             except ValueError:
                 pass
     qcmap['peparea'] = calc_boxplot([x[areaix] for x in peps])
-    qcmap['nr_peptides'] = {'peptides': count, 'unique_peptides': unicount}
+    qcmap.update({'peptides': count, 'unique_peptides': unicount})
     with open(infiles['prottable']) as fp:
-        qcmap['nr_proteins'] = {'proteins': sum(1 for _ in fp) - 1}
+        qcmap['proteins'] = sum(1 for _ in fp) - 1
     return qcmap
 
 
