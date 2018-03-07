@@ -6,7 +6,7 @@
 {% verbatim %}
 <div class="tabs is-toggle is-centered is-small">
 	<ul>
-		<li v-for="(instr, instr_id) in instruments"> <a v-on:click="activateInstrTab(instr_id)">
+		<li v-for="(instr, instr_id) in instruments" v-bind:class="tabStatus['instr_'+instr_id]"> <a v-on:click="activateInstrTab(instr_id)">
 			<span>{{ instr }}</span>
 		</a></li>
 		<li><a v-on:click="activateJobTab"><span>Jobs</span></a></li>
@@ -16,8 +16,8 @@
 <a class="button is-info is-small" v-on:click="reload">Refresh</a>
 <hr>
 	<section>
-		<instrument-plot v-for="(instr, instr_id) in instruments" v-bind:key="instr_id" v-bind:instrument_id="instr_id" v-bind:active="instrTabOpenStatus[instr_id]" v-bind:loaded="qcdata[instr_id].loaded" v-bind:bokeh_code="qcdata[instr_id].bokeh_code"></instrument-plot>
-		<job-box v-bind:jobdata="jobdata" v-bind:active="otherTabStatus.jobs" v-on:getjobs="getJobs"></job-box>
+		<instrument-plot v-for="(instr, instr_id) in instruments" v-bind:key="instr_id" v-bind:instrument_id="instr_id" v-bind:active="tabStatus['instr_'+instr_id]" v-bind:loaded="qcdata[instr_id].loaded" v-bind:bokeh_code="qcdata[instr_id].bokeh_code"></instrument-plot>
+		<job-box v-bind:jobdata="jobdata" v-bind:active="tabStatus.jobs" v-on:getjobs="getJobs"></job-box>
 	</section>
 </div>
 </section>
@@ -124,12 +124,11 @@
 	data: function() {
 		return { 
 			instruments: { {% for inst, inst_id in instruments %} '{{ inst_id }}' : '{{ inst }}', {% endfor %} },
-			instrTabOpenStatus: { {% for inst_id in instrument_ids %} '{{ inst_id }}': false, {% endfor %}},
 			qcdata: { {% for inst_id in instrument_ids %} {{ inst_id}}: {'loaded': false, 'bokeh_code': {'div': {'amount_peptides': 1, 'amount_psms': 1, 'precursorarea': 1, 'prec_error': 1, 'msgfscore': 1, 'rt': 1 } }
 
  }, {% endfor %}
 },
-			otherTabStatus: {'jobs': false},
+			tabStatus: {'jobs': false, {% for inst_id in instrument_ids %}'instr_{{inst_id}}': false, {% endfor %} },
 			activeTab: false,
 			activeInstrument: false,
 			jobdata: {'processing': [], 'error': [], 'pending': []},
@@ -147,7 +146,7 @@
 					this.qcdata[instr_id][key] = result[key];
 				}
 				eval(this.qcdata[instr_id].bokeh_code.script);
-				this.instrTabOpenStatus[instr_id] = true;
+				this.tabStatus['instr_'+instr_id] = 'is-active';
 				this.qcdata[instr_id].loaded = true;
 			})
 		},
@@ -163,7 +162,7 @@
 			})
 		},
 		reload: function() {
-			this.instrTabOpenStatus[this.activeInstrument] = false;
+			this.tabStatus['instr_'+this.activeInstrument] = false;
 			if (this.activeTab === 'instrument') {
 				this.qcdata[this.activeInstrument].loaded = false;
 				this.getInstrumentQC(this.activeInstrument);
@@ -172,17 +171,16 @@
 			}
 		},
 		deactivateTabs: function() {
-			for (instId in this.instrTabOpenStatus) {
-				this.instrTabOpenStatus[instId] = false;
+			for (tabId in this.tabStatus) {
+				this.tabStatus[tabId] = false;
 			}
-			this.otherTabStatus.jobs = false;
 		},
                 activateInstrTab: function(instr_id) {
 			this.deactivateTabs();
                         if (!this.qcdata[instr_id].loaded) {
 				this.getInstrumentQC(instr_id);
  			} else {
-				this.instrTabOpenStatus[instr_id] = true;
+				this.tabStatus['instr_'+instr_id] = 'is-active';
 			}
 			this.activeTab = 'instrument';
 			this.activeInstrument = instr_id;
@@ -190,7 +188,7 @@
 		activateJobTab: function() {
 			this.getJobs();
 			this.deactivateTabs();
-			this.otherTabStatus.jobs = true;
+			this.tabStatus.jobs = 'is-active';
 			this.activeTab = 'jobs';
 		},
 	},
