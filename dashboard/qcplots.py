@@ -8,8 +8,7 @@ from bokeh.models import Legend
 
 
 def boxplotrange(qcdata, qckey):
-    width = timedelta(7)
-    plots = []
+    width = timedelta(3)
     color = 'lightblue'
     plot = figure(x_axis_type='datetime', height=200, width=300, toolbar_location='above')
     qcd = qcdata[qckey]
@@ -19,17 +18,14 @@ def boxplotrange(qcdata, qckey):
     q3s= [qcd[x]['q3'] for x in xs]
     q2s = [qcd[x]['q2'] for x in xs]
     q1s = [qcd[x]['q1'] for x in xs]
-    plot.segment(xs, ups, xs, q3s, line_width=2, line_color=color)
-    plot.segment(xs, lows, xs, q1s, line_width=2, line_color=color)
-    plot.vbar(xs, width, q2s, q3s, line_width=2, line_color='black', fill_color=color)
-    plot.vbar(xs, width, q1s, q2s, line_width=2, line_color='black', fill_color=color)
-    plots.append(plot)
-    return row(*plots)
+    plot.segment(xs, ups, xs, q3s, line_width=1, line_color=color)
+    plot.segment(xs, lows, xs, q1s, line_width=1, line_color=color)
+    plot.vbar(xs, width, q2s, q3s, line_width=1, line_color='grey', fill_color=color)
+    plot.vbar(xs, width, q1s, q2s, line_width=1, line_color='grey', fill_color=color)
+    return plot
 
 
 def timeseries_line(qcdata, keys):
-    plots = []
-    firstplot = False
     legcolors, colors = {}, cycle(d3['Category10'][10])
     leglines = {}
     plot = figure(x_axis_type='datetime', height=200)
@@ -43,11 +39,5 @@ def timeseries_line(qcdata, keys):
         leglines[key] = plot.line(
             [dpoint[0] for dpoint in datesorted], 
             [dpoint[1] for dpoint in datesorted], color=col)
-    if not firstplot:
-        firstplot = plot
-    plots.append(plot)
-    
-#    print([(cat, [line]) for cat, line in sorted(leglines.items())])
-#    firstplot.add_layout(Legend(items=[(cat, [line]) for cat, line in
-#                                       sorted(leglines.items())]), 'left')
-    return row(*plots)
+    plot.add_layout(Legend(items=[(key, [leglines[key]]) for key in keys]), 'left')
+    return plot
