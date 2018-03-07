@@ -42,6 +42,8 @@ def run_ready_jobs():
         print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
         if job.state == Jobstates.ERROR:
             print('ERRROR MESSAGES:')
+            tasks = Task.objects.filter(job_id=job.id)
+            process_job_tasks(job, tasks)
             for joberror in JobError.objects.filter(job_id=job.id):
                 print(joberror.message)
             print('END error messages')
