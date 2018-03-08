@@ -156,6 +156,7 @@
 				return response.json()
 			}, response => {
 			}).then(result => {
+                                this.jobdata = {}
 				for (key in result) {
 					this.jobdata[key] = result[key];
 				}
