@@ -20,6 +20,11 @@ class Analysis(models.Model):
     name = models.CharField(max_length=100)
 
 
+class AnalysisError(models.Model):
+    message = models.TextField()
+    analysis = models.OneToOneField(Analysis)
+
+
 class NextflowSearch(models.Model):
     nfworkflow = models.ForeignKey(NextflowWorkflow)
     params = models.TextField()

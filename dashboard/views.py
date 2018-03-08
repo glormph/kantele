@@ -10,6 +10,7 @@ from bokeh.embed import components
 from jobs.jobs import Jobstates, is_job_retryable
 from jobs.models import Task
 from datasets.models import DatasetJob
+from analysis.models import AnalysisError
 from rawstatus.models import FileJob, Producer
 from dashboard import qcplots, models
 from kantele import settings
@@ -22,6 +23,11 @@ def dashboard(request):
                   'instrument_ids': [x.id for x in instruments]})
 
 
+def fail_longitudinal_qc(data):
+    """Called in case task detects QC run too bad to extract data from"""
+    AnalysisError.objects.create(message=data['errmsg'], 
+                                 analysis_id=data['analysis_id'])
+    
 def store_longitudinal_qc(data):
     try:
         qcrun = models.QCData.objects.get(rawfile_id=data['rf_id'])
