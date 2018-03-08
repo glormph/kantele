@@ -57,10 +57,7 @@ def update_qcdata(qcrun, data):
     # also FIXME if no changes in msgf etc do recalculation on the analysed files
     old_plots = {p.shortname: p for p in qcrun.boxplotdata_set.all()}
     for lpd in qcrun.lineplotdata_set.all():
-        if lpd.shortname not in old_plots:
-            old_plots[lpd.shortname] = [lpd]
-        else:
-            old_plots[lpd.shortname].append(lpd)
+        old_plots[lpd.shortname] = lpd
     for plotname, qcdata in data['plots'].items():
         try:
             oldp = old_plots[plotname]
@@ -75,9 +72,8 @@ def update_qcdata(qcrun, data):
                 oldp.q3 = qcdata['q3']
                 oldp.save()
             else:
-                for op in oldp:
-                    op.value = qcdata[plotname]
-                    op.save()
+                oldp.value = qcdata
+                oldp.save()
 
 
 def get_longitud_qcdata(instrument, wf_id):
