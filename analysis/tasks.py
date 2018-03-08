@@ -3,7 +3,7 @@ import json
 import shutil
 import subprocess
 from urllib.parse import urljoin
-from dulwich.porcelain import clone, reset
+from dulwich.porcelain import clone, reset, pull
 
 from django.urls import reverse
 from celery import shared_task
@@ -28,6 +28,7 @@ def run_nextflow(run, params, stagefiles, task_id):
         clone('https://github.com/lehtiolab/galaxy-workflows',
               gitwfdir, checkout=run['wf_commit'])
     except FileExistsError:
+        pull(gitwfdir, wfrepo)
         reset(gitwfdir, 'hard', run['wf_commit'])
     for fn, fndata in stagefiles.items():
         fpath = os.path.join(settings.SHAREMAP[fndata[0]], fndata[1], fn)
