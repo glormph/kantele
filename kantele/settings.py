@@ -53,6 +53,7 @@ QC_ORGANISM = os.environ.get('QC_ORGANISM')
 INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
 INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
 INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
+QC_WORKFLOW_ID = os.environ.get('QC_WFID')
 
 # nextflow
 NEXTFLOW_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')

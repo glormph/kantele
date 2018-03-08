@@ -74,9 +74,10 @@ def update_qcdata(qcrun, data):
                     op.save()
 
 
-def get_longitud_qcdata(instrument):
+def get_longitud_qcdata(instrument, wf_id):
     long_qc = {}
-    for qcrun in models.QCData.objects.filter(rawfile__producer=instrument):
+    for qcrun in models.QCData.objects.filter(rawfile__producer=instrument,
+                                              analysis__nextflowsearch__nfworkflow=wf_id):
         date = qcrun.rawfile.date
         for lplot in qcrun.lineplotdata_set.all():
             try:
@@ -102,7 +103,7 @@ def show_qc(request, instrument_id):
         Date, Instrument, RawFile, AnalysisResult
     """
     instrument = Producer.objects.get(pk=instrument_id)
-    dateddata = get_longitud_qcdata(instrument)
+    dateddata = get_longitud_qcdata(instrument, settings.QC_WORKFLOW_ID)
     plot = {
         'amount_peptides': qcplots.timeseries_line(dateddata, ['peptides', 'proteins', 'unique_peptides']),
         'amount_psms': qcplots.timeseries_line(dateddata, ['scans', 'psms', 'miscleav1', 'miscleav2']),
