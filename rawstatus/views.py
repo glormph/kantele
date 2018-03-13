@@ -168,6 +168,9 @@ def check_md5_success(request):
             file_transferred.save()
         if SwestoreBackedupFile.objects.filter(
                 storedfile_id=file_transferred.id).count() == 0:
+            fn = file_transferred.filename
+            if 'QC' in fn and 'hela' in fn.lower() and any([x in fn for x in ['QE', 'HFLu', 'HFLe', 'Velos']]):
+                singlefile_qc(file_transferred.rawfile, file_transferred)
             jobutil.create_file_job('create_swestore_backup',
                                     file_transferred.id, file_transferred.md5)
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
