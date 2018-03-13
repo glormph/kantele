@@ -1,11 +1,12 @@
 from django.http import (JsonResponse, HttpResponseForbidden,
-                         HttpResponseNotAllowed)
+                         HttpResponse, HttpResponseNotAllowed)
 from django.shortcuts import render
 
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
-from analysis.models import Analysis, NextflowWorkflow, NextflowSearch, SearchFile
+from analysis.models import (Analysis, NextflowWorkflow, NextflowSearch,
+                             SearchFile, LibraryFile)
 from datasets import views as dsviews
 from datasets import models as dsmodels
 from jobs import jobs as jobutil
@@ -235,3 +236,38 @@ def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id):
     analysis.save()
     jobutil.create_file_job('run_longit_qc_workflow', storedfile.id,
                                analysis.id, wf_id, dbfn_id)
+
+
+def set_libraryfile(request):
+    if request.method == 'POST':
+        try:
+            client_id = request.POST['client_id']
+            fn_id = request.POST['fn_id']
+        except KeyError as error:
+            print('POST request to register_file with missing parameter, '
+                  '{}'.format(error))
+            return HttpResponseForbidden()
+        if client_id != settings.ADMIN_APIKEY:
+            print('POST request with incorrect client id '
+                  '{}'.format(client_id))
+            return HttpResponseForbidden()
+        try:
+            rawfn = RawFile.objects.get(pk=fn_id)
+        except RawFile.DoesNotExist:
+            print('POST request with incorrect fn id '
+                  '{}'.format(fn_id))
+            return HttpResponseForbidden()
+        else:
+            sfile = StoredFile.objects.select_related('servershare').get(
+                rawfile_id=fn_id)
+            if LibraryFile.objects.filter(sfile__rawfile_id=fn_id):
+                pass
+            elif sfile.servershare.name == settings.TMPSHARENAME:
+                LibraryFile.objects.create(sfile=sfile, 
+                                           description=request.POST['desc'])
+            else:
+                jobutil.create_file_job('move_singlefile', sfile.id)
+                LibraryFile.objects.create(sfile=sfile, 
+                                           description=request.POST['desc'])
+        return HttpResponse()
+

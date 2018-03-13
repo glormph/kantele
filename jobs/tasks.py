@@ -29,7 +29,7 @@ def run_ready_jobs():
         jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
         print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
         if job.state == Jobstates.ERROR:
-            print('ERRROR MESSAGES:')
+            print('ERROR MESSAGES:')
             tasks = Task.objects.filter(job_id=job.id)
             process_job_tasks(job, tasks)
             for joberror in JobError.objects.filter(job_id=job.id):
@@ -114,13 +114,18 @@ def process_job_tasks(job, jobtasks):
     # In case the job did not create tasks it may have been obsolete
     tasks_finished = True
     tasks_failed = False
+    no_tasks_for_job = True
     for task in jobtasks:
+        no_tasks_for_job = False
         if task.state != states.SUCCESS:
             tasks_finished = False
         if task.state == states.FAILURE:
             check_task_chain(task)
             tasks_failed = True
-    if tasks_finished:
+    if no_tasks_for_job and job.state == Jobstates.ERROR:
+        # Jobs that error before task registration should not get set to done!
+        pass
+    elif tasks_finished and job.state != Jobstates.ERROR:
         print('All tasks finished, job {} done'.format(job.id))
         job.state = Jobstates.DONE
         job_updated = True
