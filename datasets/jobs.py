@@ -105,7 +105,8 @@ def get_or_create_mzmlentry(fn):
     except StoredFile.DoesNotExist:
         mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
         mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
-                          path=fn.path, servershare=fn.servershare,
+                          path=fn.rawfile.datasetrawfile.dataset.storage_loc,
+                          servershare=fn.servershare,
                           filename=mzmlfilename, md5='', checked=False)
         mzsf.save()
     return mzsf
@@ -119,7 +120,7 @@ def convert_single_mzml(job_id, sf_id):
     mzsf = get_or_create_mzmlentry(fn)
     if mzsf.checked:
         return
-    queues = settings.QUEUES_PWIZ[0]
+    queue = settings.QUEUES_PWIZ[0]
     runchain = get_mzmlconversion_taskchain(fn, mzsf, storageloc, queue,
                                             settings.QUEUES_PWIZOUT[queue])
     lastnode = chain(*runchain).delay()
@@ -127,7 +128,8 @@ def convert_single_mzml(job_id, sf_id):
 
 
 def convert_dset_tomzml_getfiles(dset_id):
-    for fn in StoredFile.objects.select_related('servershare').filter(
+    for fn in StoredFile.objects.select_related(
+            'servershare', 'rawfile__datasetrawfile__dataset').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
         mzsf = get_or_create_mzmlentry(fn)
         if mzsf.checked:
@@ -139,8 +141,8 @@ def convert_tomzml(job_id, dset_id, *sf_ids):
     """Multiple queues for this bc multiple boxes wo shared fs"""
     dset = Dataset.objects.get(pk=dset_id)
     queues = cycle(settings.QUEUES_PWIZ)
-    for fn in StoredFile.objects.select_related('servershare').filter(
-            pk__in=sf_ids):
+    for fn in StoredFile.objects.filter(pk__in=sf_ids).select_related(
+            'servershare', 'rawfile__datasetrawfile__dataset'):
         mzsf = get_or_create_mzmlentry(fn)
         if mzsf.checked:
             continue
