@@ -31,6 +31,9 @@ to retry without messing things up.
 jobmap = {'move_files_storage':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_files_dataset_storage,
            'getfns': dsjobs.move_files_dataset_storage_getfiles, 'retry': True},
+          'move_single_file':
+          {'type': Jobtypes.MOVE, 'func': rsjobs.move_single_file,
+           'retry': True},
           'move_stored_files_tmp':
           {'type': Jobtypes.MOVE, 'retry': True,
            'func': dsjobs.remove_files_from_dataset_storagepath,

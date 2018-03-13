@@ -261,13 +261,34 @@ def set_libraryfile(request):
             sfile = StoredFile.objects.select_related('servershare').get(
                 rawfile_id=fn_id)
             if LibraryFile.objects.filter(sfile__rawfile_id=fn_id):
-                pass
+                response = {'library': True, 'state': 'ok'}
             elif sfile.servershare.name == settings.TMPSHARENAME:
+                jobutil.create_file_job('move_single_file', sfile.id,
+                                        settings.LIBRARY_FILE_PATH)
                 LibraryFile.objects.create(sfile=sfile, 
                                            description=request.POST['desc'])
+                response = {'library': True, 'state': 'ok'}
             else:
-                jobutil.create_file_job('move_singlefile', sfile.id)
                 LibraryFile.objects.create(sfile=sfile, 
                                            description=request.POST['desc'])
-        return HttpResponse()
+                response = {'library': False, 'state': 'ok'}
+        return JsonResponse(response)
+
+
+def check_libraryfile_ready(request):
+    if not request.method == 'GET':
+        return HttpResponseNotAllowed(permitted_methods=['GET'])
+    try:
+        libfn = LibraryFile.objects.select_related('sfile__servershare').get(
+            sfile__rawfile_id=request.GET['fn_id'])
+    except LibraryFile.DoesNotExist:
+        print('request with incorrect fn id '
+              '{}'.format(fn_id))
+        return HttpResponseForbidden()
+    else:
+        if libfn.sfile.servershare.name == settings.STORAGESHARENAME and libfn.sfile.path == settings.LIBRARY_FILE_PATH:
+            response = {'library': True, 'ready': True, 'state': 'ok'}
+        else:
+            response = {'library': True, 'ready': False, 'state': 'ok'}
+        return JsonResponse(response)
 

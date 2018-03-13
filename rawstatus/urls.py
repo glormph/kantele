@@ -9,4 +9,5 @@ urlpatterns = [
     url(r'^transferred/$', views.file_transferred),
     url(r'^md5/$', views.check_md5_success),
     url(r'^setlibrary/$', views.set_libraryfile),
+    url(r'^libfile/$', views.check_libraryfile_ready),
 ]

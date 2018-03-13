@@ -1,6 +1,7 @@
 import os
 
 from rawstatus import tasks, models
+from datasets import tasks as dstasks
 from jobs.models import Task
 
 
@@ -31,3 +32,11 @@ def create_swestore_backup(job_id, sf_id, md5):
                                       sfile.id)
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
     print('Swestore task queued')
+
+
+def move_single_file(job_id, fn_id, dst_path):
+    fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
+        pk=fn_id)
+    tid = dstasks.move_file_storage.delay(fn.rawfile.name, fn.servershare.name,
+                                          fn.path, dst_path, fn.id).id
+    Task.objects.create(asyncid=tid, job_id=job_id, state='PENDING')
