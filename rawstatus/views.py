@@ -175,12 +175,11 @@ def check_md5_success(request):
         return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})
 
 
-def check_if_singlefile_qc(rawfile, storedfile):
+def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
-    # FIXME add detection regex
-    dset = add_to_qc(rawfile, storedfile)
-    jobutil.create_dataset_job('convert_mzml', dset.id)
-    start_qc_analysis(dset, rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
+    add_to_qc(rawfile, storedfile)
+    jobutil.create_file_job('convert_single_mzml', storedfile.id)
+    start_qc_analysis(rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
                       settings.LONGQC_FADB_ID)
 
 
@@ -188,12 +187,12 @@ def manyfile_qc(rawfiles, storedfiles):
     """For reanalysis or batching by hand"""
     for rawfn, sfn in zip(rawfiles, storedfiles):
         try:
-            dset = dsmodels.DatasetRawFile.objects.select_related(
+            dsmodels.DatasetRawFile.objects.select_related(
                 'dataset').filter(rawfile=rawfn).get().dataset
         except dsmodels.DatasetRawFile.DoesNotExist:
             dset = add_to_qc(rawfn, sfn)
             print('Added QC file {} to QC dataset {}'.format(rawfn.id, dset.id))
-    jobutil.create_dataset_job('convert_mzml', dset.id)
+        jobutil.create_file_job('convert_single_mzml', sfn.id)
     # Do not rerun with the same workflow as previously
     nfwf = NextflowWorkflow.objects.get(pk=settings.LONGQC_NXF_WF_ID)
     for rawfn, sfn in zip(rawfiles, storedfiles):
@@ -202,7 +201,7 @@ def manyfile_qc(rawfiles, storedfiles):
                 filetype='mzml', rawfile_id=rawfn.id),
             search__in=NextflowSearch.objects.filter(nfworkflow=nfwf))
         if not searchfiles_with_current_qcnf.count():
-            start_qc_analysis(dset, rawfn, sfn, nfwf.id, settings.LONGQC_FADB_ID)
+            start_qc_analysis(rawfn, sfn, nfwf.id, settings.LONGQC_FADB_ID)
         else:
             print('QC has already been done with this workflow (id: {}) for '
                   'rawfile id {}'.format(nfwf.id, rawfn.id))
@@ -227,11 +226,9 @@ def add_to_qc(rawfile, storedfile):
     return dset
 
 
-def start_qc_analysis(dset, rawfile, storedfile, wf_id, dbfn_id):
+def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id):
     analysis = Analysis(user_id=settings.QC_USER_ID, 
-                        name='{}_{}_{}'.format(rawfile.producer.name,
-                                            dset.runname.experiment.name,
-                                            rawfile.name))
+                        name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
     analysis.save()
-    jobutil.create_dataset_job('run_longit_qc_workflow', dset.id, storedfile.id,
+    jobutil.create_file_job('run_longit_qc_workflow', storedfile.id,
                                analysis.id, wf_id, dbfn_id)

@@ -54,5 +54,6 @@ class SwestoreBackedupFile(models.Model):
 
 
 class FileJob(models.Model):
+    # FIXME move to job module
     storedfile = models.ForeignKey(StoredFile)
     job = models.ForeignKey(Job)

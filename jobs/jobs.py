@@ -3,7 +3,6 @@ import json
 from celery import states
 
 from jobs.models import Job, Task
-from datasets.models import DatasetJob
 from rawstatus.models import FileJob
 from datasets import jobs as dsjobs
 from rawstatus import jobs as rsjobs
@@ -31,15 +30,19 @@ to retry without messing things up.
 """
 jobmap = {'move_files_storage':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_files_dataset_storage,
-           'retry': True},
+           'getfns': dsjobs.move_files_dataset_storage_getfiles, 'retry': True},
           'move_stored_files_tmp':
           {'type': Jobtypes.MOVE, 'retry': True,
-           'func': dsjobs.remove_files_from_dataset_storagepath},
+           'func': dsjobs.remove_files_from_dataset_storagepath,
+           'getfns': dsjobs.remove_files_from_dataset_storagepath_getfiles},
           'rename_storage_loc':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_dataset_storage_loc,
-           'retry': False},
-          'convert_mzml':
+           'getfns': dsjobs.move_dataset_storage_loc_getfiles, 'retry': False},
+          'convert_dataset_mzml':
           {'type': Jobtypes.MOVE, 'func': dsjobs.convert_tomzml,
+           'getfns': dsjobs.convert_dset_tomzml_getfiles, 'retry': True},
+          'convert_single_mzml':
+          {'type': Jobtypes.MOVE, 'func': dsjobs.convert_single_mzml,
            'retry': True},
           'create_swestore_backup':
           {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_swestore_backup,
@@ -66,13 +69,15 @@ def create_file_job(name, sf_id, *args, **kwargs):
 
 def create_dataset_job(name, dset_id, *args, **kwargs):
     """Move, rename, search, convert"""
-    jobargs = [dset_id] + list(args)
+    prejob_args = [dset_id] + list(args)
+    sf_ids = [x.id for x in jobmap[name]['getfns'](*prejob_args)]
+    jobargs = prejob_args + sf_ids
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
               timestamp=datetime.now(),
               state=Jobstates.PENDING, args=json.dumps(jobargs),
               kwargs=json.dumps(kwargs))
     job.save()
-    DatasetJob.objects.create(dataset_id=dset_id, job_id=job.id)
+    FileJob.objects.bulk_create([FileJob(storedfile_id=sf_id, job_id=job.id) for sf_id in sf_ids])
     return job
 
 

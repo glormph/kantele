@@ -48,8 +48,11 @@ def show_datasets(request):
                 dsets[dcst.dataset.id]['prefrac'] = str(pf.prefractionation.name)
                 if 'hirief' in pf.prefractionation.name.lower():
                     dsets[dcst.dataset.id]['hr'] = '{} {}'.format('HiRIEF', str(pf.hiriefdataset.hirief))
-    for dsjob in dsmodels.DatasetJob.objects.select_related('job').exclude(job__state=jobs.Jobstates.DONE):
-        dsets[dsjob.dataset_id]['jobs'].append({'name': dsjob.job.funcname, 'state': dsjob.job.state})
+    for jfn in filemodels.FileJob.objects.select_related('job', 'storedfile__rawfile__datasetrawfile').exclude(job__state=jobs.Jobstates.DONE).distinct('storedfile__rawfile__datasetrawfile__dataset', 'job'):
+        try:
+            dsets[jfn.storedfile.rawfile.datasetrawfile.dataset_id]['jobs'].append({'name': jfn.job.funcname, 'state': jfn.job.state})
+        except dsmodels.DatasetRawFile.DoesNotExist:
+            pass
     response['dsets'] = dsets
     return JsonResponse(response)
 
@@ -87,8 +90,8 @@ def get_dset_info(request, dataset_id):
                                        dataset_id=dataset_id).select_related(
                                            'dtcomp__component')}
                     }
-    dsjobs = dsmodels.DatasetJob.objects.select_related('job').filter(
-        dataset_id=dataset_id).exclude(job__state=jobs.Jobstates.DONE)
+    dsjobs = filemodels.FileJob.objects.select_related('job', 'storedfile__rawfile__datasetrawfile').exclude(job__state=jobs.Jobstates.DONE).filter(storedfile__rawfile__datasetrawfile__dataset_id=dataset_id).distinct('job')
+
     info['jobnames'] = [x.job.funcname for x in dsjobs]
     info['jobs'] = [{'name': x.job.funcname, 'state': x.job.state,
                      'retry': jobs.is_job_retryable(x.job), 'id': x.job.id,
@@ -98,5 +101,5 @@ def get_dset_info(request, dataset_id):
 
 @login_required
 def create_mzmls(request, dataset_id):
-    jobs.create_dataset_job('convert_mzml', dataset_id)
+    jobs.create_dataset_job('convert_dataset_mzml', dataset_id)
     return HttpResponse()

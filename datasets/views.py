@@ -258,10 +258,8 @@ def update_dataset(data):
                                            qprot_id, hrf_id, dtype, prefrac,
                                            data)
     if new_storage_loc != dset.storage_loc:
-        sf_ids = [x.id for x in filemodels.StoredFile.objects.filter(
-                      rawfile__datasetrawfile__dataset_id=dset_id)]
         create_dataset_job('rename_storage_loc', dset.id, dset.storage_loc,
-                           new_storage_loc, sf_ids)
+                           new_storage_loc)
         dset.storage_loc = new_storage_loc
     dset.save()
     if data['is_corefac']:

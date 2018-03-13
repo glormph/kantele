@@ -1,20 +1,11 @@
 """
 These tasks are to be run by the celery beat automatic task runner every 10 seconds or so.
-It contains a very simple job scheduler. The more advanced job scheduling is to be done by
+It contains a VERY SIMPLE job scheduler. The more advanced job scheduling is to be done by
 celery chains etc, Nextflow, or Galaxy or whatever one likes.
 
 The scheduling here includes:
-
-file jobs (jobs executed on an existing file)
-dataset jobs (jobs executed on a part of or a full dataset)
-
-Dataset jobs that are of type MOVE will wait for other dataset jobs of that type, same for file jobs.
-Jobs that are of another type (PROCESS, UPLOAD), will wait for MOVE jobs (also only 
-inside its job or dataset jobclass)
-
-This makes it hard to mix dataset and file jobs in a chain but please use a nicer framework for that.
-The job scheduler here is only to make sure that multiple jobs clicked by the user wait
-for eachother.
+Jobs that are of type MOVE will wait for other jobs on those files
+Jobs that are of another type (PROCESS, UPLOAD), will wait for MOVE jobs on those files
 """
 
 import json
@@ -24,20 +15,17 @@ from celery import shared_task, states
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
 from jobs.jobs import Jobstates, Jobtypes, jobmap
-from datasets.models import DatasetJob
 from rawstatus.models import FileJob
 
 
 @shared_task
 def run_ready_jobs():
     print('Checking job queue')
-    job_ds_map, active_move_dsets, active_dsets = collect_dsjob_activity()
-    job_fn_map, active_move_files, active_files = collect_filejob_activity()
-    print('{} jobs in queue, including errored jobs'.format(len(job_ds_map) +
-                                                            len(job_fn_map)))
-    for job in Job.objects.order_by('timestamp').exclude(
-            state__in=[Jobstates.DONE]):
-        jobdsets = job_ds_map[job.id] if job.id in job_ds_map else set()
+    jobs_not_finished = Job.objects.order_by('timestamp').exclude(
+        state=Jobstates.DONE)
+    job_fn_map, active_move_files, active_files = collect_job_file_activity(jobs_not_finished)
+    print('{} jobs in queue, including errored jobs'.format(jobs_not_finished.count()))
+    for job in jobs_not_finished:
         jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
         print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
         if job.state == Jobstates.ERROR:
@@ -53,43 +41,29 @@ def run_ready_jobs():
             process_job_tasks(job, tasks)
         elif job.state == Jobstates.PENDING and job.jobtype == Jobtypes.MOVE:
             print('Found new move job {} - {}'.format(job.id, job.funcname))
-            # do not start move job if there is activity on dset or files
-            if (active_files.intersection(jobfiles) or
-                    active_dsets.intersection(jobdsets)):
-                print('Deferring move job since datasets {} or files {} are '
-                      'being used in '
-                      'other job'.format(active_dsets.intersection(jobdsets),
-                                         active_files.intersection(jobfiles)))
+            # do not start move job if there is activity on files
+            if active_files.intersection(jobfiles):
+                print('Deferring move job since files {} are being used in '
+                      'other job'.format(active_files.intersection(jobfiles)))
                 continue
             else:
-                print('Executing move job {}'.format(job.id))
-                if job.id in job_ds_map:
-                    [active_dsets.add(ds) for ds in job_ds_map[job.id]]
-                    [active_move_dsets.add(ds) for ds in job_ds_map[job.id]]
-                if job.id in job_fn_map:
-                    [active_files.add(fn) for fn in job_fn_map[job.id]]
-                    [active_move_files.add(fn) for fn in job_fn_map[job.id]]
+                [active_files.add(fn) for fn in job_fn_map[job.id]]
+                [active_move_files.add(fn) for fn in job_fn_map[job.id]]
                 run_job(job, jobmap)
         elif job.state == Jobstates.PENDING:
             print('Found new job {} - {}'.format(job.id, job.funcname))
-            # do not start job if dsets are being moved
-            if (active_move_dsets.intersection(jobdsets) or
-                    active_move_files.intersection(jobfiles)):
-                print('Deferring job since datasets {} or files {} being '
-                      'moved in active '
-                      'job'.format(active_move_dsets.intersection(jobdsets),
-                                   active_move_files.intersection(jobfiles)))
+            # do not start job if files are being moved
+            if active_move_files.intersection(jobfiles):
+                print('Deferring job since files {} being moved in active '
+                      'job'.format(active_move_files.intersection(jobfiles)))
                 continue
             else:
-                print('Executing job {}'.format(job.id))
-                if job.id in job_ds_map:
-                    [active_dsets.add(ds) for ds in job_ds_map[job.id]]
-                if job.id in job_fn_map:
-                    [active_files.add(fn) for fn in job_fn_map[job.id]]
+                [active_files.add(fn) for fn in job_fn_map[job.id]]
                 run_job(job, jobmap)
 
 
 def run_job(job, jobmap):
+    print('Executing job {} of type {}'.format(job.id, job.jobtype))
     job.state = Jobstates.PROCESSING
     jobfunc = jobmap[job.funcname]['func']
     args = json.loads(job.args)
@@ -109,11 +83,10 @@ def run_job(job, jobmap):
     job.save()
 
 
-def collect_filejob_activity():
+def collect_job_file_activity(nonready_jobs):
     job_fn_map, active_move_files, active_files = {}, set(), set()
-    for fj in FileJob.objects.select_related(
-            'job', 'storedfile__rawfile__datasetrawfile__dataset').exclude(
-            job__state=Jobstates.DONE):
+    for fj in FileJob.objects.select_related('job', 'storedfile').filter(
+            job__in=nonready_jobs):
         try:
             job_fn_map[fj.job_id].add(fj.storedfile_id)
         except KeyError:
@@ -125,23 +98,6 @@ def collect_filejob_activity():
         elif fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
             active_files.add(fj.storedfile.id)
     return job_fn_map, active_move_files, active_files
-
-
-def collect_dsjob_activity():
-    job_ds_map, active_move_dsets, active_dsets = {}, set(), set()
-    for dsj in DatasetJob.objects.select_related('job').exclude(
-            job__state=Jobstates.DONE):
-        try:
-            job_ds_map[dsj.job_id].add(dsj.dataset_id)
-        except KeyError:
-            job_ds_map[dsj.job_id] = set([dsj.dataset_id])
-        if (dsj.job.jobtype == Jobtypes.MOVE and
-                dsj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]):
-            active_move_dsets.add(dsj.dataset_id)
-            active_dsets.add(dsj.dataset_id)
-        elif dsj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
-            active_dsets.add(dsj.dataset_id)
-    return job_ds_map, active_move_dsets, active_dsets
 
 
 def check_task_chain(task):
