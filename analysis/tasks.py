@@ -17,11 +17,10 @@ def run_nextflow(run, params, stagefiles, rundir, gitwfdir):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     stagedir = os.path.join(rundir, 'stage')
     outdir = os.path.join(rundir, 'output')
-    wfrepo = 'https://github.com/lehtiolab/galaxy-workflows'
     if not os.path.exists(stagedir):
         os.makedirs(stagedir)
     try:
-        clone(wfrepo, gitwfdir, checkout=run['wf_commit'])
+        clone(run['repo'], gitwfdir, checkout=run['wf_commit'])
     except FileExistsError:
         pull(gitwfdir, wfrepo)
         reset(gitwfdir, 'hard', run['wf_commit'])

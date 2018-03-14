@@ -30,6 +30,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wf_id, dbfn_id):
            'rf_id': mzml.rawfile_id,
            'wf_commit': nfwf.commit,
            'nxf_wf_fn': nfwf.filename,
+           'repo': 'https://github.com/lehtiolab/galaxy-workflows',
            }
     create_nf_search_entries(analysis, nfwf, params, [mzml], [dbfn])
     stagefiles = get_stagefiles([mzml, dbfn])
