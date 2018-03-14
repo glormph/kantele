@@ -13,7 +13,7 @@ from kantele import settings
 from analysis import qc, galaxy
 
 
-def run_nextflow(run, params, stagefiles, rundir, gitwfdir):
+def run_nextflow(run, params, stagefiles, nonstagefiles, rundir, gitwfdir):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     stagedir = os.path.join(rundir, 'stage')
     outdir = os.path.join(rundir, 'output')
@@ -29,15 +29,41 @@ def run_nextflow(run, params, stagefiles, rundir, gitwfdir):
         dst = os.path.join(stagedir, fn)
         if not os.path.exists(dst):
             shutil.copy(fpath, dst)
-    # TODO stagefiles should probably not be looked up like this from params:
+    # TODO stagefiles/nonstage should probably not be looked up like this from params:
     cmdparams = [os.path.join(stagedir, x) if x in stagefiles else x
                  for x in params]
+    cmdparams = [os.path.join(settings.SHAREMAP[nonstagefiles[x][0]], 
+                              nonstagefiles[x][1], x) 
+                 if x in nonstagefiles else x for x in cmdparams]
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
     subprocess.run(['nextflow', 'run', run['nxf_wf_fn'], *cmdparams,
                     '--outdir', outdir, '-with-trace', '-resume'], check=True,
                    cwd=gitwfdir)
     return rundir
+
+
+@shared_task(bind=True, queue=settings.QUEUE_NXF)
+def run_nextflow_ipaw(self, run, params, stagefiles, nonstagefiles):
+    postdata = {'client_id': settings.APIKEY,
+                'analysis_id': run['analysis_id'], 'task': self.request.id}
+    runname = 'ipaw_{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
+    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname)
+    gitwfdir = os.path.join(rundir, 'gitwfs')
+    if not os.path.exists(rundir):
+        os.makedirs(rundir)
+    params.extend(['--mzmls', '{}/\\*.mzML'.format(os.path.join(rundir, 'stage'))])
+    try:
+        run_nextflow(run, params, stagefiles, nonstagefiles, rundir, gitwfdir)
+    except subprocess.CalledProcessError:
+        taskfail_update_db(self.request.id)
+        raise RuntimeError('Error occurred running iPAW workflow '
+                           '{}'.format(rundir))
+    outfiles = os.listdir(os.path.join(rundir, 'output'))
+    outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
+    postdata.update({'state': 'ok'})
+    report_finished_run(postdata, self.request.id, rundir, outfiles)
+    return run
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
@@ -50,7 +76,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     if not os.path.exists(rundir):
         os.makedirs(rundir)
     try:
-        run_nextflow(run, params, stagefiles, rundir, gitwfdir)
+        run_nextflow(run, params, stagefiles, {}, rundir, gitwfdir)
     except subprocess.CalledProcessError:
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')
