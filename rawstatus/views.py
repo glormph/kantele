@@ -157,7 +157,7 @@ def check_md5_success(request):
         check_producer(client_id)
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
-    print('Transfer state requested for fn_id {}'.format(fn_id))
+    print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype))
     file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
                                               filetype=ftype)
     file_registered = file_transferred.rawfile
@@ -235,7 +235,7 @@ def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id):
                         name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
     analysis.save()
     jobutil.create_file_job('run_longit_qc_workflow', storedfile.id,
-                               analysis.id, wf_id, dbfn_id)
+                            analysis.id, wf_id, dbfn_id)
 
 
 def set_libraryfile(request):
@@ -263,10 +263,11 @@ def set_libraryfile(request):
             if LibraryFile.objects.filter(sfile__rawfile_id=fn_id):
                 response = {'library': True, 'state': 'ok'}
             elif sfile.servershare.name == settings.TMPSHARENAME:
-                jobutil.create_file_job('move_single_file', sfile.id,
-                                        settings.LIBRARY_FILE_PATH)
-                LibraryFile.objects.create(sfile=sfile, 
-                                           description=request.POST['desc'])
+                libfn = LibraryFile.objects.create(
+                    sfile=sfile, description=request.POST['desc'])
+                jobutil.create_file_job(
+                    'move_single_file', sfile.id, settings.LIBRARY_FILE_PATH, 
+                    newname='libfile_{}_{}'.format(libfn.id, sfile.filename)
                 response = {'library': True, 'state': 'ok'}
             else:
                 LibraryFile.objects.create(sfile=sfile, 
