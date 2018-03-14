@@ -64,33 +64,33 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow '
                            '{}'.format(rundir))
-    outfiles = {}
-    # TODO Ideally have dynamic output dict defined in a JSON in nextflow repo?
-    for exp_out, expfn in {'sqltable': 'mslookup_db.sqlite',
-                           'psmtable': 'psmtable.txt',
-                           'peptable': 'peptable.txt',
-                           'prottable': 'prottable.txt'}.items():
-        outfile = os.path.join(rundir, 'output', expfn)
-        if not os.path.exists(outfile):
-            taskfail_update_db(self.request.id)
-            raise RuntimeError('Ran QC workflow but output file {} not '
-                               'found'.format(outfile))
-        outfiles[exp_out] = os.path.abspath(outfile)
-    qcreport = qc.calc_longitudinal_qc(outfiles)
+    outfiles = os.listdir(os.path.join(rundir, 'output'))
+    # TODO hardcoded is probably not a good idea
+    qcfiles = {}
+    expect_out = {'sqltable': 'mslookup_db.sqlite', 'psmtable': 'psmtable.txt',
+                  'peptable': 'peptable.txt', 'prottable': 'prottable.txt'}
+    if set(expect_out.values()).difference(outfiles):
+        taskfail_update_db(self.request.id)
+        raise RuntimeError('Ran QC workflow but output file {} not '
+                           'found'.format(expfn))
+    qcfiles = {x: os.path.join(rundir, 'output', fn) for x, fn 
+               in expect_out.items()}
+    qcreport = qc.calc_longitudinal_qc(qcfiles)
     postdata.update({'state': 'ok', 'plots': qcreport})
-    report_finished_run(postdata, self.request.id, rundir, outfiles)
+    report_finished_run(postdata, self.request.id, 'internal_results', rundir,
+                        qcfiles.values())
     return run
 
 
-def report_finished_run(postdata, task_id, rundir, outfiles=False):
+def report_finished_run(postdata, task_id, userdir, rundir, outfiles=False):
     with open('report.json', 'w') as fp:
         json.dump(postdata, fp)
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
     try:
-        update_db(reporturl, json=postdata)
         if outfiles:
-            transfer_resultfiles('internal_results', rundir, outfiles)
+            transfer_resultfiles(userdir, rundir, outfiles)
         shutil.rmtree(rundir)
+        update_db(reporturl, json=postdata)
     except RuntimeError:
         taskfail_update_db(task_id)
         raise
@@ -98,10 +98,10 @@ def report_finished_run(postdata, task_id, rundir, outfiles=False):
 
 def transfer_resultfiles(userdir, rundir, outfiles):
     """Copies analysis results to data server"""
-    # FIXME need scp for this
+    # TODO need scp for this, including a firewall opening
     outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME],
                           userdir, os.path.split(rundir)[-1])
     if not os.path.exists(outdir):
         os.makedirs(outdir)
-    for name, fn in outfiles.items():
+    for fn in outfiles:
         shutil.copy(fn, os.path.join(outdir, os.path.basename(fn)))
