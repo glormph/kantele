@@ -48,9 +48,9 @@ def get_nonstage_file_params(lib_ids, sfile_ids=False):
         params.extend(['--{}'.format(pname), libfiles[pid].sfile.filename])
     if sfile_ids:
         nonlibfiles = {x.id: x for x in filemodels.StoredFile.objects.filter(
-            pk__in=sfile_ids.values())
+            pk__in=sfile_ids.values())}
         nonstagefiles.update({x.filename: (x.servershare.name, x.path) 
-                              for x in nonlibfiles.values()}
+                              for x in nonlibfiles.values()})
         for pname, pid in sfile_ids.items():
             params.extend(['--{}'.format(pname), nonlibfiles[pid].filename])
     return nonstagefiles, params
