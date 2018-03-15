@@ -9,6 +9,7 @@ from analysis.models import (Analysis, NextflowWorkflow, NextflowSearch,
                              SearchFile, LibraryFile)
 from datasets import views as dsviews
 from datasets import models as dsmodels
+from dashboard import models as dashmodels
 from jobs import jobs as jobutil
 from datetime import datetime
 
@@ -198,17 +199,14 @@ def manyfile_qc(rawfiles, storedfiles):
             print('Added QC file {} to QC dataset {}'.format(rawfn.id, dset.id))
         jobutil.create_file_job('convert_single_mzml', sfn.id)
     # Do not rerun with the same workflow as previously
-    nfwf = NextflowWorkflow.objects.get(pk=settings.LONGQC_NXF_WF_ID)
     for rawfn, sfn in zip(rawfiles, storedfiles):
-        searchfiles_with_current_qcnf = SearchFile.objects.filter(
-            sfile__in=StoredFile.objects.select_related('rawfile').filter(
-                filetype='mzml', rawfile_id=rawfn.id),
-            search__in=NextflowSearch.objects.filter(nfworkflow=nfwf))
-        if not searchfiles_with_current_qcnf.count():
-            start_qc_analysis(rawfn, sfn, nfwf.id, settings.LONGQC_FADB_ID)
+        if not dashmodels.QCData.objects.filter(
+                analysis__nextflowsearch__nfworkflow=settings.LONGQC_NXF_WF_ID,
+                rawfile=rawfn.id).count():
+            start_qc_analysis(rawfn, sfn, settings.LONGQC_NXF_WF_ID, settings.LONGQC_FADB_ID)
         else:
             print('QC has already been done with this workflow (id: {}) for '
-                  'rawfile id {}'.format(nfwf.id, rawfn.id))
+                  'rawfile id {}'.format(settings.LONGQC_NXF_WF_ID, rawfn.id))
 
 
 def add_to_qc(rawfile, storedfile):
@@ -267,7 +265,7 @@ def set_libraryfile(request):
                     sfile=sfile, description=request.POST['desc'])
                 jobutil.create_file_job(
                     'move_single_file', sfile.id, settings.LIBRARY_FILE_PATH, 
-                    newname='libfile_{}_{}'.format(libfn.id, sfile.filename)
+                    newname='libfile_{}_{}'.format(libfn.id, sfile.filename))
                 response = {'library': True, 'state': 'ok'}
             else:
                 LibraryFile.objects.create(sfile=sfile, 

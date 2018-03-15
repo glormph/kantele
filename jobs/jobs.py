@@ -55,6 +55,9 @@ jobmap = {'move_files_storage':
           'run_longit_qc_workflow':
           {'type': Jobtypes.PROCESS, 'func': anjobs.auto_run_qc_workflow,
            'retry': True},
+          'run_ipaw_nextflow':
+          {'type': Jobtypes.PROCESS, 'func': anjobs.run_ipaw,
+           'getfns': anjobs.run_ipaw_getfiles, 'retry': True},
           }
 
 

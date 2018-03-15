@@ -171,6 +171,7 @@ class EnzymeDataset(models.Model):
 
 class QuantType(models.Model):
     name = models.CharField(max_length=20)
+    shortname = models.CharField(max_length=15)
 
     def __str__(self):
         return self.name

@@ -13,38 +13,37 @@ from kantele import settings
 from analysis import qc, galaxy
 
 
-def run_nextflow(run, params, stagefiles, nonstagefiles, rundir, gitwfdir):
+def run_nextflow(run, params, rundir, gitwfdir):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
-    stagedir = os.path.join(rundir, 'stage')
     outdir = os.path.join(rundir, 'output')
-    if not os.path.exists(stagedir):
-        os.makedirs(stagedir)
     try:
         clone(run['repo'], gitwfdir, checkout=run['wf_commit'])
     except FileExistsError:
-        pull(gitwfdir, wfrepo)
+        pull(gitwfdir, run['repo'])
         reset(gitwfdir, 'hard', run['wf_commit'])
-    for fn, fndata in stagefiles.items():
-        fpath = os.path.join(settings.SHAREMAP[fndata[0]], fndata[1], fn)
-        dst = os.path.join(stagedir, fn)
-        if not os.path.exists(dst):
-            shutil.copy(fpath, dst)
-    # TODO stagefiles/nonstage should probably not be looked up like this from params:
-    cmdparams = [os.path.join(stagedir, x) if x in stagefiles else x
-                 for x in params]
-    cmdparams = [os.path.join(settings.SHAREMAP[nonstagefiles[x][0]], 
-                              nonstagefiles[x][1], x) 
-                 if x in nonstagefiles else x for x in cmdparams]
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
-    subprocess.run(['nextflow', 'run', run['nxf_wf_fn'], *cmdparams,
+    subprocess.run(['nextflow', 'run', run['nxf_wf_fn'], *params,
                     '--outdir', outdir, '-with-trace', '-resume'], check=True,
                    cwd=gitwfdir)
     return rundir
 
 
+def stage_files(stagedir, stagefiles, params=False):
+    if not os.path.exists(stagedir):
+        os.makedirs(stagedir)
+    for flag, fdata in stagefiles.items():
+        fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
+        dst = os.path.join(stagedir, fdata[2])
+        if not os.path.exists(dst):
+            shutil.copy(fpath, dst)
+        if params:
+            params.extend([flag, dst])
+    return params 
+
+
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def run_nextflow_ipaw(self, run, params, stagefiles, nonstagefiles):
+def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
     runname = 'ipaw_{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
@@ -52,9 +51,12 @@ def run_nextflow_ipaw(self, run, params, stagefiles, nonstagefiles):
     gitwfdir = os.path.join(rundir, 'gitwfs')
     if not os.path.exists(rundir):
         os.makedirs(rundir)
-    params.extend(['--mzmls', '{}/\\*.mzML'.format(os.path.join(rundir, 'stage'))])
+    stagedir = os.path.join(rundir, 'stage')
+    params = stage_files(stagefiles, params)
+    stage_files({x[2]: x for x in mzmls['files']})
+    params.extend([mzmls['param'][0], mzmls['param'][1].format(sdir=os.path.join(rundir, 'stage'))])
     try:
-        run_nextflow(run, params, stagefiles, nonstagefiles, rundir, gitwfdir)
+        run_nextflow(run, params, rundir, gitwfdir)
     except subprocess.CalledProcessError:
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running iPAW workflow '
@@ -75,8 +77,10 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     gitwfdir = os.path.join(rundir, 'gitwfs')
     if not os.path.exists(rundir):
         os.makedirs(rundir)
+    stagedir = os.path.join(rundir, 'stage')
+    params = stage_files(stagefiles, params)
     try:
-        run_nextflow(run, params, stagefiles, {}, rundir, gitwfdir)
+        run_nextflow(run, params, rundir, gitwfdir)
     except subprocess.CalledProcessError:
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')
