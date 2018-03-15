@@ -46,6 +46,8 @@ def update_storagepath_file(request):
         sfile = StoredFile.objects.get(pk=data['fn_id'])
         sfile.servershare = ServerShare.objects.get(name=data['servershare'])
         sfile.path = data['dst_path']
+        if 'newname' in data:
+            sfile.filename = data['newname']
         sfile.save()
     elif 'fn_ids' in data:
         sfns = StoredFile.objects.filter(pk__in=[int(x) for x in data['fn_ids']])

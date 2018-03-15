@@ -85,8 +85,8 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, newname=False
         taskfail_update_db(self.request.id)
         raise RuntimeError('Could not move file tot storage:', e)
     postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
-                'dst_path': dstpath, 'client_id': config.APIKEY,
-                'task': self.request.id}
+                'dst_path': dstpath, 'newname': os.path.basename(dst),
+                'client_id': config.APIKEY, 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
         update_db(url, json=postdata)
