@@ -30,7 +30,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wf_id, dbfn_id):
            'rf_id': mzml.rawfile_id,
            'wf_commit': nfwf.commit,
            'nxf_wf_fn': nfwf.filename,
-           'repo': 'https://github.com/lehtiolab/galaxy-workflows',
+           'repo': nfwf.repo,
            }
     create_nf_search_entries(analysis, nfwf, params, [mzml], [dbfn])
     stagefiles = get_stagefiles([mzml, dbfn])
@@ -92,7 +92,7 @@ def run_ipaw(job_id, dset_id, sf_ids, analysis_id, wf_id, tdb_id, ddb_id,
            'analysis_id': analysis.id,
            'wf_commit': nfwf.commit,
            'nxf_wf_fn': nfwf.filename,
-           'repo': 'https://github.com/lehtiolab/proteogenomics-analysis-workflow',
+           'repo': nfwf.repo,
            }
     create_nf_search_entries(analysis, nfwf, params, [mzml], [dbfn.sfile])
     res = tasks.run_nextflow_ipaw.delay(run, params, stagefiles, nonstagefiles)
