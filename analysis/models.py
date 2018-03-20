@@ -44,11 +44,6 @@ class DatasetSearch(models.Model):
     dataset = models.ForeignKey(dsmodels.Dataset)
 
 
-class SearchFile(models.Model):
-    search = models.ForeignKey(NextflowSearch)
-    sfile = models.ForeignKey(filemodels.StoredFile)
-
-
 class SearchResultFile(models.Model):
     analysis = models.ForeignKey(Analysis)
 
