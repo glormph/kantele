@@ -33,6 +33,9 @@ def task_failed(request):
     task = models.Task.objects.get(asyncid=request.POST['task'])
     task.state = states.FAILURE
     task.save()
+    if 'msg' in request.POST and request.POST['msg']:
+       models.TaskError.objects.create(task_id=task.id,
+                                       message=request.POST['msg']) 
     return HttpResponse()
 
 

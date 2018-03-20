@@ -8,8 +8,8 @@ from django.http import (HttpResponse, JsonResponse, HttpResponseNotAllowed,
 from bokeh.embed import components
 
 from jobs.jobs import Jobstates, is_job_retryable
-from jobs.models import Task
-from datasets.models import DatasetJob
+from jobs import models as jmodels
+from datasets.models import DatasetJob, DatasetRawFile
 from analysis.models import AnalysisError
 from rawstatus.models import FileJob, Producer
 from dashboard import qcplots, models
@@ -105,7 +105,7 @@ def show_qc(request, instrument_id):
         Date, Instrument, RawFile, AnalysisResult
     """
     instrument = Producer.objects.get(pk=instrument_id)
-    dateddata = get_longitud_qcdata(instrument, settings.QC_WORKFLOW_ID)
+    dateddata = get_longitud_qcdata(instrument, settings.LONGQC_NXF_WF_ID)
     plot = {
         'amount_peptides': qcplots.timeseries_line(dateddata, ['peptides', 'proteins', 'unique_peptides']),
         'amount_psms': qcplots.timeseries_line(dateddata, ['scans', 'psms', 'miscleav1', 'miscleav2']),
@@ -118,43 +118,56 @@ def show_qc(request, instrument_id):
     return JsonResponse({'bokeh_code': {'script': script, 'div': div}})
 
 
+def jsonsetify(lst):
+    return [x for x in set(lst)]
+
+
 def show_jobs(request):
     jobs = {}
-    for task in Task.objects.select_related('job').filter(
-            job__state__in=[Jobstates.PENDING, Jobstates.PROCESSING,
-                        Jobstates.ERROR]):
-        freshjob = {'name': task.job.funcname, 
+    task_errors = {x.task.id: x for x in jmodels.TaskError.objects.all()}
+    for task in jmodels.Task.objects.select_related('job').exclude(
+            job__state=Jobstates.DONE):
+        freshjob = {'name': task.job.funcname, 'errors': [],
                     'date': datetime.strftime(task.job.timestamp, '%Y%m%d'),
                     'retry': is_job_retryable(task.job), 'id': task.job.id,
                     'tasks': {'PENDING': 0, 'FAILURE': 0, 'SUCCESS': 0}}
+        try:
+            errors = [task.job.joberror.message]
+        except jmodels.JobError.DoesNotExist:
+            errors = []
+        try:
+            errors.append(task.taskerror.message)
+        except jmodels.TaskError.DoesNotExist:
+            pass
         if not task.job.state in jobs:
             jobs[task.job.state] = {task.job.id: freshjob}
         elif not task.job.id in jobs[task.job.state]:
             jobs[task.job.state][task.job.id] = freshjob
         jobs[task.job.state][task.job.id]['tasks'][task.state] += 1
-    dsfnjobmap = {}
-    for dsj in DatasetJob.objects.select_related(
-            'dataset__runname__experiment__project', 'dataset__user',
-            'job').exclude(job__state=Jobstates.DONE):
-        ds = dsj.dataset
-        dsname = '{} - {} - {}'.format(ds.runname.experiment.project.name,
-                                       ds.runname.experiment.name,
-                                       ds.runname.name)
-        if dsj.job_id not in dsfnjobmap:
-            dsfnjobmap[dsj.job_id] = {
-                'user': '{} {}'.format(ds.user.first_name, ds.user.last_name),
-                'alttexts': [dsname]}
-        else:
-            dsfnjobmap[dsj.job_id]['alttexts'].append(dsname)
-    for fnj in FileJob.objects.select_related('storedfile__rawfile__producer', 
-            'job').exclude(job__state=Jobstates.DONE):
-        fname = os.path.join(fnj.storedfile.servershare.name, fnj.storedfile.path,
-                             fnj.storedfile.filename)
-        dsfnjobmap[fnj.job_id] = {'user': fnj.storedfile.rawfile.producer.name,
-                                  'alttexts': [fname]}
-    for jstate in [Jobstates.PENDING, Jobstates.PROCESSING, Jobstates.ERROR]:
-        if jstate in jobs:
-            jobs[jstate] = [x for x in jobs[jstate].values()]
-            for job in jobs[jstate]:
-                job.update(dsfnjobmap[job['id']])
+        jobs[task.job.state][task.job.id]['errors'] = errors
+    for job in jmodels.Job.objects.filter(task__isnull=True).exclude(state=Jobstates.DONE):
+        jobs[job.state][job.id] = {'name': job.funcname,
+                                   'date': datetime.strftime(job.timestamp, '%Y%m%d'),
+                                   'retry': is_job_retryable(job), 'id': job.id,
+                                   'tasks': {'PENDING': 0, 'FAILURE': 0, 'SUCCESS': 0}}
+    jobs = {state: {j['id']: j for j in taskjobs.values()} for state, taskjobs in jobs.items()}
+    fjobmap = {}
+    for fj in FileJob.objects.select_related('storedfile__rawfile__producer', 
+            'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project', 'job').exclude(job__state=Jobstates.DONE):
+        if not fj.job.id in fjobmap:
+            fjobmap[fj.job.id] = []
+        fjobmap[fj.job.id].append(fj)
+    for job_id, fjobs in fjobmap.items():
+        info = {'files': [os.path.join(x.storedfile.servershare.name, x.storedfile.path,
+                                       x.storedfile.filename) for x in fjobs]}
+        try:
+            dsets = jsonsetify([x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs])
+            info.update({'users': jsonsetify(['{} {}'.format(x.user.first_name, x.user.last_name) for x in dsets]),
+                         'more': ['{} - {} - {}'.format(x.runname.experiment.project.name, x.runname.experiment.name, x.runname.name) for x in dsets]})
+        except DatasetRawFile.DoesNotExist:
+            info.update({'files': jsonsetify([os.path.join(x.storedfile.servershare.name,
+                                                x.storedfile.path, x.storedfile.filename) for x in fjobs]),
+                         'users': jsonsetify([x.storedfile.rawfile.producer.name for x in fjobs]), 'more': []})
+        jobs[fjobs[0].job.state][job_id].update(info)
+    jobs = {state: [j for j in jmap.values()] for state, jmap in jobs.items()}
     return JsonResponse(jobs)

@@ -24,3 +24,8 @@ class Task(models.Model):
 class TaskChain(models.Model):
     lasttask = models.CharField(max_length=50)
     task = models.ForeignKey(Task)
+
+
+class TaskError(models.Model):
+    task = models.OneToOneField(Task)
+    message = models.TextField()

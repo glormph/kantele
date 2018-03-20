@@ -88,7 +88,7 @@ def create_dataset_job(name, dset_id, *args, **kwargs):
 
 
 def is_job_retryable(job, tasks=False):
-    if jobmap[job.funcname]['retry'] and is_job_ready(job):
+    if job.funcname in jobmap and jobmap[job.funcname]['retry'] and is_job_ready(job):
         return True
     return False
 
