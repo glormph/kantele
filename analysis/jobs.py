@@ -15,10 +15,10 @@ from jobs.models import Task
 
 
 
-def auto_run_qc_workflow(job_id, sf_id, analysis_id, wf_id, dbfn_id):
+def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
     """Assumes one file, one analysis"""
     analysis = models.Analysis.objects.get(pk=analysis_id)
-    nfwf = models.NextflowWorkflow.objects.get(pk=wf_id)
+    nfwf = models.NextflowWfVersion.objects.get(pk=wfv_id)
     dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
     mzml = filemodels.StoredFile.objects.select_related(
         'rawfile__producer', 'servershare').get(rawfile__storedfile__id=sf_id,
@@ -32,31 +32,31 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wf_id, dbfn_id):
            'rf_id': mzml.rawfile_id,
            'wf_commit': nfwf.commit,
            'nxf_wf_fn': nfwf.filename,
-           'repo': nfwf.repo,
+           'repo': nfwf.nfworkflow.repo,
            }
-    # FIXME remove searchfile model from db
-    create_nf_search_entries(analysis, nfwf, params)
+    create_nf_search_entries(analysis, nfwf, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
 
 
-def run_ipaw_getfiles(job_id, dset_id, analysis_id, wf_id, inputs):
+def run_ipaw_getfiles(dset_id, analysis_id, wfv_id, inputs):
     return filemodels.StoredFile.objects.filter(
         rawfile__datasetrawfile__dataset__id=dset_id, filetype='mzml')
 
 
-             
 # TODO make this method the standard for searches
-def run_ipaw(job_id, dset_id, analysis_id, wf_id, inputs, *dset_mzmls):
-    """iPAW currently one dataset at a time
+def run_ipaw(job_id, dset_id, analysis_id, wfv_id, inputs, *dset_mzmls):
+    """iPAW currently one dataset at a time, easy to join?
     2do: create lib datasets, make this code correct
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... }, #
                'mzml': ('--mzmls', os.path.join('{sdir}', '\\*.mzML')),}
     or shoudl inputs be DB things fields flag,sf_id (how for mzmls though?)
+{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '-profile', 'slurm'], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
     """
     analysis = models.Analysis.objects.get(pk=analysis_id)
-    nfwf = models.NextflowWorkflow.objects.get(pk=wf_id)
+    nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
+        pk=wfv_id)
     stagefiles = {}
     for flag, sf_id in inputs['singlefiles'].items():
         sf = filemodels.StoredFile.objects.get(pk=sf_id)
@@ -68,17 +68,21 @@ def run_ipaw(job_id, dset_id, analysis_id, wf_id, inputs, *dset_mzmls):
            'analysis_id': analysis.id,
            'wf_commit': nfwf.commit,
            'nxf_wf_fn': nfwf.filename,
-           'repo': nfwf.repo,
+           'repo': nfwf.nfworkflow.repo,
+           'name': analysis.name,
            }
-    create_nf_search_entries(analysis, nfwf, params)
+    create_nf_search_entries(analysis, nfwf, job_id)
     res = tasks.run_nextflow_ipaw.delay(run, inputs['params'], mzmls, stagefiles)
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
-    
 
-def create_nf_search_entries(analysis, nfwf, params):
+
+# FIXME need to store a datasetANalysis for keeping track.
+# dset / analysis / job (with args)
+
+def create_nf_search_entries(analysis, nfwf, job_id):
     try:
         nfs = models.NextflowSearch.objects.get(analysis=analysis)
     except models.NextflowSearch.DoesNotExist:
-        nfs = models.NextflowSearch(nfworkflow=nfwf, params=json.dumps(params),
+        nfs = models.NextflowSearch(nfworkflow=nfwf, job_id=job_id,
                                     analysis=analysis)
         nfs.save()

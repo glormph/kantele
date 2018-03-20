@@ -5,8 +5,7 @@ from django.shortcuts import render
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
-from analysis.models import (Analysis, NextflowWorkflow, NextflowSearch,
-                             SearchFile, LibraryFile)
+from analysis.models import (Analysis, LibraryFile)
 from datasets import views as dsviews
 from datasets import models as dsmodels
 from dashboard import models as dashmodels
