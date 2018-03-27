@@ -123,7 +123,8 @@ def jsonsetify(lst):
 
 
 def show_jobs(request):
-    jobs = {}
+    jobs = {k: {} for k in [Jobstates.DONE, Jobstates.ERROR, Jobstates.PENDING,
+                            Jobstates.PROCESSING]}
     task_errors = {x.task.id: x for x in jmodels.TaskError.objects.all()}
     for task in jmodels.Task.objects.select_related('job').exclude(
             job__state=Jobstates.DONE):
