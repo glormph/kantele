@@ -127,6 +127,19 @@ def scp_mzml(request):
     return HttpResponse()
 
 
+def analysis_run_done(request):
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        if ('client_id' not in data or
+                data['client_id'] not in settings.CLIENT_APIKEYS):
+            return HttpResponseForbidden()
+        if 'task' in data:
+            set_task_done(data['task'])
+        return HttpResponse()
+    else:
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+
+
 def store_longitudinal_qc(request):
     if request.method == 'POST':
         data = json.loads(request.body.decode('utf-8'))
