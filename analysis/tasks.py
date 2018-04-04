@@ -15,6 +15,7 @@ from analysis import qc, galaxy
 
 def run_nextflow(run, params, rundir, gitwfdir):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
+    print('Starting nextflow workflow {}'.format(run['nxf_wf_fn']))
     outdir = os.path.join(rundir, 'output')
     try:
         clone(run['repo'], gitwfdir, checkout=run['wf_commit'])
@@ -25,7 +26,7 @@ def run_nextflow(run, params, rundir, gitwfdir):
     # that dir for WF to find them
     subprocess.run(['nextflow', 'run', run['nxf_wf_fn'], *params,
                     '--outdir', outdir, '-with-trace', '-resume'], check=True,
-                   cwd=gitwfdir)
+                   stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
     return rundir
 
 
@@ -44,32 +45,43 @@ def stage_files(stagedir, stagefiles, params=False):
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
+    print('Got message to run iPAW workflow, preparing')
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
     runname = 'ipaw_{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
-    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname)
+    # FIXME temp fix, replace on run['name']
+    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
     gitwfdir = os.path.join(rundir, 'gitwfs')
     if not os.path.exists(rundir):
         os.makedirs(rundir)
-    stagedir = os.path.join(rundir, 'stage')
-    params = stage_files(stagefiles, params)
-    stage_files({x[2]: x for x in mzmls['files']})
-    params.extend([mzmls['param'][0], mzmls['param'][1].format(sdir=os.path.join(rundir, 'stage'))])
+    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
+    print('Staging files to {}'.format(stagedir))
+    params = stage_files(stagedir, stagefiles, params)
+    stage_files(stagedir, {x[2]: x for x in mzmls})
+    with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
+        for fn in mzmls:
+            fp.write('{fpath}\t{setn}\n'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3]))
+    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     try:
         run_nextflow(run, params, rundir, gitwfdir)
-    except subprocess.CalledProcessError:
-        taskfail_update_db(self.request.id)
+    except subprocess.CalledProcessError as e:
+        # FIXME report stderr with e
+        errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
+        taskfail_update_db(self.request.id, errmsg)
         raise RuntimeError('Error occurred running iPAW workflow '
-                           '{}'.format(rundir))
+                           '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
     outfiles = os.listdir(os.path.join(rundir, 'output'))
     outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
     postdata.update({'state': 'ok'})
-    report_finished_run(postdata, self.request.id, rundir, outfiles)
+    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
+    report_finished_run(postdata, self.request.id, run['outdir'], rundir, outfiles)
     return run
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_longitude_qc(self, run, params, stagefiles):
+    print('Got message to run QC workflow, preparing')
+    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
     runname = 'longqc_{}_{}'.format(run['analysis_id'], run['timestamp'])
@@ -78,7 +90,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     if not os.path.exists(rundir):
         os.makedirs(rundir)
     stagedir = os.path.join(rundir, 'stage')
-    params = stage_files(stagefiles, params)
+    params = stage_files(stagedir, stagefiles, params)
     try:
         run_nextflow(run, params, rundir, gitwfdir)
     except subprocess.CalledProcessError:
@@ -89,7 +101,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
                     postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
-                    report_finished_run(postdata, self.request.id, rundir)
+                    report_finished_run(reporturl, postdata, self.request.id, rundir)
                     raise RuntimeError('QC file did not contain enough quality PSMs')
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow '
@@ -107,23 +119,23 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                in expect_out.items()}
     qcreport = qc.calc_longitudinal_qc(qcfiles)
     postdata.update({'state': 'ok', 'plots': qcreport})
-    report_finished_run(postdata, self.request.id, 'internal_results', rundir,
+    report_finished_run(reporturl, postdata, self.request.id, 'internal_results', rundir,
                         qcfiles.values())
     return run
 
 
-def report_finished_run(postdata, task_id, userdir, rundir, outfiles=False):
-    with open('report.json', 'w') as fp:
-        json.dump(postdata, fp)
-    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
+def report_finished_run(url, postdata, task_id, userdir, rundir, outfiles=False):
+#    with open('report.json', 'w') as fp:
+#        json.dump(postdata, fp)
     try:
         if outfiles:
             transfer_resultfiles(userdir, rundir, outfiles)
-        shutil.rmtree(rundir)
-        update_db(reporturl, json=postdata)
     except RuntimeError:
         taskfail_update_db(task_id)
         raise
+    else:
+        shutil.rmtree(rundir)
+        update_db(url, json=postdata)
 
 
 def transfer_resultfiles(userdir, rundir, outfiles):

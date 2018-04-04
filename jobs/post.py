@@ -24,9 +24,9 @@ def update_db(url, form=False, json=False, msg=False):
         raise RuntimeError(msg)
 
 
-def taskfail_update_db(task_id):
+def taskfail_update_db(task_id, msg=False):
     update_db(urljoin(config.KANTELEHOST, reverse('jobs:taskfail')),
-              {'task': task_id, 'client_id': config.APIKEY})
+              {'task': task_id, 'client_id': config.APIKEY, 'msg': msg})
 
 
 def save_task_chain(taskchain, job_id):
