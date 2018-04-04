@@ -101,7 +101,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
                     postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
-                    report_finished_run(reporturl, postdata, self.request.id, rundir)
+                    report_finished_run(reporturl, postdata, self.request.id, 'internal_results', rundir)
                     raise RuntimeError('QC file did not contain enough quality PSMs')
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow '
@@ -125,8 +125,6 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
 
 
 def report_finished_run(url, postdata, task_id, userdir, rundir, outfiles=False):
-#    with open('report.json', 'w') as fp:
-#        json.dump(postdata, fp)
     try:
         if outfiles:
             transfer_resultfiles(userdir, rundir, outfiles)
@@ -140,7 +138,6 @@ def report_finished_run(url, postdata, task_id, userdir, rundir, outfiles=False)
 
 def transfer_resultfiles(userdir, rundir, outfiles):
     """Copies analysis results to data server"""
-    # TODO need scp for this, including a firewall opening
     outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME],
                           userdir, os.path.split(rundir)[-1])
     if not os.path.exists(outdir):
