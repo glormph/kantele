@@ -27,17 +27,16 @@ def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path, *sf_ids):
 
 
 def move_files_dataset_storage_getfiles(dset_id, fn_ids):
+    # Use both md5=sourcemd5 to avoid getting mzmls, other derived files
     return StoredFile.objects.filter(
-        checked=True, rawfile__datasetrawfile__dataset_id=dset_id,
+        rawfile__datasetrawfile__dataset_id=dset_id,
         rawfile__source_md5=F('md5'),
         rawfile_id__in=fn_ids)
 
 
 def move_files_dataset_storage(job_id, dset_id, rawfn_ids, *sf_ids):
     print('Moving dataset files to storage')
-    # Use both checked=True and md5=sourcemd5 to avoid getting mzmls, other
-    # derived files
-    dset_files = StoredFile.objects.filter(pk__in=sf_ids)
+    dset_files = StoredFile.objects.filter(pk__in=sf_ids, checked=True)
     # if only half of the files have been SCP arrived yet? Try more later:
     dset_registered_files = DatasetRawFile.objects.filter(
         dataset_id=dset_id, rawfile_id__in=rawfn_ids)
@@ -62,15 +61,16 @@ def move_files_dataset_storage(job_id, dset_id, rawfn_ids, *sf_ids):
 
 
 def remove_files_from_dataset_storagepath_getfiles(dset_id, fn_ids):
-    return StoredFile.objects.filter(rawfile_id__in=fn_ids).exclude(
-        servershare__name=settings.TMPSHARENAME)
+    return StoredFile.objects.filter(rawfile_id__in=fn_ids)
+        
 
 
 def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
     print('Moving files with ids {} from dataset storage to tmp, '
           'if not already there. Deleting if mzml'.format(fn_ids))
     task_ids = []
-    for fn in StoredFile.objects.filter(pk__in=sf_ids):
+    for fn in StoredFile.objects.filter(pk__in=sf_ids).exclude(
+            servershare__name=settings.TMPSHARENAME):
         if fn.filetype == 'mzml':
             fullpath = os.path.join(fn.path, fn.filename)
             task_ids.append(filetasks.delete_file.delay(fn.servershare.name,
