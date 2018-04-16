@@ -47,17 +47,14 @@ def move_files_dataset_storage(job_id, dset_id, rawfn_ids, *sf_ids):
             'between their registration and after transfer from input source. '
             'Holding this job and temporarily retrying it')
     dst_path = Dataset.objects.get(pk=dset_id).storage_loc
-    task_ids = []
     for fn in dset_files:
         # TODO check for diff os.path.join(sevrershare, dst_path), not just
         # path
         if fn.path != dst_path:
-            task_ids.append(
-                tasks.move_file_storage.delay(
+            tid = tasks.move_file_storage.delay(
                     fn.rawfile.name, fn.servershare.name, fn.path,
-                    dst_path, fn.id).id)
-    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id, state='PENDING')
-                              for tid in task_ids])
+                    dst_path, fn.id).id
+            Task.objects.create(asyncid=tid, job_id=job_id, state='PENDING')
 
 
 def remove_files_from_dataset_storagepath_getfiles(dset_id, fn_ids):
@@ -68,19 +65,16 @@ def remove_files_from_dataset_storagepath_getfiles(dset_id, fn_ids):
 def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
     print('Moving files with ids {} from dataset storage to tmp, '
           'if not already there. Deleting if mzml'.format(fn_ids))
-    task_ids = []
     for fn in StoredFile.objects.filter(pk__in=sf_ids).exclude(
             servershare__name=settings.TMPSHARENAME):
         if fn.filetype == 'mzml':
             fullpath = os.path.join(fn.path, fn.filename)
-            task_ids.append(filetasks.delete_file.delay(fn.servershare.name,
-                                                        fullpath, fn.id))
+            tid = filetasks.delete_file.delay(fn.servershare.name, fullpath,
+                                              fn.id).id
         else:
-            task_ids.append(tasks.move_stored_file_tmp.delay(fn.rawfile.name,
-                                                             fn.path, fn.id).id)
-    Task.objects.bulk_create([Task(asyncid=tid, job_id=job_id,
-                                   state=states.PENDING)
-                              for tid in task_ids])
+            tid = tasks.move_stored_file_tmp.delay(fn.rawfile.name, fn.path,
+                                                   fn.id).id
+        Task.objects._create(asyncid=tid, job_id=job_id, state=states.PENDING)
 
 
 def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue):
