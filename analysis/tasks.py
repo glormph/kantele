@@ -27,6 +27,7 @@ def run_nextflow(run, params, rundir, gitwfdir):
     subprocess.run(['nextflow', 'run', run['nxf_wf_fn'], *params,
                     '--outdir', outdir, '-with-trace', '-resume'], check=True,
                    stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
+    print('Finished running workflow')
     return rundir
 
 
@@ -48,7 +49,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     print('Got message to run iPAW workflow, preparing')
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
-    runname = 'ipaw_{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
+    runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
     # FIXME temp fix, replace on run['name']
     rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
     gitwfdir = os.path.join(rundir, 'gitwfs')
@@ -74,7 +75,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
     postdata.update({'state': 'ok'})
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
-    report_finished_run(postdata, self.request.id, run['outdir'], rundir, outfiles)
+    report_finished_run(reporturl, postdata, self.request.id, stagedir, run['outdir'], rundir, outfiles)
     return run
 
 
@@ -89,7 +90,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     gitwfdir = os.path.join(rundir, 'gitwfs')
     if not os.path.exists(rundir):
         os.makedirs(rundir)
-    stagedir = os.path.join(rundir, 'stage')
+    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
     params = stage_files(stagedir, stagefiles, params)
     try:
         run_nextflow(run, params, rundir, gitwfdir)
@@ -101,7 +102,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
                     postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
-                    report_finished_run(reporturl, postdata, self.request.id, 'internal_results', rundir)
+                    report_finished_run(reporturl, postdata, self.request.id, stagedir, 'internal_results', rundir)
                     raise RuntimeError('QC file did not contain enough quality PSMs')
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow '
@@ -119,12 +120,13 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                in expect_out.items()}
     qcreport = qc.calc_longitudinal_qc(qcfiles)
     postdata.update({'state': 'ok', 'plots': qcreport})
-    report_finished_run(reporturl, postdata, self.request.id, 'internal_results', rundir,
+    report_finished_run(reporturl, postdata, self.request.id, stagedir, 'internal_results', rundir,
                         qcfiles.values())
     return run
 
 
-def report_finished_run(url, postdata, task_id, userdir, rundir, outfiles=False):
+def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir, outfiles=False):
+    print('Reporting and cleaning up after workflow in {}'.format(rundir))
     try:
         if outfiles:
             transfer_resultfiles(userdir, rundir, outfiles)
@@ -133,6 +135,7 @@ def report_finished_run(url, postdata, task_id, userdir, rundir, outfiles=False)
         raise
     else:
         shutil.rmtree(rundir)
+        shutil.rmtree(stagedir)
         update_db(url, json=postdata)
 
 
