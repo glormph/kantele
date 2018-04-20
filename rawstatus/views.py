@@ -76,8 +76,9 @@ def register_file(request):
         try:
             existing_fn = RawFile.objects.get(source_md5=md5)
         except RawFile.DoesNotExist:
+            claim = 'claimed' in request.POST and request.POST['claimed']
             file_record = RawFile(name=fn, producer=producer, source_md5=md5,
-                                  size=size, date=file_date, claimed=False)
+                                  size=size, date=file_date, claimed=claim)
             file_record.save()
         else:
             stored = True if StoredFile.objects.select_related(
