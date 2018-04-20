@@ -44,8 +44,9 @@ class DatasetSearch(models.Model):
     dataset = models.ForeignKey(dsmodels.Dataset)
 
 
-class SearchResultFile(models.Model):
+class AnalysisResultFile(models.Model):
     analysis = models.ForeignKey(Analysis)
+    sfile = models.OneToOneField(filemodels.StoredFile)
 
 
 class LibraryFile(models.Model):

@@ -11,6 +11,7 @@ from celery import shared_task
 from jobs.post import update_db, taskfail_update_db
 from kantele import settings
 from analysis import qc, galaxy
+from rawstatus.tasks import calc_md5
 
 
 def run_nextflow(run, params, rundir, gitwfdir):
@@ -146,4 +147,9 @@ def transfer_resultfiles(userdir, rundir, outfiles):
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     for fn in outfiles:
+        postdata = {'client_id': settings.APIKEY, 'size': os.path.getsize(fn),
+                    'md5': calc_md5(fn), 'date': str(os.path.getctime(fn)),
+                    'fn': os.path.basename(fn)}
         shutil.copy(fn, os.path.join(outdir, os.path.basename(fn)))
+        url = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
+        update_db(url, json=postdata)

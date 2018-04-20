@@ -1,4 +1,5 @@
 import json
+from datetime import datetime 
 
 from celery import states
 from django.http import (HttpResponseForbidden, HttpResponse,
@@ -7,7 +8,9 @@ from django.contrib.auth.decorators import login_required
 from jobs import models
 from jobs.jobs import Jobstates, is_job_ready
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
-                              SwestoreBackedupFile)
+                              SwestoreBackedupFile, Producer)
+from rawstatus.views import check_producer
+from analysis.models import AnalysisResultFile
 from dashboard import views as dashviews
 from kantele import settings
 
@@ -156,6 +159,34 @@ def store_longitudinal_qc(request):
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
 
+
+def store_analysis_result(request):
+    """Stores the reporting of a transferred analysis result file,
+    checks its md5"""
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+    else:
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    if ('client_id' not in data or
+            data['client_id'] not in settings.CLIENT_APIKEYS):
+        return HttpResponseForbidden()
+    # FIXME nextflow to file this, then poll rawstatus/md5success
+    # before deleting rundir etc, or report taskfail
+    file_date = datetime.strftime(datetime.fromtimestamp(float(data['date'])),
+                                                         '%Y-%m-%d %H:%M')
+    raw = RawFile(name=data['fn'], producer=check_producer(data['client_id']), 
+                  source_md5=data['md5'], size=data['size'], date=file_date,
+                  claimed=True)
+    raw.save()
+    analysisshare = ServerShare.objects.get(name=settings.ANALYSISSHARE)
+    sfile = StoredFile(rawfile=raw, filename=fn, filetype=ftype, 
+                       servershare=analysisshare, path=outdir, md5='',
+                       checked=False)
+    sfile.save()
+    AnalysisResultFile.objects.create(analysis_id=analysis_id, sfile=sfile)
+    jobutil.create_file_job('get_md5', sfile.id)
+    return HttpResponse()
+    
 
 @login_required
 def retry_job(request, job_id):
