@@ -22,6 +22,8 @@ def update_db(url, form=False, json=False, msg=False):
         msg = msg.format(e)
         print(msg)
         raise RuntimeError(msg)
+    else:
+        return r
 
 
 def taskfail_update_db(task_id, msg=False):

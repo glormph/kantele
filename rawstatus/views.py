@@ -167,8 +167,9 @@ def check_md5_success(request):
         if not file_transferred.checked:
             file_transferred.checked = True
             file_transferred.save()
-        if SwestoreBackedupFile.objects.filter(
-                storedfile_id=file_transferred.id).count() == 0:
+        if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and 
+                SwestoreBackedupFile.objects.filter(
+                storedfile_id=file_transferred.id).count() == 0):
             fn = file_transferred.filename
             if 'QC' in fn and 'hela' in fn.lower() and any([x in fn for x in ['QE', 'HFLu', 'HFLe', 'Velos']]):
                 singlefile_qc(file_transferred.rawfile, file_transferred)

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from celery import states
 from django.http import (HttpResponseForbidden, HttpResponse,
-                         HttpResponseNotAllowed)
+                         HttpResponseNotAllowed, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from jobs import models
 from jobs.jobs import Jobstates, is_job_ready
@@ -179,13 +179,13 @@ def store_analysis_result(request):
                   claimed=True)
     raw.save()
     analysisshare = ServerShare.objects.get(name=settings.ANALYSISSHARE)
-    sfile = StoredFile(rawfile=raw, filename=fn, filetype=ftype, 
-                       servershare=analysisshare, path=outdir, md5='',
+    sfile = StoredFile(rawfile=raw, filename=data['fn'], filetype=data['ftype'],
+                       servershare=analysisshare, path=data['outdir'], md5='',
                        checked=False)
     sfile.save()
     AnalysisResultFile.objects.create(analysis_id=analysis_id, sfile=sfile)
     jobutil.create_file_job('get_md5', sfile.id)
-    return HttpResponse()
+    return JsonResponse({'fn_id': raw.id})
     
 
 @login_required

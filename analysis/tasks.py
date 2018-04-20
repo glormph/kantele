@@ -1,7 +1,9 @@
 import os
 import json
 import shutil
+import requests
 import subprocess
+from time import sleep
 from urllib.parse import urljoin
 from dulwich.porcelain import clone, reset, pull
 
@@ -130,26 +132,49 @@ def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir, outfi
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
     try:
         if outfiles:
-            transfer_resultfiles(userdir, rundir, outfiles)
-    except RuntimeError:
+            fn_ids = {x: False for x in transfer_resultfiles(userdir, rundir, outfiles)}
+    except:
         taskfail_update_db(task_id)
         raise
-    else:
-        shutil.rmtree(rundir)
-        shutil.rmtree(stagedir)
-        update_db(url, json=postdata)
+    checkurl = urljoin(settings.KANTELEHOST, reverse('rawstatus:md5check'))
+    while False in fn_ids.values():
+        for fn_id, checked in fn_ids.items():
+            if not checked:
+                params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
+                          'ftype': 'analysisoutput'}
+                resp = requests.get(url=checkurl, params=params,
+                                    verify=settings.CERTFILE)
+                fn_ids[fn_id] = resp.json()['md5_state']
+                if fn_ids[fn_id] == 'error':
+                    taskfail_update_db(task_id)
+                    raise RuntimeError
+        sleep(30)
+    # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
+    shutil.rmtree(rundir)
+    shutil.rmtree(stagedir)
+    update_db(url, json=postdata)
 
 
 def transfer_resultfiles(userdir, rundir, outfiles):
     """Copies analysis results to data server"""
+    outpath = os.path.join(userdir, os.path.split(rundir)[-1])
     outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME],
-                          userdir, os.path.split(rundir)[-1])
+                          outpath)
     if not os.path.exists(outdir):
         os.makedirs(outdir)
+    fn_ids = []
     for fn in outfiles:
         postdata = {'client_id': settings.APIKEY, 'size': os.path.getsize(fn),
                     'md5': calc_md5(fn), 'date': str(os.path.getctime(fn)),
-                    'fn': os.path.basename(fn)}
+                    'fn': os.path.basename(fn), 'outdir': outpath,
+                    'ftype': 'analysisoutput'}
         shutil.copy(fn, os.path.join(outdir, os.path.basename(fn)))
         url = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
-        update_db(url, json=postdata)
+        response = update_db(url, json=postdata)
+        try:
+            js_resp = response.json()
+        except JSONDecodeError:
+            print('Server error registering analysis file')
+            raise RuntimeError 
+        fn_ids.append(js_resp['fn_id'])
+    return fn_ids
