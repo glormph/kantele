@@ -78,7 +78,8 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
     postdata.update({'state': 'ok'})
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
-    report_finished_run(reporturl, postdata, self.request.id, stagedir, run['outdir'], rundir, outfiles)
+    report_finished_run(reporturl, postdata, self.request.id, stagedir, 
+                        run['outdir'], rundir, run['analysis_id'], outfiles)
     return run
 
 
@@ -105,7 +106,9 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
                     postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
-                    report_finished_run(reporturl, postdata, self.request.id, stagedir, 'internal_results', rundir)
+                    report_finished_run(reporturl, postdata, self.request.id,
+                                        stagedir, 'internal_results', rundir,
+                                        run['analysis_id'])
                     raise RuntimeError('QC file did not contain enough quality PSMs')
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow '
@@ -123,58 +126,85 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                in expect_out.items()}
     qcreport = qc.calc_longitudinal_qc(qcfiles)
     postdata.update({'state': 'ok', 'plots': qcreport})
-    report_finished_run(reporturl, postdata, self.request.id, stagedir, 'internal_results', rundir,
-                        qcfiles.values())
+    report_finished_run(reporturl, postdata, self.request.id, stagedir, 
+                        'internal_results', rundir, run['analysis_id'], qcfiles.values())
     return run
 
 
-def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir, outfiles=False):
+def check_md5(fn_id):
+        checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
+        params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
+                  'ftype': 'analysisoutput'}
+        resp = requests.get(url=checkurl, params=params, verify=settings.CERTFILE)
+        return resp.json()['md5_state']
+
+
+def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir,
+                        analysis_id, outfiles=False):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
-    try:
-        if outfiles:
-            fn_ids = {x: False for x in transfer_resultfiles(userdir, rundir, outfiles)}
-    except:
-        taskfail_update_db(task_id)
-        raise
-    checkurl = urljoin(settings.KANTELEHOST, reverse('rawstatus:md5check'))
-    while False in fn_ids.values():
-        for fn_id, checked in fn_ids.items():
-            if not checked:
-                params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
-                          'ftype': 'analysisoutput'}
-                resp = requests.get(url=checkurl, params=params,
-                                    verify=settings.CERTFILE)
-                fn_ids[fn_id] = resp.json()['md5_state']
-                if fn_ids[fn_id] == 'error':
-                    taskfail_update_db(task_id)
-                    raise RuntimeError
-        sleep(30)
+    # 1 check outfiles md5 already ok in db, prune those in case rerun
+    # 2 register rest of outfiles rerun doesnt matter
+    # 3 transfer rest of outfiles 
+    # 4 loop for md5 checks, fail if error
+    if outfiles:
+        try:
+            fn_ids = transfer_resultfiles(userdir, rundir, outfiles, analysis_id)
+        except:
+            taskfail_update_db(task_id)
+            raise
+        checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
+        while False in fn_ids.values():
+            for fn_id, checked in fn_ids.items():
+                if not checked:
+                    params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
+                              'ftype': 'analysisoutput'}
+                    resp = requests.get(url=checkurl, params=params,
+                                        verify=settings.CERTFILE)
+                    fn_ids[fn_id] = resp.json()['md5_state']
+                    if fn_ids[fn_id] == 'error':
+                        taskfail_update_db(task_id)
+                        raise RuntimeError
+            sleep(30)
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
     shutil.rmtree(rundir)
     shutil.rmtree(stagedir)
     update_db(url, json=postdata)
 
 
-def transfer_resultfiles(userdir, rundir, outfiles):
+def transfer_resultfiles(userdir, rundir, outfiles, analysis_id):
     """Copies analysis results to data server"""
+    # First register files, check md5, prune those
+    reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
+    outfiles_db = {}
+    for fn in outfiles:
+        postdata = {'fn': os.path.basename(fn),
+                    'client_id': settings.APIKEY,
+                    'md5': calc_md5(fn),
+                    'size': os.path.getsize(fn),
+                    'date': str(os.path.getctime(fn)),
+                    'date': date,
+                    'claimed': True,
+                    }
+        resp = requests.post(url=url, data=postdata, verify=settings.CERTFILE)
+        resp.raise_for_status()
+        rj = resp.json()
+        if not check_md5(rj['file_id']) == 'ok':
+            outfiles_db[fn] = resp.json()
+    # Transfer after registration, when rerun transfer again
     outpath = os.path.join(userdir, os.path.split(rundir)[-1])
     outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME],
                           outpath)
     if not os.path.exists(outdir):
         os.makedirs(outdir)
-    fn_ids = []
     for fn in outfiles:
-        postdata = {'client_id': settings.APIKEY, 'size': os.path.getsize(fn),
-                    'md5': calc_md5(fn), 'date': str(os.path.getctime(fn)),
-                    'fn': os.path.basename(fn), 'outdir': outpath,
-                    'ftype': 'analysisoutput'}
-        shutil.copy(fn, os.path.join(outdir, os.path.basename(fn)))
+        if not fn in outfiles_db:
+            continue
+        filename = os.path.basename(fn)
+        shutil.copy(fn, os.path.join(outdir, filename))
+        postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
+                    'outdir': outpath, 'filename': filename,
+                    'ftype': 'analysisoutput', 'analysis_id': analysis_id}
         url = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
-        response = update_db(url, json=postdata)
-        try:
-            js_resp = response.json()
-        except JSONDecodeError:
-            print('Server error registering analysis file')
-            raise RuntimeError 
-        fn_ids.append(js_resp['fn_id'])
-    return fn_ids
+        response = update_db(url, form=postdata)
+        response.raise_for_status()
+    return {x['file_id']: False for x in outfiles_db.values()}

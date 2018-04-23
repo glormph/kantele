@@ -110,7 +110,7 @@ def file_transferred(request):
             ftype = request.POST['ftype']
             fname = request.POST['filename']
         except KeyError as error:
-            print('POST request to register_file with missing parameter, '
+            print('POST request to file_transferred with missing parameter, '
                   '{}'.format(error))
             return HttpResponseForbidden()
         try:

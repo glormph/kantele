@@ -163,29 +163,32 @@ def store_longitudinal_qc(request):
 def store_analysis_result(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-    else:
+    if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
+    data = request.POST
+    # create analysis file
     if ('client_id' not in data or
-            data['client_id'] not in settings.CLIENT_APIKEYS):
+            data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
     # FIXME nextflow to file this, then poll rawstatus/md5success
     # before deleting rundir etc, or report taskfail
-    file_date = datetime.strftime(datetime.fromtimestamp(float(data['date'])),
-                                                         '%Y-%m-%d %H:%M')
-    raw = RawFile(name=data['fn'], producer=check_producer(data['client_id']), 
-                  source_md5=data['md5'], size=data['size'], date=file_date,
-                  claimed=True)
-    raw.save()
-    analysisshare = ServerShare.objects.get(name=settings.ANALYSISSHARE)
-    sfile = StoredFile(rawfile=raw, filename=data['fn'], filetype=data['ftype'],
-                       servershare=analysisshare, path=data['outdir'], md5='',
-                       checked=False)
-    sfile.save()
-    AnalysisResultFile.objects.create(analysis_id=analysis_id, sfile=sfile)
+###
+    # Reruns lead to trying to store files multiple times, avoid that:
+    anashare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
+    try:
+        sfile = StoredFile.objects.get(rawfile_id=data['fn_id'], filetype=data['ftype'])
+    except StoredFile.DoesNotExist:
+        print('New transfer registered, fn_id {}'.format(data['fn_id']))
+        sfile = StoredFile(rawfile_id=data['fn_id'], filetype=data['ftype'], 
+                           servershare=anashare, path=data['outdir'],
+                           filename=data['filename'], md5='', checked=False)
+        sfile.save()
+        AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)
+    else:
+        print('Analysis result already registered as transfer, client asks for new '
+              'MD5 check after a possible rerun. Running MD5 check.')
     jobutil.create_file_job('get_md5', sfile.id)
-    return JsonResponse({'fn_id': raw.id})
+    return HttpResponse()
     
 
 @login_required
