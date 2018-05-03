@@ -6,7 +6,7 @@ from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from jobs import models
-from jobs.jobs import Jobstates, is_job_ready
+from jobs.jobs import Jobstates, is_job_ready, create_file_job
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile, Producer)
 from rawstatus.views import check_producer
@@ -172,7 +172,6 @@ def store_analysis_result(request):
         return HttpResponseForbidden()
     # FIXME nextflow to file this, then poll rawstatus/md5success
     # before deleting rundir etc, or report taskfail
-###
     # Reruns lead to trying to store files multiple times, avoid that:
     anashare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
     try:
@@ -187,7 +186,7 @@ def store_analysis_result(request):
     else:
         print('Analysis result already registered as transfer, client asks for new '
               'MD5 check after a possible rerun. Running MD5 check.')
-    jobutil.create_file_job('get_md5', sfile.id)
+    create_file_job('get_md5', sfile.id)
     return HttpResponse()
     
 

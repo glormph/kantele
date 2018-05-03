@@ -64,7 +64,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     stage_files(stagedir, {x[2]: x for x in mzmls})
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
-            fp.write('{fpath}\t{setn}\n'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3]))
+            fp.write('{fpath}\t{setn}\t{pl}\t{fr}\n'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3], pl=fn[4], fr=fn[5]))
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     try:
         run_nextflow(run, params, rundir, gitwfdir)
@@ -182,10 +182,9 @@ def transfer_resultfiles(userdir, rundir, outfiles, analysis_id):
                     'md5': calc_md5(fn),
                     'size': os.path.getsize(fn),
                     'date': str(os.path.getctime(fn)),
-                    'date': date,
                     'claimed': True,
                     }
-        resp = requests.post(url=url, data=postdata, verify=settings.CERTFILE)
+        resp = requests.post(url=reg_url, data=postdata, verify=settings.CERTFILE)
         resp.raise_for_status()
         rj = resp.json()
         if not check_md5(rj['file_id']) == 'ok':

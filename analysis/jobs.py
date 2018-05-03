@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import re
 
 from kantele import settings
 from analysis import tasks, models
@@ -39,16 +40,15 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
 
 
-def run_ipaw_getfiles(dset_ids, setnames, analysis_id, wfv_id, inputs):
+def run_ipaw_getfiles(dset_ids, platenames, setnames, analysis_id, wfv_id, inputs):
     return filemodels.StoredFile.objects.select_related(
         'rawfile__datasetrawfile__dataset__runname').filter(
         rawfile__datasetrawfile__dataset__id__in=dset_ids, filetype='mzml')
 
 
 # TODO make this method the standard for searches
-def run_ipaw(job_id, dset_ids, setnames, analysis_id, wfv_id, inputs, *dset_mzmls):
-    """iPAW currently one dataset at a time, easy to join?
-    2do: create lib datasets, make this code correct
+def run_ipaw(job_id, dset_ids, platenames, setnames, analysis_id, wfv_id, inputs, *dset_mzmls):
+    """
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
     or shoudl inputs be DB things fields flag,sf_id (how for mzmls though?)
@@ -61,9 +61,14 @@ def run_ipaw(job_id, dset_ids, setnames, analysis_id, wfv_id, inputs, *dset_mzml
     for flag, sf_id in inputs['singlefiles'].items():
         sf = filemodels.StoredFile.objects.get(pk=sf_id)
         stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
-    dset_setnames = {ds: sn for ds, sn in zip(dset_ids, setnames)}
-    mzmls = [(x.servershare.name, x.path, x.filename,
-              dset_setnames[x.rawfile.datasetrawfile.dataset_id]) for x in 
+    dset_setnames = {ds: (sn, pn) for ds, sn, pn in zip(dset_ids, setnames, platenames)}
+    # TODO make proper fraction interface and store in params
+    fn_fractions = {fn.id: int(re.search('.*fr([0-9]+).(mzML)', fn.filename).group(1))
+                    for fn in filemodels.StoredFile.objects.filter(pk__in=dset_mzmls)}
+    mzmls = [(x.servershare.name, x.path, x.filename, 
+              dset_setnames[x.rawfile.datasetrawfile.dataset_id][0],
+              dset_setnames[x.rawfile.datasetrawfile.dataset_id][1],
+              fn_fractions[x.id]) for x in 
              filemodels.StoredFile.objects.filter(pk__in=dset_mzmls)]
     run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
            'analysis_id': analysis.id,
