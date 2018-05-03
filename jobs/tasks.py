@@ -39,8 +39,15 @@ def run_ready_jobs():
             tasks = Task.objects.filter(job_id=job.id)
             print('Updating task status for active job {} - {}'.format(job.id, job.funcname))
             process_job_tasks(job, tasks)
-        elif job.state == Jobstates.PENDING and job.jobtype == Jobtypes.MOVE:
-            print('Found new move job {} - {}'.format(job.id, job.funcname))
+        # FIXME Changed this, test it:
+        # why do we have a non-move job where we do not have to wait at all?
+        # scenario? is basically non-dep simulation based on jobtype which is bad
+        # like so, md5 on transferred QC is not done yet, qc jobs are queued. Move file, mzmlconv is not done
+        # bc file to move has job on it (md5), but qc job (process) is launched. Bam! error: there is no mzML.
+        # what do we lose if we just make all jobs wait instead?
+        # scenario all jobs wait: somewhere eternal wait? TESTING
+        elif job.state == Jobstates.PENDING: #and job.jobtype == Jobtypes.MOVE:
+            print('Found new job {} - {}'.format(job.id, job.funcname))
             # do not start move job if there is activity on files
             if active_files.intersection(jobfiles):
                 print('Deferring move job since files {} are being used in '
@@ -50,16 +57,16 @@ def run_ready_jobs():
                 [active_files.add(fn) for fn in job_fn_map[job.id]]
                 [active_move_files.add(fn) for fn in job_fn_map[job.id]]
                 run_job(job, jobmap)
-        elif job.state == Jobstates.PENDING:
-            print('Found new job {} - {}'.format(job.id, job.funcname))
-            # do not start job if files are being moved
-            if active_move_files.intersection(jobfiles):
-                print('Deferring job since files {} being moved in active '
-                      'job'.format(active_move_files.intersection(jobfiles)))
-                continue
-            else:
-                [active_files.add(fn) for fn in job_fn_map[job.id]]
-                run_job(job, jobmap)
+#        elif job.state == Jobstates.PENDING:
+#            print('Found new job {} - {}'.format(job.id, job.funcname))
+#            # do not start job if files are being moved
+#            if active_move_files.intersection(jobfiles):
+#                print('Deferring job since files {} being moved in active '
+#                      'job'.format(active_move_files.intersection(jobfiles)))
+#                continue
+#            else:
+#                [active_files.add(fn) for fn in job_fn_map[job.id]]
+#                run_job(job, jobmap)
 
 
 def run_job(job, jobmap):

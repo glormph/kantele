@@ -76,7 +76,12 @@ def create_file_job(name, sf_id, *args, **kwargs):
 def create_dataset_job(name, dset_id, *args, **kwargs):
     """Move, rename, search, convert"""
     prejob_args = [dset_id] + list(args)
-    sf_ids = [x.id for x in jobmap[name]['getfns'](*prejob_args)]
+    return store_ds_job(name, prejob_args, **kwargs)
+
+
+def store_ds_job(name, prejob_args, **kwargs):
+    pjres = jobmap[name]['getfns'](*prejob_args)
+    sf_ids = [x.id for x in pjres]
     jobargs = prejob_args + sf_ids
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
               timestamp=datetime.now(),
