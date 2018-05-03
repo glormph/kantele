@@ -9,8 +9,6 @@
 	{% verbatim %}
 	Vue.component('main-box', {
 		template: `
-		<div class="columns">
-		<div class="column">
 		<div class="content">
 			<div class="tabs is-toggle is-centered is-small">
 				<ul>
@@ -45,20 +43,21 @@
 						<th><input type="checkbox" v-model="allSelector" v-on:click="selectAll"></th>
 						<th></th>
 						<th></th>
+						<th>CF</th>
+		<th><span class="icon is-small"><i class="fa fa-hourglass-2"/></span></th>
 						<th>Project</th>
 						<th>Experiment</th>
 						<th>Run</th>
 						<th>User</th>
 						<th>Datatype</th>
-						<th v-for="comp in components"><abbr v-bind:title="comp">{{ comp[0].toUpperCase() }}</abbr></th>
-						<th>Jobs</th>
 					</tr>
 				</thead>
 				<tbody>
-					<tr v-for="ds in datasets" v-show="filteredDataset(ds)">
+					<template v-for="ds in datasets" v-show="filteredDataset(ds)">
+		                        <tr>
 						<td><input type="checkbox" v-bind:value="ds.id" v-model="selectedDsets"> </td>
 						<td>
-							<a v-on:click="dsetInfo(ds.id)">
+							<a v-on:click="toggleDset(ds.id)">
 								<span class="has-text-info icon is-small">
 								<i class="fa fa-eye" />
 								</span>
@@ -74,6 +73,10 @@
 							</span>
 								</a>
 						</td>
+						<td><span class="has-icon" v-if="ds.is_corefac">
+                                                               <i class="fa fa-check has-text-success"></i>
+		</span></td>
+		<td><span v-for="state in ds.jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span></td>
 						<td>{{ ds.proj }}</td>
 						<td>{{ ds.exp }}</td>
 						<td>{{ ds.run }}</td>
@@ -83,31 +86,46 @@
 							<span v-else-if="ds.hr">{{ ds.hr }}</span>
 							<span v-else-if="ds.prefrac">{{ ds.prefrac }}</span>
 						</td>
-						<td v-for="comp in components">
-							<span class="has-icon" v-if="ds[comp] !== undefined">
-								<i v-if="ds[comp] === 'ok'" class="fa fa-check has-text-success"></i>
-								<i v-else-if="ds[comp] !== 'ok'" class="fa fa-times has-text-danger"></i>
-							</span>
-							<span v-if="ds[comp]===undefined">
-								&#x25AC;
-							</span>
-						</td>
                                                 <td>
-<div v-if="ds.jobs.length" class="tags"><span class="tag" v-bind:class="jobTaskStateColor(job.state)" v-for="job in ds.jobs">{{ job.name }}</span></div>
-                                                </td>
 					</tr>
+		<template v-if="ds.details !== false">
+		<td></td>
+		<td colspan="4">
+		<div>{{ ds.details.nrrawfiles }} claimed files</div>
+		<div v-for="(nrfiles, ftype) in ds.details.nrstoredfiles">{{ nrfiles }} stored files of type {{ ftype }}</div>
+		{{ ds.details.nrbackupfiles }} backed up files
+		<div v-if="ds.details.mzmlable === 'ready'"><a class="button is-small is-primary" v-on:click="createMzml(ds.id)">Create (missing) mzMLs</a></div>
+		<div v-if="ds.details.mzmlable === 'blocked'" ><aclass="button is-small is-primary" disabled>mzML job running</a></div>
+		</td>
+		<td colspan="2">
+		<div v-for="comp in components">
+		<span class="has-icon" v-if="ds.details.compstates[comp]!== undefined">
+                                                               <i v-if="ds.details.compstates[comp] === 'ok'" class="fa fa-check has-text-success"></i>
+                                                               <i v-else-if="ds.details.compstates[comp] !== 'ok'" class="fa fa-times has-text-danger"></i>
+		{{ comp }}</span>
+                                                       <span v-if="ds.details.compstates[comp]===undefined">
+                                                               &#x25AC;
+		{{ comp }}                              </span>
+
+		</div>
+		</td>
+		<td colspan="2">
+		<div v-for="job in ds.details.jobs">
+			<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
+					<a v-else-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
+					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
+					<a v-if="job.state==='pending'" class="button is-small is-warning">{{ job.name }}</a>
+			</div>
+		</td>
+		<td></td>
+		</template>
+		                        </template>
 				</tbody>
 					</div>
 			</table>
 		</div><!-- container dsets end -->
 		</div>
 		</div>
-		<div class="column">
-			<div class="box">
-				<dsinfo-box v-show="tabclassDatasets!==''" v-bind:infoshown="infoshown" v-on:dsinfo="refreshDsInfo"></dsinfo-box>
-			</div>
-		</div>
-</div>
 		`,
 		props: ['username'],
 		data: function() {
@@ -129,6 +147,17 @@
 			this.fetchDatasets();
 		},
 		methods: {
+			createMzml: function(ds_id) {
+				this.$http.get(`/createmzml/${ds_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.$emit('dsinfo');
+				})
+			},
 			fetchDatasets: function() {
 				this.$http.get('/show/datasets/')
 				.then(response => {
@@ -196,6 +225,13 @@
 					this.infoshown = result;
 				})
 			},
+			toggleDset: function(ds_id) {
+				if (!this.datasets[ds_id].details) {
+					this.dsetInfo(ds_id);
+				} else {
+					this.datasets[ds_id].details = false
+				}
+			},
 			dsetInfo: function(ds_id) {
 				this.selectedDsets = [];
 				this.allSelector = false;
@@ -204,7 +240,7 @@
 					return response.json()
 				}, response => {
 				}).then(result => {
-					this.infoshown = result;
+					this.datasets[ds_id].details = result;
 				})
 			},
                         refreshDsInfo: function() {
