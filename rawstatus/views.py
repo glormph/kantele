@@ -159,8 +159,11 @@ def check_md5_success(request):
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
     print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype))
-    file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
+    try:
+        file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
                                               filetype=ftype)
+    except StoredFile.DoesNotExist:
+        return JsonResponse({'fn_id': fn_id, 'md5_state': False})
     file_registered = file_transferred.rawfile
     if not file_transferred.md5:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
