@@ -25,17 +25,7 @@
 			</div>
 			<!-- here starts datasets list box, component or container? -->
 			<div class="content" v-show="tabclassDatasets!==''">
-			<div class="columns">
-				<div class="column is-two-thirds">
-					<input class="input is-small" v-model="dsetFilter" type="text" placeholder="Filter datasets">
-				</div>
-				<div class="column">
-					<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showYourDatasets">Show everyone's datasets</a>
-					<a class="button is-small is-primary" v-on:click="toggleShow" v-show="showAllDatasets">Show my datasets</a>
-				</div>
-			</div>
-			<a v-show="selectedDsets.length > 0" class="button is-small is-primary" v-on:click="multidsetInfo">Get info</a>
-			<a v-show="selectedDsets.length === 0" class="button is-small" disabled>Get info</a>
+					<input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to search datasets">
 			<table class="table">
 				<div class="content is-small">
 				<thead>
@@ -53,7 +43,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					<template v-for="ds in datasets" v-show="filteredDataset(ds)">
+				<template v-for="ds in datasets">
 		                        <tr>
 						<td><input type="checkbox" v-bind:value="ds.id" v-model="selectedDsets"> </td>
 						<td>
@@ -86,7 +76,6 @@
 							<span v-else-if="ds.hr">{{ ds.hr }}</span>
 							<span v-else-if="ds.prefrac">{{ ds.prefrac }}</span>
 						</td>
-                                                <td>
 					</tr>
 		<template v-if="ds.details !== false">
 		<td></td>
@@ -98,12 +87,12 @@
 		<div v-if="ds.details.mzmlable === 'blocked'" ><aclass="button is-small is-primary" disabled>mzML job running</a></div>
 		</td>
 		<td colspan="2">
-		<div v-for="comp in components">
-		<span class="has-icon" v-if="ds.details.compstates[comp]!== undefined">
-                                                               <i v-if="ds.details.compstates[comp] === 'ok'" class="fa fa-check has-text-success"></i>
-                                                               <i v-else-if="ds.details.compstates[comp] !== 'ok'" class="fa fa-times has-text-danger"></i>
+		<div v-for="(state, comp) in ds.details.compstates">
+		<span class="has-icon" v-if="state !== undefined">
+                                                               <i v-if="state === 'ok'" class="fa fa-check has-text-success"></i>
+                                                               <i v-else-if="state !== 'ok'" class="fa fa-times has-text-danger"></i>
 		{{ comp }}</span>
-                                                       <span v-if="ds.details.compstates[comp]===undefined">
+                                                       <span v-if="state === undefined">
                                                                &#x25AC;
 		{{ comp }}                              </span>
 
@@ -125,16 +114,12 @@
 			</table>
 		</div><!-- container dsets end -->
 		</div>
-		</div>
 		`,
 		props: ['username'],
 		data: function() {
 			return {
 				datasets: {},
-				components: [],
-				dsetFilter: '',
-				showYourDatasets: true,
-				showAllDatasets: false,
+				findDsQuery: '',
 				allSelector: false,
 				tabclassDatasets: 'is-active',
 				tabclassProjects: '',
@@ -166,38 +151,30 @@
 				}).then(result => {
 					for (key in result) {
 						this.datasets = result['dsets'];
-						this.components = result['components'];
 					}
 				})
 			},
-			toggleShow: function() {
-				this.showYourDatasets = this.showYourDatasets === false;
-				this.showAllDatasets = this.showAllDatasets === false;
+			findDatasets: function() {
+				this.$http.get('/find/datasets/',
+					{params: {q: this.findDsQuery.split(' ').join(',') }})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.datasets = result['dsets'];
+					}
+				})
 			},
 			selectAll: function() {
-				this.allSelector = this.allSelector === false;
 				this.selectedDsets = [];
 				this.infoshown = {};
 				if (!this.allSelector) {
 					return;
 				}
 				for (key in this.datasets) {
-					ds = this.datasets[key];
-					if (this.filteredDataset(ds) && this.allSelector) {
-						this.selectedDsets.push(ds.id);
-						}
+				        this.selectedDsets.push(this.datasets[key].id);
 				}
-			},
-			filteredDataset: function(ds) {
-				for (key of ['usr', 'proj', 'exp', 'run', 'dtype', 'hr']) {
-					if (this.showYourDatasets && ds.usr !== this.username) {
-						return false;
-					}
-					if (key in ds && ds[key].toLowerCase().indexOf(this.dsetFilter.toLowerCase()) > -1) {
-						return true
-					}
-				}
-				return false
 			},
 			showDatasets: function() {
 				this.activateTabClass('tabclassDatasets');
@@ -214,16 +191,6 @@
 					this[offtab] = '';
 					}
 				this[tabname] = 'is-active';
-			},
-			multidsetInfo: function() {
-				this.$http.get('/show/datasets/', 
-				{params: {dsets: this.selectedDsets.join(',')}})
-				.then(response => {
-					return response.json()
-				}, response => {
-				}).then(result => {
-					this.infoshown = result;
-				})
 			},
 			toggleDset: function(ds_id) {
 				if (!this.datasets[ds_id].details) {

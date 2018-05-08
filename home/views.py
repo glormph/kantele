@@ -1,6 +1,9 @@
+from datetime import timedelta, datetime
+
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
+from django.db.models import Q
 from collections import OrderedDict
 
 from datasets import models as dsmodels
@@ -18,34 +21,74 @@ def home(request):
 
 
 @login_required
+def find_datasets(request):
+    """Loop through comma-separated q-param in GET, do a lot of OR queries on
+    datasets to find matches. String GET-derived q-params by AND."""
+    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+    query = Q(runname__name__icontains=searchterms[0])
+    query |= Q(runname__experiment__name__icontains=searchterms[0])
+    query |= Q(runname__experiment__project__name__icontains=searchterms[0])
+    query |= Q(datatype__name__icontains=searchterms[0])
+    query |= Q(user__username__icontains=searchterms[0])
+    try:
+        float(searchterms[0])
+    except ValueError:
+        pass
+    else:
+        query |= Q(prefractionationdataset__hiriefdataset__hirief__start=searchterms[0])
+        query |= Q(prefractionationdataset__hiriefdataset__hirief__end=searchterms[0])
+    for term in searchterms[1:]:
+        subquery = Q(runname__name__icontains=term)
+        subquery |= Q(runname__experiment__name__icontains=term)
+        subquery |= Q(runname__experiment__project__name__icontains=term)
+        subquery |= Q(datatype__name__icontains=term)
+        subquery |= Q(user__username__icontains=term)
+        try:
+            float(term)
+        except ValueError:
+            pass
+        else:
+            subquery |= Q(prefractionationdataset__hiriefdataset__hirief__start=term)
+            subquery |= Q(prefractionationdataset__hiriefdataset__hirief__end=term)
+        query &= subquery
+    dbdsets = dsmodels.Dataset.objects.filter(query)
+    return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
+
+
+@login_required
 def show_datasets(request):
-    # FIXME this should be called with ds_id or a search query
-    if 'dsets' in request.GET:
-        dsets = [int(x) for x in request.GET['dsets'].split(',')]
-        return get_multidset_info(dsets)
-    response = {
-        'components': [x.name for x in dsmodels.DatasetComponent.objects.all()]
-    }
-    dsets = OrderedDict()
+    if 'dsids' in request.GET:
+        dsids = request.GET['dsids'].split(',')
+        dbdsets = dsmodels.Dataset.objects.filter(pk__in=dsids)
+    else:
+        # last month datasets of a user
+        dbdsets = dsmodels.Dataset.objects.filter(user_id=request.user.id,
+                                                  date__gt=datetime.today() - timedelta(30))
+    return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
+
+
+def populate_dset(dbdsets, user):
     jobs = {}
-    for entry in jm.Job.objects.filter(filejob__storedfile__rawfile__datasetrawfile__dataset_id__in=dsets):
+    for entry in jm.Job.objects.filter(
+            filejob__storedfile__rawfile__datasetrawfile__dataset_id__in=dbdsets):
         try:
             jobs[job.filejob.storedfile.rawfile.datasetrawfile.dataset_id].add(job.state)
         except KeyError:
             jobs[job.filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {job.state}
-    for dataset in dsmodels.Dataset.objects.select_related(
-            'runname__experiment__project', 'prefractionationdataset'):
+    dsets = OrderedDict()
+    for dataset in dbdsets.select_related('runname__experiment__project',
+                                          'prefractionationdataset'):
         jobstates = list(jobs[dataset.id]) if dataset.id in jobs else []
         dsets[dataset.id] = {
             'id': dataset.id,
-            'own': dataset.user_id == request.user.id,
+            'own': dataset.user_id == user.id,
             'usr': dataset.user.username,
             'proj': dataset.runname.experiment.project.name,
             'exp': dataset.runname.experiment.name,
             'run': dataset.runname.name,
             'dtype': dataset.datatype.name,
-            'is_corefac': dataset.runname.experiment.project.corefac,
             'jobstates': jobstates,
+            'is_corefac': dataset.runname.experiment.project.corefac,
             'details': False,
             'selected': False,
         }
@@ -54,8 +97,8 @@ def show_datasets(request):
             dsets[dataset.id]['prefrac'] = str(pf.prefractionation.name)
             if 'hirief' in pf.prefractionation.name.lower():
                 dsets[dataset.id]['hr'] = '{} {}'.format('HiRIEF', str(pf.hiriefdataset.hirief))
-    response['dsets'] = dsets
-    return JsonResponse(response)
+    return dsets
+
 
 # Ds page links to projects/files/analyses
 # Project page links to files/analyses/datasets
