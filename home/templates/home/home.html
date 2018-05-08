@@ -140,7 +140,7 @@
 					console.log(response);
 					// error code
 				}).then(result => {
-					this.$emit('dsinfo');
+					this.dsetInfo(ds_id);
 				})
 			},
 			fetchDatasets: function() {
@@ -200,8 +200,6 @@
 				}
 			},
 			dsetInfo: function(ds_id) {
-				this.selectedDsets = [];
-				this.allSelector = false;
 				this.$http.get(`/show/dataset/${ds_id}`)
 				.then(response => {
 					return response.json()
@@ -214,7 +212,7 @@
 				this.dsetInfo(this.infoshown.dset.id);
 			},
 			jobTaskStateColor: function(state) {
- 				statecolors = {'pending': 'is-info', 'error': 'is-danger', 'processing': 'is-warning'};
+ 				statecolors = {'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
 				return statecolors[state]
 			},
 		},

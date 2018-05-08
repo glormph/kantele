@@ -68,17 +68,19 @@ def show_datasets(request):
 
 
 def populate_dset(dbdsets, user):
-    jobs = {}
-    for entry in jm.Job.objects.filter(
-            filejob__storedfile__rawfile__datasetrawfile__dataset_id__in=dbdsets):
+    jobmap = {}
+    for filejob in filemodels.FileJob.objects.select_related('job').exclude(
+            job__state=jobs.Jobstates.DONE).filter(
+            storedfile__rawfile__datasetrawfile__dataset_id__in=dbdsets):
+        job = filejob.job
         try:
-            jobs[job.filejob.storedfile.rawfile.datasetrawfile.dataset_id].add(job.state)
+            jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id].add(job.state)
         except KeyError:
-            jobs[job.filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {job.state}
+            jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {job.state}
     dsets = OrderedDict()
     for dataset in dbdsets.select_related('runname__experiment__project',
                                           'prefractionationdataset'):
-        jobstates = list(jobs[dataset.id]) if dataset.id in jobs else []
+        jobstates = list(jobmap[dataset.id]) if dataset.id in jobmap else []
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': dataset.user_id == user.id,
@@ -112,11 +114,12 @@ def get_dset_info(request, dataset_id):
                     if x.name in ['microscopy']}
     dset = dsmodels.Dataset.objects.filter(pk=dataset_id).select_related(
         'runname__experiment__project').get()
-    dsjobs = jm.Job.objects.exclude(state=jobs.Jobstates.DONE).filter(
-        filejob__storedfile__rawfile__datasetrawfile__dataset_id=dataset_id)
-    info['jobs'] = [{'name': x.job.funcname, 'state': x.job.state,
-                     'retry': jobs.is_job_retryable(x.job), 'id': x.job.id,
-                     'time': x.job.timestamp} for x in dsjobs]
+    dsjobs = filemodels.FileJob.objects.exclude(job__state=jobs.Jobstates.DONE).filter(
+        storedfile__rawfile__datasetrawfile__dataset_id=dataset_id).select_related('job')
+    info['jobs'] = [unijob for unijob in 
+                    {x.job.id: {'name': x.job.funcname, 'state': x.job.state, 
+                                'retry': jobs.is_job_retryable(x.job), 'id': x.job.id,
+                                'time': x.job.timestamp} for x in dsjobs}.values()]
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dataset_id)
     info['nrrawfiles'] = raws.count()
     storedfiles = {}
@@ -127,7 +130,7 @@ def get_dset_info(request, dataset_id):
         storedfiles['mzML'] = files.filter(filetype='mzml', checked=True).count()
         if storedfiles['mzML'] == storedfiles['raw']:
             info['mzmlable'] = False
-        elif 'convert_mzml' in [x.name for x in info['jobs']]:
+        elif 'convert_mzml' in [x['name'] for x in info['jobs']]:
             info['mzmlable'] = 'blocked'
         else:
             info['mzmlable'] = 'ready'
