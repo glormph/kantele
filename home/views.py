@@ -130,7 +130,7 @@ def get_dset_info(request, dataset_id):
         storedfiles['mzML'] = files.filter(filetype='mzml', checked=True).count()
         if storedfiles['mzML'] == storedfiles['raw']:
             info['mzmlable'] = False
-        elif 'convert_mzml' in [x['name'] for x in info['jobs']]:
+        elif 'convert_dataset_mzml' in [x['name'] for x in info['jobs']]:
             info['mzmlable'] = 'blocked'
         else:
             info['mzmlable'] = 'ready'

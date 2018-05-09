@@ -84,7 +84,7 @@
 		<div v-for="(nrfiles, ftype) in ds.details.nrstoredfiles">{{ nrfiles }} stored files of type {{ ftype }}</div>
 		{{ ds.details.nrbackupfiles }} backed up files
 		<div v-if="ds.details.mzmlable === 'ready'"><a class="button is-small is-primary" v-on:click="createMzml(ds.id)">Create (missing) mzMLs</a></div>
-		<div v-if="ds.details.mzmlable === 'blocked'" ><aclass="button is-small is-primary" disabled>mzML job running</a></div>
+		<div v-if="ds.details.mzmlable === 'blocked'" ><a class="button is-small is-primary" disabled>mzML job running</a></div>
 		</td>
 		<td colspan="2">
 		<div v-for="(state, comp) in ds.details.compstates">
@@ -143,6 +143,17 @@
 					this.dsetInfo(ds_id);
 				})
 			},
+                        retryJob: function(job_id) {
+				this.$http.post(`jobs/retry/${job_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.dsetInfo(ds_id);
+				})
+                        },
 			fetchDatasets: function() {
 				this.$http.get('/show/datasets/')
 				.then(response => {
