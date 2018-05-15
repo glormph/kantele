@@ -67,7 +67,7 @@ def show_datasets(request):
     return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
 
 
-def populate_dset(dbdsets, user):
+def get_ds_jobs(dbdsets):
     jobmap = {}
     for filejob in filemodels.FileJob.objects.select_related('job').exclude(
             job__state=jobs.Jobstates.DONE).filter(
@@ -77,10 +77,15 @@ def populate_dset(dbdsets, user):
             jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id].add(job.state)
         except KeyError:
             jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {job.state}
+    return jobmap
+
+
+def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
+    if showjobs:
+        jobmap = get_ds_jobs(dbdsets)
     dsets = OrderedDict()
     for dataset in dbdsets.select_related('runname__experiment__project',
                                           'prefractionationdataset'):
-        jobstates = list(jobmap[dataset.id]) if dataset.id in jobmap else []
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': dataset.user_id == user.id,
@@ -89,16 +94,19 @@ def populate_dset(dbdsets, user):
             'exp': dataset.runname.experiment.name,
             'run': dataset.runname.name,
             'dtype': dataset.datatype.name,
-            'jobstates': jobstates,
             'is_corefac': dataset.runname.experiment.project.corefac,
             'details': False,
             'selected': False,
         }
+        if showjobs:
+            dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id]) if dataset.id in jobmap else []
         if hasattr(dataset, 'prefractionationdataset'):
             pf = dataset.prefractionationdataset
             dsets[dataset.id]['prefrac'] = str(pf.prefractionation.name)
             if 'hirief' in pf.prefractionation.name.lower():
                 dsets[dataset.id]['hr'] = '{} {}'.format('HiRIEF', str(pf.hiriefdataset.hirief))
+        if include_db_entry:
+            dsets[dataset.id]['dbentry'] = dataset
     return dsets
 
 
@@ -109,22 +117,28 @@ def populate_dset(dbdsets, user):
 
 @login_required
 def get_dset_info(request, dataset_id):
-    info = {}
-    nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
-                    if x.name in ['microscopy']}
     dset = dsmodels.Dataset.objects.filter(pk=dataset_id).select_related(
         'runname__experiment__project').get()
+    info = fetch_dset_details(dset)
+    return JsonResponse(info)
+
+
+
+def fetch_dset_details(dset):
     dsjobs = filemodels.FileJob.objects.exclude(job__state=jobs.Jobstates.DONE).filter(
-        storedfile__rawfile__datasetrawfile__dataset_id=dataset_id).select_related('job')
-    info['jobs'] = [unijob for unijob in 
-                    {x.job.id: {'name': x.job.funcname, 'state': x.job.state, 
+        storedfile__rawfile__datasetrawfile__dataset_id=dset.id).select_related('job')
+    info = {'jobs': [unijob for unijob in
+                    {x.job.id: {'name': x.job.funcname, 'state': x.job.state,
                                 'retry': jobs.is_job_retryable(x.job), 'id': x.job.id,
-                                'time': x.job.timestamp} for x in dsjobs}.values()]
-    raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dataset_id)
+                                'time': x.job.timestamp} for x in dsjobs}.values()]}
+    # FIXME add more datatypes and microscopy is hardcoded
+    raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
     info['nrrawfiles'] = raws.count()
+    nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
+                    if x.name in ['microscopy']}
     storedfiles = {}
-    files = filemodels.StoredFile.objects.filter(
-        rawfile__datasetrawfile__dataset_id=dataset_id)
+    files = filemodels.StoredFile.objects.select_related('rawfile__producer').filter(
+        rawfile__datasetrawfile__dataset_id=dset.id)
     if dset.datatype_id not in nonms_dtypes:
         storedfiles['raw'] = files.filter(filetype='raw').count()
         storedfiles['mzML'] = files.filter(filetype='mzml', checked=True).count()
@@ -136,15 +150,16 @@ def get_dset_info(request, dataset_id):
             info['mzmlable'] = 'ready'
     else:
         storedfiles[nonms_dtypes[dset.datatype_id]] = files.filter(filetype='raw').count()
+    info['instruments'] = list(set([x.rawfile.producer.shortname for x in files]))
     info['nrstoredfiles'] = storedfiles
     info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(
-        storedfile__rawfile__datasetrawfile__dataset_id=dataset_id).count()
+        storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
     info['storage_location'] = dset.storage_loc
     info['compstates'] = {x.dtcomp.component.name: x.state for x in
                           dsmodels.DatasetComponentState.objects.filter(
-                              dataset_id=dataset_id).select_related(
+                              dataset_id=dset.id).select_related(
                                   'dtcomp__component')}
-    return JsonResponse(info)
+    return info
 
 
 @login_required

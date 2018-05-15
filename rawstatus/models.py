@@ -6,6 +6,7 @@ from jobs.models import Job
 class Producer(models.Model):
     name = models.CharField(max_length=100)
     client_id = models.CharField(max_length=100)
+    shortname = models.CharField(max_length=10)
     heartbeat = models.DateTimeField('last seen', auto_now=True)
 
     def __str__(self):
