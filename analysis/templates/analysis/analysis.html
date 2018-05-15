@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="container" class="container">
+<analysis-box></analysis-box>
+</div>
+<script>
+	Vue.component('analysis-box', {
+		template: `
+		{% verbatim %}
+		<div class="content">
+			<article class="message is-danger" v-if="analysiserrors.size !== 0">
+				<div class="message-header">Errors</div>
+				<div class="message-body">
+					<ul>
+					<li v-for="err in Array.from(analysiserrors)">{{ err }}</li>
+					</ul>
+				</div>
+			</article>
+		<div class="title is-5">Basics</div>
+		<div class="field">
+
+		<input type="text" class="input" v-model="analysisname" placeholder="Analysis name">
+		<div>Full name will be <code>{{ wftype }}_{{ analysisname }}</code>
+		This will be the folder name for the output and prefixed to the output filenames
+		</div>
+		</div>
+		<div class="field">
+		<div class="select" >
+		<select v-model="selectedwf">
+		<template v-for="wf in allwfs">
+		<option v-bind:value="wf.id">{{ wf.name }} </option>
+		</template>
+		</select>
+		</div>
+		</div>
+		<div class="field">
+		<div class="select" >
+		<select v-model="selectedwfv">
+		<template v-for="wfv in allversions[allwfs[selectedwf].nfid]">
+		<option v-bind:value="wfv.id">{{ wfv.name }} </option>
+		</option>
+		</template>
+		</select>
+			</div>
+		</div>
+
+			<div class="title is-5">Datasets</div>
+			<div v-for="ds in dsets" class="box">
+			<div class="columns">
+			<div class="column">
+			<div class="title is-6 has-text-primary">Setname for:</div>
+			<div class="subtitle is-6">
+				<span>{{ ds.proj }} // {{ ds.exp }} // {{ ds.run }} //</span>
+				<span v-if="!ds.prefrac">{{ ds.dtype }}</span>
+				<span v-else-if="ds.hr">{{ ds.hr }}</span>
+				<span v-else-if="ds.prefrac">{{ ds.prefrac }}</span>
+				<span>// {{ ds.details.nrrawfiles }} rawfiles</span>
+			</div>
+			<div class="subtitle is-6">
+				<span>{{ ds.details.qtype }} </span>
+				<span>// {{ ds.details.instruments.join(', ') }} </span>
+				<a class="button is-danger" v-if="ds.mzmlable==='ready'">// Missing mzMLs</a>
+			</div>
+			</div>
+			<div class="column">
+				<input type="text" class="input" placeholder="Name of set" v-model="setnames[ds.id]">
+			</div>
+			</div>
+		</div>
+		 
+		<div class="box" v-if="analysiserrors.size === 0">
+		<div class="title is-5">Sample sets</div>
+		<div v-for="(nr, name) in allsets">
+			<div class="title is-6">{{ name }}<span v-show="analysis.qtypeshort === 'labelfree'" class="has-text-primary"> -- Labelfree</span></div>
+			<template v-if="setdenoms[name]">
+				<div class="has-text-primary title is-6">Isobaric denominator channels</div>
+				<div v-for="(desc, ch) in setdenoms[name]">
+					<input type="checkbox" v-bind:value="ch" v-model="setdenommodel[name]">{{ ch }} - {{ desc }}
+				</div>
+			</template>
+		</div>
+		</div>
+
+		<div class="box" v-if="analysiserrors.size === 0">
+		<div class="title is-5">Detected parameters</div>
+		<div>Datasets are from {{ analysis.instnice }} type instrument: <code>{{ analysis.params.inst.join(' ') }}</code></div>
+		<div>Quantification {{ analysis.qtype }} type instrument: <code>{{ analysis.params.quant.join(' ') }}</code></div>
+		
+		</div>
+		<div class="box" v-if="analysiserrors.size === 0">
+		<div class="title is-5">Predefined workflow parameters</div>
+		<div v-for="flag in analysis.params.flags">{{ workflow.flags[flag] }}: <code>{{ flag }}</code></div>
+		
+		</div>
+		<div class="box" v-if="analysiserrors.size === 0">
+		<div class="title is-5">Input files</div>
+		<div class="field" v-for="file in workflow.files">
+		<label class="label">{{ file.name }}</label>
+		<div class="select">
+		<select v-model="inputfiles[file.nf]">
+					<option disabled value="">Please select one</option>
+					<template v-for="libfn in libfiles[file.ftype]">
+					<option v-bind:value="libfn.id">
+		{{ libfn.name }} -- {{ libfn.desc }} 
+					</option>
+					</template>
+				</select>
+			</div>
+		</div>
+		</div>
+
+		<div class="box" v-if="analysiserrors.size === 0">
+		<div class="title is-5">Predefined files</div>
+		<div class="field" v-for="file in workflow.fixedfiles">
+		<label class="label">{{ file.name }}</label>
+		<div class="select" >
+		<select>
+					<option disabled value="">Fixed selection</option>
+					<option> 
+		{{ file.fn }} -- {{ file.desc }} 
+					</option>
+					</template>
+				</select>
+			</div>
+		</div>
+		</div>
+
+		<a class="button is-primary" v-on:click="runAnalysis">Run analysis</a>
+		</div>
+		`,
+		{% endverbatim %}
+		data: function() {
+			return {
+				wftype: "{{ wftype }}",
+				analysisname: '',
+				allwfs: {'': 1},
+				allversions: {},
+				selectedwf: '',
+				selectedwfv: '',
+				dsids: [{{ dsids|join:"," }}],
+				wfid: {{ wfid }},
+				workflow: {},
+				libfiles: {},
+				inputfiles: {},
+				analysiserrors: new Set(),
+				dsets: [],
+				setnames: {},
+				isoquants: [],
+				setdenommodel: {},
+			}
+		},
+		mounted: function() {
+			this.fetchAllWorkflows();
+			this.fetchDatasetDetails();
+			this.fetchWorkflow();
+		},
+		methods: {
+			validate: function() {
+				return false;
+			},
+			runAnalysis: function() {
+				// FIXME need redirect to front page
+				fns = {};
+				for (file of this.workflow.fixedfiles) {
+					fns[file.nf] = file.id;
+				}
+				for (file of this.workflow.files) {
+					fns[file.nf] = this.inputfiles[file.nf];
+				}
+
+				post = {'setnames': this.setnames,
+					'strips': this.platenames,
+					'files': fns,
+					'params':  this.analysis.params,
+					'nfwfvid': this.selectedwfv,
+					'analysisname': this.analysisname,
+				}
+				denoms = []
+				for (sname in this.allsets) {
+					console.log(sname);
+					if (this.setdenoms[sname]) {
+						console.log('YES');
+						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
+					}
+					console.log(denoms);
+					console.log(denoms.length);
+				}
+				if (denoms.length > 0) {
+					post.denoms = denoms;
+				}
+				console.log(post);
+			this.$http.post('/analysis/run/', post 
+				).then(response => {
+					console.log('done');
+				}, response => {
+				console.log(response);
+					console.log('error');
+				}).then(result => {
+					console.log(result);
+			})
+			},
+			fetchAllWorkflows: function() {
+				this.$http.get(`/analysis/allworkflows/`)
+				.then(response => {
+					return response.json()
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.allwfs = result['allwfs'];
+					this.allversions = result['allversions'];
+					this.selectedwf = {{ wfid }};
+					this.selectedwfv = {{ wfid }};
+				})
+			},
+	{% verbatim %}
+			fetchDatasetDetails: function() {
+				this.$http.get(`/analysis/dsets/`,
+					{params: {dsids: this.dsids.join(',')}})
+				.then(response => {
+					return response.json()
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.dsets = result['dsets']
+					this.isoquants = result['isoquants']
+				})
+
+			},
+			fetchWorkflow: function() {
+				this.$http.get(`/analysis/workflow/`,
+					{params: {wfid: this.wfid}})
+				.then(response => {
+					return response.json()
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.workflow = result['wf'];
+					this.libfiles = result['files'];
+				})
+
+			},
+		},
+		computed: {
+			setdenoms: function() {
+				setds = {};
+				for (dsid in this.setnames) {
+					if (this.setnames[dsid]) {
+						setds[this.setnames[dsid]] = {};
+						for (ch in this.dsets[dsid].details.channels) {
+							setds[this.setnames[dsid]][ch] = this.dsets[dsid].details.channels[ch];
+						}
+					}
+				}
+				return setds;
+			},
+			platenames: function() {
+				plates = {}
+				for (dsid in this.dsets) {
+					if (this.dsets[dsid].hr) { pln = this.dsets[dsid].hr; } else { pln = false; }
+					plates[dsid] = pln;
+				}
+				return plates;
+			},
+			analysis: function() {
+				data = {};
+				qtype = '';
+				inst = '';
+				// check quant, instrument
+				for (dsid in this.dsets) {
+					dsq = this.dsets[dsid].details.qtype;
+					dsins = this.dsets[dsid].details.instruments;
+					if (qtype && dsq !== qtype) {
+						this.analysiserrors.add('Mixed quantification types in selected datasets');
+					}
+					if (!dsins.size > 1 || (inst && dsins[0] !== inst)) {
+						this.analysiserrors.add('Mixed instruments found in datasets');
+					}
+					qtype = dsq;
+					inst = dsins[0];
+				}
+
+				qtypeshort = qtype.toLowerCase().replace(/[\s-]/g, '');
+				instmap = {'qe': 'Q-Exactive', 'velos': 'Velos'};
+				params = {'inst': ['--instrument', instmap[inst]], 'flags': []}
+				if (qtypeshort !== 'labelfree') {
+					params.quant = ['--isobaric', qtypeshort]
+				}
+				for (fk in this.workflow.flags) {
+					if (fk !== '--normalize' || qtypeshort !== 'labelfree') {
+						params.flags.push(fk)
+					}
+				}	
+				return {'qtype': qtype,
+					'qtshort': qtypeshort,
+					'inst': inst,
+					'instnice': instmap[inst],
+					'params': params,
+				};
+			},
+			allsets: function() {
+				allsets = {}
+				for (dsid in this.setnames) {
+					if (this.setnames[dsid]) {
+					       	allsets[this.setnames[dsid]] = [];
+					}
+				this.setdenommodel[this.setnames[dsid]] = [];
+				}
+				return allsets;
+			}
+		},
+	})
+	{% endverbatim %}
+	var app = new Vue({
+	el: '#container',
+	})
+</script>
+
+{% endblock content %}

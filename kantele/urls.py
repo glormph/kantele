@@ -13,6 +13,7 @@ urlpatterns = [
     url(r'^jobs/', include('jobs.urls')),
     url(r'^dash/', include('dashboard.urls')),
     url('', include('home.urls')),
+    url(r'^analysis/', include('analysis.urls')),
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
 ]

@@ -65,10 +65,11 @@ def run_ipaw(job_id, dset_ids, platenames, setnames, analysis_id, wfv_id, inputs
     # TODO make proper fraction interface and store in params
     fn_fractions = {fn.id: int(re.search('.*fr([0-9]+).(mzML)', fn.filename).group(1))
                     for fn in filemodels.StoredFile.objects.filter(pk__in=dset_mzmls)}
-    mzmls = [(x.servershare.name, x.path, x.filename, 
+    # FIXME plate/frac optional in mzml def:
+    mzmls = [(x.servershare.name, x.path, x.filename,
               dset_setnames[x.rawfile.datasetrawfile.dataset_id][0],
               dset_setnames[x.rawfile.datasetrawfile.dataset_id][1],
-              fn_fractions[x.id]) for x in 
+              fn_fractions[x.id]) for x in
              filemodels.StoredFile.objects.filter(pk__in=dset_mzmls)]
     run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
            'analysis_id': analysis.id,

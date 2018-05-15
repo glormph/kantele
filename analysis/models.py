@@ -20,7 +20,74 @@ class NextflowWfVersion(models.Model):
     filename = models.CharField(max_length=50)
     nfworkflow = models.ForeignKey(NextflowWorkflow)
     date = models.DateTimeField(auto_now=True)
-    
+
+
+class WorkflowType(models.Model):
+    name = models.CharField(max_length=20)
+
+    def __str__(self):
+        return self.name
+
+
+class Workflow(models.Model):
+    name = models.CharField(max_length=50)
+    shortname = models.ForeignKey(WorkflowType)
+    nfworkflow = models.ForeignKey(NextflowWorkflow)
+
+    def __str__(self):
+        return self.name
+
+
+class LibraryFile(models.Model):
+    description = models.CharField(max_length=100)
+    sfile = models.ForeignKey(filemodels.StoredFile)
+
+    def __str__(self):
+        return self.description
+
+
+class FileParam(models.Model):
+    name = models.CharField(max_length=50)
+    nfparam = models.CharField(max_length=50)
+    filetype = models.CharField(max_length=20)
+
+    def __str__(self):
+        return self.name
+
+
+class Param(models.Model):
+    name = models.CharField(max_length=50)
+    nfparam = models.CharField(max_length=50)
+    ptype = models.CharField(max_length=10)  # file, flag or value
+
+    def __str__(self):
+        return self.name
+
+
+class WorkflowFileParam(models.Model):
+    wf = models.ForeignKey(Workflow)
+    param = models.ForeignKey(FileParam)
+
+    def __str__(self):
+        return self.param.name
+
+
+class WorkflowPredefFileParam(models.Model):
+    wf = models.ForeignKey(Workflow)
+    param = models.ForeignKey(FileParam)
+    libfile = models.ForeignKey(LibraryFile)
+
+    def __str__(self):
+        return '{} -- {}'.format(self.param.name, self.libfile.description)
+
+
+class WorkflowParam(models.Model):
+    wf = models.ForeignKey(Workflow)
+    param = models.ForeignKey(Param)
+
+    def __str__(self):
+        return self.param.name
+
 
 class Analysis(models.Model):
     date = models.DateTimeField(auto_now=True)
@@ -47,8 +114,3 @@ class DatasetSearch(models.Model):
 class AnalysisResultFile(models.Model):
     analysis = models.ForeignKey(Analysis)
     sfile = models.OneToOneField(filemodels.StoredFile)
-
-
-class LibraryFile(models.Model):
-    description = models.CharField(max_length=100)
-    sfile = models.ForeignKey(filemodels.StoredFile)

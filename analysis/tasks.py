@@ -62,6 +62,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     print('Staging files to {}'.format(stagedir))
     params = stage_files(stagedir, stagefiles, params)
     stage_files(stagedir, {x[2]: x for x in mzmls})
+    # FIXME plate/frac optional in mzml def:
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             fp.write('{fpath}\t{setn}\t{pl}\t{fr}\n'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3], pl=fn[4], fr=fn[5]))
