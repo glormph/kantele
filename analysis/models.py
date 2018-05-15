@@ -20,6 +20,9 @@ class NextflowWfVersion(models.Model):
     filename = models.CharField(max_length=50)
     nfworkflow = models.ForeignKey(NextflowWorkflow)
     date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return '{} - {}'.format(self.nfworkflow.description, self.update)
 
 
 class WorkflowType(models.Model):
