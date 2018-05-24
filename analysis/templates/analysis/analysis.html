@@ -175,18 +175,14 @@
 					'nfwfvid': this.selectedwfv,
 					'analysisname': this.analysisname,
 				}
-				denoms = []
+				denoms = [];
 				for (sname in this.allsets) {
-					console.log(sname);
 					if (this.setdenoms[sname]) {
-						console.log('YES');
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
-					console.log(denoms);
-					console.log(denoms.length);
 				}
-				if (denoms.length > 0) {
-					post.denoms = denoms;
+				if (denoms.length > 1) {
+					post.params.denoms =  ['--denoms', denoms.join(' ')];
 				}
 				console.log(post);
 			this.$http.post('/analysis/run/', post 
@@ -284,7 +280,7 @@
 
 				qtypeshort = qtype.toLowerCase().replace(/[\s-]/g, '');
 				instmap = {'qe': 'Q-Exactive', 'velos': 'Velos'};
-				params = {'inst': ['--instrument', instmap[inst]], 'flags': []}
+				params = {'inst': ['--instrument', inst], 'flags': []}
 				if (qtypeshort !== 'labelfree') {
 					params.quant = ['--isobaric', qtypeshort]
 				}

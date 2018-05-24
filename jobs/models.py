@@ -3,8 +3,8 @@ from django.db import models
 
 class Job(models.Model):
     funcname = models.CharField(max_length=100)
-    args = models.CharField(max_length=2000)
-    kwargs = models.CharField(max_length=2000)
+    args = models.CharField(max_length=10000)
+    kwargs = models.CharField(max_length=10000)
     jobtype = models.CharField(max_length=50)
     timestamp = models.DateTimeField()
     state = models.CharField(max_length=10)  # pending, processing, error, done

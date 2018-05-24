@@ -62,8 +62,9 @@ def run_ipaw(job_id, dset_ids, platenames, setnames, analysis_id, wfv_id, inputs
         sf = filemodels.StoredFile.objects.get(pk=sf_id)
         stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
     dset_setnames = {ds: (sn, pn) for ds, sn, pn in zip(dset_ids, setnames, platenames)}
-    # TODO make proper fraction interface and store in params
-    fn_fractions = {fn.id: int(re.search('.*fr([0-9]+).(mzML)', fn.filename).group(1))
+    # TODO make proper fraction interface and store in params, or store from files
+    # FIXME this only works on hirief obv
+    fn_fractions = {fn.id: int(re.search('.*fr([0-9]+).*(mzML)$', fn.filename).group(1))
                     for fn in filemodels.StoredFile.objects.filter(pk__in=dset_mzmls)}
     # FIXME plate/frac optional in mzml def:
     mzmls = [(x.servershare.name, x.path, x.filename,

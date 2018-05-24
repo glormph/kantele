@@ -124,5 +124,5 @@ def start_analysis(request):
     params = {'singlefiles': {nf: fnid for nf, fnid in req['files'].items()},
               'params': [y for x in req['params'].values() for y in x]}
     # FIXME run_ipaw_nextflow rename job
-    job = jj.create_dataset_job('run_nextflow', dsids, strips, setnames, analysis.id, req['wfvid'], params)
+    job = jj.create_dataset_job('run_ipaw_nextflow', [int(x) for x in dsids], strips, setnames, analysis.id, req['nfwfvid'], params)
     return JsonResponse({})
