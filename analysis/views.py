@@ -14,12 +14,12 @@ from jobs import jobs as jj
 
 @login_required
 def get_analysis_init(request):
-    nfwfid = request.GET['nfid']
+    #nfwfid = request.GET['nfid']
     wfid = request.GET['wfid']
     dsids = request.GET['dsids'].split(',')
-    wfversion_id = am.NextflowWfVersion.objects.filter(nfworkflow_id=nfwfid).last().id
-    wftype = am.Workflow.objects.get(pk=wfid).shortname
-
+    wf = am.Workflow.objects.get(pk=wfid)
+    wftype = wf.shortname
+    wfversion_id = am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id).last().id
     try:
         context = {'dsids': dsids,
                    'wfid': wfid,
