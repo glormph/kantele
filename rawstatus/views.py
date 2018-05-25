@@ -73,29 +73,33 @@ def register_file(request):
             print('POST request to register_file with incorrect formatted '
                   'date parameter {}'.format(error))
             return HttpResponseForbidden()
-        try:
-            existing_fn = RawFile.objects.get(source_md5=md5)
-        except RawFile.DoesNotExist:
-            claim = 'claimed' in request.POST and request.POST['claimed']
-            file_record = RawFile(name=fn, producer=producer, source_md5=md5,
-                                  size=size, date=file_date, claimed=claim)
-            file_record.save()
-        else:
-            stored = True if StoredFile.objects.select_related(
-                'rawfile').filter(rawfile__source_md5=md5).count() else False
-            msg = ('File {} is already registered and has MD5 {}. It is {}'
-                   'stored'.format(existing_fn.name, existing_fn.source_md5,
-                                   '' if stored else 'not '))
-            print(msg)
-            response = {'stored': stored, 'md5': existing_fn.source_md5,
-                        'msg': msg}
-            response['state'] = 'registered' if stored else 'error'
-            if existing_fn.source_md5 == md5:
-                response['file_id'] = existing_fn.id
-            return JsonResponse(response)
-        return JsonResponse({'file_id': file_record.id, 'state': 'registered'})
+        response = get_or_create_rawfile(md5, fn, producer, size, file_date)
+        return JsonResponse(response)
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
+
+
+def get_or_create_rawfile(md5, fn, producer, size, file_date):
+    try:
+        existing_fn = RawFile.objects.get(source_md5=md5)
+    except RawFile.DoesNotExist:
+        claim = 'claimed' in request.POST and request.POST['claimed']
+        file_record = RawFile(name=fn, producer=producer, source_md5=md5,
+                              size=size, date=file_date, claimed=claim)
+        file_record.save()
+        response = {'file_id': file_record.id, 'state': 'registered'}
+    else:
+        stored = True if StoredFile.objects.select_related(
+            'rawfile').filter(rawfile__source_md5=md5).count() else False
+        msg = ('File {} is already registered and has MD5 {}. It is {}'
+               'stored'.format(existing_fn.name, existing_fn.source_md5,
+                               '' if stored else 'not '))
+        response = {'stored': stored, 'md5': existing_fn.source_md5,
+                    'msg': msg}
+        response['state'] = 'registered' if stored else 'error'
+        if existing_fn.source_md5 == md5:
+            response['file_id'] = existing_fn.id
+    return response
 
 
 def file_transferred(request):

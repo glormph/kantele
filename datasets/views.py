@@ -314,7 +314,9 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
     elif prefrac:
         subdir = os.path.join(prefrac.name)
     subdir = re.sub('[^a-zA-Z0-9_\-\/\.]', '_', subdir)
-    return '{}/{}/{}/{}'.format(project.name, exp.name, subdir, runname.name)
+    if len(subdir):
+        subdir = '/{}'.format(subdir)
+    return '{}/{}{}/{}'.format(project.name, exp.name, subdir, runname.name)
 
 
 def check_ownership(user, dset):
@@ -339,6 +341,16 @@ def check_save_permission(dset_id, logged_in_user):
         if not check_ownership(logged_in_user, dset):
             return HttpResponseForbidden()
     return False
+
+
+def create_external_dset(exp, px_acc, user_id):
+    project = models.Project.objects.get(pk=settings.PX_PROJECT_ID)
+    experiment = models.Experiment(name=exp, project=project)
+    run = models.RunName(name=px_acc, experiment=experiment)
+    experiment.save(), run.save()
+    data = {'datatype_id': get_quantprot_id(), data['prefrac_id']: False,
+            'is_corefac': False, 'organism_ids': [settings.QC_ORGANISM]}
+    return save_new_dataset(data, project, experiment, run, user_id)
 
 
 def get_or_create_qc_dataset(data):

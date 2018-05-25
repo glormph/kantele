@@ -43,6 +43,8 @@ SHAREMAP = {TMPSHARENAME: TMPSHARE,
             STORAGESHARENAME: STORAGESHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
             }
+
+# message queue
 RABBIT_HOST = os.environ.get('RABBITHOST')
 RABBIT_USER = 'kantele'
 RABBIT_VHOST = 'kantele_vhost'
@@ -50,6 +52,10 @@ RABBIT_PASSWORD = os.environ.get('AMQPASS')
 CELERY_BROKER_URL = 'amqp://{}:{}@{}:5672/{}'.format(RABBIT_USER, RABBIT_PASSWORD, RABBIT_HOST, RABBIT_VHOST)
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
+
+# external datasets
+PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
+EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')
 
 # qc datasets
 QC_USER_ID = os.environ.get('QC_USER_ID')

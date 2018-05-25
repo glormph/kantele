@@ -40,3 +40,8 @@ def move_single_file(job_id, fn_id, dst_path, newname=False):
     tid = dstasks.move_file_storage.delay(fn.rawfile.name, fn.servershare.name,
                                           fn.path, dst_path, fn.id, newname).id
     Task.objects.create(asyncid=tid, job_id=job_id, state='PENDING')
+
+
+def download_px_project(job_id, projectname, expname, user_id):
+    tid = tasks.download_px_project_raw.delay(projectname, expname, user_id)
+    Task.objects.create(asyncid=tid, job_id=job_id, state='PENDING')

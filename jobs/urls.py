@@ -11,6 +11,7 @@ urlpatterns = [
     url(r'^set/md5/$', views.set_md5, name='setmd5'),
     url(r'^delete/$', views.delete_storedfile,
         name='deletefile'),
+    url(r'^set/pxdataset/$', views.create_pxdataset, name='downloadpx'),
     url(r'^swestore/set/$', views.created_swestore_backup,
         name='createswestore'),
     url(r'^set/mzmlcreate/$', views.created_mzml, name='createmzml'),
