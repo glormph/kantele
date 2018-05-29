@@ -10,7 +10,6 @@ from datetime import datetime
 from django.urls import reverse
 
 from kantele import settings as config
-from datasets.views import get_storage_location
 from celery import shared_task
 from celery.exceptions import MaxRetriesExceededError
 from jobs.post import update_db, taskfail_update_db
@@ -25,33 +24,32 @@ def calc_md5(fnpath):
 
 
 @shared_task(queue=config.QUEUE_STORAGE, bind=True)
-def download_px_project_raw(self, project, experiment, user_id):
-    # project=PXname, exp=user_description, 
-    prideurl = 'https://www.ebi.ac.uk/pride/ws/archive/file/list/project/{}'.format(project)
-    projfiles = requests.get(prideurl).json()
-    postdata = {'files': [], 'date': datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M'),
-                'px_acc': project, 'client_id': config.APIKEY, 'task': self.request.id,
-                'exp': experiment, 'user_id': user_id}
-    for rawfn in [fn for fn in projfiles['list'] if fn['fileType'] == 'RAW']:
-        ftpurl = urlsplit(rawfn['downloadLink'])
-        fn = os.path.split(ftpurl.path)[1]
-        dstfile = os.path.join(config.SHAREMAP[config.TMPSHARENAME], fn)
-        fndata = {'fn': fn}
-        try:
-            with FTP(ftpurl.netloc) as ftp:
-                ftp.login()
-                ftp.retrbinary('RETR {}'.format(ftpurl.path), 
-                               open(dstfile, 'wb').write)
-        except Exception:
-            taskfail_update_db(self.request.id)
-            raise
-        try:
-            fndata['md5'] = calc_md5(dstfile)
-        except Exception:
-            taskfail_update_db(self.request.id)
-            raise
-        postdata['files'].append(fndata)
-    # All files downloaded, dataset and files created on the post link
+def download_px_file_raw(self, ftpurl, sf_id, raw_id, size, sharename):
+    """Downloads PX file, validate by file size, get MD5
+    Uses separate queue on storage, because otherwise trouble when 
+    needing the storage queue while downloading PX massive dsets.
+    """
+    print('Downloading PX dataset rawfiles for {}'.format(project))
+    postdata = {'client_id': config.APIKEY, 'task': self.request.id,
+                'sf_id': sf_id, 'raw_id': raw_id}
+    fn = os.path.split(ftpurl.path)[1]
+    dstfile = os.path.join(config.SHAREMAP[sharename], fn)
+    try:
+        with FTP(ftpurl.netloc) as ftp:
+            ftp.login()
+            ftp.retrbinary('RETR {}'.format(ftpurl.path), 
+                           open(dstfile, 'wb').write)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    if os.path.getsize(dstfile) != size:
+        print('Size of fn {} is not the same as source size {}'.format(dstfile, size))
+        taskfail_update_db(self.request.id)
+    try:
+        postdata['md5'] = calc_md5(dstfile)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
     url = urljoin(config.KANTELEHOST, reverse('jobs:downloadpx'))
     try:
         update_db(url, json=postdata)

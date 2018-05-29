@@ -343,14 +343,20 @@ def check_save_permission(dset_id, logged_in_user):
     return False
 
 
-def create_external_dset(exp, px_acc, user_id):
-    project = models.Project.objects.get(pk=settings.PX_PROJECT_ID)
-    experiment = models.Experiment(name=exp, project=project)
-    run = models.RunName(name=px_acc, experiment=experiment)
-    experiment.save(), run.save()
-    data = {'datatype_id': get_quantprot_id(), data['prefrac_id']: False,
-            'is_corefac': False, 'organism_ids': [settings.QC_ORGANISM]}
-    return save_new_dataset(data, project, experiment, run, user_id)
+def get_or_create_px_dset(exp, px_acc, user_id):
+    try:
+        return models.Dataset.objects.get(
+            runname.name=px_acc,
+            runname__experiment__project_id=settings.PX_PROJECT_ID)
+    except models.Dataset.DoesNotExist:
+        project = models.Project.objects.get(pk=settings.PX_PROJECT_ID)
+        experiment = models.Experiment(name=exp, project=project)
+        experiment.save()
+        run = models.RunName(name=px_acc, experiment=experiment)
+        run.save()
+        data = {'datatype_id': get_quantprot_id(), 'prefrac_id': False,
+                'is_corefac': False, 'organism_ids': [settings.QC_ORGANISM]}
+        return save_new_dataset(data, project, experiment, run, user_id)
 
 
 def get_or_create_qc_dataset(data):

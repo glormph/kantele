@@ -9,7 +9,6 @@ from jobs import models
 from jobs.jobs import Jobstates, is_job_ready, create_file_job
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile, Producer)
-from rawstatus.views import check_producer
 from datasets.views import create_external_dset
 from analysis.models import AnalysisResultFile
 from dashboard import views as dashviews
@@ -96,34 +95,26 @@ def delete_storedfile(request):
     return HttpResponse()
 
 
-def create_pxdataset(request):
+def downloaded_px_file(request):
+    """Storedfile and rawfn update proper md5 and set checked
+    Creates job to add file to dset to move file to storage.
+    """
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     data = json.loads(request.body.decode('utf-8'))
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.SWESTORECLIENT_APIKEY]):
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    # create dataset with PX data
-    dset = create_external_dset(data['exp'], data['px_acc'], data['user_id'])
-    data = {'dataset_id': dset.id, 'removed_files': {}, 'added_files': {}}
-    # create file entries in db
-    for fn in data['files']:
-        response = get_or_create_rawfile(fn['md5'], fn['fn'], 
-                                         config.EXTERNAL_PRODUCER_ID, fn['size'],
-                                         data['date'])
-        fn_id = response['file_id']
-        try:
-            file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
-                                                      filetype='raw')
-        except StoredFile.DoesNotExist:
-            print('New storedfile for PX rawfile'.format(fn_id))
-            file_transferred = StoredFile(rawfile_id=fn_id, filetype='raw',
-                                          servershare=tmpshare, path='',
-                                          filename=fname, md5='', checked=False)
-            file_transferred.save()
-            jobutil.create_file_job('get_md5', file_transferred.id)
-            data['added_files'][response['file_id']] = {'id': response['file_id']}
-    dsviews.save_or_update_files(data)
+    dataset = {'dataset_id': dset_id, 'removed_files': {},
+               'added_files': {1: {'id': raw_id}}
+    sf = StoredFile.objects.get(pk=sf_id) 
+    raw = RawFile.objects.get(pk=raw_id)
+    sf.md5 = data['md5']
+    sf.checked = True
+    raw.source_md5 = data['md5']
+    sf.save()
+    raw.save()
+    dsviews.save_or_update_files(dataset)
     return HttpResponse()
 
 

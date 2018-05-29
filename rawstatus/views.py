@@ -1,10 +1,14 @@
 from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponse, HttpResponseNotAllowed)
 from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+import requests
+from hashlib import md5
 
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile)
+from rawstatus import jobs as rsjobs
 from analysis.models import (Analysis, LibraryFile, AnalysisResultFile)
 from datasets import views as dsviews
 from datasets import models as dsmodels
@@ -73,21 +77,22 @@ def register_file(request):
             print('POST request to register_file with incorrect formatted '
                   'date parameter {}'.format(error))
             return HttpResponseForbidden()
-        response = get_or_create_rawfile(md5, fn, producer, size, file_date)
+        response = get_or_create_rawfile(request, md5, fn, producer, size, file_date, request.POST)
         return JsonResponse(response)
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
 
 
-def get_or_create_rawfile(md5, fn, producer, size, file_date):
+def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
     try:
         existing_fn = RawFile.objects.get(source_md5=md5)
     except RawFile.DoesNotExist:
-        claim = 'claimed' in request.POST and request.POST['claimed']
+        claim = 'claimed' in postdata and postdata['claimed']
         file_record = RawFile(name=fn, producer=producer, source_md5=md5,
                               size=size, date=file_date, claimed=claim)
         file_record.save()
-        response = {'file_id': file_record.id, 'state': 'registered'}
+        response = {'file_id': file_record.id, 'state': 'registered',
+                    'stored': False}
     else:
         stored = True if StoredFile.objects.select_related(
             'rawfile').filter(rawfile__source_md5=md5).count() else False
@@ -299,3 +304,34 @@ def check_libraryfile_ready(request):
             response = {'library': True, 'ready': False, 'state': 'ok'}
         return JsonResponse(response)
 
+
+@login_required
+def download_px_project(request):
+    # FIXME check if pxacc exists on pride and here, before creating dset
+    # FIXME View checks project and returns maybe as a nicety how many files it will download. 
+    # FIXME if already exist, update experiment name in view
+    # get or create dataset
+    dset = dsviews.get_or_create_px_dset(request.POST['exp'], request.POST['px_acc'], request.POST['user_id'])
+    # get or create raw/storedfiles
+    date = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M')
+    tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+    raw_ids = []
+    for fn in rsjobs.call_proteomexchange(request.POST['px_acc']):
+        ftpurl = urlsplit(fn['downloadLink'])
+        filename = os.path.split(ftpurl.path)[1]
+        fakemd5 = md5()
+        fakemd5.update(filename)
+        fakemd5 = fakemd5.hexdigest()
+        rawfn = get_or_create_rawfile(fakemd5, filename,
+                                      settings.EXTERNAL_PRODUCER_ID,
+                                      fn['size'], date, {'claimed': True})
+        raw_ids.append(rawfn['file_id'])
+        if not rawfn['stored']:
+            sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype='raw',
+                             servershare=tmpshare, path='', 
+                             filename=filename, md5='', checked=False)
+            sfn.save()
+    rsjob = jobutil.create_dataset_job(
+        'download_px_data', dset.id, request.POST['px_acc'], raw_ids,
+        settings.TMPSHARENAME)
+    return JsonResponse()
