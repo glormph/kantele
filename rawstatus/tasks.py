@@ -118,13 +118,13 @@ def delete_file(self, servershare, filepath, fn_id):
 
 @shared_task(bind=True, queue=config.QUEUE_SWESTORE)
 def swestore_upload(self, md5, servershare, filepath, fn_id):
+    print('Uploading file {} to swestore'.format(filepath))
     fileloc = os.path.join(config.SHAREMAP[servershare], filepath)
-    print('Uploading file {} to swestore'.format(fileloc))
     uri = os.path.join(config.SWESTORE_URI, md5)
     mountpath_fn = os.path.join(config.DAV_PATH, md5)
     # Check if proj folder exists on the /mnt/dav, mkdir if not
     # Dont upload using /mnt/dav, use curl
-    curl = ['curl', '-1', '--location', '--cacert', config.CACERTLOC,
+    curl = ['curl', '-1', '--location', 
             '--cert',  '{}:{}'.format(config.CERTLOC, config.CERTPASS),
             '--key', config.CERTKEYLOC, '-T', fileloc, uri]
     try:
