@@ -8,11 +8,12 @@
 		template: `
 		{% verbatim %}
 		<div class="content">
-			<article class="message is-danger" v-if="analysiserrors.size !== 0">
+			<article class="message is-danger" v-if="errors.length !== 0 || analysiserrors.size !== 0">
 				<div class="message-header">Errors</div>
 				<div class="message-body">
 					<ul>
 					<li v-for="err in Array.from(analysiserrors)">{{ err }}</li>
+					<li v-for="err in Array.from(errors)">{{ err }}</li>
 					</ul>
 				</div>
 			</article>
@@ -159,6 +160,7 @@
 				setnames: {},
 				isoquants: [],
 				setdenommodel: {},
+				errors: [],
 			}
 		},
 		mounted: function() {
@@ -168,10 +170,24 @@
 		},
 		methods: {
 			validate: function() {
-				return false;
+				this.errors = [];
+				re = RegExp('^[a-z0-9-_]+$', 'i');
+				this.errors = [];
+				if (!this.analysisname) {
+					this.errors.push('Analysisname must be filled in');
+				}
+				else if (!re.test(this.analysisname)) {
+					this.errors.push('Analysisname may only contain a-z 0-9 - _');
+				}
+				if (this.errors.length > 0) {
+					return false;
+				} else { return true;}
 			},
 			runAnalysis: function() {
 				// FIXME need redirect to front page
+				if (!this.validate()) {
+					return false;
+				}
 				fns = {};
 				for (file of this.workflow.fixedfiles) {
 					fns[file.nf] = file.id;
