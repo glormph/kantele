@@ -1,5 +1,6 @@
 import re
 import json
+from datetime import datetime
 from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
@@ -35,14 +36,7 @@ def get_analysis_init(request):
 def get_allwfs(request):
     allwfs = {x.id: {'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name} for x in
               am.Workflow.objects.all()}
-    allversions = {}
-    for wfv in am.NextflowWfVersion.objects.all():
-        item = {'name': wfv.update, 'id': wfv.id}
-        try:
-            allversions[wfv.nfworkflow_id].append(item)
-        except KeyError:
-            allversions[wfv.nfworkflow_id] = [item]
-    return JsonResponse({'allwfs': allwfs, 'allversions': allversions})
+    return JsonResponse({'allwfs': allwfs})
 
 
 @login_required
@@ -81,6 +75,9 @@ def get_workflow(request):
     ftypes = files.values('param__filetype')
     libfiles = [x for x in am.LibraryFile.objects.select_related('sfile').filter(
         sfile__filetype__in=Subquery(files.values('param__filetype')))]
+    versions = [{'name': wfv.update, 'id': wfv.id,
+                 'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
+                am.NextflowWfVersion.objects.all()][::-1]
     resp = {
         'wf': {
             'flags': {f.param.nfparam: f.param.name for f in flags},
@@ -92,6 +89,7 @@ def get_workflow(request):
                             'desc': f.libfile.description}
                            for f in fixedfiles],
         },
+        'versions': versions,
         'files': {ft['param__filetype']: [{'id': x.sfile.id, 'desc': x.description,
                                            'name': x.sfile.filename}
                                           for x in libfiles

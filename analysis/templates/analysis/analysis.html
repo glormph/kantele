@@ -24,24 +24,37 @@
 		This will be the folder name for the output and prefixed to the output filenames
 		</div>
 		</div>
+
+		<div class="field is-horizontal">
+		<div class="field-label is-normal">
+		<label class="label">Worfklow:</label>
+		</div>
+		<div class="field-body">
 		<div class="field">
 		<div class="select" >
-		<select v-model="selectedwf">
+		<select v-model="wfid" v-on:change="fetchWorkflow">
 		<template v-for="wf in allwfs">
 		<option v-bind:value="wf.id">{{ wf.name }} </option>
 		</template>
 		</select>
 		</div>
 		</div>
+		</div>
+		<div class="field-label is-normal">
+		<label class="label">Worfklow version:</label>
+		</div>
+		<div class="field-body">
 		<div class="field">
-		<div class="select" >
-		<select v-model="selectedwfv">
-		<template v-for="wfv in allversions[allwfs[selectedwf].nfid]">
-		<option v-bind:value="wfv.id">{{ wfv.name }} </option>
+		<div class="select">
+		<select v-model="wfversion">
+		<template v-for="wfv in versions">
+		<option v-bind:value="wfv.id">{{ wfv.date }} -- {{ wfv.name }} </option>
 		</option>
 		</template>
 		</select>
-			</div>
+		</div>
+		</div>
+		</div>
 		</div>
 
 			<div class="title is-5">Datasets</div>
@@ -134,11 +147,10 @@
 				wftype: "{{ wftype }}",
 				analysisname: '',
 				allwfs: {'': 1},
-				allversions: {},
-				selectedwf: '',
-				selectedwfv: '',
+				versions: [],
 				dsids: [{{ dsids|join:"," }}],
 				wfid: {{ wfid }},
+				wfversion: '',
 				workflow: {},
 				libfiles: {},
 				inputfiles: {},
@@ -172,7 +184,7 @@
 					'strips': this.platenames,
 					'files': fns,
 					'params':  this.analysis.params,
-					'nfwfvid': this.selectedwfv,
+					'nfwfvid': this.wfversion,
 					'analysisname': this.analysisname,
 				}
 				denoms = [];
@@ -204,9 +216,6 @@
 					// error code
 				}).then(result => {
 					this.allwfs = result['allwfs'];
-					this.allversions = result['allversions'];
-					this.selectedwf = {{ wfid }};
-					this.selectedwfv = {{ wfid }};
 				})
 			},
 	{% verbatim %}
@@ -234,6 +243,7 @@
 					// error code
 				}).then(result => {
 					this.workflow = result['wf'];
+					this.versions = result['versions'];
 					this.libfiles = result['files'];
 				})
 
