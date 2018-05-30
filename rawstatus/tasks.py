@@ -57,10 +57,9 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename
         try:
             self.retry(countdown=60)
         except MaxRetriesExceededError:
-            update_db(url, postdata, msg)
+            update_db(url, postdata)
             raise
-    print('MD5 of {} is {}, registered in DB'.format(fnpath, result))
-    return result
+    print('MD5 of {} is {}, registered in DB'.format(dstfile, postdata['md5']))
 
 
 @shared_task(queue=config.QUEUE_STORAGE, bind=True)
