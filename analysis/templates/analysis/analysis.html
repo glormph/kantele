@@ -181,7 +181,7 @@
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
 				}
-				if (denoms.length > 1) {
+				if (denoms.length > 0) {
 					post.params.denoms =  ['--denoms', denoms.join(' ')];
 				}
 				console.log(post);
