@@ -24,6 +24,8 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
     mzml = filemodels.StoredFile.objects.select_related(
         'rawfile__producer', 'servershare').get(rawfile__storedfile__id=sf_id,
                                                 filetype='mzml')
+    
+    wf = models.Workflow.objects.filter(shortname__name='QC').last()
     params = ['--mods', 'data/labelfreemods.txt', '--instrument']
     params.append('velos' if 'elos' in mzml.rawfile.producer.name else 'qe')
     stagefiles = {'--mzml': (mzml.servershare.name, mzml.path, mzml.filename),
@@ -35,19 +37,19 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
            'nxf_wf_fn': nfwf.filename,
            'repo': nfwf.nfworkflow.repo,
            }
-    create_nf_search_entries(analysis, nfwf, job_id)
+    create_nf_search_entries(analysis, wf.id, nfwf, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
 
 
-def run_ipaw_getfiles(dset_ids, platenames, setnames, analysis_id, wfv_id, inputs):
+def run_ipaw_getfiles(dset_ids, platenames, setnames, analysis_id, wf_id, wfv_id, inputs):
     return filemodels.StoredFile.objects.select_related(
         'rawfile__datasetrawfile__dataset__runname').filter(
         rawfile__datasetrawfile__dataset__id__in=dset_ids, filetype='mzml')
 
 
 # TODO make this method the standard for searches
-def run_ipaw(job_id, dset_ids, platenames, setnames, analysis_id, wfv_id, inputs, *dset_mzmls):
+def run_ipaw(job_id, dset_ids, platenames, setnames, analysis_id, wf_id, wfv_id, inputs, *dset_mzmls):
     """
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
@@ -80,18 +82,15 @@ def run_ipaw(job_id, dset_ids, platenames, setnames, analysis_id, wfv_id, inputs
            'name': analysis.name,
            'outdir': analysis.user.username,
            }
-    create_nf_search_entries(analysis, nfwf, job_id)
+    create_nf_search_entries(analysis, wf_id, nfwf, job_id)
     res = tasks.run_nextflow_ipaw.delay(run, inputs['params'], mzmls, stagefiles)
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
 
 
-# FIXME need to store a datasetANalysis for keeping track.
-# dset / analysis / job (with args)
-
-def create_nf_search_entries(analysis, nfwf, job_id):
+def create_nf_search_entries(analysis, wf_id, nfwf, job_id):
     try:
         nfs = models.NextflowSearch.objects.get(analysis=analysis)
     except models.NextflowSearch.DoesNotExist:
         nfs = models.NextflowSearch(nfworkflow=nfwf, job_id=job_id,
-                                    analysis=analysis)
+                                    workflow_id=wf_id, analysis=analysis)
         nfs.save()

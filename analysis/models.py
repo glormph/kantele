@@ -105,6 +105,7 @@ class AnalysisError(models.Model):
 
 class NextflowSearch(models.Model):
     nfworkflow = models.ForeignKey(NextflowWfVersion)
+    workflow = models.ForeignKey(Workflow)
     analysis = models.OneToOneField(Analysis)
     job = models.OneToOneField(jmodels.Job)
 
