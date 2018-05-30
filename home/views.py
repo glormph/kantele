@@ -7,6 +7,7 @@ from django.db.models import Q
 from collections import OrderedDict
 
 from datasets import models as dsmodels
+from analysis import models as anmodels
 from datasets import jobs as dsjobs
 from rawstatus import models as filemodels
 from jobs import jobs
@@ -56,6 +57,18 @@ def find_datasets(request):
 
 
 @login_required
+def show_analyses(request):
+    if 'ids' in request.GET:
+        ids = request.GET['dsids'].split(',')
+        dbanalyses = anmodels.Analysis.objects.filter(pk__in=ids)
+    else:
+        # last month analyses of a user
+        dbanalyses = dsmodels.Analyses.objects.filter(
+            user_id=request.user.id, date__gt=datetime.today() - timedelta(30))
+    return JsonResponse({'items': populate_analysis(dbanalyses, request.user)})
+
+
+@login_required
 def show_datasets(request):
     if 'dsids' in request.GET:
         dsids = request.GET['dsids'].split(',')
@@ -78,6 +91,28 @@ def get_ds_jobs(dbdsets):
         except KeyError:
             jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {job.state}
     return jobmap
+
+
+
+def populate_analysis(analyses, user, showjobs=True):
+    if showjobs:
+        # FIXME add job field to analysis or ana-job table
+        pass
+        # jobmap = get_ds_jobs(dbdsets)
+    ana_out = OrderedDict()
+    for ana in analyses.select_related('nextflowsearch__workflow'):
+        ana_out[ana.id] = {
+            'id': ana.id,
+            'own': ana.user_id == user.id,
+            'usr': ana.user.username,
+            'name': ana.name,
+            'wf': ana.nextflowsearch.workflow.name,
+            'details': False,
+            'selected': False,
+        }
+#        if showjobs:
+#            analyses[ana.id]['jobstates'] = list(jobmap[ana.id]) if ana.id in jobmap else []
+    return ana_out
 
 
 def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
@@ -114,6 +149,13 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
 # Project page links to files/analyses/datasets
 # Etc CANNOT dynamically code the table too much
 # Make three tables and make them share some code but not all
+
+@login_required
+def get_analysis_info(request, analysis_id):
+    ana = anmodels.Analysis.objects.filter(pk=analysis_id).select_related(
+        'nextflowsearch').get()
+    return JsonResponse({'jobs': [], 'storage_loc': 'test/storaege'})
+
 
 @login_required
 def get_dset_info(request, dataset_id):

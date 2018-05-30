@@ -2,32 +2,17 @@
 {% block content %}
 <section id="apps">
 <div class="container">
-<main-box v-bind:username="user"></main-box>
+<main-box></main-box>
 </div>
 </section>
 <script>
 	{% verbatim %}
-	Vue.component('main-box', {
+	Vue.component('dataset-box', {
 		template: `
-		<div class="content">
-			<div class="tabs is-toggle is-centered is-small">
-				<ul>
-					<li v-bind:class="tabclassDatasets">
-						<a v-on:click="showDatasets"><span>Datasets</span></a>
-					</li>
-					<li v-bind:class="tabclassProjects">
-						<a v-on:click="showProjects"><span>Projects (TBD)</span></a>
-					</li>
-					<li v-bind:class="tabclassSearches">
-						<a v-on:click="showSearches"><span>Searches (TBD)</span></a>
-					</li>
-				</ul>
-			</div>
 			<!-- here starts datasets list box, component or container? -->
-			<div class="content" v-show="tabclassDatasets!==''">
+			<div class="content is-small" >
 					<input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to search datasets">
 			<table class="table">
-				<div class="content is-small">
 				<thead>
 					<tr>
 						<th><input type="checkbox" v-model="allSelector" v-on:click="selectAll"></th>
@@ -111,20 +96,14 @@
 		</template>
 		                        </template>
 				</tbody>
-					</div>
 			</table>
 		</div><!-- container dsets end -->
-		</div>
 		`,
-		props: ['username'],
 		data: function() {
 			return {
 				datasets: {},
 				findDsQuery: '',
 				allSelector: false,
-				tabclassDatasets: 'is-active',
-				tabclassProjects: '',
-				tabclassSearches: '',
 				selectedDsets: [],
 				infoshown: {},
 				}
@@ -188,22 +167,6 @@
 				        this.selectedDsets.push(this.datasets[key].id);
 				}
 			},
-			showDatasets: function() {
-				this.activateTabClass('tabclassDatasets');
-			},
-			showProjects: function() {
-				this.activateTabClass('tabclassProjects');
-			},
-			showSearches: function() {
-				this.activateTabClass('tabclassSearches');
-			},
-			activateTabClass: function(tabname) {
-				tabs = ['tabclassDatasets', 'tabclassProjects', 'tabclassSearches'];
-				for (offtab of tabs) {
-					this[offtab] = '';
-					}
-				this[tabname] = 'is-active';
-			},
 			toggleDset: function(ds_id) {
 				if (!this.datasets[ds_id].details) {
 					this.dsetInfo(ds_id);
@@ -220,94 +183,120 @@
 					this.datasets[ds_id].details = result;
 				})
 			},
-                        refreshDsInfo: function() {
-				this.dsetInfo(this.infoshown.dset.id);
-			},
 			jobTaskStateColor: function(state) {
  				statecolors = {'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
 				return statecolors[state]
 			},
 		},
 	})
-	Vue.component('dsinfo-box', {
+	Vue.component('main-box', {
 		template: `
 		<div class="content">
-			<div v-if="infoshown.num_dsets === 1">
-				<div class="tags">
-				<span class="tag is-info">{{ infoshown.dset.type }}</span>
-				<span v-if="infoshown.dset.is_corefac" class="tag is-success">Core facility</span>
-				</div>
-				<div class="tags">
-					<span v-for="(state, comp) in infoshown.dset.compstates" class="tag" v-bind:class="compStateColor(state)">{{ comp }}</span>
-				</div>
-				<div>
-					<b>Project</b>: {{ infoshown.dset.project }}
-				</div>
-				<div>
-					<b>Experiment</b>: {{ infoshown.dset.experiment }}
-				</div>
-				<div>
-					<b>Run</b>: {{ infoshown.dset.runname }}
-				</div>
-				<div>
-					<b>Storage location</b>: {{ infoshown.dset.storage_location }}
-				</div>
-				<hr>
-				<b>Files</b>
-				<div>
-					{{ infoshown.rawfiles.length }} claimed files
-				</div>
-				<div v-for="(files, ftype) in infoshown.storedfiles">
-					{{ files.length }} stored files of type {{ ftype }}
-				</div>
-				<div>
-					{{ infoshown.backupfiles.length }} backed up files
-				</div>
-				<a v-if="mzmlAble === 'ready'" class="button is-small is-primary" v-on:click="createMzml(infoshown.dset.id)">Create (missing) mzMLs</a>
-				<a v-if="mzmlAble === 'blocked'" class="button is-small is-primary" disabled>mzML job running</a>
-
-				<hr>
-				<div>
-					<b>Jobs running/error</b>
-				</div>
-				<span v-for="job in infoshown.jobs" v-if="infoshown.jobs.length">
-					<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
-					<a v-else-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
-					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
-					<a v-if="job.state==='pending'" class="button is-small is-warning">{{ job.name }}</a>
-				</span>
-				<span v-if="!infoshown.jobs.length"> - </span>
+			<div class="tabs is-toggle is-centered is-small">
+				<ul>
+					<li v-bind:class="tabclassDatasets">
+						<a v-on:click="showDatasets"><span>Datasets</span></a>
+					</li>
+					<li v-bind:class="tabclassProjects">
+						<a v-on:click="showProjects"><span>Projects (TBD)</span></a>
+					</li>
+					<li v-bind:class="tabclassSearches">
+						<a v-on:click="showSearches"><span>Analyses</span></a>
+					</li>
+				</ul>
 			</div>
+		<dataset-box v-show="tabclassDatasets!==''"></dataset-box>
+		<search-box v-show="tabclassSearches!==''"></search-box>
 		</div>
 		`,
-		props: ['infoshown'],
 		data: function() {
 			return {
-			}
-		},
-		computed: {
-			mzmlAble: function() {
-				if (!('mzML' in this.infoshown.storedfiles) || this.infoshown.storedfiles.mzML.length === this.infoshown.storedfiles.raw.length) {
-					return false
-				} else if (this.infoshown.jobnames.indexOf('convert_mzml') > -1) {
-					return 'blocked'
-				} else {
-					return 'ready'
+				datasets: {},
+				findDsQuery: '',
+				allSelector: false,
+				tabclassDatasets: 'is-active',
+				tabclassProjects: '',
+				tabclassSearches: '',
+				selectedDsets: [],
+				infoshown: {},
 				}
-			}
 		},
 		methods: {
-			createMzml: function(ds_id) {
-				this.$http.get(`/createmzml/${ds_id}`)
-				.then(response => {
-					return response
-				}, response => {
-					console.log(response);
-					// error code
-				}).then(result => {
-					this.$emit('dsinfo');
-				})
+			showDatasets: function() {
+				this.activateTabClass('tabclassDatasets');
 			},
+			showProjects: function() {
+				this.activateTabClass('tabclassProjects');
+			},
+			showSearches: function() {
+				this.activateTabClass('tabclassSearches');
+			},
+			activateTabClass: function(tabname) {
+				tabs = ['tabclassDatasets', 'tabclassProjects', 'tabclassSearches'];
+				for (offtab of tabs) {
+					this[offtab] = '';
+					}
+				this[tabname] = 'is-active';
+			},
+		},
+	})
+	Vue.component('search-box', {
+		template: `
+		<div class="content is-small">
+			<div class="content is-small" >
+					<input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to find analyses">
+			<table class="table">
+				<thead>
+					<tr>
+						<th></th>
+						<th></th>
+						<th><span class="icon is-small"><i class="fa fa-hourglass-2"/></span></th>
+						<th v-for="f in itemdatafields">{{ f }}</th>
+					</tr>
+				</thead>
+				<tbody>
+				<template v-for="it in items">
+		                        <tr>
+						<td>
+							<a v-on:click="toggleItem(it.id)">
+								<span class="has-text-info icon is-small">
+								<i class="fa fa-eye" />
+								</span>
+							</a>
+						</td>
+						<td>
+							<span v-if="it.own" class="icon has-text-info is-small">
+									<i class="fa fa-pencil"></i>
+							</span>
+							<span v-else-if="!it.own" class="icon has-text-grey-light is-small">
+									<i class="fa fa-pencil"></i>
+							</span>
+						</td>
+						<td>
+							<span v-for="state in it.jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span>
+						</td>
+						<td v-for="key in itemdatakeys">{{ it[key] }}</td>
+					</tr>
+					<details-box :details="it.details" v-if="it.details !== false"></details-box>
+				</template>
+				</tbody>
+			</table>
+		</div>
+		`,
+		data: function() {
+			return {
+				showAllUrl: '/show/analyses/',
+				showItemUrl: '/show/analysis/',
+				itemdatafields: ['Analysis name', 'Workflow', 'User', 'Date'],
+				itemdatakeys: ['name', 'wf', 'user', 'date'],
+				items: {},
+				findQuery: '',
+			}
+		},
+		mounted: function() {
+			this.fetchAll();
+		},
+		methods: {
                         retryJob: function(job_id) {
 				this.$http.post(`jobs/retry/${job_id}`)
 				.then(response => {
@@ -316,35 +305,80 @@
 					console.log(response);
 					// error code
 				}).then(result => {
-					this.$emit('dsinfo');
+					this.getItemInfo(ds_id);
 				})
                         },
-			compStateColor: function(state) {
- 				statecolors = {'ok': 'is-success', 'error': 'is-danger', 'new': 'is-danger'};
+			fetchAll: function() {
+				this.$http.get(this.showAllUrl)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.items = result['items'];
+					}
+				})
+			},
+			findItems: function() {
+				this.$http.get(this.searchUrl,
+					{params: {q: this.findQuery.split(' ').join(',') }})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.itmes = result['items'];
+					}
+				})
+			},
+			toggleItem: function(id) {
+				if (!this.items[id].details) {
+					this.getItemInfo(id);
+				} else {
+					this.items[id].details = false
+				}
+			},
+			getItemInfo: function(id) {
+				this.$http.get(this.showItemUrl + id)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.items[id].details = result;
+				})
+			},
+			jobTaskStateColor: function(state) {
+ 				statecolors = {'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
 				return statecolors[state]
 			},
 		},
 	})
-	Vue.component('search-box', {
+	Vue.component('details-box', {
+		props: ['details'],
 		template: `
-		<div class="content is-small">
-		Not yet implemented
-		</div>
+                <tr><td></td><td :colspan="4"> <span class="has-text-weight-bold">Storage location:</span><span> {{ details.storage_loc }} </span></td></tr>
+		<td></td>
+		<td colspan="2">
+		<div v-for="job in details.jobs">
+			<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
+					<a v-else-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
+					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
+					<a v-if="job.state==='pending'" class="button is-small is-warning">{{ job.name }}</a>
+			</div>
+		</td>
+		<td></td>
 		`,
 		data: function() {
-			return {
-			}
-		},
-		methods: {
+			return {}
 		},
 	})
+
 	{% endverbatim %}
 
 	var dashboard = new Vue({
 	el: '#apps',
 	data: function() {
 		return { 
-			user: '{{ username }}',
 		}
 	},
 })
