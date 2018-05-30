@@ -3,7 +3,7 @@ import os
 import requests
 import subprocess
 from ftplib import FTP
-from urllib.parse import (urljoin, urlsplit)
+from urllib.parse import urljoin
 from time import sleep
 from datetime import datetime
 
@@ -23,21 +23,21 @@ def calc_md5(fnpath):
     return hash_md5.hexdigest()
 
 
-@shared_task(queue=config.QUEUE_STORAGE, bind=True)
-def download_px_file_raw(self, ftpurl, sf_id, raw_id, size, sharename):
+@shared_task(queue=config.QUEUE_PXDOWNLOAD, bind=True)
+def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename, dset_id):
     """Downloads PX file, validate by file size, get MD5
     Uses separate queue on storage, because otherwise trouble when 
     needing the storage queue while downloading PX massive dsets.
     """
-    print('Downloading PX dataset rawfiles for {}'.format(project))
+    print('Downloading PX dataset rawfile {}'.format(ftpurl))
     postdata = {'client_id': config.APIKEY, 'task': self.request.id,
-                'sf_id': sf_id, 'raw_id': raw_id}
-    fn = os.path.split(ftpurl.path)[1]
+                'sf_id': sf_id, 'raw_id': raw_id, 'dset_id': dset_id}
+    fn = os.path.split(ftpurl)[1]
     dstfile = os.path.join(config.SHAREMAP[sharename], fn)
     try:
-        with FTP(ftpurl.netloc) as ftp:
+        with FTP(ftpnetloc) as ftp:
             ftp.login()
-            ftp.retrbinary('RETR {}'.format(ftpurl.path), 
+            ftp.retrbinary('RETR {}'.format(ftpurl), 
                            open(dstfile, 'wb').write)
     except Exception:
         taskfail_update_db(self.request.id)

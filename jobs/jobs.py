@@ -53,7 +53,9 @@ jobmap = {'move_files_storage':
           'get_md5':
           {'type': Jobtypes.PROCESS, 'func': rsjobs.get_md5, 'retry': True},
           'download_px_data':
-          {'type': Jobtypes.UPLOAD, 'func': rsjobs.download_px_project, 'retry': True},
+          {'type': Jobtypes.UPLOAD, 'retry': True,
+           'func': rsjobs.download_px_project,
+           'getfns': rsjobs.download_px_project_getfiles},
           'run_longit_qc_workflow':
           {'type': Jobtypes.PROCESS, 'func': anjobs.auto_run_qc_workflow,
            'retry': True},

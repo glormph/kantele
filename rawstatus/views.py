@@ -2,8 +2,10 @@ from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponse, HttpResponseNotAllowed)
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+import os
 import requests
 from hashlib import md5
+from urllib.parse import urlsplit
 
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
@@ -77,7 +79,7 @@ def register_file(request):
             print('POST request to register_file with incorrect formatted '
                   'date parameter {}'.format(error))
             return HttpResponseForbidden()
-        response = get_or_create_rawfile(request, md5, fn, producer, size, file_date, request.POST)
+        response = get_or_create_rawfile(md5, fn, producer, size, file_date, request.POST)
         return JsonResponse(response)
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
@@ -316,15 +318,15 @@ def download_px_project(request):
     date = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M')
     tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
     raw_ids = []
+    extprod = Producer.objects.get(pk=settings.EXTERNAL_PRODUCER_ID)
     for fn in rsjobs.call_proteomexchange(request.POST['px_acc']):
         ftpurl = urlsplit(fn['downloadLink'])
         filename = os.path.split(ftpurl.path)[1]
         fakemd5 = md5()
-        fakemd5.update(filename)
+        fakemd5.update(filename.encode('utf-8'))
         fakemd5 = fakemd5.hexdigest()
-        rawfn = get_or_create_rawfile(fakemd5, filename,
-                                      settings.EXTERNAL_PRODUCER_ID,
-                                      fn['size'], date, {'claimed': True})
+        rawfn = get_or_create_rawfile(fakemd5, filename, extprod,
+                                      fn['fileSize'], date, {'claimed': True})
         raw_ids.append(rawfn['file_id'])
         if not rawfn['stored']:
             sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype='raw',

@@ -346,7 +346,7 @@ def check_save_permission(dset_id, logged_in_user):
 def get_or_create_px_dset(exp, px_acc, user_id):
     try:
         return models.Dataset.objects.get(
-            runname.name=px_acc,
+            runname__name=px_acc,
             runname__experiment__project_id=settings.PX_PROJECT_ID)
     except models.Dataset.DoesNotExist:
         project = models.Project.objects.get(pk=settings.PX_PROJECT_ID)

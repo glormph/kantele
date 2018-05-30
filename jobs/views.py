@@ -9,9 +9,9 @@ from jobs import models
 from jobs.jobs import Jobstates, is_job_ready, create_file_job
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile, Producer)
-from datasets.views import create_external_dset
 from analysis.models import AnalysisResultFile
 from dashboard import views as dashviews
+from datasets import views as dsviews
 from kantele import settings
 
 
@@ -105,10 +105,10 @@ def downloaded_px_file(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    dataset = {'dataset_id': dset_id, 'removed_files': {},
-               'added_files': {1: {'id': raw_id}}
-    sf = StoredFile.objects.get(pk=sf_id) 
-    raw = RawFile.objects.get(pk=raw_id)
+    dataset = {'dataset_id': data['dset_id'], 'removed_files': {},
+               'added_files': {1: {'id': data['raw_id']}}}
+    sf = StoredFile.objects.get(pk=data['sf_id']) 
+    raw = RawFile.objects.get(pk=data['raw_id'])
     sf.md5 = data['md5']
     sf.checked = True
     raw.source_md5 = data['md5']
