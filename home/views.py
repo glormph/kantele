@@ -134,6 +134,7 @@ def fetch_dset_details(dset):
     # FIXME add more datatypes and microscopy is hardcoded
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
     info['nrrawfiles'] = raws.count()
+    info['storage_loc'] = dset.storage_loc
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
     storedfiles = {}
