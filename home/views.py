@@ -58,6 +58,23 @@ def find_datasets(request):
 
 
 @login_required
+def find_analysis(request):
+    """Loop through comma-separated q-param in GET, do a lot of OR queries on
+    analysis to find matches. String GET-derived q-params by AND."""
+    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+    query = Q(analysis__name__icontains=searchterms[0])
+    query |= Q(workflow__name__icontains=searchterms[0])
+    query |= Q(analysis__user__username__icontains=searchterms[0])
+    for term in searchterms[1:]:
+        subquery = Q(analysis__name__icontains=term)
+        subquery |= Q(workflow__name__icontains=term)
+        subquery |= Q(analysis__user__username__icontains=term)
+        query &= subquery
+    dbanalyses = anmodels.NextflowSearch.objects.filter(query)
+    return JsonResponse({'items': populate_analysis(dbanalyses, request.user)})
+
+
+@login_required
 def show_analyses(request):
     if 'ids' in request.GET:
         ids = request.GET['dsids'].split(',')
@@ -96,8 +113,7 @@ def get_ds_jobs(dbdsets):
     return jobmap
 
 
-
-def populate_analysis(nfsearches, user, showjobs=True):
+def populate_analysis(nfsearches, user):
     ana_out = OrderedDict()
     for nfs in nfsearches:
         try:
@@ -106,6 +122,7 @@ def populate_analysis(nfsearches, user, showjobs=True):
                 'own': nfs.analysis.user_id == user.id,
                 'usr': nfs.analysis.user.username,
                 'name': nfs.analysis.name,
+                'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
                 'jobstates': [nfs.job.state],
                 'wf': nfs.workflow.name,
                 'details': False,

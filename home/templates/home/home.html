@@ -296,7 +296,7 @@
 				showAllUrl: '/show/analyses/',
 				showItemUrl: '/show/analysis/',
 				itemdatafields: ['Analysis name', 'Workflow', 'User', 'Date'],
-				itemdatakeys: ['name', 'wf', 'user', 'date'],
+				itemdatakeys: ['name', 'wf', 'usr', 'date'],
 				items: {},
 				findQuery: '',
 			}
@@ -332,7 +332,7 @@
 				}, response => {
 				}).then(result => {
 					for (key in result) {
-						this.itmes = result['items'];
+						this.items = result['items'];
 					}
 				})
 			},
