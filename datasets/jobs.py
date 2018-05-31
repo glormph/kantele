@@ -74,7 +74,7 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
         else:
             tid = tasks.move_stored_file_tmp.delay(fn.rawfile.name, fn.path,
                                                    fn.id).id
-        Task.objects._create(asyncid=tid, job_id=job_id, state=states.PENDING)
+        Task.objects.create(asyncid=tid, job_id=job_id, state=states.PENDING)
 
 
 def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue):
@@ -135,7 +135,8 @@ def convert_tomzml(job_id, dset_id, *sf_ids):
     """Multiple queues for this bc multiple boxes wo shared fs"""
     dset = Dataset.objects.get(pk=dset_id)
     queues = cycle(settings.QUEUES_PWIZ)
-    for fn in StoredFile.objects.filter(pk__in=sf_ids).select_related(
+    for fn in StoredFile.objects.filter(
+            pk__in=sf_ids, rawfile__datasetrawfile__dataset_id=dset_id).select_related(
             'servershare', 'rawfile__datasetrawfile__dataset'):
         mzsf = get_or_create_mzmlentry(fn)
         if mzsf.checked:
