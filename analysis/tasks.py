@@ -25,11 +25,15 @@ def run_nextflow(run, params, rundir, gitwfdir):
     except FileExistsError:
         pull(gitwfdir, run['repo'])
         reset(gitwfdir, 'hard', run['wf_commit'])
+    # FIXME dulwich does not seem to checkout anything, use this until it does
+    subprocess.run(['git', 'checkout', run['wf_commit']], check=True, cwd=gitwfdir)
+    print('Checked out repo {} at commit {}'.format(run['repo'], run['wf_commit']))
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
-    subprocess.run(['nextflow', 'run', run['nxf_wf_fn'], *params,
-                    '--outdir', outdir, '-with-trace', '-resume'], check=True,
-                   stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
+
+    cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-with-trace', '-resume']
+    print(cmd)
+    subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
     print('Finished running workflow')
     return rundir
 
@@ -66,7 +70,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             fp.write('{fpath}\t{setn}\t{pl}\t{fr}\n'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3], pl=fn[4], fr=fn[5]))
-    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
+    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', runname])
     try:
         run_nextflow(run, params, rundir, gitwfdir)
     except subprocess.CalledProcessError as e:
