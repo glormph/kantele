@@ -17,7 +17,8 @@ from jobs import models as jm
 @login_required
 def home(request):
     """Returns home view with Vue apps that will separately request"""
-    context = {'username': request.user.username}
+    context = {'tab': request.GET['tab'] if 'tab' in request.GET else 'datasets',
+               'username': request.user.username}
     return render(request, 'home/home.html', context)
 
 
@@ -60,11 +61,13 @@ def find_datasets(request):
 def show_analyses(request):
     if 'ids' in request.GET:
         ids = request.GET['dsids'].split(',')
-        dbanalyses = anmodels.Analysis.objects.filter(pk__in=ids)
+        dbanalyses = anmodels.NextflowSearch.objects.filter(pk__in=ids)
     else:
-        # last month analyses of a user
-        dbanalyses = dsmodels.Analyses.objects.filter(
-            user_id=request.user.id, date__gt=datetime.today() - timedelta(30))
+        # last 6month analyses of a user
+        dbanalyses = anmodels.NextflowSearch.objects.select_related(
+            'workflow', 'analysis').filter(
+            analysis__user_id=request.user.id, 
+            analysis__date__gt=datetime.today() - timedelta(183))
     return JsonResponse({'items': populate_analysis(dbanalyses, request.user)})
 
 
@@ -94,24 +97,23 @@ def get_ds_jobs(dbdsets):
 
 
 
-def populate_analysis(analyses, user, showjobs=True):
-    if showjobs:
-        # FIXME add job field to analysis or ana-job table
-        pass
-        # jobmap = get_ds_jobs(dbdsets)
+def populate_analysis(nfsearches, user, showjobs=True):
     ana_out = OrderedDict()
-    for ana in analyses.select_related('nextflowsearch__workflow'):
-        ana_out[ana.id] = {
-            'id': ana.id,
-            'own': ana.user_id == user.id,
-            'usr': ana.user.username,
-            'name': ana.name,
-            'wf': ana.nextflowsearch.workflow.name,
-            'details': False,
-            'selected': False,
-        }
-#        if showjobs:
-#            analyses[ana.id]['jobstates'] = list(jobmap[ana.id]) if ana.id in jobmap else []
+    for nfs in nfsearches:
+        try:
+            ana_out[nfs.id] = {
+                'id': nfs.id,
+                'own': nfs.analysis.user_id == user.id,
+                'usr': nfs.analysis.user.username,
+                'name': nfs.analysis.name,
+                'jobstates': [nfs.job.state],
+                'wf': nfs.workflow.name,
+                'details': False,
+                'selected': False,
+            }
+        except:
+        # FIXME this dont work except anmodels.Analysis.RelatedObjectDoesNotExist:
+            pass
     return ana_out
 
 
@@ -151,10 +153,17 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
 # Make three tables and make them share some code but not all
 
 @login_required
-def get_analysis_info(request, analysis_id):
-    ana = anmodels.Analysis.objects.filter(pk=analysis_id).select_related(
-        'nextflowsearch').get()
-    return JsonResponse({'jobs': [], 'storage_loc': 'test/storaege'})
+def get_analysis_info(request, nfs_id):
+    nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
+        'analysis').get()
+    storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
+                anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
+    return JsonResponse({'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
+                                            'retry': jobs.is_job_retryable(nfs.job), 'id': nfs.job.id,
+                                            'time': nfs.job.timestamp}},
+                         'storage_locs': [{'server': x.servershare.name, 'path': x.path}
+                                          for x in storeloc.values()],
+                        })
 
 
 @login_required
@@ -164,6 +173,17 @@ def get_dset_info(request, dataset_id):
     info = fetch_dset_details(dset)
     return JsonResponse(info)
 
+
+def get_nr_raw_mzml_files(files, info):
+    storedfiles = {'raw': files.filter(filetype='raw').count(),
+                   'mzML': files.filter(filetype='mzml', checked=True).count()}
+    if storedfiles['mzML'] == storedfiles['raw']:
+        info['mzmlable'] = False
+    elif 'convert_dataset_mzml' in [x['name'] for x in info['jobs']]:
+        info['mzmlable'] = 'blocked'
+    else:
+        info['mzmlable'] = 'ready'
+    return storedfiles, info
 
 
 def fetch_dset_details(dset):
@@ -179,22 +199,14 @@ def fetch_dset_details(dset):
     info['storage_loc'] = dset.storage_loc
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
-    storedfiles = {}
     files = filemodels.StoredFile.objects.select_related('rawfile__producer').filter(
         rawfile__datasetrawfile__dataset_id=dset.id)
     if dset.datatype_id not in nonms_dtypes:
-        storedfiles['raw'] = files.filter(filetype='raw').count()
-        storedfiles['mzML'] = files.filter(filetype='mzml', checked=True).count()
-        if storedfiles['mzML'] == storedfiles['raw']:
-            info['mzmlable'] = False
-        elif 'convert_dataset_mzml' in [x['name'] for x in info['jobs']]:
-            info['mzmlable'] = 'blocked'
-        else:
-            info['mzmlable'] = 'ready'
+        nrstoredfiles, info = get_nr_raw_mzml_files(files, info)
     else:
-        storedfiles[nonms_dtypes[dset.datatype_id]] = files.filter(filetype='raw').count()
+        nrstoredfiles = {nonms_dtypes[dset.datatype_id]: files.filter(filetype='raw').count()}
     info['instruments'] = list(set([x.rawfile.producer.shortname for x in files]))
-    info['nrstoredfiles'] = storedfiles
+    info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
     info['storage_location'] = dset.storage_loc

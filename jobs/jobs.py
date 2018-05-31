@@ -96,6 +96,32 @@ def store_ds_job(name, prejob_args, **kwargs):
     return job
 
 
+def check_existing_search_job(fname, dset_ids, strips, setnames, wfid, wfvid, params):
+    jobargs = json.dumps([dset_ids] + [strips] + [setnames])[:-1]  # leave out last bracket
+    for job in Job.objects.filter(funcname=fname, jobtype=jobmap[fname]['type'],
+            args__startswith=jobargs).select_related('nextflowsearch'):
+        job_is_duplicate = True
+        storedargs = json.loads(job.args)[6]
+        nfs = job.nextflowsearch
+        if nfs.workflow_id != wfid or nfs.nfworkflow_id != wfvid:
+            continue
+        for p in params['params']:
+            if p not in storedargs['params']:
+                job_is_duplicate = False
+                break
+        for flag, fnid in params['singlefiles'].items():
+            try:
+                if storedargs['singlefiles'][flag] != fnid:
+                    job_is_duplicate = False
+                    break
+            except:
+                job_is_duplicate = False
+                break
+        if job_is_duplicate:
+            return job
+    return False
+
+
 def is_job_retryable(job, tasks=False):
     if job.funcname in jobmap and jobmap[job.funcname]['retry'] and is_job_ready(job):
         return True

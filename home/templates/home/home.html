@@ -12,6 +12,8 @@
 			<!-- here starts datasets list box, component or container? -->
 			<div class="content is-small" >
 					<input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to search datasets">
+                        <a class="button" v-on:click="analyzeDatasets" v-show="selectedDsets.length">Analyze datasets</a>
+                        <a class="button" disabled v-show="!selectedDsets.length">Analyze datasets</a>
 			<table class="table">
 				<thead>
 					<tr>
@@ -87,9 +89,9 @@
 		<td colspan="2">
 		<div v-for="job in ds.details.jobs">
 			<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
-					<a v-else-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
-					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
-					<a v-if="job.state==='pending'" class="button is-small is-warning">{{ job.name }}</a>
+					<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
+					<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
+					<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
 			</div>
 		</td>
 		<td></td>
@@ -105,7 +107,6 @@
 				findDsQuery: '',
 				allSelector: false,
 				selectedDsets: [],
-				infoshown: {},
 				}
 		},
 		mounted: function() {
@@ -122,6 +123,9 @@
 				}).then(result => {
 					this.dsetInfo(ds_id);
 				})
+			},
+			analyzeDatasets: function() {
+					window.open(`/analysis/init?dsids=${this.selectedDsets.join(',')}`, '_blank');
 			},
                         retryJob: function(job_id) {
 				this.$http.post(`jobs/retry/${job_id}`)
@@ -159,7 +163,7 @@
 			},
 			selectAll: function() {
 				this.selectedDsets = [];
-				this.infoshown = {};
+				this.allSelector = this.allSelector === false;
 				if (!this.allSelector) {
 					return;
 				}
@@ -189,50 +193,53 @@
 			},
 		},
 	})
+	{% endverbatim %}
 	Vue.component('main-box', {
 		template: `
 		<div class="content">
 			<div class="tabs is-toggle is-centered is-small">
 				<ul>
-					<li v-bind:class="tabclassDatasets">
+					<li v-bind:class="tabclass_datasets">
 						<a v-on:click="showDatasets"><span>Datasets</span></a>
 					</li>
-					<li v-bind:class="tabclassProjects">
+					<li v-bind:class="tabclass_projects">
 						<a v-on:click="showProjects"><span>Projects (TBD)</span></a>
 					</li>
-					<li v-bind:class="tabclassSearches">
+					<li v-bind:class="tabclass_searches">
 						<a v-on:click="showSearches"><span>Analyses</span></a>
 					</li>
 				</ul>
 			</div>
-		<dataset-box v-show="tabclassDatasets!==''"></dataset-box>
-		<search-box v-show="tabclassSearches!==''"></search-box>
+		<dataset-box v-show="tabclass_datasets!==''"></dataset-box>
+		<search-box v-show="tabclass_searches!==''"></search-box>
 		</div>
 		`,
 		data: function() {
 			return {
 				datasets: {},
 				findDsQuery: '',
-				allSelector: false,
-				tabclassDatasets: 'is-active',
-				tabclassProjects: '',
-				tabclassSearches: '',
+				tabclass_datasets: '',
+				tabclass_projects: '',
+				tabclass_searches: '',
 				selectedDsets: [],
-				infoshown: {},
+                                initialTab: "{{ tab }}",
 				}
+		},
+		mounted: function() {
+			this.activateTabClass('tabclass_' + this.initialTab);
 		},
 		methods: {
 			showDatasets: function() {
-				this.activateTabClass('tabclassDatasets');
+				this.activateTabClass('tabclass_datasets');
 			},
 			showProjects: function() {
-				this.activateTabClass('tabclassProjects');
+				this.activateTabClass('tabclass_projects');
 			},
 			showSearches: function() {
-				this.activateTabClass('tabclassSearches');
+				this.activateTabClass('tabclass_searches');
 			},
 			activateTabClass: function(tabname) {
-				tabs = ['tabclassDatasets', 'tabclassProjects', 'tabclassSearches'];
+				tabs = ['tabclass_datasets', 'tabclass_projects', 'tabclass_searches'];
 				for (offtab of tabs) {
 					this[offtab] = '';
 					}
@@ -240,11 +247,11 @@
 			},
 		},
 	})
+	{% verbatim %}
 	Vue.component('search-box', {
 		template: `
-		<div class="content is-small">
-			<div class="content is-small" >
-					<input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to find analyses">
+		<div class="content is-small" >
+			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find analyses">
 			<table class="table">
 				<thead>
 					<tr>
@@ -277,7 +284,7 @@
 						</td>
 						<td v-for="key in itemdatakeys">{{ it[key] }}</td>
 					</tr>
-					<details-box :details="it.details" v-if="it.details !== false"></details-box>
+					<details-box :details="it.details" v-on:refreshItem="refreshAll" v-if="it.details !== false"></details-box>
 				</template>
 				</tbody>
 			</table>
@@ -285,6 +292,7 @@
 		`,
 		data: function() {
 			return {
+				searchUrl: '/find/analyses/',
 				showAllUrl: '/show/analyses/',
 				showItemUrl: '/show/analysis/',
 				itemdatafields: ['Analysis name', 'Workflow', 'User', 'Date'],
@@ -297,19 +305,9 @@
 			this.fetchAll();
 		},
 		methods: {
-                        retryJob: function(job_id) {
-				this.$http.post(`jobs/retry/${job_id}`)
-				.then(response => {
-					return response
-				}, response => {
-					console.log(response);
-					// error code
-				}).then(result => {
-					this.getItemInfo(ds_id);
-				})
-                        },
-			fetchAll: function() {
-				this.$http.get(this.showAllUrl)
+			fetchItems: function(url, getparams) {
+				this.$http.get(url,
+					{params: getparams})
 				.then(response => {
 					return response.json()
 				}, response => {
@@ -318,6 +316,13 @@
 						this.items = result['items'];
 					}
 				})
+			},
+			fetchAll: function() {
+				this.fetchItems(this.showAllUrl, {});
+			},
+			refreshAll: function() {
+				ids = Object.keys(this.items);
+ 				this.fetchItems(this.showAllUrl, {'dsids': ids.join(',')});
 			},
 			findItems: function() {
 				this.$http.get(this.searchUrl,
@@ -332,6 +337,7 @@
 				})
 			},
 			toggleItem: function(id) {
+				console.log(id);
 				if (!this.items[id].details) {
 					this.getItemInfo(id);
 				} else {
@@ -348,7 +354,7 @@
 				})
 			},
 			jobTaskStateColor: function(state) {
- 				statecolors = {'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
+ 				statecolors = {'done': 'has-text-success', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
 				return statecolors[state]
 			},
 		},
@@ -356,21 +362,39 @@
 	Vue.component('details-box', {
 		props: ['details'],
 		template: `
-                <tr><td></td><td :colspan="4"> <span class="has-text-weight-bold">Storage location:</span><span> {{ details.storage_loc }} </span></td></tr>
+                <tr><td></td><td :colspan="3"><h5 class="title is-5">Output</h5><div v-if="details.storage_locs" v-for="loc in details.storage_locs"><div><span class="tag has-text-primary">Server</span>{{ loc.server }}</div><div><span class="tag has-text-primary">Folder</span> {{ loc.path }}</div></div>
+ 			<div v-else>No output (yet)</div>
+		</td>
 		<td></td>
 		<td colspan="2">
 		<div v-for="job in details.jobs">
 			<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
-					<a v-else-if="job.state==='error'" class="button is-small is-danger">{{ job.name }}</a>
-					<a v-if="job.state==='processing'" class="button is-small is-warning">{{ job.name }}</a>
-					<a v-if="job.state==='pending'" class="button is-small is-warning">{{ job.name }}</a>
+					<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
+					<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
+					<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
 			</div>
 		</td>
-		<td></td>
+</tr>
 		`,
 		data: function() {
 			return {}
 		},
+		methods: {
+                        retryJob: function(job_id) {
+				this.$http.post(`jobs/retry/${job_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					// make event signal this.dsetInfo(ds_id);
+					this.$emit('refreshItem');
+				})
+                        },
+			                
+		},
+
 	})
 
 	{% endverbatim %}

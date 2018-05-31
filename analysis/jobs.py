@@ -3,7 +3,7 @@ import json
 import re
 
 from kantele import settings
-from analysis import tasks, models
+from analysis import tasks, models, views
 from rawstatus import models as filemodels
 from datasets import models as dsmodels
 from jobs.models import Task
@@ -37,7 +37,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
            'nxf_wf_fn': nfwf.filename,
            'repo': nfwf.nfworkflow.repo,
            }
-    create_nf_search_entries(analysis, wf.id, nfwf, job_id)
+    views.create_nf_search_entries(analysis, wf.id, nfwf.id, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
 
@@ -82,15 +82,5 @@ def run_ipaw(job_id, dset_ids, platenames, setnames, analysis_id, wf_id, wfv_id,
            'name': analysis.name,
            'outdir': analysis.user.username,
            }
-    create_nf_search_entries(analysis, wf_id, nfwf, job_id)
     res = tasks.run_nextflow_ipaw.delay(run, inputs['params'], mzmls, stagefiles)
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
-
-
-def create_nf_search_entries(analysis, wf_id, nfwf, job_id):
-    try:
-        nfs = models.NextflowSearch.objects.get(analysis=analysis)
-    except models.NextflowSearch.DoesNotExist:
-        nfs = models.NextflowSearch(nfworkflow=nfwf, job_id=job_id,
-                                    workflow_id=wf_id, analysis=analysis)
-        nfs.save()

@@ -9,23 +9,19 @@ from django.db.models import Subquery
 from kantele import settings
 from analysis import models as am
 from datasets import models as dm
+from rawstatus import models as rm
 from home import views as hv
 from jobs import jobs as jj
+from jobs import models as jm
 
 
 @login_required
 def get_analysis_init(request):
-    #nfwfid = request.GET['nfid']
-    wfid = request.GET['wfid']
+    wfid = request.GET['wfid'] if 'wfid' in request.GET else 0
     dsids = request.GET['dsids'].split(',')
-    wf = am.Workflow.objects.get(pk=wfid)
-    wftype = wf.shortname
-    wfversion_id = am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id).last().id
     try:
         context = {'dsids': dsids,
                    'wfid': wfid,
-                   'wfv': wfversion_id,
-                   'wftype': wftype,
                    }
     except:
         return HttpResponseForbidden()
@@ -44,6 +40,14 @@ def get_datasets(request):
     dsids = request.GET['dsids'].split(',')
     # FIXME quanttype not exist --> error! when sample prep is not filled in
     # Or do not allow selection of those in prev view
+    dsjobs = rm.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
+        storedfile__rawfile__datasetrawfile__dataset_id__in=dsids).select_related('job')
+    info = {'jobs': [unijob for unijob in
+                    {x.job.id: {'name': x.job.funcname, 'state': x.job.state}
+                     for x in dsjobs}.values()]}
+    files = rm.StoredFile.objects.select_related('rawfile').filter(
+        rawfile__datasetrawfile__dataset_id__in=dsids)
+    nrstoredfiles, sfinfo = hv.get_nr_raw_mzml_files(files, info)
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
     for dsid in dsetinfo:
@@ -60,8 +64,7 @@ def get_datasets(request):
                 x: False for x in dsetinfo[dsid]['details']['channels']}
         else:
             dsetinfo[dsid]['details']['channels'] = {}
-
-    return JsonResponse({'dsets': dsetinfo, 'isoquants': []})
+    return JsonResponse({'dsets': dsetinfo, 'mzmlable': sfinfo['mzmlable'], 'isoquants': []})
 
 
 @login_required
@@ -77,7 +80,7 @@ def get_workflow(request):
         sfile__filetype__in=Subquery(files.values('param__filetype')))]
     versions = [{'name': wfv.update, 'id': wfv.id,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
-                am.NextflowWfVersion.objects.all()][::-1]
+                am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id)][::-1]
     resp = {
         'wf': {
             'flags': {f.param.nfparam: f.param.name for f in flags},
@@ -88,6 +91,7 @@ def get_workflow(request):
                             'id': f.libfile.sfile.id,
                             'desc': f.libfile.description}
                            for f in fixedfiles],
+             'wftype': wf.shortname.name,
         },
         'versions': versions,
         'files': {ft['param__filetype']: [{'id': x.sfile.id, 'desc': x.description,
@@ -122,5 +126,21 @@ def start_analysis(request):
     params = {'singlefiles': {nf: fnid for nf, fnid in req['files'].items()},
               'params': [y for x in req['params'].values() for y in x]}
     # FIXME run_ipaw_nextflow rename job
-    job = jj.create_dataset_job('run_ipaw_nextflow', [int(x) for x in dsids], strips, setnames, analysis.id, req['wfid'], req['nfwfvid'], params)
-    return JsonResponse({})
+    fname = 'run_ipaw_nextflow'
+    arg_dsids = [int(x) for x in dsids]
+    # FIXME do not check the analysis_id!
+    jobcheck = jj.check_existing_search_job(fname, arg_dsids, strips, setnames, req['wfid'], req['nfwfvid'], params)
+    if jobcheck:
+    	return JsonResponse({'state': 'error', 'msg': 'This analysis already exists', 'link': '/?tab=searches&search_id={}'.format(jobcheck.nextflowsearch.id)})
+    job = jj.create_dataset_job(fname, arg_dsids, strips, setnames, analysis.id, req['wfid'], req['nfwfvid'], params)
+    create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
+    return JsonResponse({'state': 'ok'})
+
+
+def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
+    try:
+        nfs = am.NextflowSearch.objects.get(analysis=analysis)
+    except am.NextflowSearch.DoesNotExist:
+        nfs = am.NextflowSearch(nfworkflow_id=nfv_id, job_id=job_id,
+                                    workflow_id=wf_id, analysis=analysis)
+        nfs.save()

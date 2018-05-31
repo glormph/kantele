@@ -14,17 +14,11 @@
 					<ul>
 					<li v-for="err in Array.from(analysiserrors)">{{ err }}</li>
 					<li v-for="err in Array.from(errors)">{{ err }}</li>
+					<li v-if="errlink">Click <a target="_blank" :href="errlink">here</a></li>
 					</ul>
 				</div>
 			</article>
-		<div class="title is-5">Basics</div>
-		<div class="field">
-
-		<input type="text" class="input" v-model="analysisname" placeholder="Analysis name">
-		<div>Full name will be <code>{{ wftype }}_{{ analysisname }}</code>
-		This will be the folder name for the output and prefixed to the output filenames
-		</div>
-		</div>
+		<div class="title is-5">Analysis </div>
 
 		<div class="field is-horizontal">
 		<div class="field-label is-normal">
@@ -34,9 +28,10 @@
 		<div class="field">
 		<div class="select" >
 		<select v-model="wfid" v-on:change="fetchWorkflow">
-		<template v-for="wf in allwfs">
-		<option v-bind:value="wf.id">{{ wf.name }} </option>
-		</template>
+			<option disabled value="0">Select workflow</option>
+			<template v-for="wf in allwfs">
+			<option v-bind:value="wf.id">{{ wf.name }} </option>
+			</template>
 		</select>
 		</div>
 		</div>
@@ -48,15 +43,24 @@
 		<div class="field">
 		<div class="select">
 		<select v-model="wfversion">
-		<template v-for="wfv in versions">
-		<option v-bind:value="wfv.id">{{ wfv.date }} -- {{ wfv.name }} </option>
-		</option>
+			<option disabled value="0">Select workflow version</option>
+			<template v-for="wfv in versions">
+			<option v-bind:value="wfv.id">{{ wfv.date }} -- {{ wfv.name }} </option>
+			</option>
 		</template>
 		</select>
 		</div>
 		</div>
 		</div>
 		</div>
+
+		<div class="field">
+		<input type="text" class="input" v-model="analysisname" placeholder="Please enter analysis name">
+		<div>Full name will be <code>{{ workflow.wftype }}_{{ analysisname }}</code>
+		This will be the folder name for the output and prefixed to the output filenames
+		</div>
+		</div>
+
 
 			<div class="title is-5">Datasets</div>
 			<div v-for="ds in dsets" class="box">
@@ -139,19 +143,37 @@
 		</div>
 		</div>
 
-		<a class="button is-primary" v-on:click="runAnalysis">Run analysis</a>
+		<a class="button is-primary" v-show="this.runButtonActive" v-on:click="runAnalysis">Run analysis</a>
+		<a class="button is-primary is-loading" v-show="!this.runButtonActive && this.postingAnalysis">Run analysis</a>
+		<a class="button is-primary" disabled v-show="!this.runButtonActive && !this.postingAnalysis">Run analysis</a>
+		<article class="message is-danger" v-if="errors.length !== 0 || analysiserrors.size !== 0">
+			<div class="message-header">Errors</div>
+			<div class="message-body">
+				<ul>
+				<li v-for="err in Array.from(analysiserrors)">{{ err }}</li>
+				<li v-for="err in Array.from(errors)">{{ err }}</li>
+				<li v-if="errlink">Click <a target="_blank" :href="errlink">here</a></li>
+				</ul>
+			</div>
+		</article>
+		<article class="message is-info" v-if="runmsg.length !== 0">
+			<div class="message-body">
+				<ul>
+				<li v-for="msg in runmsg">{{ msg }}</li>
+				</ul>
+			</div>
+		</article>
 		</div>
 		`,
 		{% endverbatim %}
 		data: function() {
 			return {
-				wftype: "{{ wftype }}",
 				analysisname: '',
 				allwfs: {'': 1},
 				versions: [],
 				dsids: [{{ dsids|join:"," }}],
 				wfid: {{ wfid }},
-				wfversion: '',
+				wfversion: 0,
 				workflow: {},
 				libfiles: {},
 				inputfiles: {},
@@ -161,6 +183,10 @@
 				isoquants: [],
 				setdenommodel: {},
 				errors: [],
+				runButtonActive: true,
+				postingAnalysis: false,
+				runmsg: [],
+				errlink: false,
 			}
 		},
 		mounted: function() {
@@ -184,10 +210,15 @@
 				} else { return true;}
 			},
 			runAnalysis: function() {
-				// FIXME need redirect to front page
+				this.runmsg = [];
+				this.errors = [];
+				this.errlink = false;
 				if (!this.validate()) {
 					return false;
 				}
+				this.runButtonActive = false;
+				this.postingAnalysis = true;
+				this.runmsg.push('Validated data');
 				fns = {};
 				for (file of this.workflow.fixedfiles) {
 					fns[file.nf] = file.id;
@@ -195,7 +226,9 @@
 				for (file of this.workflow.files) {
 					fns[file.nf] = this.inputfiles[file.nf];
 				}
-
+				this.runmsg.push(`${Object.keys(this.setnames).length} set(s) found`);
+				this.runmsg.push(`Using ${Object.keys(this.dsets).length} dataset(s)`);
+				this.runmsg.push(`${Object.keys(fns).length} other inputfiles found`);
 				post = {'setnames': this.setnames,
 					'strips': this.platenames,
 					'files': fns,
@@ -213,16 +246,22 @@
 				if (denoms.length > 0) {
 					post.params.denoms =  ['--denoms', denoms.join(' ')];
 				}
-				console.log(post);
-			this.$http.post('/analysis/run/', post 
-				).then(response => {
-					console.log('done');
-				}, response => {
-				console.log(response);
-					console.log('error');
-				}).then(result => {
-					console.log(result);
-			})
+				this.runmsg.push(`Posting analysis job for ${this.analysisname}`);
+				this.$http.post('/analysis/run/', post 
+					).then(response => {
+						return response.json()
+					}, response => {
+						console.log(response);
+						console.log('error');
+					}).then(result => {
+ 						if (result['state'] === 'ok') {
+							window.location.href = '/?tab=searches';
+						} else {
+							this.errors.push(result.msg);
+							this.errlink = result.link;
+						}
+					})
+				this.postingAnalysis = false;
 			},
 			fetchAllWorkflows: function() {
 				this.$http.get(`/analysis/allworkflows/`)
@@ -247,10 +286,15 @@
 				}).then(result => {
 					this.dsets = result['dsets']
 					this.isoquants = result['isoquants']
+					if (result['mzmlable']) {
+						this.runButtonActive = false;
+						this.errors.push('Need to create mzML files first');
+					}
 				})
 
 			},
 			fetchWorkflow: function() {
+				if (this.wfid > 0) {
 				this.$http.get(`/analysis/workflow/`,
 					{params: {wfid: this.wfid}})
 				.then(response => {
@@ -264,6 +308,7 @@
 					this.libfiles = result['files'];
 				})
 
+				}
 			},
 		},
 		computed: {
