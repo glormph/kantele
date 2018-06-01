@@ -316,6 +316,8 @@
 			<div v-show="showDatasetFiles">
 				{% verbatim %}
 				<a class="button is-danger is-outlined is-small" v-on:click="toggleFileView">Show available files</a>
+				<a class="button is-primary is-outlined is-small" v-on:click="addFiles">Remove {{ countSelectedAssocFiles }} selected files</a>
+				<input class="input"  v-model="filefilterAssocString" type="text" placeholder="Filter files">
 				<div class="content is-small">{{ Object.keys(showingAssociatedFiles()).length }} dataset files</div>
 			</div>
 			
@@ -373,7 +375,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					<tr v-for="file in showingAssociatedFiles()" v-if="showDatasetFiles">
+					<tr v-for="file in showingAssociatedFiles()" v-if="showDatasetFiles" v-show="filtered_assoc_files(file)">
 						<td>
 							<div class="control">
 								<a class="has-text-danger icon" v-on:click="removeFile(file)">
@@ -412,6 +414,7 @@
 		data: function() {return {
 			showDatasetFiles: {% if newdataset %}false{% else %}true{% endif %},
 			filefilterString: '',
+			filefilterAssocString: '',
 			sort_order: 1,
 			instrumentSort: '',
 			timeSort: '2629800000',
@@ -436,6 +439,15 @@
 			},
 			isOpen: function() {
 				return this.dset_id !== '';
+			},
+			countSelectedAssocFiles: function() {
+				count = 0;
+				for (key in this.showingAssociatedFiles) {
+					if (this.showingAssociatedFiles[key].checked) {
+						count += 1;
+					}
+				}
+				return count
 			},
 			countSelectedFiles: function() {
 				count = 0;
@@ -545,6 +557,9 @@
 			save: function() {
 				this.editing = false;
 				this.$emit('save');
+			},
+			filtered_assoc_files: function(file) {
+				return file.name.indexOf(this.filefilterAssocString) > -1
 			},
 			filtered_files: function(file) {
 				if (this.instrumentSort !== '' && file.instrument !== this.instrumentSort) {
