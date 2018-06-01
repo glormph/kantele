@@ -48,23 +48,33 @@ def get_datasets(request):
     files = rm.StoredFile.objects.select_related('rawfile').filter(
         rawfile__datasetrawfile__dataset_id__in=dsids)
     nrstoredfiles, sfinfo = hv.get_nr_raw_mzml_files(files, info)
+    response = {'isoquants': [], 'error': False, 'errmsg': []}
+    if sfinfo['mzmlable']:
+        response['error'] = True
+        response['errmsg'].append('Need to create mzML files first')
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
-    for dsid in dsetinfo:
-        dset = dsetinfo[dsid].pop('dbentry')
-        dsetinfo[dsid].update({'details': hv.fetch_dset_details(dset)})
-        dsetinfo[dsid]['model'] = {'set': False}
-        dsetinfo[dsid]['details']['qtype'] = dset.quantdataset.quanttype.name
-        if 'lex' in dset.quantdataset.quanttype.name:
-            dsetinfo[dsid]['details']['channels'] = {
-                ch.channel.channel.name: ch.sample for ch in
-                dm.QuantChannelSample.objects.select_related(
-                    'channel__channel').filter(dataset_id=dsid)}
-            dsetinfo[dsid]['model']['denoms'] = {
-                x: False for x in dsetinfo[dsid]['details']['channels']}
+    for dsid, dsdetails in dsetinfo.items():
+        dset = dsdetails.pop('dbentry')
+        dsdetails.update({'details': hv.fetch_dset_details(dset)})
+        dsdetails['model'] = {'set': False}
+        try:
+            dsdetails['details']['qtype'] = dset.quantdataset.quanttype.name
+        except dm.QuantDataset.DoesNotExist:
+            response['error'] = True
+            response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
         else:
-            dsetinfo[dsid]['details']['channels'] = {}
-    return JsonResponse({'dsets': dsetinfo, 'mzmlable': sfinfo['mzmlable'], 'isoquants': []})
+            if 'lex' in dset.quantdataset.quanttype.name:
+                dsdetails['details']['channels'] = {
+                    ch.channel.channel.name: ch.sample for ch in
+                    dm.QuantChannelSample.objects.select_related(
+                        'channel__channel').filter(dataset_id=dsid)}
+                dsdetails['model']['denoms'] = {
+                    x: False for x in dsdetails['details']['channels']}
+            else:
+                dsdetails['details']['channels'] = {}
+    response['dsets'] = dsetinfo
+    return JsonResponse(response)
 
 
 @login_required

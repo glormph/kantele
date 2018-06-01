@@ -337,7 +337,6 @@
 				})
 			},
 			toggleItem: function(id) {
-				console.log(id);
 				if (!this.items[id].details) {
 					this.getItemInfo(id);
 				} else {
@@ -362,8 +361,9 @@
 	Vue.component('details-box', {
 		props: ['details'],
 		template: `
-                <tr><td></td><td :colspan="3"><h5 class="title is-5">Output</h5><div v-if="details.storage_locs" v-for="loc in details.storage_locs"><div><span class="tag has-text-primary">Server</span>{{ loc.server }}</div><div><span class="tag has-text-primary">Folder</span> {{ loc.path }}</div></div>
- 			<div v-else>No output (yet)</div>
+                <tr><td></td><td :colspan="3"><h6 class="title is-6">Output</h6>
+ 			<div v-if="details.storage_locs.length>0" v-for="loc in details.storage_locs"><div><span class="tag has-text-primary">Server</span>{{ loc.server }}</div><div><span class="tag has-text-primary">Folder</span> {{ loc.path }}</div></div>
+ 			<div v-if="details.storage_locs.length===0">No output (yet)</div>
 		</td>
 		<td></td>
 		<td colspan="2">

@@ -284,11 +284,12 @@
 					console.log(response);
 					// error code
 				}).then(result => {
-					this.dsets = result['dsets']
-					this.isoquants = result['isoquants']
-					if (result['mzmlable']) {
+					if (result['error']) {
+						this.errors.push(...result['errmsg'])
 						this.runButtonActive = false;
-						this.errors.push('Need to create mzML files first');
+					} else {
+						this.dsets = result['dsets']
+						this.isoquants = result['isoquants']
 					}
 				})
 
