@@ -316,14 +316,14 @@
 			<div v-show="showDatasetFiles">
 				{% verbatim %}
 				<a class="button is-danger is-outlined is-small" v-on:click="toggleFileView">Show available files</a>
-				<a class="button is-primary is-outlined is-small" v-on:click="addFiles">Remove {{ countSelectedAssocFiles }} selected files</a>
+				<a class="button is-primary is-outlined is-small" v-on:click="removeFiles">Remove {{ countSelectedAssocFiles }} selected files</a>
 				<input class="input"  v-model="filefilterAssocString" type="text" placeholder="Filter files">
-				<div class="content is-small">{{ Object.keys(showingAssociatedFiles()).length }} dataset files</div>
+				<div class="content is-small">{{ Object.keys(showingAssociatedFiles).length }} dataset files</div>
 			</div>
 			
 			<div v-show="!showDatasetFiles">
 				<a class="button is-danger is-outlined is-small" v-on:click="toggleFileView">
-				Show {{ Object.keys(showingAssociatedFiles()).length }} dataset files
+				Show {{ Object.keys(showingAssociatedFiles).length }} dataset files
 				</a>
 				<a class="button is-primary is-outlined is-small" v-on:click="addFiles">Add {{ countSelectedFiles }} selected files</a>
 				<input class="input"  v-model="filefilterString" type="text" placeholder="Filter files">
@@ -335,9 +335,11 @@
 					<tr>
 						<th>
 							<div class="control">
+								<input type="checkbox" v-show="showDatasetFiles" v-on:click="selectAllAssoc">
 								<input type="checkbox" v-show="!showDatasetFiles" v-on:click="selectAll">
 							</div>
 				       		</th>
+						<th v-show="showDatasetFiles"></th>
 						<th v-show="!showDatasetFiles">
 							<a class="button is-info is-outlined" v-on:click="toggleFileSort">Filename</a>
 						</th>
@@ -375,7 +377,12 @@
 					</tr>
 				</thead>
 				<tbody>
-					<tr v-for="file in showingAssociatedFiles()" v-if="showDatasetFiles" v-show="filtered_assoc_files(file)">
+					<tr v-for="file in showingAssociatedFiles" v-if="showDatasetFiles" v-show="filtered_assoc_files(file)">
+						<td>
+							<div class="control">
+								<input v-model="file.checked" type="checkbox">
+							</div>
+						</td>
 						<td>
 							<div class="control">
 								<a class="has-text-danger icon" v-on:click="removeFile(file)">
@@ -419,6 +426,7 @@
 			instrumentSort: '',
 			timeSort: '2629800000',
 			allSelector: false,
+			allAssocSelector: false,
 			editing: false,
 		}
 		},
@@ -479,6 +487,13 @@
 //					return 0;
 //					}})
 			},
+			showingAssociatedFiles: function() {
+				var val = Object.assign({}, this.fndata.datasetAssociatedFiles, this.fndata.addedFiles)
+				for (key in this.fndata.removedFiles) {
+					delete val[key];
+					}
+				return val
+			},
 		},
 		methods: {
 			wait_noedit: async function() {
@@ -505,13 +520,17 @@
 			toggleFileView: function() {
 				this.showDatasetFiles = this.showDatasetFiles === false;
 			},
-			showingAssociatedFiles: function() {
-				var val = Object.assign({}, this.fndata.datasetAssociatedFiles, this.fndata.addedFiles)
-				for (key in this.fndata.removedFiles) {
-					delete val[key];
-					}
-				return val
-				},
+			selectAllAssoc: function() {
+				this.allAssocSelector = this.allAssocSelector === false;
+				for (key in this.showingAssociatedFiles) {
+					file = this.showingAssociatedFiles[key];
+					if (this.filtered_assoc_files(file) && this.allAssocSelector) {
+						file.checked = true;
+						} else {
+						file.checked = false;
+						}
+				}
+			},
 			selectAll: function() {
 				this.allSelector = this.allSelector === false;
 				for (key in this.showingNewFiles) {
@@ -543,15 +562,25 @@
 				this.fndata.removedFiles = rmf;
 				this.editing = true;
 			},
+			removeFiles: function() {
+				tmpdsfiles = Object.assign({}, this.fndata.datasetAssociatedFiles, this.fndata.addedFiles)
+				for (key in tmpdsfiles) {
+					file = tmpdsfiles[key];
+					if (file.checked) {
+						this.removeFile(file);
+					}
+				}
+			},
 			removeFile: function(file) {
 				file_id = 'id_' + file.id
 				if (file_id in this.fndata.addedFiles) {
 					addf = Object.assign({}, this.fndata.addedFiles)
 					delete addf[file_id];
 					this.fndata.addedFiles = addf;
-					} else {
+				} else {
 					this.$set(this.fndata.removedFiles, file_id, file);
 					}
+				file.checked = false;
 				this.editing = true;
 			},
 			save: function() {
