@@ -115,6 +115,8 @@ def downloaded_px_file(request):
     sf.save()
     raw.save()
     dsviews.save_or_update_files(dataset)
+    if 'task' in data:
+        set_task_done(data['task'])
     return HttpResponse()
 
 
