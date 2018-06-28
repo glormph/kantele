@@ -851,7 +851,7 @@ def save_sampleprep(request):
                 data['samples'][fn['associd']] = data['sample']
             print('No multisample')
         models.QuantSampleFile.objects.bulk_create([
-            models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][fid])
+            models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][str(fid)])
             for fid in [x['associd'] for x in data['filenames']]])
     save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
