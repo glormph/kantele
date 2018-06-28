@@ -138,6 +138,8 @@ def dataset_sampleprep(request, dataset_id):
                 response_json['quants'][qtid]['chans'].append(
                     {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
                      'model': qsc.sample, 'pk': qsc.id})
+            # Trick to sort N before C:
+            response_json['quants'][qtid]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
         get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
     return JsonResponse(response_json)
 
@@ -566,6 +568,8 @@ def empty_sampleprep_json():
         quants[chan.quanttype.id]['chans'].append({'id': chan.id,
                                                    'name': chan.channel.name,
                                                    'model': ''})
+        # Trick to sort N before C:
+        quants[chan.quanttype.id]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
     labelfree = models.QuantType.objects.get(name='labelfree')
     quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree',
                             'model': ''}
