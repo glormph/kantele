@@ -72,7 +72,7 @@ class WorkflowFileParam(models.Model):
     param = models.ForeignKey(FileParam)
 
     def __str__(self):
-        return self.param.name
+        return '{} -- {}'.format(self.wf.name, self.param.name)
 
 
 class WorkflowPredefFileParam(models.Model):
@@ -81,7 +81,7 @@ class WorkflowPredefFileParam(models.Model):
     libfile = models.ForeignKey(LibraryFile)
 
     def __str__(self):
-        return '{} -- {}'.format(self.param.name, self.libfile.description)
+        return '{} -- {} -- {}'.format(self.wf.name, self.param.name, self.libfile.description)
 
 
 class WorkflowParam(models.Model):
@@ -89,13 +89,13 @@ class WorkflowParam(models.Model):
     param = models.ForeignKey(Param)
 
     def __str__(self):
-        return self.param.name
+        return '{} -- {}'.format(self.wf.name, self.param.name)
 
 
 class Analysis(models.Model):
     date = models.DateTimeField(auto_now=True)
     user = models.ForeignKey(User)
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=500)
 
 
 class AnalysisError(models.Model):
