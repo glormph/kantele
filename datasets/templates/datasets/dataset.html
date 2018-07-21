@@ -1392,7 +1392,7 @@
 				};
 				if (!data.labelfree) {
 					data.samples = this.sampledata.quants[this.sampledata.quanttype].chans;
-				} else if (this.labelfree_multisample) {
+				} else if (this.sampledata.labelfree_multisample) {
 					data.multisample = true;
 					data.filenames = this.sampledata.filenames;
 					data.samples = this.sampledata.samples;
