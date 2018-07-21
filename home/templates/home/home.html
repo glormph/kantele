@@ -367,18 +367,22 @@
 	Vue.component('details-box', {
 		props: ['details'],
 		template: `
-                <tr><td></td><td :colspan="3"><h6 class="title is-6">Output</h6>
- 			<div v-if="details.storage_locs.length>0" v-for="loc in details.storage_locs"><div><span class="tag has-text-primary">Server</span>{{ loc.server }}</div><div><span class="tag has-text-primary">Folder</span> {{ loc.path }}</div></div>
+                <tr><td></td><td :colspan="3"><h5 class="subtitle is-5">Output</h5>
+ 			<div v-if="details.storage_locs.length>0" v-for="loc in details.storage_locs"><div><span class="tag is-success">Server</span>{{ loc.server }}</div><div><span class="tag is-success">Folder</span> {{ loc.path }}</div></div>
  			<div v-if="details.storage_locs.length===0">No output (yet)</div>
 		</td>
 		<td></td>
 		<td colspan="2">
-		<div v-for="job in details.jobs">
-			<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
-					<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
-					<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
-					<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
+			<h5 class="subtitle is-5" v-if="details.jobs.length">Jobs</h5>
+			<div v-for="job in details.jobs">
+				<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
+						<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
+						<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
+						<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
 			</div>
+			<h5 class="subtitle is-5 has-text-weight-bold">Input data</h5>
+ 			<div><a v-bind:href="'?tab=datasets&dsids='+details.dsets.join(',')" target="_blank">{{ details.dsets.length }} datasets</a> from project(s) <span v-for="proj in details.proj">{{ proj.name }}, </span></div>
+ 			<div>{{ details.nrfiles }} rawfiles analysed</div>
 		</td>
 </tr>
 		`,
