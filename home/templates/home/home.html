@@ -107,10 +107,13 @@
 				findDsQuery: '',
 				allSelector: false,
 				selectedDsets: [],
+		{% endverbatim %}
+                                initialDsids: [{{ dsids|join:',' }} ],
+		{% verbatim %}
 				}
 		},
 		mounted: function() {
-			this.fetchDatasets();
+			this.fetchDatasets(this.initialDsids);
 		},
 		methods: {
 			createMzml: function(ds_id) {
@@ -138,8 +141,10 @@
 					this.dsetInfo(ds_id);
 				})
                         },
-			fetchDatasets: function() {
-				this.$http.get('/show/datasets/')
+			fetchDatasets: function(dsids) {
+				url = '/show/datasets/'
+				url = dsids.length ? url + `?dsids=${dsids.join(',')}` : url;
+				this.$http.get(url)
 				.then(response => {
 					return response.json()
 				}, response => {
@@ -221,7 +226,6 @@
 				tabclass_datasets: '',
 				tabclass_projects: '',
 				tabclass_searches: '',
-				selectedDsets: [],
                                 initialTab: "{{ tab }}",
 				}
 		},
@@ -299,10 +303,15 @@
 				itemdatakeys: ['name', 'wf', 'usr', 'date'],
 				items: {},
 				findQuery: '',
+				{% endverbatim %}
+						initialAnalysisIds: [{{ anids|join:',' }} ],
+				{% verbatim %}
 			}
 		},
 		mounted: function() {
-			this.fetchAll();
+			console.log(this.initialAnalysisIds);
+			params = this.initialAnalysisIds.length ? {'ids': this.initialAnalysisIds.join(',')}: {};
+			this.fetchItems(this.showAllUrl, params);
 		},
 		methods: {
 			fetchItems: function(url, getparams) {
@@ -317,12 +326,9 @@
 					}
 				})
 			},
-			fetchAll: function() {
-				this.fetchItems(this.showAllUrl, {});
-			},
 			refreshAll: function() {
 				ids = Object.keys(this.items);
- 				this.fetchItems(this.showAllUrl, {'dsids': ids.join(',')});
+ 				this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
 			},
 			findItems: function() {
 				this.$http.get(this.searchUrl,

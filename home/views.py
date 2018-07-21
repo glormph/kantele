@@ -18,6 +18,8 @@ from jobs import models as jm
 def home(request):
     """Returns home view with Vue apps that will separately request"""
     context = {'tab': request.GET['tab'] if 'tab' in request.GET else 'datasets',
+               'dsids': request.GET['dsids'].split(',') if 'dsids' in request.GET else [],
+               'anids': request.GET['anids'].split(',') if 'anids' in request.GET else [],
                'username': request.user.username}
     return render(request, 'home/home.html', context)
 
@@ -77,7 +79,7 @@ def find_analysis(request):
 @login_required
 def show_analyses(request):
     if 'ids' in request.GET:
-        ids = request.GET['dsids'].split(',')
+        ids = request.GET['ids'].split(',')
         dbanalyses = anmodels.NextflowSearch.objects.filter(pk__in=ids)
     else:
         # last 6month analyses of a user
