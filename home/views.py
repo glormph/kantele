@@ -174,7 +174,7 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
 @login_required
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
-        'analysis', 'job').get()
+        'analysis', 'job', 'workflow', 'nfworkflow').get()
     storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
                 anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
     dssearch = anmodels.DatasetSearch.objects.select_related(
@@ -186,6 +186,9 @@ def get_analysis_info(request, nfs_id):
     return JsonResponse({'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
                                             'retry': jobs.is_job_retryable(nfs.job), 'id': nfs.job.id,
                                             'time': nfs.job.timestamp}},
+                         'wf': {'fn': nfs.nfworkflow.filename, 
+                                'commit': nfs.nfworkflow.commit,
+                                'repo': nfs.nfworkflow.nfworkflow.repo},
                          'proj': [{'name': x.name, 'id': x.id} for x in projs],
                          'dsets': [x.id for x in dsets],
                          'nrfiles': fjobs.count(),
