@@ -36,7 +36,14 @@ def move_files_dataset_storage_getfiles(dset_id, fn_ids):
 
 def move_files_dataset_storage(job_id, dset_id, rawfn_ids, *sf_ids):
     print('Moving dataset files to storage')
-    dset_files = StoredFile.objects.filter(pk__in=sf_ids, checked=True)
+    new_sf_ids = StoredFile.objects.filter(
+        rawfile__datasetrawfile__dataset_id=dset_id,
+        rawfile__source_md5=F('md5'),
+        rawfile_id__in=rawfn_ids)
+    if new_sf_ids.count() != len(sf_ids):
+        print('Original job submission had {} stored files, but now there are {}'
+              ' stored files'.format(len(sf_ids), new_sf_ids.count()))
+    dset_files = StoredFile.objects.filter(pk__in=new_sf_ids, checked=True)
     # if only half of the files have been SCP arrived yet? Try more later:
     dset_registered_files = DatasetRawFile.objects.filter(
         dataset_id=dset_id, rawfile_id__in=rawfn_ids)
