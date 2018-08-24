@@ -78,8 +78,9 @@ def update_qcdata(qcrun, data):
 
 def get_longitud_qcdata(instrument, wf_id):
     long_qc = {}
-    for qcrun in models.QCData.objects.filter(rawfile__producer=instrument,
-                                              analysis__nextflowsearch__nfworkflow=wf_id):
+    # FIXME this shows data from qc runs for each workflow so if rerun against newer version both results will show
+    for qcrun in models.QCData.objects.filter(rawfile__producer=instrument):
+                                              #analysis__nextflowsearch__nfworkflow=wf_id):
         date = qcrun.rawfile.date
         for lplot in qcrun.lineplotdata_set.all():
             try:

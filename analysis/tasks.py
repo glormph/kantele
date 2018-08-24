@@ -31,7 +31,7 @@ def run_nextflow(run, params, rundir, gitwfdir):
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
 
-    cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-with-trace', '-resume']
+    cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', 'qc', '-with-trace', '-resume']
     print(cmd)
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
     print('Finished running workflow')
