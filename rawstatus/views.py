@@ -198,7 +198,8 @@ def check_md5_success(request):
 def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
     add_to_qc(rawfile, storedfile)
-    jobutil.create_file_job('convert_single_mzml', storedfile.id)
+    jobutil.create_file_job('convert_single_mzml', storedfile.id,
+                            queue=settings.QUEUE_QCPWIZ)
     start_qc_analysis(rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
                       settings.LONGQC_FADB_ID)
 

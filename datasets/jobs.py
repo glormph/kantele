@@ -113,7 +113,7 @@ def get_or_create_mzmlentry(fn):
     return mzsf
 
 
-def convert_single_mzml(job_id, sf_id):
+def convert_single_mzml(job_id, sf_id, queue=settings.QUEUES_PWIZ[0]):
     # FIXME may be this method can be moved to another module like rawstatus
     fn = StoredFile.objects.select_related(
         'servershare', 'rawfile__datasetrawfile__dataset').get(pk=sf_id)
@@ -121,7 +121,6 @@ def convert_single_mzml(job_id, sf_id):
     mzsf = get_or_create_mzmlentry(fn)
     if mzsf.checked:
         return
-    queue = settings.QUEUES_PWIZ[0]
     runchain = get_mzmlconversion_taskchain(fn, mzsf, storageloc, queue,
                                             settings.QUEUES_PWIZOUT[queue])
     lastnode = chain(*runchain).delay()

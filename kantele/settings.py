@@ -33,7 +33,8 @@ QUEUE_SWESTORE = 'create_swestore'
 QUEUE_NXF = 'nextflow'
 
 QUEUES_PWIZ = ['pwiz1', 'pwiz2']
-QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out'}
+QUEUE_QCPWIZ = 'pwiz_qc'
+QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out', 'pwiz_qc': 'proteowiz2_out'}
 PROTOCOL = 'https://'
 CERTFILE = os.environ.get('KANTELECERT')
 KANTELEHOST = '{}{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
