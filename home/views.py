@@ -73,7 +73,8 @@ def find_analysis(request):
         subquery |= Q(analysis__user__username__icontains=term)
         query &= subquery
     dbanalyses = anmodels.NextflowSearch.objects.filter(query)
-    return JsonResponse({'items': populate_analysis(dbanalyses, request.user)})
+    items, it_order = populate_analysis(dbanalyses, request.user)
+    return JsonResponse({'items': items, 'order': it_order})
 
 
 @login_required
@@ -82,12 +83,18 @@ def show_analyses(request):
         ids = request.GET['ids'].split(',')
         dbanalyses = anmodels.NextflowSearch.objects.filter(pk__in=ids)
     else:
-        # last 6month analyses of a user
-        dbanalyses = anmodels.NextflowSearch.objects.select_related(
+        # last 6month analyses of a user plus current analyses PENDING/PROCESSING
+        run_ana = anmodels.NextflowSearch.objects.select_related(
+            'workflow', 'analysis').filter(
+            job__state__in=jobs.JOBSTATES_WAIT).exclude(
+            analysis__user_id=request.user.id)
+        user_ana = anmodels.NextflowSearch.objects.select_related(
             'workflow', 'analysis').filter(
             analysis__user_id=request.user.id, 
             analysis__date__gt=datetime.today() - timedelta(183))
-    return JsonResponse({'items': populate_analysis(dbanalyses, request.user)})
+        outq = user_ana | run_ana
+    items, it_order = populate_analysis(outq.order_by('-analysis__date') , request.user)
+    return JsonResponse({'items': items, 'order': it_order})
 
 
 @login_required
@@ -116,7 +123,7 @@ def get_ds_jobs(dbdsets):
 
 
 def populate_analysis(nfsearches, user):
-    ana_out = OrderedDict()
+    ana_out, order = {}, []
     for nfs in nfsearches:
         try:
             ana_out[nfs.id] = {
@@ -133,7 +140,9 @@ def populate_analysis(nfsearches, user):
         except:
         # FIXME this dont work except anmodels.Analysis.RelatedObjectDoesNotExist:
             pass
-    return ana_out
+        else:
+            order.append(nfs.id)
+    return ana_out, order
 
 
 def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):

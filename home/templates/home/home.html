@@ -266,29 +266,29 @@
 					</tr>
 				</thead>
 				<tbody>
-				<template v-for="it in items">
+				<template v-for="itkey in order">
 		                        <tr>
 						<td>
-							<a v-on:click="toggleItem(it.id)">
+							<a v-on:click="toggleItem(itkey)">
 								<span class="has-text-info icon is-small">
 								<i class="fa fa-eye" />
 								</span>
 							</a>
 						</td>
 						<td>
-							<span v-if="it.own" class="icon has-text-info is-small">
+							<span v-if="items[itkey].own" class="icon has-text-info is-small">
 									<i class="fa fa-pencil"></i>
 							</span>
-							<span v-else-if="!it.own" class="icon has-text-grey-light is-small">
+							<span v-else-if="!items[itkey].own" class="icon has-text-grey-light is-small">
 									<i class="fa fa-pencil"></i>
 							</span>
 						</td>
 						<td>
-							<span v-for="state in it.jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span>
+							<span v-for="state in items[itkey].jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span>
 						</td>
-						<td v-for="key in itemdatakeys">{{ it[key] }}</td>
+						<td v-for="key in itemdatakeys">{{ items[itkey][key] }}</td>
 					</tr>
-					<details-box :details="it.details" v-on:refreshItem="refreshAll" v-if="it.details !== false"></details-box>
+					<details-box :details="items[itkey].details" v-on:refreshItem="refreshAll" v-if="items[itkey].details !== false"></details-box>
 				</template>
 				</tbody>
 			</table>
@@ -302,6 +302,7 @@
 				itemdatafields: ['Analysis name', 'Workflow', 'User', 'Date'],
 				itemdatakeys: ['name', 'wf', 'usr', 'date'],
 				items: {},
+                                order: [],
 				findQuery: '',
 				{% endverbatim %}
 						initialAnalysisIds: [{{ anids|join:',' }} ],
@@ -321,9 +322,8 @@
 					return response.json()
 				}, response => {
 				}).then(result => {
-					for (key in result) {
-						this.items = result['items'];
-					}
+					this.items = result['items'];
+					this.order = result['order'];
 				})
 			},
 			refreshAll: function() {
