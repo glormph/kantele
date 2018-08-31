@@ -22,7 +22,11 @@ class Jobstates(object):
     PROCESSING = 'processing'
     ERROR = 'error'
     DONE = 'done'
+    CANCELED = 'canceled'
 
+
+JOBSTATES_WAIT = [Jobstates.PENDING, Jobstates.PROCESSING]
+JOBSTATES_DONE = [Jobstates.ERROR, Jobstates.DONE, Jobstates.CANCELED]
 
 """Jobmap contains all jobs in system by name. The retry field indicates a
 job is retryable, which means the job should be side-effect free, i.e. possible
