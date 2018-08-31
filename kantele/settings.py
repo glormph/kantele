@@ -31,6 +31,7 @@ QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_PXDOWNLOAD = 'pxdownload'
 QUEUE_SWESTORE = 'create_swestore'
 QUEUE_NXF = 'nextflow'
+QUEUE_QC_NXF = 'qc_nextflow'
 
 QUEUES_PWIZ = ['pwiz1', 'pwiz2']
 QUEUE_QCPWIZ = 'pwiz_qc'

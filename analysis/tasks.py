@@ -94,7 +94,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     return run
 
 
-@shared_task(bind=True, queue=settings.QUEUE_NXF)
+@shared_task(bind=True, queue=settings.QUEUE_QC_NXF)
 def run_nextflow_longitude_qc(self, run, params, stagefiles):
     print('Got message to run QC workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
