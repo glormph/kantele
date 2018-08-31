@@ -69,7 +69,13 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     # FIXME plate/frac optional in mzml def:
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
-            fp.write('{fpath}\t{setn}\t{pl}\t{fr}\n'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3], pl=fn[4], fr=fn[5]))
+            mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3])
+            if fn[4]:  # if a plate is speced, use plate and fraction if they are speced
+                mzstr = '{ms}\t{pl}'.format(ms=mzstr, pl=fn[4])
+                if fn[5]:
+                    mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
+            mzstr = '{}\n'.format(mzstr) 
+            fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', runname])
     try:
         run_nextflow(run, params, rundir, gitwfdir)

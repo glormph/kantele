@@ -96,7 +96,7 @@ def store_ds_job(name, prejob_args, **kwargs):
     return job
 
 
-def check_existing_search_job(fname, dset_ids, strips, setnames, wfid, wfvid, params):
+def check_existing_search_job(fname, dset_ids, strips, fractions, setnames, wfid, wfvid, params):
     jobargs = json.dumps([dset_ids] + [strips] + [setnames])[:-1]  # leave out last bracket
     for job in Job.objects.filter(funcname=fname, jobtype=jobmap[fname]['type'],
             args__startswith=jobargs).select_related('nextflowsearch'):

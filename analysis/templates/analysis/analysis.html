@@ -66,34 +66,58 @@
 			<div v-for="ds in dsets" class="box">
 			<div class="columns">
 			<div class="column">
-			<div class="title is-6 has-text-primary">Setname for:</div>
-			<div class="subtitle is-6">
+<!-- labelfree, lfree hirief (plasma), tmt (LG, labelcheck), tmt hirief, FIX ALL OF THEM
+- setname for dset or optionally each set is a file when not using hirief, give checkbox
+-->
+
+			<div v-if="!ds.hr">
+				<input type="checkbox" v-model="ds.filesaresets">
+				<label class="checkbox">Each file is a different sample</label>
+			</div>
+			<div class="field">
+				<input type="text" class="input" placeholder="Name of set" v-show="!ds.filesaresets" v-model="dssetnames[ds.id]">
+			</div>
+			<div class="subtitle is-6 has-text-primary">
 				<span>{{ ds.proj }} // {{ ds.exp }} // {{ ds.run }} //</span>
 				<span v-if="!ds.prefrac">{{ ds.dtype }}</span>
 				<span v-else-if="ds.hr">{{ ds.hr }}</span>
 				<span v-else-if="ds.prefrac">{{ ds.prefrac }}</span>
-				<span>// {{ ds.details.nrrawfiles }} rawfiles</span>
 			</div>
 			<div class="subtitle is-6">
 				<span>{{ ds.details.qtype }} </span>
+				<span>// {{ ds.details.nrrawfiles }} rawfiles</span>
 				<span>// {{ ds.details.instruments.join(', ') }} </span>
-				<a class="button is-danger" v-if="ds.mzmlable==='ready'">// Missing mzMLs</a>
 			</div>
 			</div>
 			<div class="column">
-				<input type="text" class="input" placeholder="Name of set" v-model="setnames[ds.id]">
+				<div class="field" v-show="ds.hr">
+					<label class="label">Regex for fraction detection</label>
+					<input type="text" class="input" v-on:change="matchFractions(ds)" v-model="frregex[ds.id]">
+				</div>
+				<span v-if="ds.hr">{{ matchedFr[ds.id] }} fractions matched</span>
 			</div>
 			</div>
+                        <div class="columns" v-for="fn in ds.files" v-show="ds.filesaresets">
+				<div class="column">
+					{{ fn.name }}
+				</div>
+				<div class="column">
+					<input type="text" class="input" v-model="fn.setname" :placeholder="fn.sample">
+				</div>
+				</template>
+			</div>
+
 		</div>
 		 
-		<div class="box" v-if="analysiserrors.size === 0">
-		<div class="title is-5">Sample sets</div>
-		<div v-for="(nr, name) in allsets">
-			<div class="title is-6">{{ name }}<span v-show="analysis.qtypeshort === 'labelfree'" class="has-text-primary"> -- Labelfree</span></div>
+<!-- labelfree, lfree hirief (plasma), tmt (LG, labelcheck), tmt hirief, FIX ALL OF THEM-->
+		<div class="box" v-if="analysiserrors.size === 0 && analysis.qtype !== 'labelfree'">
+		<div class="title is-5">Isobaric quantification</div>
+		<div v-for="name in allsets">
+			<div class="has-text-primary title is-6">Isobaric denominator channels</div>
+			<div class="title is-6">{{ name }}</div>
 			<template v-if="setdenoms[name]">
-				<div class="has-text-primary title is-6">Isobaric denominator channels</div>
-				<div v-for="(desc, ch) in setdenoms[name]">
-					<input type="checkbox" v-bind:value="ch" v-model="setdenommodel[name]">{{ ch }} - {{ desc }}
+				<div v-for="ch in sorted_channels(setdenoms[name])">
+					<input type="checkbox" v-bind:value="ch" v-model="setdenommodel[name]">{{ ch }} - {{ setdenoms[name][ch] }}
 				</div>
 			</template>
 		</div>
@@ -101,15 +125,21 @@
 
 		<div class="box" v-if="analysiserrors.size === 0">
 		<div class="title is-5">Detected parameters</div>
-		<div>Datasets are from {{ analysis.instnice }} type instrument: <code>{{ analysis.params.inst.join(' ') }}</code></div>
-		<div>Quantification {{ analysis.qtype }} type instrument: <code>{{ analysis.params.quant.join(' ') }}</code></div>
+		<div>Datasets are from instrument type: {{ analysis.instnice }} <code>{{ analysis.params.inst.join(' ') }}</code></div>
+		<div>Quantification {{ analysis.qtype }} type: 
+                    <code v-if="analysis.qtype === 'labelfree'"> # labelfree </code>
+                    <code v-else>{{ analysis.params.quant.join(' ') }}</code></div>
 		
 		</div>
 		<div class="box" v-if="analysiserrors.size === 0">
-		<div class="title is-5">Predefined workflow parameters</div>
-		<div v-for="flag in analysis.params.flags">{{ workflow.flags[flag] }}: <code>{{ flag }}</code></div>
-		
+		<div class="title is-5">Workflow parameters</div>
+		<div v-for="(desc, flag) in workflow.flags">
+			<input v-bind:value="flag" v-model="analysis.params.flags" type="checkbox">
+			<label class="checkbox">{{ desc }}</label>: <code>{{ flag }}</code>
 		</div>
+		<div v-show="analysis.params.flags.length === 0">No parameters for this workflow</div>
+		</div>
+
 		<div class="box" v-if="analysiserrors.size === 0">
 		<div class="title is-5">Input files</div>
 		<div class="field" v-for="file in workflow.files">
@@ -179,7 +209,9 @@
 				inputfiles: {},
 				analysiserrors: new Set(),
 				dsets: [],
-				setnames: {},
+				dssetnames: {},
+				frregex: {},
+				matchedFr: {},
 				isoquants: [],
 				setdenommodel: {},
 				errors: [],
@@ -190,6 +222,9 @@
 			}
 		},
 		mounted: function() {
+			for (dsid of this.dsids) {
+				this.frregex[dsid] = '.*fr([0-9]+).*mzML$'
+			}
 			this.fetchAllWorkflows();
 			this.fetchDatasetDetails();
 			this.fetchWorkflow();
@@ -204,6 +239,12 @@
 				}
 				else if (!re.test(this.analysisname)) {
 					this.errors.push('Analysisname may only contain a-z 0-9 - _');
+				}
+				if (!this.wfid || this.wfid === 0) {
+					this.errors.push('You must select a workflow');
+				}
+				if (!this.wfversion || this.wfversion === 0) {
+					this.errors.push('You must select a workflow version');
 				}
 				if (this.errors.length > 0) {
 					return false;
@@ -226,20 +267,44 @@
 				for (file of this.workflow.files) {
 					fns[file.nf] = this.inputfiles[file.nf];
 				}
-				this.runmsg.push(`${Object.keys(this.setnames).length} set(s) found`);
+				setnames = {};
+				for (dsid in this.dsets) {
+					if (!this.dsets[dsid].filesaresets) {
+						for (fn of this.dsets[dsid].files) {
+							setnames[fn.id] = this.dssetnames[dsid];
+						}		
+					} else {
+						for (fn of this.dsets[dsid].files) {
+							setnames[fn.id] = fn.setname;
+						}		
+					}
+				}
+ 				fractions = {};
+				for (dsid in this.dsets) {
+					if (this.dsets[dsid].hr && this.matchedFr[dsid]) { 
+						for (fn of this.dsets[dsid].files) {
+							if (fn.fr) {
+								fractions[fn.id] = fn.fr;
+							}
+						}	
+					}
+				}
+				this.runmsg.push(`${allsets.length} set(s) found`);
 				this.runmsg.push(`Using ${Object.keys(this.dsets).length} dataset(s)`);
 				this.runmsg.push(`${Object.keys(fns).length} other inputfiles found`);
-				post = {'setnames': this.setnames,
+				post = {'setnames': setnames,
+					'dsids': Object.keys(this.dsets),
 					'strips': this.platenames,
+					'fractions': fractions,
 					'files': fns,
 					'params':  this.analysis.params,
 					'wfid': this.wfid,
 					'nfwfvid': this.wfversion,
-					'analysisname': this.analysisname,
+					'analysisname': `${this.workflow.wftype}_${this.analysisname}`,
 				}
 				denoms = [];
-				for (sname in this.allsets) {
-					if (this.setdenoms[sname]) {
+				for (sname of this.allsets) {
+					if (Object.keys(this.setdenoms[sname]).length) {
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
 				}
@@ -290,6 +355,11 @@
 					} else {
 						this.dsets = result['dsets']
 						this.isoquants = result['isoquants']
+						for (dsid of this.dsids) {
+							if (this.dsets[dsid].hr) {
+								this.matchFractions(this.dsets[dsid]);
+							}
+						}
 					}
 				})
 
@@ -311,15 +381,46 @@
 
 				}
 			},
+			matchFractions: function(ds) {
+				this.matchedFr = Object.assign({}, this.matchedFr);
+				allfrs = new Set();
+				for (fn of ds.files) {
+					match = fn.name.match(RegExp(this.frregex[ds.id]));
+					if (match) {
+						fn.fr = match[1];
+						allfrs.add(match[1]);
+					}
+				}
+				this.matchedFr[ds.id] = allfrs.size;
+			},
+			sorted_channels: function(channels) {
+				return Object.keys(channels).sort(function(a,b) {
+					return a.replace('N', 'A') > b.replace('N', 'A');
+					});
+			},
 		},
 		computed: {
 			setdenoms: function() {
+				this.setdenommodel = {};
 				setds = {};
-				for (dsid in this.setnames) {
-					if (this.setnames[dsid]) {
-						setds[this.setnames[dsid]] = {};
-						for (ch in this.dsets[dsid].details.channels) {
-							setds[this.setnames[dsid]][ch] = this.dsets[dsid].details.channels[ch];
+				for (dsid in this.dsets) {
+					if (!this.dsets[dsid].filesaresets) {
+						if (this.dssetnames[dsid]) {
+							setds[this.dssetnames[dsid]] = {};
+							for (ch in this.dsets[dsid].details.channels) {
+								setds[this.dssetnames[dsid]][ch] = this.dsets[dsid].details.channels[ch];
+							}
+							this.setdenommodel[this.dssetnames[dsid]] = [];
+						}
+					} else {
+						for (fn of this.dsets[dsid].files) {
+							if (fn.setname) {
+								setds[fn.setname] = {};
+								for (ch in this.dsets[dsid].details.channels) {
+									setds[fn.setname][ch] = this.dsets[dsid].details.channels[ch];
+								this.setdenommodel[fn.setname] = [];
+								}
+							}
 						}
 					}
 				}
@@ -356,7 +457,7 @@
 				params = {'inst': ['--instrument', inst], 'flags': []}
 				if (qtypeshort !== 'labelfree') {
 					params.quant = ['--isobaric', qtypeshort]
-				}
+				} else { params.quant = [] }
 				for (fk in this.workflow.flags) {
 					if (fk !== '--normalize' || qtypeshort !== 'labelfree') {
 						params.flags.push(fk)
@@ -370,14 +471,21 @@
 				};
 			},
 			allsets: function() {
-				allsets = {}
-				for (dsid in this.setnames) {
-					if (this.setnames[dsid]) {
-					       	allsets[this.setnames[dsid]] = [];
+				allsets = new Set()
+				for (dsid in this.dsets) {
+					if (this.dsets[dsid].filesaresets) {
+						for (fn of this.dsets[dsid].files) {
+							if (fn.setname) {
+						       		allsets.add(fn.setname);
+							}
+						}
+					} else {
+						if (this.dssetnames[dsid]) {
+						       	allsets.add(this.dssetnames[dsid]);
+						}
 					}
-				this.setdenommodel[this.setnames[dsid]] = [];
 				}
-				return allsets;
+				return Array.from(allsets);
 			}
 		},
 	})

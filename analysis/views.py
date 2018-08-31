@@ -56,6 +56,7 @@ def get_datasets(request):
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
     for dsid, dsdetails in dsetinfo.items():
         dset = dsdetails.pop('dbentry')
+        dsdetails['filesaresets'] = False
         dsdetails.update({'details': hv.fetch_dset_details(dset)})
         dsdetails['model'] = {'set': False}
         try:
@@ -71,8 +72,12 @@ def get_datasets(request):
                         'channel__channel').filter(dataset_id=dsid)}
                 dsdetails['model']['denoms'] = {
                     x: False for x in dsdetails['details']['channels']}
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''} for x in files.filter(filetype='mzml', rawfile__datasetrawfile__dataset_id=dsid)]
             else:
                 dsdetails['details']['channels'] = {}
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.sample} for x in files.filter(filetype='mzml').select_related('rawfile__datasetrawfile__quantsamplefile')]
+                [x.update({'setname': x['sample']}) for x in dsdetails['files']]
+    # FIXME labelfree quantsamplefile without sample prep error msg
     response['dsets'] = dsetinfo
     return JsonResponse(response)
 
@@ -121,28 +126,26 @@ def start_analysis(request):
     req = json.loads(request.body.decode('utf-8'))
     analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
     analysis.save()
-    dsids = [x for x in req['setnames']]
-    setnames = [req['setnames'][x] for x in dsids]
-    strips = []
-    for dsid in dsids:
+    strips = {}
+    for dsid in req['dsids']:
         strip = req['strips'][dsid]
         if strip:
             strip = re.sub('[a-zA-Z]', '', strip)
-            strips.append('-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in strip.split('-')]))
+            strips[dsid] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in strip.split('-')])
         else:
-            pass # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients etc
-    # FIXME fractions are now hardcoded regex, make this in JS, and an option
-    # for not using fraction
+            strips[dsid] = False  # FIXME does that work?
+            # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients 
     params = {'singlefiles': {nf: fnid for nf, fnid in req['files'].items()},
               'params': [y for x in req['params'].values() for y in x]}
     # FIXME run_ipaw_nextflow rename job
     fname = 'run_ipaw_nextflow'
-    arg_dsids = [int(x) for x in dsids]
+    arg_dsids = [int(x) for x in req['dsids']]
     # FIXME do not check the analysis_id!
-    jobcheck = jj.check_existing_search_job(fname, arg_dsids, strips, setnames, req['wfid'], req['nfwfvid'], params)
+    # FIXME setnames have changed, is that ok?
+    jobcheck = jj.check_existing_search_job(fname, arg_dsids, strips, req['fractions'], req['setnames'], req['wfid'], req['nfwfvid'], params)
     if jobcheck:
     	return JsonResponse({'state': 'error', 'msg': 'This analysis already exists', 'link': '/?tab=searches&search_id={}'.format(jobcheck.nextflowsearch.id)})
-    job = jj.create_dataset_job(fname, arg_dsids, strips, setnames, analysis.id, req['wfid'], req['nfwfvid'], params)
+    job = jj.create_dataset_job(fname, arg_dsids, strips, req['fractions'], req['setnames'], analysis.id, req['wfid'], req['nfwfvid'], params)
     create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
     return JsonResponse({'state': 'ok'})
 
