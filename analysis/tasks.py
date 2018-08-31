@@ -16,7 +16,7 @@ from analysis import qc, galaxy
 from rawstatus.tasks import calc_md5
 
 
-def run_nextflow(run, params, rundir, gitwfdir):
+def run_nextflow(run, params, rundir, gitwfdir, profile='standard'):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     print('Starting nextflow workflow {}'.format(run['nxf_wf_fn']))
     outdir = os.path.join(rundir, 'output')
@@ -31,7 +31,7 @@ def run_nextflow(run, params, rundir, gitwfdir):
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
 
-    cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', 'qc', '-with-trace', '-resume']
+    cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', profile, '-with-trace', '-resume']
     print(cmd)
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
     print('Finished running workflow')
@@ -108,7 +108,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
     params = stage_files(stagedir, stagefiles, params)
     try:
-        run_nextflow(run, params, rundir, gitwfdir)
+        run_nextflow(run, params, rundir, gitwfdir, profile='qc')
     except subprocess.CalledProcessError:
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')
