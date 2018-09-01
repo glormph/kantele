@@ -1,4 +1,5 @@
 from datetime import timedelta, datetime
+import json
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -192,6 +193,10 @@ def get_analysis_info(request, nfs_id):
         'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     dsets =  {x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs}
     projs = {x.runname.experiment.project for x in dsets}
+    if nfs.analysis.log == '':
+        logentry = ['Analysis without logging or not yet queued']
+    else:
+        logentry = json.loads(nfs.analysis.log)
     return JsonResponse({'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
                                             'retry': jobs.is_job_retryable(nfs.job), 'id': nfs.job.id,
                                             'time': nfs.job.timestamp}},
@@ -203,6 +208,7 @@ def get_analysis_info(request, nfs_id):
                          'nrfiles': fjobs.count(),
                          'storage_locs': [{'server': x.servershare.name, 'path': x.path}
                                           for x in storeloc.values()],
+                         'log': logentry,
                         })
 
 

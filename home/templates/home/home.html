@@ -367,9 +367,13 @@
 	Vue.component('details-box', {
 		props: ['details'],
 		template: `
-                <tr><td></td><td :colspan="3"><h5 class="subtitle is-5">Output</h5>
+                <tr><td></td><td :colspan="3">
+                    <h5 class="subtitle is-5">Output</h5>
  			<div v-if="details.storage_locs.length>0" v-for="loc in details.storage_locs"><div><span class="tag is-success">Server</span>{{ loc.server }}</div><div><span class="tag is-success">Folder</span> {{ loc.path }}</div></div>
  			<div v-if="details.storage_locs.length===0">No output (yet)</div>
+<hr>
+                    <h5 class="subtitle is-5">Analysis log</h5>
+ 			<div v-for="line in details.log">{{ line }}</div>
 		</td>
 		<td></td>
 		<td colspan="2">
