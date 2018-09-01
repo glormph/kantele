@@ -96,6 +96,7 @@ class Analysis(models.Model):
     date = models.DateTimeField(auto_now=True)
     user = models.ForeignKey(User)
     name = models.CharField(max_length=500)
+    log = models.TextField(default='')
 
 
 class AnalysisError(models.Model):

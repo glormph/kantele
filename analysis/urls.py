@@ -9,4 +9,5 @@ urlpatterns = [
     url(r'^dsets/$', views.get_datasets),
     url(r'^workflow/$', views.get_workflow),
     url(r'^allworkflows/$', views.get_allwfs),
+    url(r'^logappend/$', views.append_analysis_log, name='appendlog'),
 ]

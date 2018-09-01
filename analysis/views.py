@@ -157,3 +157,17 @@ def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
         nfs = am.NextflowSearch(nfworkflow_id=nfv_id, job_id=job_id,
                                     workflow_id=wf_id, analysis=analysis)
         nfs.save()
+
+
+def write_analysis_log(logline, analysis_id):
+    analysis = am.Analysis.objects.get(pk=analysis_id)
+    log = json.loads(analysis.log)
+    log.append(logline)
+    analysis.log = json.dumps(log)
+    analysis.save()
+
+
+def append_analysis_log(request):
+    req = json.loads(request.body.decode('utf-8'))
+    write_analysis_log(req['message'], req['analysis_id'])
+    return HttpResponse()

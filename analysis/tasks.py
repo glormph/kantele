@@ -4,6 +4,7 @@ import shutil
 import requests
 import subprocess
 from time import sleep
+from datetime import datetime
 from urllib.parse import urljoin
 from dulwich.porcelain import clone, reset, pull
 
@@ -51,9 +52,16 @@ def stage_files(stagedir, stagefiles, params=False):
     return params 
 
 
+def log_analysis(analysis_id, message):
+    logurl = urljoin(settings.KANTELEHOST, reverse('analysis:appendlog'))
+    entry = '[{}] - {}'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'), message)
+    update_db(logurl, json={'analysis_id': analysis_id, 'message': entry})
+
+
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     print('Got message to run iPAW workflow, preparing')
+    log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
     runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
@@ -63,6 +71,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
     if not os.path.exists(rundir):
         os.makedirs(rundir)
     stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
+    log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
     print('Staging files to {}'.format(stagedir))
     params = stage_files(stagedir, stagefiles, params)
     stage_files(stagedir, {x[2]: x for x in mzmls})
@@ -77,6 +86,7 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
             mzstr = '{}\n'.format(mzstr) 
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', runname])
+    log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     try:
         run_nextflow(run, params, rundir, gitwfdir)
     except subprocess.CalledProcessError as e:
@@ -85,12 +95,16 @@ def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
         taskfail_update_db(self.request.id, errmsg)
         raise RuntimeError('Error occurred running iPAW workflow '
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
+    with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
+        nflog = fp.read()
+    log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
+                 ' cleaning. NF log: {}'.format(nflog))
     outfiles = os.listdir(os.path.join(rundir, 'output'))
     outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
     postdata.update({'state': 'ok'})
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     report_finished_run(reporturl, postdata, self.request.id, stagedir, 
-                        run['outdir'], rundir, run['analysis_id'], outfiles)
+                        run['outdir'], rundir, run['analysis_id'], outfiles, log=True)
     return run
 
 
@@ -151,7 +165,7 @@ def check_md5(fn_id):
 
 
 def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir,
-                        analysis_id, outfiles=False):
+                        analysis_id, outfiles=False, log=False):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
     # 1 check outfiles md5 already ok in db, prune those in case rerun
     # 2 register rest of outfiles rerun doesnt matter
@@ -177,6 +191,10 @@ def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir,
                         raise RuntimeError
             sleep(30)
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
+    if log:
+        postdata.update({'log': '[{}] - Analysis completed.'.format(
+            datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')),
+                         'analysis_id': analysis_id})
     shutil.rmtree(rundir)
     shutil.rmtree(stagedir)
     update_db(url, json=postdata)

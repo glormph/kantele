@@ -10,6 +10,7 @@ from jobs.jobs import Jobstates, is_job_ready, create_file_job
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile, Producer)
 from analysis.models import AnalysisResultFile
+from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
 from kantele import settings
@@ -158,6 +159,8 @@ def scp_mzml(request):
 def analysis_run_done(request):
     if request.method == 'POST':
         data = json.loads(request.body.decode('utf-8'))
+        if 'log' in data:
+            write_analysis_log(data['log'], data['analysis_id'])
         if ('client_id' not in data or
                 data['client_id'] not in settings.CLIENT_APIKEYS):
             return HttpResponseForbidden()

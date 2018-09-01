@@ -58,6 +58,8 @@ def run_ipaw(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wf_
 {'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '-profile', 'slurm'], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
     """
     analysis = models.Analysis.objects.select_related('user').get(pk=analysis_id)
+    analysis.log = json.dumps([])
+    analysis.save()
     nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
         pk=wfv_id)
     stagefiles = {}
