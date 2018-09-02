@@ -59,7 +59,7 @@ def log_analysis(analysis_id, message):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def run_nextflow_ipaw(self, run, params, mzmls, stagefiles):
+def run_nextflow(self, run, params, mzmls, stagefiles):
     print('Got message to run iPAW workflow, preparing')
     log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
     postdata = {'client_id': settings.APIKEY,

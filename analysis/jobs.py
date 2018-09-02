@@ -42,15 +42,14 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
     Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
 
 
-def run_ipaw_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):
+def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):
     # FIXME setnames will be for files, already given an assoc_id
     return filemodels.StoredFile.objects.select_related(
         'rawfile__datasetrawfile__dataset__runname').filter(
         rawfile__datasetrawfile__dataset__id__in=dset_ids, filetype='mzml')
 
 
-# TODO make this method the standard for searches
-def run_ipaw(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs, *dset_mzmls):
+def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs, *dset_mzmls):
     """
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
