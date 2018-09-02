@@ -74,7 +74,7 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
            'name': analysis.name,
            'outdir': analysis.user.username,
            }
-    res = tasks.run_nextflow.delay(run, inputs['params'], mzmls, stagefiles)
+    res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles)
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
     
     analysis.save()
