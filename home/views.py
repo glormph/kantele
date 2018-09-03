@@ -196,7 +196,7 @@ def get_analysis_info(request, nfs_id):
     if nfs.analysis.log == '':
         logentry = ['Analysis without logging or not yet queued']
     else:
-        logentry = json.loads(nfs.analysis.log)
+        logentry = [x for y in json.loads(nfs.analysis.log) for x in y.split('\n')][-10:]
     return JsonResponse({'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
                                             'retry': jobs.is_job_retryable(nfs.job), 'id': nfs.job.id,
                                             'time': nfs.job.timestamp}},

@@ -1,7 +1,7 @@
 import re
 import json
 from datetime import datetime
-from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse)
+from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound)
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.db.models import Subquery
@@ -116,6 +116,15 @@ def get_workflow(request):
                   for ft in ftypes}
     }
     return JsonResponse(resp)
+
+
+@login_required
+def show_analysis_log(request, nfs_id):
+    try:
+        nfs = am.NextflowSearch.objects.get(pk=nfs_id)
+    except am.NextflowSearch.DoesNotExist:
+        return HttpResponseNotFound()
+    return HttpResponse('\n'.join(json.loads(nfs.analysis.log)), content_type="text/plain")
 
 
 @login_required
