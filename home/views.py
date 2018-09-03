@@ -74,7 +74,7 @@ def find_analysis(request):
         subquery |= Q(analysis__user__username__icontains=term)
         query &= subquery
     dbanalyses = anmodels.NextflowSearch.objects.filter(query)
-    items, it_order = populate_analysis(dbanalyses, request.user)
+    items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
     return JsonResponse({'items': items, 'order': it_order})
 
 
@@ -94,8 +94,9 @@ def show_analyses(request):
             analysis__user_id=request.user.id, 
             analysis__date__gt=datetime.today() - timedelta(183))
         outq = user_ana | run_ana
-    items, it_order = populate_analysis(outq.order_by('-analysis__date') , request.user)
+    items, it_order = populate_analysis(outq.order_by('-analysis__date'), request.user)
     return JsonResponse({'items': items, 'order': it_order})
+
 
 
 @login_required

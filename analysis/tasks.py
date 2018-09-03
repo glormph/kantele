@@ -98,7 +98,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
-                 ' cleaning. NF log: {}'.format(nflog))
+                 ' cleaning. NF log: \n{}'.format(nflog))
     outfiles = os.listdir(os.path.join(rundir, 'output'))
     outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
     postdata.update({'state': 'ok'})
