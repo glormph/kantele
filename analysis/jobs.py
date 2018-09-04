@@ -6,7 +6,7 @@ from kantele import settings
 from analysis import tasks, models, views
 from rawstatus import models as filemodels
 from datasets import models as dsmodels
-from jobs.models import Task
+from jobs.post import create_db_task
 
 # FIXMEs
 # DONE? search must wait for convert, why does it not?
@@ -39,7 +39,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
            }
     views.create_nf_search_entries(analysis, wf.id, nfwf.id, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
-    Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
+    create_db_task(res.id, job_id, run, params, stagefiles)
 
 
 def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):
@@ -78,4 +78,4 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
     
     analysis.save()
-    Task.objects.create(asyncid=res.id, job_id=job_id, state='PENDING')
+    create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)

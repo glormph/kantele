@@ -19,6 +19,7 @@ class Task(models.Model):
     asyncid = models.CharField(max_length=50)
     job = models.ForeignKey(Job)
     state = models.CharField(max_length=20)
+    args = models.TextField()
 
 
 class TaskChain(models.Model):

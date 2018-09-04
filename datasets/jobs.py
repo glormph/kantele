@@ -11,8 +11,7 @@ from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
 from datasets import tasks
 from rawstatus import tasks as filetasks
-from jobs.models import Task
-from jobs.post import save_task_chain
+from jobs.post import save_task_chain, create_db_task
 
 
 def move_dataset_storage_loc_getfiles(dset_id, src_path, dst_path):
@@ -23,7 +22,7 @@ def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path, *sf_ids):
     # within a server share
     print('Renaming dataset storage location job')
     t = tasks.rename_storage_location.delay(src_path, dst_path, sf_ids)
-    Task.objects.create(asyncid=t.id, job_id=job_id, state='PENDING')
+    create_db_task(t.id, job_id, src_path, dst_path, sf_ids)
 
 
 def move_files_dataset_storage_getfiles(dset_id, dst_path, fn_ids):
@@ -63,7 +62,7 @@ def move_files_dataset_storage(job_id, dset_id, dst_path, rawfn_ids, *sf_ids):
             tid = tasks.move_file_storage.delay(
                     fn.rawfile.name, fn.servershare.name, fn.path,
                     dst_path, fn.id).id
-            Task.objects.create(asyncid=tid, job_id=job_id, state='PENDING')
+            create_db_task(tid, job_id, fn.rawfile.name, fn.servershare.name, fn.path, dst_path, fn.id)
 
 
 def remove_files_from_dataset_storagepath_getfiles(dset_id, fn_ids):
@@ -80,10 +79,11 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
             fullpath = os.path.join(fn.path, fn.filename)
             tid = filetasks.delete_file.delay(fn.servershare.name, fullpath,
                                               fn.id).id
+            create_db_task(tid, job_id, fn.servershare.name, fullpath, fn.id)
         else:
             tid = tasks.move_stored_file_tmp.delay(fn.rawfile.name, fn.path,
                                                    fn.id).id
-        Task.objects.create(asyncid=tid, job_id=job_id, state=states.PENDING)
+            create_db_task(tid, job_id, fn.rawfile.name, fn.path, fn.id)
 
 
 def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue):
