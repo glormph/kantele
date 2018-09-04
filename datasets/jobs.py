@@ -26,15 +26,18 @@ def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path, *sf_ids):
     Task.objects.create(asyncid=t.id, job_id=job_id, state='PENDING')
 
 
-def move_files_dataset_storage_getfiles(dset_id, fn_ids):
+def move_files_dataset_storage_getfiles(dset_id, dst_path, fn_ids):
     # Use both md5=sourcemd5 to avoid getting mzmls, other derived files
+    # If files have not been transferred yet, then there is no storedfile..., or if it is not transferred correctly the MD5 is not done
+    # So either: make that impossible
+    # Or: reget the storedfiles on rerunning the job
     return StoredFile.objects.filter(
         rawfile__datasetrawfile__dataset_id=dset_id,
         rawfile__source_md5=F('md5'),
         rawfile_id__in=fn_ids)
 
 
-def move_files_dataset_storage(job_id, dset_id, rawfn_ids, *sf_ids):
+def move_files_dataset_storage(job_id, dset_id, dst_path, rawfn_ids, *sf_ids):
     print('Moving dataset files to storage')
     new_sf_ids = StoredFile.objects.filter(
         rawfile__datasetrawfile__dataset_id=dset_id,
@@ -53,10 +56,9 @@ def move_files_dataset_storage(job_id, dset_id, rawfn_ids, *sf_ids):
             'registered as transferred yet, or have non-matching MD5 sums '
             'between their registration and after transfer from input source. '
             'Holding this job and temporarily retrying it')
-    dst_path = Dataset.objects.get(pk=dset_id).storage_loc
     for fn in dset_files:
         # TODO check for diff os.path.join(sevrershare, dst_path), not just
-        # path
+        # path?
         if fn.path != dst_path:
             tid = tasks.move_file_storage.delay(
                     fn.rawfile.name, fn.servershare.name, fn.path,

@@ -259,7 +259,8 @@ def update_dataset(data):
     new_storage_loc = get_storage_location(project, experiment, dset.runname,
                                            qprot_id, hrf_id, dtype, prefrac,
                                            data)
-    if new_storage_loc != dset.storage_loc:
+    if (new_storage_loc != dset.storage_loc and 
+            models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
         create_dataset_job('rename_storage_loc', dset.id, dset.storage_loc,
                            new_storage_loc)
         dset.storage_loc = new_storage_loc
@@ -665,12 +666,14 @@ def save_or_update_files(data):
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
     if added_fnids:
+        dset = models.Dataset.objects.get(pk=dset_id)
         models.DatasetRawFile.objects.bulk_create([
             models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
             for fnid in added_fnids])
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
-        create_dataset_job('move_files_storage', dset_id, added_fnids)
+        create_dataset_job('move_files_storage', dset_id, dset.storage_loc,
+                           dset.added_fnids)
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
