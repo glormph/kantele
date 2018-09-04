@@ -9,6 +9,7 @@ from collections import OrderedDict
 
 from datasets import models as dsmodels
 from analysis import models as anmodels
+from analysis import views as av
 from datasets import jobs as dsjobs
 from rawstatus import models as filemodels
 from jobs import jobs
@@ -198,6 +199,8 @@ def get_analysis_info(request, nfs_id):
         logentry = ['Analysis without logging or not yet queued']
     else:
         logentry = [x for y in json.loads(nfs.analysis.log) for x in y.split('\n')][-10:]
+    linkedfiles = [[x.sfile.filename, x.id] for x in 
+                   av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
     return JsonResponse({'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
                                             'retry': jobs.is_job_retryable(nfs.job), 'id': nfs.job.id,
                                             'time': nfs.job.timestamp}},
@@ -209,7 +212,7 @@ def get_analysis_info(request, nfs_id):
                          'nrfiles': fjobs.count(),
                          'storage_locs': [{'server': x.servershare.name, 'path': x.path}
                                           for x in storeloc.values()],
-                         'log': logentry,
+                         'log': logentry, 'servedfiles': linkedfiles,
                         })
 
 

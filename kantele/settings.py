@@ -46,6 +46,8 @@ SHAREMAP = {TMPSHARENAME: TMPSHARE,
             STORAGESHARENAME: STORAGESHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
             }
+NGINX_ANALYSIS_REDIRECT = '/analysisfiles'
+SERVABLE_FILENAMES = ['qc.html']
 
 # message queue
 RABBIT_HOST = os.environ.get('RABBITHOST')

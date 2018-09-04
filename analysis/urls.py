@@ -11,4 +11,5 @@ urlpatterns = [
     url(r'^allworkflows/$', views.get_allwfs),
     url(r'^logappend/$', views.append_analysis_log, name='appendlog'),
     url(r'^log/(?P<nfs_id>[0-9]+)$', views.show_analysis_log),
+    url(r'^showfile/(?P<file_id>[0-9]+)$', views.serve_analysis_file),
 ]

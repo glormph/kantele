@@ -1,4 +1,5 @@
 import re
+import os
 import json
 from datetime import datetime
 from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound)
@@ -157,6 +158,22 @@ def start_analysis(request):
     job = jj.create_dataset_job(fname, arg_dsids, strips, req['fractions'], req['setnames'], analysis.id, req['wfid'], req['nfwfvid'], params)
     create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
     return JsonResponse({'state': 'ok'})
+
+
+@login_required
+def serve_analysis_file(request, file_id):
+    try:
+        sf = get_servable_files(am.AnalysisResultFile.objects.select_related(
+            'sfile__servershare')).get(pk=file_id)
+    except am.AnalysisResultFile.DoesNotExist:
+        return HttpResponseForbidden()
+    resp = HttpResponse()
+    resp['X-Accel-Redirect'] = os.path.join(settings.NGINX_ANALYSIS_REDIRECT, sf.sfile.path, sf.sfile.filename)
+    return resp
+
+
+def get_servable_files(resultfiles):
+    return resultfiles.filter(sfile__filename__in=settings.SERVABLE_FILENAMES)
 
 
 def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
