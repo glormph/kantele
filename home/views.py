@@ -12,7 +12,7 @@ from analysis import models as anmodels
 from analysis import views as av
 from datasets import jobs as dsjobs
 from rawstatus import models as filemodels
-from jobs import jobs
+from jobs import jobs as jj
 from jobs import models as jm
 
 
@@ -22,6 +22,7 @@ def home(request):
     context = {'tab': request.GET['tab'] if 'tab' in request.GET else 'datasets',
                'dsids': request.GET['dsids'].split(',') if 'dsids' in request.GET else [],
                'anids': request.GET['anids'].split(',') if 'anids' in request.GET else [],
+               'jobids': request.GET['jobids'].split(',') if 'jobids' in request.GET else [],
                'username': request.user.username}
     return render(request, 'home/home.html', context)
 
@@ -88,7 +89,7 @@ def show_analyses(request):
         # last 6month analyses of a user plus current analyses PENDING/PROCESSING
         run_ana = anmodels.NextflowSearch.objects.select_related(
             'workflow', 'analysis').filter(
-            job__state__in=jobs.JOBSTATES_WAIT).exclude(
+            job__state__in=jj.JOBSTATES_WAIT).exclude(
             analysis__user_id=request.user.id)
         user_ana = anmodels.NextflowSearch.objects.select_related(
             'workflow', 'analysis').filter(
@@ -115,7 +116,7 @@ def show_datasets(request):
 def get_ds_jobs(dbdsets):
     jobmap = {}
     for filejob in filemodels.FileJob.objects.select_related('job').exclude(
-            job__state=jobs.Jobstates.DONE).filter(
+            job__state=jj.Jobstates.DONE).filter(
             storedfile__rawfile__datasetrawfile__dataset_id__in=dbdsets):
         job = filejob.job
         try:
@@ -123,6 +124,46 @@ def get_ds_jobs(dbdsets):
         except KeyError:
             jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {job.state}
     return jobmap
+
+
+def show_jobs(request):
+    items = {}
+    order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]},
+             'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]}}
+    for job in jm.Job.objects.exclude(state__in=jj.JOBSTATES_DONE).select_related(
+            'nextflowsearch__analysis__user'):
+        ana = get_job_analysis(job)
+        if ana:
+            users = [ana.user.username]
+            order['user'][job.state].append(job.id)
+        else:
+            fjs = job.filejob_set.select_related('storedfile__rawfile__datasetrawfile__dataset__user')
+            try:
+                users = list({x.storedfile.rawfile.datasetrawfile.dataset.user.username for x in fjs})
+            except dsmodels.DatasetRawFile.DoesNotExist:
+                users = list({x.storedfile.rawfile.producer.name for x in fjs})
+                order['admin'][job.state].append(job.id)
+            else:
+                order['user'][job.state].append(job.id)
+        items[job.id] = {'id': job.id, 'name': job.funcname,
+                         'state': job.state,
+                         'details': False,
+                         'usr': ', '.join(users),
+                         'date': datetime.strftime(job.timestamp, '%Y-%m-%d'),
+                         'actions': ''}
+    stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING]
+    print([(u,s) for u in ['user', 'admin'] for s in stateorder ])
+    return JsonResponse({'items': items, 'order': 
+                         [x for u in ['user', 'admin'] for s in stateorder 
+                          for x in order[u][s]]})
+
+
+def get_job_analysis(job):
+    try:
+        analysis = job.nextflowsearch.analysis
+    except anmodels.NextflowSearch.DoesNotExist:
+        analysis = False 
+    return analysis
 
 
 def populate_analysis(nfsearches, user):
@@ -202,7 +243,7 @@ def get_analysis_info(request, nfs_id):
     linkedfiles = [[x.sfile.filename, x.id] for x in 
                    av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
     return JsonResponse({'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
-                                            'retry': jobs.is_job_retryable(nfs.job), 'id': nfs.job.id,
+                                            'retry': jj.is_job_retryable(nfs.job), 'id': nfs.job.id,
                                             'time': nfs.job.timestamp}},
                          'wf': {'fn': nfs.nfworkflow.filename, 
                                 'commit': nfs.nfworkflow.commit,
@@ -214,6 +255,25 @@ def get_analysis_info(request, nfs_id):
                                           for x in storeloc.values()],
                          'log': logentry, 'servedfiles': linkedfiles,
                         })
+
+
+@login_required
+def refresh_job(request, job_id):
+    return JsonResponse({'state': jm.Job.objects.get(pk=job_id).state})
+
+
+@login_required
+def get_job_info(request, job_id):
+    job = jm.Job.objects.get(pk=job_id)
+    tasks = job.task_set.all()
+    fj = job.filejob_set
+    analysis = get_job_analysis(job)
+    if analysis:
+        analysis = analysis.name
+    return JsonResponse({'files': fj.count(), 'dsets': 0, 
+                         'analysis': analysis, 
+                         'time': datetime.strftime(job.timestamp, '%Y-%m-%d %H:%M'),
+                         'tasks': []})
 
 
 @login_required
@@ -237,11 +297,11 @@ def get_nr_raw_mzml_files(files, info):
 
 
 def fetch_dset_details(dset):
-    dsjobs = filemodels.FileJob.objects.exclude(job__state=jobs.Jobstates.DONE).filter(
+    dsjobs = filemodels.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).select_related('job')
     info = {'jobs': [unijob for unijob in
                     {x.job.id: {'name': x.job.funcname, 'state': x.job.state,
-                                'retry': jobs.is_job_retryable(x.job), 'id': x.job.id,
+                                'retry': jj.is_job_retryable(x.job), 'id': x.job.id,
                                 'time': x.job.timestamp} for x in dsjobs}.values()]}
     # FIXME add more datatypes and microscopy is hardcoded
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
@@ -269,5 +329,5 @@ def fetch_dset_details(dset):
 
 @login_required
 def create_mzmls(request, dataset_id):
-    jobs.create_dataset_job('convert_dataset_mzml', dataset_id)
+    jj.create_dataset_job('convert_dataset_mzml', dataset_id)
     return HttpResponse()

@@ -213,10 +213,14 @@
 					<li v-bind:class="tabclass_searches">
 						<a v-on:click="showSearches"><span>Analyses</span></a>
 					</li>
+					<li v-bind:class="tabclass_jobs">
+						<a v-on:click="showJobs"><span>Jobs (WIP)</span></a>
+					</li>
 				</ul>
 			</div>
 		<dataset-box v-show="tabclass_datasets!==''"></dataset-box>
 		<search-box v-show="tabclass_searches!==''"></search-box>
+		<jobs-box v-show="tabclass_jobs!==''"></jobs-box>
 		</div>
 		`,
 		data: function() {
@@ -226,6 +230,7 @@
 				tabclass_datasets: '',
 				tabclass_projects: '',
 				tabclass_searches: '',
+				tabclass_jobs: '',
                                 initialTab: "{{ tab }}",
 				}
 		},
@@ -242,8 +247,11 @@
 			showSearches: function() {
 				this.activateTabClass('tabclass_searches');
 			},
+			showJobs: function() {
+				this.activateTabClass('tabclass_jobs');
+			},
 			activateTabClass: function(tabname) {
-				tabs = ['tabclass_datasets', 'tabclass_projects', 'tabclass_searches'];
+				tabs = ['tabclass_datasets', 'tabclass_projects', 'tabclass_searches', 'tabclass_jobs', 'tabclass_files'];
 				for (offtab of tabs) {
 					this[offtab] = '';
 					}
@@ -346,6 +354,199 @@
 			toggleItem: function(id) {
 				if (!this.items[id].details) {
 					this.getItemInfo(id);
+				} else {
+					this.items[id].details = false
+				}
+			},
+			getItemInfo: function(id) {
+				this.$http.get(this.showItemUrl + id)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.items[id].details = result;
+				})
+			},
+			jobTaskStateColor: function(state) {
+ 				statecolors = {'done': 'has-text-success', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
+				return statecolors[state]
+			},
+		},
+	})
+	Vue.component('details-box', {
+		props: ['details', 'nfs_id'],
+		template: `
+                <tr><td></td><td :colspan="3">
+                    <h5 class="title is-5">Output</h5>
+                        <div v-if="details.servedfiles.length>0" v-for="link in details.servedfiles">
+                            <a :href="'analysis/showfile/' + link[1]" target="_blank">{{ link[0] }}</a>
+                        </div>
+ 			<div v-if="details.storage_locs.length>0" v-for="loc in details.storage_locs">
+                            <div><span class="tag is-success">Server</span>{{ loc.server }}</div><div><span class="tag is-success">Folder</span> {{ loc.path }}</div>
+                        </div>
+ 			<div v-if="details.storage_locs.length===0">No output (yet)</div>
+<hr>
+                    <h5 class="title is-5">Analysis log</h5>
+                    <a v-if="details.log[0].slice(0,16) !== 'Analysis without'" :href="'analysis/log/' + nfs_id" class="is-size-7" target="_blank">Click for full log</a>
+ 			<div v-for="line in details.log">{{ line }}</div>
+		</td>
+		<td></td>
+		<td colspan="2">
+			<h5 class="subtitle is-5" v-if="Object.keys(details.jobs).length">Jobs</h5>
+			<div v-for="job in details.jobs">
+				<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
+						<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
+						<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
+						<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
+			</div>
+                        <section>
+			<h5 class="subtitle is-5 has-text-weight-bold">Input data</h5>
+			<div>Workflow version commit <a target="_blank" v-bind:href="wfrepo">{{ details.wf.commit.slice(0,8) }}...</a></div>
+ 			<div><a v-bind:href="'?tab=datasets&dsids='+details.dsets.join(',')" target="_blank">{{ details.dsets.length }} datasets</a> from project(s) <span v-for="proj in details.proj">{{ proj.name }}, </span></div>
+ 			<div>{{ details.nrfiles }} rawfiles analysed</div>
+                        </section>
+		</td>
+</tr>
+		`,
+		data: function() {
+			return {}
+		},
+		methods: {
+                        retryJob: function(job_id) {
+				this.$http.post(`jobs/retry/${job_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					// make event signal this.dsetInfo(ds_id);
+					this.$emit('refreshItem');
+				})
+                        },
+			                
+		},
+		computed: {
+			wfrepo: function() {
+				return [this.details.wf.repo, 'blob', this.details.wf.commit, this.details.wf.fn].join('/');
+			},
+		},
+
+	})
+	
+    Vue.component('jobs-box', {
+		template: `
+		<div class="content is-small" >
+			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find jobs">
+			<table class="table">
+				<thead>
+					<tr>
+						<th></th>
+						<th><span class="icon is-small"><i class="fa fa-hourglass-2"/></span></th>
+						<th v-for="f in itemdatafields">{{ f }}</th>
+					</tr>
+				</thead>
+				<tbody>
+				<template v-for="itkey in order">
+		                        <tr>
+						<td>
+							<a v-on:click="toggleItem(itkey)">
+								<span class="has-text-info icon is-small">
+								<i class="fa fa-eye" />
+								</span>
+							</a>
+						</td>
+						<td>
+							<span v-bind:class="jobTaskStateColor(items[itkey].state)" class="icon is-small"><i class="fa fa-square"/></span>
+						</td>
+						<td v-for="key in itemdatakeys">{{ items[itkey][key] }}</td>
+					</tr>
+                                        <tr v-if="items[itkey].details !== false">
+                                            <td></td><td :colspan="3">
+                                                <h5 class="title is-5">Input</h5>
+                                                    <div>Created: {{ items[itkey].details.time }} </div>
+                                                    <div>{{ items[itkey].details.files }} files </div>
+                                                    <div v-if="items[itkey].details.analysis">Analysis name: {{ items[itkey].details.analysis }} </div>
+                        		    </td>
+                                            <td></td>
+                        		    <td colspan="2">
+                        			<h5 class="subtitle is-5">Tasks</h5>
+                        			<div v-for="task in items[itkey].details.tasks">
+                        				<a v-if="task.state==='error' && task.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
+                        						<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
+                        						<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
+                        						<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
+                        			</div>
+                        		</td>
+                        </tr>
+				</template>
+				</tbody>
+			</table>
+		</div>
+		`,
+		data: function() {
+			return {
+				searchUrl: '/find/jobs/',
+				showAllUrl: '/show/jobs/',
+				showItemUrl: '/show/job/',
+				refreshItemUrl: '/refresh/job/',
+				itemdatafields: ['Job name', 'Users', 'Date', 'Actions'],
+				itemdatakeys: ['name', 'usr', 'date', 'actions'],
+				items: {},
+                                order: [],
+				findQuery: '',
+				{% endverbatim %}
+						initialIds: [{{ jobids|join:',' }} ],
+				{% verbatim %}
+			}
+		},
+		mounted: function() {
+			console.log(this.initialIds);
+			params = this.initialIds.length ? {'ids': this.initialIds.join(',')}: {};
+			this.fetchItems(this.showAllUrl, params);
+		},
+		methods: {
+			fetchItems: function(url, getparams) {
+				this.$http.get(url,
+					{params: getparams})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.items = result['items'];
+					this.order = result['order'];
+				})
+			},
+			refreshAll: function() {
+				ids = Object.keys(this.items);
+ 				this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
+			},
+			refreshItem: function(id) {
+				this.$http.get(this.refreshItemUrl + id)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.items[id] = Object.assign(this.items[id], result);
+				})
+			},
+			findItems: function() {
+				this.$http.get(this.searchUrl,
+					{params: {q: this.findQuery.split(' ').join(',') }})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.items = result['items'];
+						this.order = result['order'];
+					}
+				})
+			},
+			toggleItem: function(id) {
+				if (!this.items[id].details) {
+					this.getItemInfo(id);
+					this.refreshItem(id);
 				} else {
 					this.items[id].details = false
 				}
