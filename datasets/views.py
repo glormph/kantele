@@ -673,7 +673,7 @@ def save_or_update_files(data):
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
         create_dataset_job('move_files_storage', dset_id, dset.storage_loc,
-                           dset.added_fnids)
+                           added_fnids)
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
