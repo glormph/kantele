@@ -87,18 +87,16 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
 
 
 def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue):
-    return [
-        tasks.convert_to_mzml.s(sfile.rawfile.name, sfile.path,
-                                mzmlentry.filename, mzmlentry.id,
-                                sfile.servershare.name,
-                                reverse('jobs:createmzml'),
-                                reverse('jobs:taskfail')).set(queue=queue),
-        tasks.scp_storage.s(mzmlentry.id, storage_loc,
-                            sfile.servershare.name, reverse('jobs:scpmzml'),
-                            reverse('jobs:taskfail')).set(queue=outqueue),
-        filetasks.get_md5.s(mzmlentry.id,
-                            os.path.join(mzmlentry.path, mzmlentry.filename),
-                            sfile.servershare.name)]
+    args = [[sfile.rawfile.name, sfile.path, mzmlentry.filename, mzmlentry.id,
+             sfile.servershare.name, reverse('jobs:createmzml'),
+             reverse('jobs:taskfail')],
+            [mzmlentry.id, storage_loc, sfile.servershare.name,
+             reverse('jobs:scpmzml'), reverse('jobs:taskfail')],
+            [mzmlentry.id, os.path.join(mzmlentry.path, mzmlentry.filename),
+             sfile.servershare.name]]
+    return args, [tasks.convert_to_mzml.s(*args[0]).set(queue=queue),
+            tasks.scp_storage.s(*args[1]).set(queue=outqueue),
+            filetasks.get_md5.s(*args[2])]
 
 
 def get_or_create_mzmlentry(fn):
@@ -123,10 +121,10 @@ def convert_single_mzml(job_id, sf_id, queue=settings.QUEUES_PWIZ[0]):
     mzsf = get_or_create_mzmlentry(fn)
     if mzsf.checked:
         return
-    runchain = get_mzmlconversion_taskchain(fn, mzsf, storageloc, queue,
-                                            settings.QUEUES_PWIZOUT[queue])
+    args, runchain = get_mzmlconversion_taskchain(fn, mzsf, storageloc, queue,
+                                                  settings.QUEUES_PWIZOUT[queue])
     lastnode = chain(*runchain).delay()
-    save_task_chain(lastnode, job_id)
+    save_task_chain(lastnode, args, job_id)
 
 
 def convert_dset_tomzml_getfiles(dset_id):
@@ -151,6 +149,6 @@ def convert_tomzml(job_id, dset_id, *sf_ids):
             continue
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
-        runchain = get_mzmlconversion_taskchain(fn, mzsf, dset.storage_loc, queue, outqueue)
+        args, runchain = get_mzmlconversion_taskchain(fn, mzsf, dset.storage_loc, queue, outqueue)
         lastnode = chain(*runchain).delay()
-        save_task_chain(lastnode, job_id)
+        save_task_chain(lastnode, args, job_id)

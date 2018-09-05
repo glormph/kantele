@@ -1,4 +1,5 @@
 import requests
+import json
 from urllib.parse import urljoin
 
 from django.urls import reverse
@@ -31,18 +32,19 @@ def taskfail_update_db(task_id, msg=False):
               {'task': task_id, 'client_id': config.APIKEY, 'msg': msg})
 
 
-def save_task_chain(taskchain, job_id):
+def save_task_chain(taskchain, args, job_id):
     chain_ids = []
     while taskchain.parent:
         chain_ids.append(taskchain.id)
         taskchain = taskchain.parent
     chain_ids.append(taskchain.id)
-    for chain_id in chain_ids:
-        t = Task(asyncid=chain_id, job_id=job_id, state=states.PENDING)
-        t.save()
+    for chain_id, arglist in zip(chain_ids, args):
+        t = create_db_task(chain_id, job_id, *arglist)
         TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])
 
 
 def create_db_task(task_id, job_id, *args):
     strargs = json.dumps(args)
-    Task.objects.create(asyncid=task_id, job_id=job_id, state=states.PENDING, args=strargs)
+    t = Task(asyncid=task_id, job_id=job_id, state=states.PENDING, args=strargs)
+    t.save()
+    return t
