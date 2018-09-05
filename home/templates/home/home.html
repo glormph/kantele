@@ -21,7 +21,7 @@
 						<th></th>
 						<th></th>
 						<th>CF</th>
-		<th><span class="icon is-small"><i class="fa fa-hourglass-2"/></span></th>
+		<th><span class="icon is-small"><i class="fa fa-hourglass-half"/></span></th>
 						<th>Project</th>
 						<th>Experiment</th>
 						<th>Run</th>
@@ -43,10 +43,10 @@
 						<td>
 								<a v-bind:href="'/datasets/show/' + ds.id">
 							<span v-if="ds.own" class="icon has-text-info is-small">
-									<i class="fa fa-pencil"></i>
+									<i class="fa fa-edit"></i>
 							</span>
 							<span v-else-if="!ds.own" class="icon has-text-grey-light is-small">
-									<i class="fa fa-pencil"></i>
+									<i class="fa fa-edit"></i>
 							</span>
 								</a>
 						</td>
@@ -269,7 +269,7 @@
 					<tr>
 						<th></th>
 						<th></th>
-						<th><span class="icon is-small"><i class="fa fa-hourglass-2"/></span></th>
+						<th><span class="icon is-small"><i class="fa fa-hourglass-half"/></span></th>
 						<th v-for="f in itemdatafields">{{ f }}</th>
 					</tr>
 				</thead>
@@ -285,10 +285,10 @@
 						</td>
 						<td>
 							<span v-if="items[itkey].own" class="icon has-text-info is-small">
-									<i class="fa fa-pencil"></i>
+									<i class="fa fa-edit"></i>
 							</span>
 							<span v-else-if="!items[itkey].own" class="icon has-text-grey-light is-small">
-									<i class="fa fa-pencil"></i>
+									<i class="fa fa-edit"></i>
 							</span>
 						</td>
 						<td>
