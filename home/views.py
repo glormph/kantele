@@ -1,5 +1,6 @@
 from datetime import timedelta, datetime
 import json
+from celery import states as tstates
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -126,33 +127,37 @@ def get_ds_jobs(dbdsets):
     return jobmap
 
 
+@login_required
 def show_jobs(request):
     items = {}
     order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]},
              'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]}}
     for job in jm.Job.objects.exclude(state__in=jj.JOBSTATES_DONE).select_related(
-            'nextflowsearch__analysis__user'):
+            'nextflowsearch__analysis__user').order_by('-timestamp'):
         ana = get_job_analysis(job)
         if ana:
-            users = [ana.user.username]
+            usernames = [ana.user.username]
+            jobowner = request.user == ana.user
             order['user'][job.state].append(job.id)
         else:
             fjs = job.filejob_set.select_related('storedfile__rawfile__datasetrawfile__dataset__user')
             try:
-                users = list({x.storedfile.rawfile.datasetrawfile.dataset.user.username for x in fjs})
+                users = list({x.storedfile.rawfile.datasetrawfile.dataset.user for x in fjs})
             except dsmodels.DatasetRawFile.DoesNotExist:
-                users = list({x.storedfile.rawfile.producer.name for x in fjs})
+                usernames = list({x.storedfile.rawfile.producer.name for x in fjs})
                 order['admin'][job.state].append(job.id)
+                jobowner = False
             else:
                 order['user'][job.state].append(job.id)
+                usernames = [x.username for x in users]
+                jobowner = request.user in users
         items[job.id] = {'id': job.id, 'name': job.funcname,
                          'state': job.state,
                          'details': False,
-                         'usr': ', '.join(users),
+                         'usr': ', '.join(usernames),
                          'date': datetime.strftime(job.timestamp, '%Y-%m-%d'),
-                         'actions': ''}
+                         'actions': get_job_actions(job, request)}   
     stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING]
-    print([(u,s) for u in ['user', 'admin'] for s in stateorder ])
     return JsonResponse({'items': items, 'order': 
                          [x for u in ['user', 'admin'] for s in stateorder 
                           for x in order[u][s]]})
@@ -164,6 +169,17 @@ def get_job_analysis(job):
     except anmodels.NextflowSearch.DoesNotExist:
         analysis = False 
     return analysis
+
+
+def get_job_actions(job, request):
+    actions = []
+    if job.state == jj.Jobstates.ERROR and (request.user.is_staff or jobowner):
+        actions.append('retry')
+    elif job.state == jj.Jobstates.PROCESSING and request.user.is_staff:
+        actions.append('force retry')
+    if request.user.is_staff:
+        actions.append('delete')
+    return actions
 
 
 def populate_analysis(nfsearches, user):
@@ -259,7 +275,9 @@ def get_analysis_info(request, nfs_id):
 
 @login_required
 def refresh_job(request, job_id):
-    return JsonResponse({'state': jm.Job.objects.get(pk=job_id).state})
+    job = jm.Job.objects.get(pk=job_id)
+    return JsonResponse({'state': job.state,
+                         'actions': get_job_actions(job, request)})
 
 
 @login_required
@@ -270,10 +288,17 @@ def get_job_info(request, job_id):
     analysis = get_job_analysis(job)
     if analysis:
         analysis = analysis.name
+    errors = []
+    for task in tasks.filter(state=tstates.FAILURE):
+        errors.append({'msg': task.taskerror.message, 'args': task.args})
     return JsonResponse({'files': fj.count(), 'dsets': 0, 
                          'analysis': analysis, 
                          'time': datetime.strftime(job.timestamp, '%Y-%m-%d %H:%M'),
-                         'tasks': []})
+                         'tasks': {'error': tasks.filter(state=tstates.FAILURE).count(),
+                                   'procpen': tasks.filter(state=tstates.PENDING).count(),
+                                   'done': tasks.filter(state=tstates.SUCCESS).count()},
+                         'errors': errors,
+                        })
 
 
 @login_required

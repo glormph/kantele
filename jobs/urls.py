@@ -5,7 +5,7 @@ from jobs import views
 app_name = 'jobs'
 urlpatterns = [
     url(r'^taskfail/$', views.task_failed, name='taskfail'),
-    url(r'^retry/(?P<job_id>[0-9]+)$', views.retry_job, name='taskfail'),
+    url(r'^retry/(?P<job_id>[0-9]+)$', views.retry_job, name='retry'),
     url(r'^set/storagepath/$', views.update_storagepath_file,
         name='updatestorage'),
     url(r'^set/md5/$', views.set_md5, name='setmd5'),

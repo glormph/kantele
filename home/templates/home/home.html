@@ -214,7 +214,7 @@
 						<a v-on:click="showSearches"><span>Analyses</span></a>
 					</li>
 					<li v-bind:class="tabclass_jobs">
-						<a v-on:click="showJobs"><span>Jobs (WIP)</span></a>
+						<a v-on:click="showJobs"><span>Jobs</span></a>
 					</li>
 				</ul>
 			</div>
@@ -460,22 +460,25 @@
 							<span v-bind:class="jobTaskStateColor(items[itkey].state)" class="icon is-small"><i class="fa fa-square"/></span>
 						</td>
 						<td v-for="key in itemdatakeys">{{ items[itkey][key] }}</td>
+						<td><span v-for="act in items[itkey].actions"><a href="#" v-on:click="actOnJob(act, items[itkey].id)">{{ act.slice(0,1).toUpperCase() }}{{ act.slice(1) }}</a>&nbsp; </span></td>
 					</tr>
                                         <tr v-if="items[itkey].details !== false">
-                                            <td></td><td :colspan="3">
-                                                <h5 class="title is-5">Input</h5>
+                                            <td></td><td :colspan="2">
+                                                <h5 class="title is-5">Details</h5>
                                                     <div>Created: {{ items[itkey].details.time }} </div>
                                                     <div>{{ items[itkey].details.files }} files </div>
                                                     <div v-if="items[itkey].details.analysis">Analysis name: {{ items[itkey].details.analysis }} </div>
+                        	                    <span class="tag is-danger">{{ items[itkey].details.tasks.error }}</span>
+                        	                    <span class="tag is-warning">{{ items[itkey].details.tasks.procpen }}</span>
+                        	                    <span class="tag is-success">{{ items[itkey].details.tasks.done }}</span>
                         		    </td>
-                                            <td></td>
-                        		    <td colspan="2">
-                        			<h5 class="subtitle is-5">Tasks</h5>
-                        			<div v-for="task in items[itkey].details.tasks">
-                        				<a v-if="task.state==='error' && task.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
-                        						<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
-                        						<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
-                        						<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
+                        		    <td colspan="4">
+                        			<h5 class="subtitle is-5">Errored tasks</h5>
+                                                <div v-if="items[itkey].details.errors.length === 0"><strong>-</strong></div>
+                                                <div v-for="err in items[itkey].details.errors">
+                                                    <div><strong>Task args</strong>: {{ err.args }}</div>
+                                                    <div><strong>Error</strong>: {{ err.msg }}</div>
+                                                    <hr>
                         			</div>
                         		</td>
                         </tr>
@@ -491,7 +494,7 @@
 				showItemUrl: '/show/job/',
 				refreshItemUrl: '/refresh/job/',
 				itemdatafields: ['Job name', 'Users', 'Date', 'Actions'],
-				itemdatakeys: ['name', 'usr', 'date', 'actions'],
+				itemdatakeys: ['name', 'usr', 'date'],
 				items: {},
                                 order: [],
 				findQuery: '',
@@ -560,6 +563,28 @@
 					this.items[id].details = result;
 				})
 			},
+                        actOnJob: function(act, job_id) {
+                            actionmap = {'retry': this.retryJob,
+                                         'force retry': this.retryJob,
+                                         'delete': this.deleteJob,
+                                        }
+                            actionmap[act](job_id);
+		   	    this.refreshItem(job_id);
+                        },
+                        deleteJob: function(job_id) {
+                            return;
+                        },
+                        retryJob: function(job_id) {
+				this.$http.post(`jobs/retry/${job_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+                                    return;
+				})
+                        },
 			jobTaskStateColor: function(state) {
  				statecolors = {'done': 'has-text-success', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
 				return statecolors[state]

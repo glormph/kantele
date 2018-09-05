@@ -37,9 +37,8 @@ def task_failed(request):
     task = models.Task.objects.get(asyncid=request.POST['task'])
     task.state = states.FAILURE
     task.save()
-    if 'msg' in request.POST and request.POST['msg']:
-       models.TaskError.objects.create(task_id=task.id,
-                                       message=request.POST['msg']) 
+    msg = request.POST['msg'] if 'msg' not in request.POST else ''
+    models.TaskError.objects.create(task_id=task.id, message=msg)
     return HttpResponse()
 
 
