@@ -9,7 +9,6 @@
 		<li v-for="(instr, instr_id) in instruments" v-bind:class="tabStatus['instr_'+instr_id]"> <a v-on:click="activateInstrTab(instr_id)">
 			<span>{{ instr }}</span>
 		</a></li>
-		<li><a v-on:click="activateJobTab"><span>Jobs</span></a></li>
 	</ul>
 </div>
 <div class="container">
@@ -17,7 +16,6 @@
 <hr>
 	<section>
 		<instrument-plot v-for="(instr, instr_id) in instruments" v-bind:key="instr_id" v-bind:instrument_id="instr_id" v-bind:active="tabStatus['instr_'+instr_id]" v-bind:loaded="qcdata[instr_id].loaded" v-bind:bokeh_code="qcdata[instr_id].bokeh_code"></instrument-plot>
-		<job-box v-bind:jobdata="jobdata" v-bind:active="tabStatus.jobs" v-on:getjobs="getJobs"></job-box>
 	</section>
 </div>
 </section>
@@ -51,72 +49,6 @@
 			}
 		},
 	})
-	Vue.component('job-box', {
-		template: `
-<table class="table" v-show="active">
-	<thead>
-		<tr>
-			<th>Job</th>
-			<th>User</th>
-			<th>Date</th>
-			<th>Tasks</th>
-		</tr>
-	</thead>
-		<tr v-for="job in jobdata.error">
-			<td>
-				<a v-bind:title="job.alttexts.join(',')" v-if="job.retry" v-on:click="retryJob(job.id)" class="button is-outlined is-small is-danger">{{ job.name }}</a>
-				<a v-bind:title="job.alttexts.join(',')" v-if="!job.retry" class="button is-small is-danger">{{ job.name }}</a>
-			</td>
-			<td>{{ job.user }}</td>
-			<td>{{ job.date }}</td>
-			<td>
-				<a v-if="job.tasks.PENDING" class="button is-info">{{ job.tasks.PENDING }}</a>
-				<a v-if="job.tasks.FAILURE" class="button is-danger">{{ job.tasks.FAILURE }}</a>
-				<a v-if="job.tasks.SUCCESS" class="button is-success">{{ job.tasks.SUCCESS }}</a>
-			</td>
-		</tr>
-		<tr v-for="job in jobdata.processing">
-			<td><a v-bind:title="job.alttexts.join(',')" class="button is-small is-warning">{{ job.name }}</a></td>
-			<td>{{ job.user }}</td>
-			<td>{{ job.date }}</td>
-			<td>
-				<a v-if="job.tasks.PENDING" class="button is-info">{{ job.tasks.PENDING }}</a>
-				<a v-if="job.tasks.FAILURE" class="button is-danger">{{ job.tasks.FAILURE }}</a>
-				<a v-if="job.tasks.SUCCESS" class="button is-success">{{ job.tasks.SUCCESS }}</a>
-			</td>
-		</tr>
-		<tr v-bind:title="job.alttexts.join(',')" v-for="job in jobdata.pending">
-			<td><a class="button is-small is-info">{{ job.name }}</a></td>
-			<td>{{ job.user }}</td>
-			<td>{{ job.date }}</td>
-			<td>
-			</td>
-		</tr>
-
-</table>
-		`,
-		props: ['active', 'jobdata'],
-		data: function() {
-			return {
-                        	processing: [],
-                        	pending: [],
-                        	error: [],
-			}
-		},
-		methods: {
-                        retryJob: function(job_id) {
-				this.$http.post(`/jobs/retry/${job_id}`)
-				.then(response => {
-					return response
-				}, response => {
-					console.log(response);
-					// error code
-				}).then(result => {
-					this.$emit('getjobs');
-				})
-                        },
-		},
-	})
 	{% endverbatim %}
 
 	var dashboard = new Vue({
@@ -128,10 +60,10 @@
 
  }, {% endfor %}
 },
-			tabStatus: {'jobs': false, {% for inst_id in instrument_ids %}'instr_{{inst_id}}': false, {% endfor %} },
+			tabStatus: {
+{% for inst_id in instrument_ids %}'instr_{{inst_id}}': false, {% endfor %} },
 			activeTab: false,
 			activeInstrument: false,
-			jobdata: {'processing': [], 'error': [], 'pending': []},
 		}
 	},
 	methods: {
@@ -150,25 +82,11 @@
 				this.qcdata[instr_id].loaded = true;
 			})
 		},
-		getJobs: function() {
-			this.$http.get('/dash/jobs/')
-			.then(response => {
-				return response.json()
-			}, response => {
-			}).then(result => {
-                                this.jobdata = {}
-				for (key in result) {
-					this.jobdata[key] = result[key];
-				}
-			})
-		},
 		reload: function() {
 			this.tabStatus['instr_'+this.activeInstrument] = false;
 			if (this.activeTab === 'instrument') {
 				this.qcdata[this.activeInstrument].loaded = false;
 				this.getInstrumentQC(this.activeInstrument);
-			} else if (this.activeTab === 'jobs') {
-				this.getJobs();
 			}
 		},
 		deactivateTabs: function() {
@@ -186,12 +104,6 @@
 			this.activeTab = 'instrument';
 			this.activeInstrument = instr_id;
                 },
-		activateJobTab: function() {
-			this.getJobs();
-			this.deactivateTabs();
-			this.tabStatus.jobs = 'is-active';
-			this.activeTab = 'jobs';
-		},
 	},
 })
 </script>

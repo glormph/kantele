@@ -489,7 +489,6 @@
 		`,
 		data: function() {
 			return {
-				searchUrl: '/find/jobs/',
 				showAllUrl: '/show/jobs/',
 				showItemUrl: '/show/job/',
 				refreshItemUrl: '/refresh/job/',
@@ -531,19 +530,6 @@
 				}, response => {
 				}).then(result => {
 					this.items[id] = Object.assign(this.items[id], result);
-				})
-			},
-			findItems: function() {
-				this.$http.get(this.searchUrl,
-					{params: {q: this.findQuery.split(' ').join(',') }})
-				.then(response => {
-					return response.json()
-				}, response => {
-				}).then(result => {
-					for (key in result) {
-						this.items = result['items'];
-						this.order = result['order'];
-					}
 				})
 			},
 			toggleItem: function(id) {

@@ -1,17 +1,9 @@
-from datetime import datetime
-import os
-import json
-
 from django.shortcuts import render
-from django.http import (HttpResponse, JsonResponse, HttpResponseNotAllowed,
-                         HttpResponseForbidden)
+from django.http import JsonResponse
 from bokeh.embed import components
 
-from jobs.jobs import Jobstates, is_job_retryable
-from jobs import models as jmodels
-from datasets.models import DatasetJob, DatasetRawFile
 from analysis.models import AnalysisError
-from rawstatus.models import FileJob, Producer
+from rawstatus.models import Producer
 from dashboard import qcplots, models
 from kantele import settings
 
@@ -117,59 +109,3 @@ def show_qc(request, instrument_id):
             }
     script, div = components(plot, wrap_script=False, wrap_plot_info=False)
     return JsonResponse({'bokeh_code': {'script': script, 'div': div}})
-
-
-def jsonsetify(lst):
-    return [x for x in set(lst)]
-
-
-def show_jobs(request):
-    jobs = {k: {} for k in [Jobstates.DONE, Jobstates.ERROR, Jobstates.PENDING,
-                            Jobstates.PROCESSING]}
-    task_errors = {x.task.id: x for x in jmodels.TaskError.objects.all()}
-    for task in jmodels.Task.objects.select_related('job').exclude(
-            job__state=Jobstates.DONE):
-        freshjob = {'name': task.job.funcname, 'errors': [],
-                    'date': datetime.strftime(task.job.timestamp, '%Y%m%d'),
-                    'retry': is_job_retryable(task.job), 'id': task.job.id,
-                    'tasks': {'PENDING': 0, 'FAILURE': 0, 'SUCCESS': 0}}
-        try:
-            errors = [task.job.joberror.message]
-        except jmodels.JobError.DoesNotExist:
-            errors = []
-        try:
-            errors.append(task.taskerror.message)
-        except jmodels.TaskError.DoesNotExist:
-            pass
-        if not task.job.state in jobs:
-            jobs[task.job.state] = {task.job.id: freshjob}
-        elif not task.job.id in jobs[task.job.state]:
-            jobs[task.job.state][task.job.id] = freshjob
-        jobs[task.job.state][task.job.id]['tasks'][task.state] += 1
-        jobs[task.job.state][task.job.id]['errors'] = errors
-    for job in jmodels.Job.objects.filter(task__isnull=True).exclude(state=Jobstates.DONE):
-        jobs[job.state][job.id] = {'name': job.funcname,
-                                   'date': datetime.strftime(job.timestamp, '%Y%m%d'),
-                                   'retry': is_job_retryable(job), 'id': job.id,
-                                   'tasks': {'PENDING': 0, 'FAILURE': 0, 'SUCCESS': 0}}
-    jobs = {state: {j['id']: j for j in taskjobs.values()} for state, taskjobs in jobs.items()}
-    fjobmap = {}
-    for fj in FileJob.objects.select_related('storedfile__rawfile__producer', 
-            'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project', 'job').exclude(job__state=Jobstates.DONE):
-        if not fj.job.id in fjobmap:
-            fjobmap[fj.job.id] = []
-        fjobmap[fj.job.id].append(fj)
-    for job_id, fjobs in fjobmap.items():
-        info = {'files': [os.path.join(x.storedfile.servershare.name, x.storedfile.path,
-                                       x.storedfile.filename) for x in fjobs]}
-        try:
-            dsets = jsonsetify([x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs])
-            info.update({'users': jsonsetify(['{} {}'.format(x.user.first_name, x.user.last_name) for x in dsets]),
-                         'more': ['{} - {} - {}'.format(x.runname.experiment.project.name, x.runname.experiment.name, x.runname.name) for x in dsets]})
-        except DatasetRawFile.DoesNotExist:
-            info.update({'files': jsonsetify([os.path.join(x.storedfile.servershare.name,
-                                                x.storedfile.path, x.storedfile.filename) for x in fjobs]),
-                         'users': jsonsetify([x.storedfile.rawfile.producer.name for x in fjobs]), 'more': []})
-        jobs[fjobs[0].job.state][job_id].update(info)
-    jobs = {state: [j for j in jmap.values()] for state, jmap in jobs.items()}
-    return JsonResponse(jobs)
