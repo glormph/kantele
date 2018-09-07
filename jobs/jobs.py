@@ -5,8 +5,10 @@ from celery import states
 from jobs.models import Job, Task
 from rawstatus.models import FileJob
 from datasets import jobs as dsjobs
+from datasets import models as dm
 from rawstatus import jobs as rsjobs
 from analysis import jobs as anjobs
+from analysis import models as am
 
 
 class Jobtypes(object):
@@ -138,3 +140,34 @@ def is_job_ready(job=False, tasks=False):
     if {t.state for t in tasks}.difference(states.READY_STATES):
         return False
     return True
+
+
+def get_job_analysis(job):
+    try:
+        analysis = job.nextflowsearch.analysis
+    except am.NextflowSearch.DoesNotExist:
+        analysis = False 
+    return analysis
+
+
+def get_job_ownership(job, request):
+    """returns {'ownertype': user/admin, 'usernames': [], 'owner_loggedin': T/F}
+    """
+    owner_loggedin = False
+    ownertype = 'user'
+    ana = get_job_analysis(job)
+    if ana:
+        usernames = [ana.user.username]
+        owner_loggedin = request.user.id == ana.user.id
+    else:
+        fjs = job.filejob_set.select_related('storedfile__rawfile__datasetrawfile__dataset__user')
+        try:
+            users = list({x.storedfile.rawfile.datasetrawfile.dataset.user for x in fjs})
+        except dm.DatasetRawFile.DoesNotExist:
+            usernames = list({x.storedfile.rawfile.producer.name for x in fjs})
+            ownertype = 'admin'
+        else:
+            usernames = [x.username for x in users]
+            owner_loggedin = request.user.id in [x.id for x in users]
+    return {'usernames': usernames, 'owner_loggedin': owner_loggedin, 'type': ownertype,
+             'is_staff': request.user.is_staff}

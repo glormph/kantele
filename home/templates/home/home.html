@@ -377,12 +377,12 @@
     Vue.component('jobs-box', {
 		template: `
 		<div class="content is-small" >
-			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find jobs">
 			<table class="table">
 				<thead>
 					<tr>
 						<th></th>
-						<th><span class="icon is-small"><i class="fa fa-hourglass-2"/></span></th>
+						<th><a v-on:click="refreshAll()"><span class="icon is-small has-text-info"><i class="fa fa-redo"/></span></a></th>
+						<th><span class="icon is-small"><i class="fa fa-hourglass-half"/></span></th>
 						<th v-for="f in itemdatafields">{{ f }}</th>
 					</tr>
 				</thead>
@@ -397,13 +397,19 @@
 							</a>
 						</td>
 						<td>
+							<a v-on:click="refreshItem(items[itkey].id)"><span class="icon is-small has-text-info"><i class="fa fa-redo"/></span></a>
+						</td>
+						<td>
 							<span v-bind:class="jobTaskStateColor(items[itkey].state)" class="icon is-small"><i class="fa fa-square"/></span>
 						</td>
 						<td v-for="key in itemdatakeys">{{ items[itkey][key] }}</td>
-						<td><span v-for="act in items[itkey].actions"><a href="#" v-on:click="actOnJob(act, items[itkey].id)">{{ act.slice(0,1).toUpperCase() }}{{ act.slice(1) }}</a>&nbsp; </span></td>
+						<td>
+                                                    <span v-if="!items[itkey].wantToDelete" v-for="act in items[itkey].actions"><a href="#" v-on:click="actOnJob(act, items[itkey].id)">{{ act.slice(0,1).toUpperCase() }}{{ act.slice(1) }}</a>&nbsp; </span>
+                                                    <span v-show="items[itkey].wantToDelete"><a v-on:click="doNotDelete(items[itkey].id)">No don't delete!</a></span>
+                                                    <span v-show="items[itkey].wantToDelete"><a v-on:click="sureDeleteJob(items[itkey].id)">Yes, delete job</a></span></td>
 					</tr>
                                         <tr v-if="items[itkey].details !== false">
-                                            <td></td><td :colspan="2">
+                                            <td></td><td :colspan="3">
                                                 <h5 class="title is-5">Details</h5>
                                                     <div>Created: {{ items[itkey].details.time }} </div>
                                                     <div>{{ items[itkey].details.files }} files </div>
@@ -498,7 +504,24 @@
 		   	    this.refreshItem(job_id);
                         },
                         deleteJob: function(job_id) {
-                            return;
+                            this.items[job_id].wantToDelete = true;
+		   	    this.refreshItem(job_id);
+                        },
+                        sureDeleteJob: function(job_id) {
+                            this.$http.post(`jobs/delete/${job_id}`)
+                            .then(response => {
+                            	return response
+                            }, response => {
+                            	console.log(response);
+                            	// error code
+                            }).then(result => {
+		   	        this.refreshAll();
+                                return;
+                            })
+                        },
+                        doNotDelete: function(job_id) {
+                            this.items[job_id].wantToDelete = false;
+		   	    this.refreshItem(job_id);
                         },
                         retryJob: function(job_id) {
 				this.$http.post(`jobs/retry/${job_id}`)

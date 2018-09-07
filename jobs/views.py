@@ -6,7 +6,7 @@ from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from jobs import models
-from jobs.jobs import Jobstates, is_job_ready, create_file_job
+from jobs.jobs import Jobstates, is_job_ready, create_file_job, get_job_ownership
 from rawstatus.models import (RawFile, StoredFile, ServerShare,
                               SwestoreBackedupFile, Producer)
 from analysis.models import AnalysisResultFile
@@ -76,6 +76,19 @@ def set_md5(request):
         set_task_done(request.POST['task'])
         print('MD5 saved')
     return HttpResponse()
+
+
+@login_required
+def delete_job(request, job_id):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    job = models.Job.objects.get(pk=job_id)
+    ownership = get_job_ownership(job, request)
+    if not ownership['owner_loggedin'] and not ownership['is_staff']:
+        return HttpResponseForbidden()
+    job.delete()
+    return HttpResponse()
+
 
 
 def delete_storedfile(request):
@@ -221,13 +234,17 @@ def store_analysis_result(request):
 def retry_job(request, job_id):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
-    do_retry_job(job_id)
+    force = True if request.user.is_staff else False
+    job = models.Job.objects.get(pk=job_id)
+    ownership = get_job_ownership(job, request)
+    if not ownership['owner_loggedin'] and not ownership['is_staff']:
+        return HttpResponseForbidden()
+    do_retry_job(job, force)
     return HttpResponse()
 
 
-def do_retry_job(job_id, force=False):
-    job = models.Job.objects.get(pk=job_id)
-    tasks = models.Task.objects.filter(job_id=job_id)
+def do_retry_job(job, force=False):
+    tasks = models.Task.objects.filter(job=job)
     if not is_job_ready(job=job, tasks=tasks) and not force:
         print('Tasks not all ready yet, will not retry, try again later')
         return

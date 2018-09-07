@@ -134,50 +134,27 @@ def show_jobs(request):
              'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]}}
     for job in jm.Job.objects.exclude(state__in=jj.JOBSTATES_DONE).select_related(
             'nextflowsearch__analysis__user').order_by('-timestamp'):
-        ana = get_job_analysis(job)
-        if ana:
-            usernames = [ana.user.username]
-            jobowner = request.user == ana.user
-            order['user'][job.state].append(job.id)
-        else:
-            fjs = job.filejob_set.select_related('storedfile__rawfile__datasetrawfile__dataset__user')
-            try:
-                users = list({x.storedfile.rawfile.datasetrawfile.dataset.user for x in fjs})
-            except dsmodels.DatasetRawFile.DoesNotExist:
-                usernames = list({x.storedfile.rawfile.producer.name for x in fjs})
-                order['admin'][job.state].append(job.id)
-                jobowner = False
-            else:
-                order['user'][job.state].append(job.id)
-                usernames = [x.username for x in users]
-                jobowner = request.user in users
+        ownership = jj.get_job_ownership(job, request)
+        order[ownership['type']][job.state].append(job.id)
         items[job.id] = {'id': job.id, 'name': job.funcname,
                          'state': job.state,
                          'details': False,
-                         'usr': ', '.join(usernames),
+                         'usr': ', '.join(ownership['usernames']),
                          'date': datetime.strftime(job.timestamp, '%Y-%m-%d'),
-                         'actions': get_job_actions(job, request)}   
+                         'actions': get_job_actions(job, ownership)}
     stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING]
     return JsonResponse({'items': items, 'order': 
                          [x for u in ['user', 'admin'] for s in stateorder 
                           for x in order[u][s]]})
 
 
-def get_job_analysis(job):
-    try:
-        analysis = job.nextflowsearch.analysis
-    except anmodels.NextflowSearch.DoesNotExist:
-        analysis = False 
-    return analysis
-
-
-def get_job_actions(job, request):
+def get_job_actions(job, ownership):
     actions = []
-    if job.state == jj.Jobstates.ERROR and (request.user.is_staff or jobowner):
+    if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']):
         actions.append('retry')
-    elif job.state == jj.Jobstates.PROCESSING and request.user.is_staff:
+    elif job.state == jj.Jobstates.PROCESSING and ownership['is_staff']:
         actions.append('force retry')
-    if request.user.is_staff:
+    if ownership['is_staff'] and job.state not in jj.JOBSTATES_DONE:
         actions.append('delete')
     return actions
 
@@ -276,8 +253,9 @@ def get_analysis_info(request, nfs_id):
 @login_required
 def refresh_job(request, job_id):
     job = jm.Job.objects.get(pk=job_id)
+    ownership = jj.get_job_ownership(job, request)
     return JsonResponse({'state': job.state,
-                         'actions': get_job_actions(job, request)})
+                         'actions': get_job_actions(job, ownership)})
 
 
 @login_required
@@ -285,7 +263,7 @@ def get_job_info(request, job_id):
     job = jm.Job.objects.get(pk=job_id)
     tasks = job.task_set.all()
     fj = job.filejob_set
-    analysis = get_job_analysis(job)
+    analysis = jj.get_job_analysis(job)
     if analysis:
         analysis = analysis.name
     errors = []
