@@ -373,66 +373,6 @@
 			},
 		},
 	})
-	Vue.component('details-box', {
-		props: ['details', 'nfs_id'],
-		template: `
-                <tr><td></td><td :colspan="3">
-                    <h5 class="title is-5">Output</h5>
-                        <div v-if="details.servedfiles.length>0" v-for="link in details.servedfiles">
-                            <a :href="'analysis/showfile/' + link[1]" target="_blank">{{ link[0] }}</a>
-                        </div>
- 			<div v-if="details.storage_locs.length>0" v-for="loc in details.storage_locs">
-                            <div><span class="tag is-success">Server</span>{{ loc.server }}</div><div><span class="tag is-success">Folder</span> {{ loc.path }}</div>
-                        </div>
- 			<div v-if="details.storage_locs.length===0">No output (yet)</div>
-<hr>
-                    <h5 class="title is-5">Analysis log</h5>
-                    <a v-if="details.log[0].slice(0,16) !== 'Analysis without'" :href="'analysis/log/' + nfs_id" class="is-size-7" target="_blank">Click for full log</a>
- 			<div v-for="line in details.log">{{ line }}</div>
-		</td>
-		<td></td>
-		<td colspan="2">
-			<h5 class="subtitle is-5" v-if="Object.keys(details.jobs).length">Jobs</h5>
-			<div v-for="job in details.jobs">
-				<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
-						<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
-						<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
-						<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
-			</div>
-                        <section>
-			<h5 class="subtitle is-5 has-text-weight-bold">Input data</h5>
-			<div>Workflow version commit <a target="_blank" v-bind:href="wfrepo">{{ details.wf.commit.slice(0,8) }}...</a></div>
- 			<div><a v-bind:href="'?tab=datasets&dsids='+details.dsets.join(',')" target="_blank">{{ details.dsets.length }} datasets</a> from project(s) <span v-for="proj in details.proj">{{ proj.name }}, </span></div>
- 			<div>{{ details.nrfiles }} rawfiles analysed</div>
-                        </section>
-		</td>
-</tr>
-		`,
-		data: function() {
-			return {}
-		},
-		methods: {
-                        retryJob: function(job_id) {
-				this.$http.post(`jobs/retry/${job_id}`)
-				.then(response => {
-					return response
-				}, response => {
-					console.log(response);
-					// error code
-				}).then(result => {
-					// make event signal this.dsetInfo(ds_id);
-					this.$emit('refreshItem');
-				})
-                        },
-			                
-		},
-		computed: {
-			wfrepo: function() {
-				return [this.details.wf.repo, 'blob', this.details.wf.commit, this.details.wf.fn].join('/');
-			},
-		},
-
-	})
 	
     Vue.component('jobs-box', {
 		template: `
