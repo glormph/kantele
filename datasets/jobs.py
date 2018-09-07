@@ -132,8 +132,14 @@ def convert_dset_tomzml_getfiles(dset_id):
             'servershare', 'rawfile__datasetrawfile__dataset').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
         mzsf = get_or_create_mzmlentry(fn)
-        if mzsf.checked:
+        try:
+            mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
+                                          filetype='mzml')
+        except StoredFile.DoesNotExist:
             continue
+        else:
+            if mzsf.checked:
+                continue
         yield fn
 
 
