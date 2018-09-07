@@ -243,6 +243,7 @@ def get_analysis_info(request, nfs_id):
                                 'repo': nfs.nfworkflow.nfworkflow.repo},
                          'proj': [{'name': x.name, 'id': x.id} for x in projs],
                          'dsets': [x.id for x in dsets],
+                         'quants': list({x.quantdataset.quanttype.name for x in dsets}),
                          'nrfiles': fjobs.count(),
                          'storage_locs': [{'server': x.servershare.name, 'path': x.path}
                                           for x in storeloc.values()],
