@@ -268,7 +268,10 @@ def get_job_info(request, job_id):
     if analysis:
         analysis = analysis.name
     errors = []
-    for task in tasks.filter(state=tstates.FAILURE):
+    for task in tasks.filter(state=tstates.FAILURE, taskerror__isnull=False):
+        # Tasks chained in a taskchain are all set to error when one errors, 
+        # otherwise we cannot retry jobs since that waits for all tasks to finish.
+        # This means we have to check for taskerror__isnull here
         errors.append({'msg': task.taskerror.message, 'args': task.args})
     return JsonResponse({'files': fj.count(), 'dsets': 0, 
                          'analysis': analysis, 
