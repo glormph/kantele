@@ -59,7 +59,7 @@ class Dataset(models.Model):
     date = models.DateTimeField('date created')
     runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
-    storage_loc = models.TextField(max_length=200)
+    storage_loc = models.TextField(max_length=200, unique=True)
 
 
 class DatasetComponentState(models.Model):

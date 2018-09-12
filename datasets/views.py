@@ -6,6 +6,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
                          HttpResponseForbidden)
+from django.db.utils import IntegrityError
 
 from kantele import settings
 from datasets import models
@@ -435,7 +436,10 @@ def save_dataset(request):
         experiment = models.Experiment.objects.get(pk=data['experiment_id'])
     runname = models.RunName(name=data['runname'], experiment=experiment)
     runname.save()
-    dset = save_new_dataset(data, project, experiment, runname, request.user.id)
+    try:
+        dset = save_new_dataset(data, project, experiment, runname, request.user.id)
+    except IntegrityError:
+        return JsonResponse({'error': 'Cannot save dataset, storage location not unique'})
     return JsonResponse({'dataset_id': dset.id})
 
 

@@ -30,6 +30,7 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
+    """This expects one dataset per dir, as it will rename the whole dir"""
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
     try:
         shutil.move(os.path.join(config.STORAGESHARE, srcpath), os.path.join(config.STORAGESHARE, dstpath))
