@@ -13,7 +13,7 @@ from celery import shared_task
 
 from jobs.post import update_db, taskfail_update_db
 from kantele import settings
-from analysis import qc, galaxy
+from analysis import qc
 from rawstatus.tasks import calc_md5
 
 
@@ -49,7 +49,7 @@ def stage_files(stagedir, stagefiles, params=False):
             shutil.copy(fpath, dst)
         if params:
             params.extend([flag, dst])
-    return params 
+    return params
 
 
 def log_analysis(analysis_id, message):
@@ -83,7 +83,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
                 mzstr = '{ms}\t{pl}'.format(ms=mzstr, pl=fn[4])
                 if fn[5]:
                     mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
-            mzstr = '{}\n'.format(mzstr) 
+            mzstr = '{}\n'.format(mzstr)
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', runname])
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
@@ -103,7 +103,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
     outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
     postdata.update({'state': 'ok'})
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
-    report_finished_run(reporturl, postdata, self.request.id, stagedir, 
+    report_finished_run(reporturl, postdata, self.request.id, stagedir,
                         run['outdir'], rundir, run['analysis_id'], outfiles, log=True)
     return run
 
@@ -147,11 +147,11 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
         taskfail_update_db(self.request.id)
         raise RuntimeError('Ran QC workflow but output file {} not '
                            'found'.format(expfn))
-    qcfiles = {x: os.path.join(rundir, 'output', fn) for x, fn 
+    qcfiles = {x: os.path.join(rundir, 'output', fn) for x, fn
                in expect_out.items()}
     qcreport = qc.calc_longitudinal_qc(qcfiles)
     postdata.update({'state': 'ok', 'plots': qcreport})
-    report_finished_run(reporturl, postdata, self.request.id, stagedir, 
+    report_finished_run(reporturl, postdata, self.request.id, stagedir,
                         'internal_results', rundir, run['analysis_id'], qcfiles.values())
     return run
 
@@ -169,7 +169,7 @@ def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir,
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
     # 1 check outfiles md5 already ok in db, prune those in case rerun
     # 2 register rest of outfiles rerun doesnt matter
-    # 3 transfer rest of outfiles 
+    # 3 transfer rest of outfiles
     # 4 loop for md5 checks, fail if error
     if outfiles:
         try:
