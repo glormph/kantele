@@ -157,11 +157,11 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
 
 
 def check_md5(fn_id):
-        checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
-        params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
-                  'ftype': 'analysisoutput'}
-        resp = requests.get(url=checkurl, params=params, verify=settings.CERTFILE)
-        return resp.json()['md5_state']
+    checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
+    params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
+              'ftype': 'analysis_output'}
+    resp = requests.get(url=checkurl, params=params, verify=settings.CERTFILE)
+    return resp.json()['md5_state']
 
 
 def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir,
