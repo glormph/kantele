@@ -177,15 +177,10 @@ def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir,
         except:
             taskfail_update_db(task_id)
             raise
-        checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
         while False in fn_ids.values():
             for fn_id, checked in fn_ids.items():
                 if not checked:
-                    params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
-                              'ftype': 'analysisoutput'}
-                    resp = requests.get(url=checkurl, params=params,
-                                        verify=settings.CERTFILE)
-                    fn_ids[fn_id] = resp.json()['md5_state']
+                    fn_ids[fn_id] = check_md5(fn_id)
                     if fn_ids[fn_id] == 'error':
                         taskfail_update_db(task_id)
                         raise RuntimeError
