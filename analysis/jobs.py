@@ -6,6 +6,7 @@ from kantele import settings
 from analysis import tasks, models, views
 from rawstatus import models as filemodels
 from datasets import models as dsmodels
+from datasets.jobs import get_or_create_mzmlentry
 from jobs.post import create_db_task
 
 # FIXMEs
@@ -14,6 +15,38 @@ from jobs.post import create_db_task
 # rerun qc data and displaying qcdata for a given qc file, how? 
 # run should check if already ran with same commit/analysis
 
+
+
+def refine_mzmls(job_id, dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs, *dset_mzmls):
+    analysis = models.Analysis.objects.get(pk=analysis_id)
+    nfwf = models.NextflowWfVersion.objects.get(pk=wfv_id)
+    dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
+    stagefiles = {'--tdb': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
+    mzmlfiles = filemodels.StoredFile.objects.select_related('rawfile').filter(
+        pk__in=dset_mzmls)
+    analysisshare = filemodels.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
+    mzmls = [(x.servershare.name, x.path, x.filename, 
+              get_or_create_mzmlentry(mzmlfn, settings.REFINEDMZML_SFGROUP_ID).id, analysisshare)
+             for x in mzmlfiles]
+    allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
+    if len(allinstr) > 1:
+        raise RuntimeError('Trying to run a refiner job on dataset containing more than one instrument is not possible')
+    params = ['--instrument']
+    params.append('velos' if 'elos' in allinstr else 'qe')
+    if inputs['qtype'] != 'labelfree':
+        params.extend(['--isobaric', inputs['qtype']])
+    run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+           'analysis_id': analysis.id,
+           'wf_commit': nfwf.commit,
+           'nxf_wf_fn': nfwf.filename,
+           'repo': nfwf.nfworkflow.repo,
+           'name': analysis.name,
+           'outdir': analysis.user.username,
+           }
+    res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles)
+    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
+    analysis.save()
+    create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)
 
 
 def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
@@ -36,6 +69,8 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
            'wf_commit': nfwf.commit,
            'nxf_wf_fn': nfwf.filename,
            'repo': nfwf.nfworkflow.repo,
+           'name': 'longqc',
+           'outdir': 'internal_results',
            }
     views.create_nf_search_entries(analysis, wf.id, nfwf.id, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
@@ -76,6 +111,5 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
            }
     res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles)
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
-    
     analysis.save()
     create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)

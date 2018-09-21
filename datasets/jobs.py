@@ -99,29 +99,17 @@ def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue)
             filetasks.get_md5.s(*args[2])]
 
 
-def get_or_create_mzmlentry(fn):
+def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
+    if not servershare_id:
+        servershare_id = fn.servershare_id
     try:
         mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
-                                      filetype_id=settings.MZML_SFGROUP_ID)
+                                      filetype_id=group_id)
     except StoredFile.DoesNotExist:
         mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
         mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=settings.MZML_SFGROUP_ID,
                           path=fn.rawfile.datasetrawfile.dataset.storage_loc,
-                          servershare=fn.servershare,
-                          filename=mzmlfilename, md5='', checked=False)
-        mzsf.save()
-    return mzsf
-
-
-def get_or_create_refined_mzmlentry(fn):
-    try:
-        mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
-                                      filetype_id=settings.REFINEDMZML_SFGROUP_ID)
-    except StoredFile.DoesNotExist:
-        mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=settings.REFINEDMZML_SFGROUP_ID,
-                          path=fn.rawfile.datasetrawfile.dataset.storage_loc,
-                          servershare=fn.servershare,
+                          servershare_id=servershare_id,
                           filename=mzmlfilename, md5='', checked=False)
         mzsf.save()
     return mzsf
@@ -132,7 +120,7 @@ def convert_single_mzml(job_id, sf_id, queue=settings.QUEUES_PWIZ[0]):
     fn = StoredFile.objects.select_related(
         'servershare', 'rawfile__datasetrawfile__dataset').get(pk=sf_id)
     storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
-    mzsf = get_or_create_mzmlentry(fn)
+    mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
     if mzsf.checked:
         return
     args, runchain = get_mzmlconversion_taskchain(fn, mzsf, storageloc, queue,
@@ -145,7 +133,7 @@ def convert_dset_tomzml_getfiles(dset_id):
     for fn in StoredFile.objects.select_related(
             'servershare', 'rawfile__datasetrawfile__dataset').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.RAW_SFGROUP_ID):
-        mzsf = get_or_create_mzmlentry(fn)
+        mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
         if mzsf.checked:
             continue
         yield fn
@@ -158,7 +146,7 @@ def convert_tomzml(job_id, dset_id, *sf_ids):
     for fn in StoredFile.objects.filter(
             pk__in=sf_ids, rawfile__datasetrawfile__dataset_id=dset_id).select_related(
             'servershare', 'rawfile__datasetrawfile__dataset'):
-        mzsf = get_or_create_mzmlentry(fn)
+        mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
         if mzsf.checked:
             continue
         queue = next(queues)

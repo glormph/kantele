@@ -17,7 +17,7 @@ from analysis import qc
 from rawstatus.tasks import calc_md5
 
 
-def run_nextflow(run, params, rundir, gitwfdir, profile='standard'):
+def run_nextflow(run, params, rundir, gitwfdir, profile=False):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     print('Starting nextflow workflow {}'.format(run['nxf_wf_fn']))
     outdir = os.path.join(rundir, 'output')
@@ -31,11 +31,11 @@ def run_nextflow(run, params, rundir, gitwfdir, profile='standard'):
     print('Checked out repo {} at commit {}'.format(run['repo'], run['wf_commit']))
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
-
+    if not profile:
+        profile = 'standard'
     cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', profile, '-with-trace', '-resume']
     print(cmd)
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
-    print('Finished running workflow')
     return rundir
 
 
@@ -60,22 +60,11 @@ def log_analysis(analysis_id, message):
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
-    print('Got message to run iPAW workflow, preparing')
-    log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
+    print('Got message to run nextflow workflow, preparing')
+    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
-    runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
-    # FIXME temp fix, replace on run['name']
-    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
-    gitwfdir = os.path.join(rundir, 'gitwfs')
-    if not os.path.exists(rundir):
-        os.makedirs(rundir)
-    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
-    log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
-    print('Staging files to {}'.format(stagedir))
-    params = stage_files(stagedir, stagefiles, params)
-    stage_files(stagedir, {x[2]: x for x in mzmls})
-    # FIXME plate/frac optional in mzml def:
+    params, rundir, gitwfdir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3])
@@ -86,26 +75,79 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
             mzstr = '{}\n'.format(mzstr)
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', runname])
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir)
+    postdata.update({'state': 'ok'})
+    outfiles_db = register_resultfiles(outfiles)
+    fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
+    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, analysis_id, fileurl, self.request.id)
+    check_rawfile_resultfiles_match(fn_ids)
+    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
+    return run
+
+
+@shared_task(bind=True, queue=settings.QUEUE_NXF)
+def refine_mzmls(self, run, params, mzmls, stagefiles):
+    print('Got message to run mzRefine workflow, preparing')
+    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
+    postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
+                'analysis_id': run['analysis_id'], 'task': self.request.id,
+                'raw_ids': [x[3] for x in mzmls]}
+    params, rundir, gitwfdir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls)
+    with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
+        for fn in mzmls:
+            # FIXME not have set, etc, pass rawfnid here!
+            mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, fn[2]), refined_sfid=fn[3])
+            fp.write(mzstr)
+    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir)
+    outfiles_db = {fn: {'file_id': os.path.basename(fn).split('___')[0], 'md5': calc_md5(fn)}
+                   for fn in outfiles}
+    postdata.update({'state': 'ok'})
+    fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzrefinefile'))
+    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, analysis_id, fileurl, self.request.id)
+    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
+    return run
+
+
+def prepare_nextflow_run(run, runname, taskid, stagefiles, mzmls):
+    log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
+    runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
+    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
+    gitwfdir = os.path.join(rundir, 'gitwfs')
+    if not os.path.exists(rundir):
+        try:
+            os.makedirs(rundir)
+        except (OSError, PermissionError):
+            taskfail_update_db(taskid, 'Could not create workdir on analysis server')
+            raise
+    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
+    log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
+    print('Staging files to {}'.format(stagedir))
+    try:
+        params = stage_files(stagedir, stagefiles, params)
+        stage_files(stagedir, {x[2]: x for x in mzmls})
+    except:
+        taskfail_update_db(taskid, 'Could not stage files for analysis')
+        raise
+    return params, rundir, gitwfdir
+
+
+def execute_normal_nf(run, params, rundir, gitwfdir):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     try:
         run_nextflow(run, params, rundir, gitwfdir)
     except subprocess.CalledProcessError as e:
         # FIXME report stderr with e
         errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
-        taskfail_update_db(self.request.id, errmsg)
-        raise RuntimeError('Error occurred running iPAW workflow '
+        taskfail_update_db(taskid, errmsg)
+        raise RuntimeError('Error occurred running nextflow workflow '
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
                  ' cleaning. NF log: \n{}'.format(nflog))
     outfiles = os.listdir(os.path.join(rundir, 'output'))
-    outfiles = [os.path.join(rundir, 'output', x) for x in outfiles]
-    postdata.update({'state': 'ok'})
-    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
-    report_finished_run(reporturl, postdata, self.request.id, stagedir,
-                        run['outdir'], rundir, run['analysis_id'], outfiles, log=True)
-    return run
+    return [os.path.join(rundir, 'output', x) for x in outfiles]
 
 
 @shared_task(bind=True, queue=settings.QUEUE_QC_NXF)
@@ -114,13 +156,8 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
-    runname = 'longqc_{}_{}'.format(run['analysis_id'], run['timestamp'])
-    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname)
-    gitwfdir = os.path.join(rundir, 'gitwfs')
-    if not os.path.exists(rundir):
-        os.makedirs(rundir)
-    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
-    params = stage_files(stagedir, stagefiles, params)
+    mzmls = {}
+    params, rundir, gitwfdir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls)
     try:
         run_nextflow(run, params, rundir, gitwfdir, profile='qc')
     except subprocess.CalledProcessError:
@@ -131,9 +168,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
                     postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
-                    report_finished_run(reporturl, postdata, self.request.id,
-                                        stagedir, 'internal_results', rundir,
-                                        run['analysis_id'])
+                    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
                     raise RuntimeError('QC file did not contain enough quality PSMs')
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow '
@@ -151,8 +186,13 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                in expect_out.items()}
     qcreport = qc.calc_longitudinal_qc(qcfiles)
     postdata.update({'state': 'ok', 'plots': qcreport})
-    report_finished_run(reporturl, postdata, self.request.id, stagedir,
-                        'internal_results', rundir, run['analysis_id'], qcfiles.values())
+    fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
+    outfiles_db = register_resultfiles(qcfiles.values())
+    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, analysis_id, fileurl, self.request.id)
+    check_rawfile_resultfiles_match(fn_ids)
+    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
+    log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
+                 ' cleaning. NF log: \n{}'.format(nflog))
     return run
 
 
@@ -164,39 +204,20 @@ def check_md5(fn_id):
     return resp.json()['md5_state']
 
 
-def report_finished_run(url, postdata, task_id, stagedir, userdir, rundir,
-                        analysis_id, outfiles=False, log=False):
+def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
-    # 1 check outfiles md5 already ok in db, prune those in case rerun
-    # 2 register rest of outfiles rerun doesnt matter
-    # 3 transfer rest of outfiles
-    # 4 loop for md5 checks, fail if error
-    if outfiles:
-        try:
-            fn_ids = transfer_resultfiles(userdir, rundir, outfiles, analysis_id)
-        except:
-            taskfail_update_db(task_id)
-            raise
-        while False in fn_ids.values():
-            for fn_id, checked in fn_ids.items():
-                if not checked:
-                    fn_ids[fn_id] = check_md5(fn_id)
-                    if fn_ids[fn_id] == 'error':
-                        taskfail_update_db(task_id)
-                        raise RuntimeError
-            sleep(30)
+    log_analysis(analysis_id, 'Workflow finished, transferring result and'
+                 ' cleaning. NF log: \n{}'.format(nflog))
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
-    if log:
-        postdata.update({'log': '[{}] - Analysis completed.'.format(
-            datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')),
-                         'analysis_id': analysis_id})
+    postdata.update({'log': '[{}] - Analysis completed.'.format(
+        datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')),
+                     'analysis_id': analysis_id})
     shutil.rmtree(rundir)
     shutil.rmtree(stagedir)
     update_db(url, json=postdata)
 
 
-def transfer_resultfiles(userdir, rundir, outfiles, analysis_id):
-    """Copies analysis results to data server"""
+def register_resultfiles(outfiles):
     # First register files, check md5, prune those
     reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
     outfiles_db = {}
@@ -213,21 +234,47 @@ def transfer_resultfiles(userdir, rundir, outfiles, analysis_id):
         rj = resp.json()
         if not check_md5(rj['file_id']) == 'ok':
             outfiles_db[fn] = resp.json()
-    # Transfer after registration, when rerun transfer again
+    return outfiles_db
+
+
+def transfer_resultfiles(userdir, rundir, outfiles_db, analysis_id, url, task_id):
+    """Copies analysis results to data server"""
     outpath = os.path.join(userdir, os.path.split(rundir)[-1])
     outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME],
                           outpath)
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-    for fn in outfiles:
-        if not fn in outfiles_db:
-            continue
+    try:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+    except (OSError, PermissionError):
+        taskfail_update_db(task_id)
+        raise
+    for fn in outfiles_db:
         filename = os.path.basename(fn)
-        shutil.copy(fn, os.path.join(outdir, filename))
+        dst = os.path.join(outdir, filename)
+        try:
+            shutil.copy(fn, dst)
+        except:
+            taskfail_update_db(task_id)
+            raise
+        if 'md5' in outfiles_db[fn] and calc_md5(dst) != outfiles_db[fn]['md5']:
+            taskfail_update_db(task_id)
+            raise RuntimeError('Copying error, MD5 of src and dst are different')
         postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
                     'outdir': outpath, 'filename': filename,
                     'ftype': 'analysis_output', 'analysis_id': analysis_id}
-        url = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
+        if 'md5' in outfiles_db[fn]:
+            postdata['md5'] = outfiles_db[fn]['md5']
         response = update_db(url, form=postdata)
         response.raise_for_status()
     return {x['file_id']: False for x in outfiles_db.values()}
+
+
+def check_rawfile_resultfiles_match(fn_ids):
+    while False in fn_ids.values():
+        for fn_id, checked in fn_ids.items():
+            if not checked:
+                fn_ids[fn_id] = check_md5(fn_id)
+                if fn_ids[fn_id] == 'error':
+                    taskfail_update_db(task_id)
+                    raise RuntimeError
+        sleep(30)

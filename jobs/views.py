@@ -7,7 +7,7 @@ from django.http import (HttpResponseForbidden, HttpResponse,
 from django.contrib.auth.decorators import login_required
 from jobs import models
 from jobs.jobs import Jobstates, is_job_ready, create_file_job, get_job_ownership
-from rawstatus.models import (RawFile, StoredFile, ServerShare,
+from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
                               SwestoreBackedupFile, Producer)
 from analysis.models import AnalysisResultFile
 from analysis.views import write_analysis_log
@@ -181,6 +181,22 @@ def analysis_run_done(request):
         return HttpResponse()
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
+
+
+def mzrefine_file_done(request):
+    data = request.POST
+    # create analysis file
+    if ('client_id' not in data or
+            data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
+        return HttpResponseForbidden()
+    sfile = StoredFile.objects.get(pk=data['fn_id'])
+    sfile.path = data['outdir']
+    sfile.filename = data['filename']
+    sfile.md5 = data['md5']
+    sfile.checked = True
+    sfile.save()
+    create_file_job('move_single_file', sfile.id, newname=sfile.filename.split('___')[1])
+    return HttpResponse()
 
 
 def store_longitudinal_qc(request):
