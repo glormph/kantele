@@ -45,7 +45,7 @@
 		<select v-model="wfversion">
 			<option disabled value="0">Select workflow version</option>
 			<template v-for="wfv in versions">
-			<option v-bind:value="wfv.id">{{ wfv.date }} -- {{ wfv.name }} </option>
+			<option v-bind:value="wfv.id"><span v-if="wfv.latest">LATEST: </span>{{ wfv.date }} -- {{ wfv.name }}</option>
 			</option>
 		</template>
 		</select>

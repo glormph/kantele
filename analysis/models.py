@@ -36,6 +36,7 @@ class Workflow(models.Model):
     name = models.CharField(max_length=50)
     shortname = models.ForeignKey(WorkflowType)
     nfworkflow = models.ForeignKey(NextflowWorkflow)
+    public = models.BooleanField()
 
     def __str__(self):
         return self.name

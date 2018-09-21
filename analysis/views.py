@@ -32,7 +32,7 @@ def get_analysis_init(request):
 @login_required
 def get_allwfs(request):
     allwfs = {x.id: {'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name} for x in
-              am.Workflow.objects.all()}
+              am.Workflow.objects.filter(public=True)}
     return JsonResponse({'allwfs': allwfs})
 
 
@@ -85,7 +85,10 @@ def get_datasets(request):
 
 @login_required
 def get_workflow(request):
-    wf = am.Workflow.objects.get(pk=request.GET['wfid'])
+    try:
+        wf = am.Workflow.objects.filter(public=True).get(pk=request.GET['wfid'])
+    except am.Workflow.DoesNotExist:
+        return HttpResponseNotFound()
     params = wf.workflowparam_set.all().select_related('param')
     files = wf.workflowfileparam_set.select_related('param')
     fixedfiles = wf.workflowpredeffileparam_set.select_related('libfile__sfile')
@@ -94,9 +97,10 @@ def get_workflow(request):
     ftypes = files.values('param__filetype')
     libfiles = [x for x in am.LibraryFile.objects.select_related('sfile__filetype').filter(
         sfile__filetype__filetype__in=Subquery(files.values('param__filetype')))]
-    versions = [{'name': wfv.update, 'id': wfv.id,
+    versions = [{'name': wfv.update, 'id': wfv.id, 'latest': False,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
                 am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id)][::-1]
+    versions[0]['latest'] = True
     resp = {
         'wf': {
             'flags': {f.param.nfparam: f.param.name for f in flags},
