@@ -73,10 +73,10 @@ def get_datasets(request):
                         'channel__channel').filter(dataset_id=dsid)}
                 dsdetails['model']['denoms'] = {
                     x: False for x in dsdetails['details']['channels']}
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''} for x in files.filter(filetype='mzml', rawfile__datasetrawfile__dataset_id=dsid)]
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''} for x in files.filter(filetype_id=settings.MZML_SFGROUP_ID, rawfile__datasetrawfile__dataset_id=dsid)]
             else:
                 dsdetails['details']['channels'] = {}
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.sample} for x in files.filter(filetype='mzml').select_related('rawfile__datasetrawfile__quantsamplefile')]
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.sample} for x in files.filter(filetype_id=settings.MZML_SFGROUP_ID).select_related('rawfile__datasetrawfile__quantsamplefile')]
                 [x.update({'setname': x['sample']}) for x in dsdetails['files']]
     # FIXME labelfree quantsamplefile without sample prep error msg
     response['dsets'] = dsetinfo
@@ -92,8 +92,8 @@ def get_workflow(request):
     flags = params.filter(param__ptype='flag')
     values = params.filter(param__ptype='value')
     ftypes = files.values('param__filetype')
-    libfiles = [x for x in am.LibraryFile.objects.select_related('sfile').filter(
-        sfile__filetype__in=Subquery(files.values('param__filetype')))]
+    libfiles = [x for x in am.LibraryFile.objects.select_related('sfile__filetype').filter(
+        sfile__filetype__filetype__in=Subquery(files.values('param__filetype')))]
     versions = [{'name': wfv.update, 'id': wfv.id,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
                 am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id)][::-1]
@@ -113,7 +113,7 @@ def get_workflow(request):
         'files': {ft['param__filetype']: [{'id': x.sfile.id, 'desc': x.description,
                                            'name': x.sfile.filename}
                                           for x in libfiles
-                                          if x.sfile.filetype == ft['param__filetype']]
+                                          if x.sfile.filetype.filetype == ft['param__filetype']]
                   for ft in ftypes}
     }
     return JsonResponse(resp)

@@ -8,6 +8,7 @@ from django.http import JsonResponse, HttpResponse
 from django.db.models import Q
 from collections import OrderedDict
 
+from kantele import settings
 from datasets import models as dsmodels
 from analysis import models as anmodels
 from analysis import views as av
@@ -292,8 +293,9 @@ def get_dset_info(request, dataset_id):
 
 
 def get_nr_raw_mzml_files(files, info):
-    storedfiles = {'raw': files.filter(filetype='raw').count(),
-                   'mzML': files.filter(filetype='mzml', checked=True).count()}
+    storedfiles = {'raw': files.filter(filetype_id=settings.RAW_SFGROUP_ID).count(),
+                   'mzML': files.filter(filetype__name='raw_mzml', checked=True).count(),
+                   'refined_mzML': files.filter(filetype__name='refined_mzml', checked=True).count()}
     if storedfiles['mzML'] == storedfiles['raw']:
         info['mzmlable'] = False
     elif 'convert_dataset_mzml' in [x['name'] for x in info['jobs']]:
@@ -316,12 +318,12 @@ def fetch_dset_details(dset):
     info['storage_loc'] = dset.storage_loc
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
-    files = filemodels.StoredFile.objects.select_related('rawfile__producer').filter(
+    files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(
         rawfile__datasetrawfile__dataset_id=dset.id)
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles, info = get_nr_raw_mzml_files(files, info)
     else:
-        nrstoredfiles = {nonms_dtypes[dset.datatype_id]: files.filter(filetype='raw').count()}
+        nrstoredfiles = {nonms_dtypes[dset.datatype_id]: files.filter(filetype_id=settings.RAW_SFGROUP_ID).count()}
     info['instruments'] = list(set([x.rawfile.producer.shortname for x in files]))
     info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(

@@ -98,8 +98,8 @@ def delete_storedfile(request):
                                 settings.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.filter(pk=data['sfid']).select_related(
-        'rawfile').get()
-    if sfile.filetype == 'raw':
+        'rawfile', 'filetype').get()
+    if sfile.filetype_id == settings.RAW_SFGROUP_ID:
         sfile.rawfile.deleted = True
         sfile.rawfile.save()
     sfile.delete()
@@ -215,10 +215,14 @@ def store_analysis_result(request):
     # Reruns lead to trying to store files multiple times, avoid that:
     anashare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
     try:
-        sfile = StoredFile.objects.get(rawfile_id=data['fn_id'], filetype=data['ftype'])
+        ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[data['ftype']]
+    except KeyError:
+        return HttpResponseForbidden('File type does not exist')
+    try:
+        sfile = StoredFile.objects.get(rawfile_id=data['fn_id'], filetype_id=ftypeid)
     except StoredFile.DoesNotExist:
         print('New transfer registered, fn_id {}'.format(data['fn_id']))
-        sfile = StoredFile(rawfile_id=data['fn_id'], filetype=data['ftype'], 
+        sfile = StoredFile(rawfile_id=data['fn_id'], filetype_id=ftypeid,
                            servershare=anashare, path=data['outdir'],
                            filename=data['filename'], md5='', checked=False)
         sfile.save()

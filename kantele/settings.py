@@ -58,6 +58,11 @@ CELERY_BROKER_URL = 'amqp://{}:{}@{}:5672/{}'.format(RABBIT_USER, RABBIT_PASSWOR
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
+# datatypes
+RAW_SFGROUP_ID = os.environ.get('RAW_SF_GROUP_ID')
+MZML_SFGROUP_ID = os.environ.get('MZML_SF_GROUP_ID')
+REFINEDMZML_SFGROUP_ID = os.environ.get('REFINED_SF_GROUP_ID')
+
 # external datasets
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')

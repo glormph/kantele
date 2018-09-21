@@ -231,7 +231,7 @@ def transfer_resultfiles(userdir, rundir, outfiles, analysis_id):
         shutil.copy(fn, os.path.join(outdir, filename))
         postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
                     'outdir': outpath, 'filename': filename,
-                    'ftype': 'analysisoutput', 'analysis_id': analysis_id}
+                    'ftype': 'analysis_output', 'analysis_id': analysis_id}
         url = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
         response = update_db(url, form=postdata)
         response.raise_for_status()

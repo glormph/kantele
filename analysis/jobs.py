@@ -22,8 +22,8 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
     nfwf = models.NextflowWfVersion.objects.get(pk=wfv_id)
     dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
     mzml = filemodels.StoredFile.objects.select_related(
-        'rawfile__producer', 'servershare').get(rawfile__storedfile__id=sf_id,
-                                                filetype='mzml')
+        'rawfile__producer', 'servershare', 'filetype').get(rawfile__storedfile__id=sf_id,
+                                                filetype__filetype='mzml')
     
     wf = models.Workflow.objects.filter(shortname__name='QC').last()
     params = ['--mods', 'data/labelfreemods.txt', '--instrument']
@@ -45,8 +45,8 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
 def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):
     # FIXME setnames will be for files, already given an assoc_id
     return filemodels.StoredFile.objects.select_related(
-        'rawfile__datasetrawfile__dataset__runname').filter(
-        rawfile__datasetrawfile__dataset__id__in=dset_ids, filetype='mzml')
+        'rawfile__datasetrawfile__dataset__runname', 'filetype').filter(
+        rawfile__datasetrawfile__dataset__id__in=dset_ids, filetype__filetype='mzml')
 
 
 def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs, *dset_mzmls):

@@ -73,9 +73,9 @@ def remove_files_from_dataset_storagepath_getfiles(dset_id, fn_ids):
 def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
     print('Moving files with ids {} from dataset storage to tmp, '
           'if not already there. Deleting if mzml'.format(fn_ids))
-    for fn in StoredFile.objects.filter(pk__in=sf_ids).exclude(
-            servershare__name=settings.TMPSHARENAME):
-        if fn.filetype == 'mzml':
+    for fn in StoredFile.objects.select_related('filetype').filter(
+            pk__in=sf_ids).exclude(servershare__name=settings.TMPSHARENAME):
+        if fn.filetype.filetype == 'mzml':
             fullpath = os.path.join(fn.path, fn.filename)
             tid = filetasks.delete_file.delay(fn.servershare.name, fullpath,
                                               fn.id).id
@@ -102,10 +102,24 @@ def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue)
 def get_or_create_mzmlentry(fn):
     try:
         mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
-                                      filetype='mzml')
+                                      filetype_id=settings.MZML_SFGROUP_ID)
     except StoredFile.DoesNotExist:
         mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype='mzml',
+        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=settings.MZML_SFGROUP_ID,
+                          path=fn.rawfile.datasetrawfile.dataset.storage_loc,
+                          servershare=fn.servershare,
+                          filename=mzmlfilename, md5='', checked=False)
+        mzsf.save()
+    return mzsf
+
+
+def get_or_create_refined_mzmlentry(fn):
+    try:
+        mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
+                                      filetype_id=settings.REFINEDMZML_SFGROUP_ID)
+    except StoredFile.DoesNotExist:
+        mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
+        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=settings.REFINEDMZML_SFGROUP_ID,
                           path=fn.rawfile.datasetrawfile.dataset.storage_loc,
                           servershare=fn.servershare,
                           filename=mzmlfilename, md5='', checked=False)
@@ -130,16 +144,10 @@ def convert_single_mzml(job_id, sf_id, queue=settings.QUEUES_PWIZ[0]):
 def convert_dset_tomzml_getfiles(dset_id):
     for fn in StoredFile.objects.select_related(
             'servershare', 'rawfile__datasetrawfile__dataset').filter(
-            rawfile__datasetrawfile__dataset_id=dset_id, filetype='raw'):
+            rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.RAW_SFGROUP_ID):
         mzsf = get_or_create_mzmlentry(fn)
-        try:
-            mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
-                                          filetype='mzml')
-        except StoredFile.DoesNotExist:
+        if mzsf.checked:
             continue
-        else:
-            if mzsf.checked:
-                continue
         yield fn
 
 

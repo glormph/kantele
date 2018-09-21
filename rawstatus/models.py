@@ -33,16 +33,20 @@ class RawFile(models.Model):
         return self.name
 
 
+class StoredFileType(models.Model):
+    name = models.CharField(max_length=100, unique=True) 
+    filetype = models.CharField(max_length=20) # fasta, tabular, mzml, raw, analysisoutput
+
+
 class StoredFile(models.Model):
     """Files transferred from instrument to storage"""
     rawfile = models.ForeignKey(RawFile)
     filename = models.CharField(max_length=200)
-    # filetype raw==produced and has a rawfile entry, mzml etc is derivate
-    filetype = models.CharField(max_length=20)
     servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
     md5 = models.CharField(max_length=32)
     checked = models.BooleanField()
+    filetype = models.ForeignKey(StoredFileType)
 
     def __str__(self):
         return self.rawfile.name

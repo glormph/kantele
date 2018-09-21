@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
-                              SwestoreBackedupFile)
+                              SwestoreBackedupFile, StoredFileType)
 from rawstatus import jobs as rsjobs
 from analysis.models import (Analysis, LibraryFile, AnalysisResultFile)
 from datasets import views as dsviews
@@ -22,7 +22,7 @@ from datetime import datetime
 def show_files(request):
     files = []
     for sfn in StoredFile.objects.filter(
-            filetype='raw', checked=False).select_related('rawfile'):
+            filetype=settings.RAW_SFGROUP_ID, checked=False).select_related('rawfile'):
         fn = sfn.rawfile
         files.append({'name': fn.name, 'prod': fn.producer.name,
                       'date': fn.date, 'backup': False,
@@ -136,11 +136,15 @@ def file_transferred(request):
             return JsonResponse({'fn_id': request.POST['fn_id'],
                                  'state': 'error'})
         try:
+            ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[ftype]
+        except KeyError:
+            return HttpResponseForbidden('File type does not exist')
+        try:
             file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
-                                                      filetype=ftype)
+                                                      filetype_id=ftypeid)
         except StoredFile.DoesNotExist:
             print('New transfer registered, fn_id {}'.format(fn_id))
-            file_transferred = StoredFile(rawfile_id=fn_id, filetype=ftype,
+            file_transferred = StoredFile(rawfile_id=fn_id, filetype_id=ftypeid,
                                           servershare=tmpshare, path='',
                                           filename=fname, md5='', checked=False)
             file_transferred.save()
@@ -171,8 +175,12 @@ def check_md5_success(request):
         return HttpResponseForbidden()
     print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype))
     try:
+        ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[ftype]
+    except KeyError:
+        return HttpResponseForbidden('File type does not exist')
+    try:
         file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
-                                              filetype=ftype)
+                                              filetype_id=ftypeid)
     except StoredFile.DoesNotExist:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
     file_registered = file_transferred.rawfile
@@ -330,11 +338,11 @@ def download_px_project(request):
                                       fn['fileSize'], date, {'claimed': True})
         raw_ids.append(rawfn['file_id'])
         if not rawfn['stored']:
-            sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype='raw',
+            sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=settings.RAW_SFGROUP_ID,
                              servershare=tmpshare, path='', 
                              filename=filename, md5='', checked=False)
             sfn.save()
     rsjob = jobutil.create_dataset_job(
         'download_px_data', dset.id, request.POST['px_acc'], raw_ids,
         settings.TMPSHARENAME)
-    return JsonResponse()
+    return HttpResponse()
