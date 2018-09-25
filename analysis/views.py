@@ -50,15 +50,16 @@ def get_datasets(request):
         rawfile__datasetrawfile__dataset_id__in=dsids)
     nrstoredfiles, sfinfo = hv.get_nr_raw_mzml_files(files, info)
     response = {'isoquants': [], 'error': False, 'errmsg': []}
-    if sfinfo['mzmlable']:
-        response['error'] = True
-        response['errmsg'].append('Need to create mzML files first')
+    # FIXME default to refined mzmls if exist, now we enforce if exist for simplicity, make optional
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
     for dsid, dsdetails in dsetinfo.items():
         dset = dsdetails.pop('dbentry')
         dsdetails['filesaresets'] = False
         dsdetails.update({'details': hv.fetch_dset_details(dset)})
+        if dsdetails['details']['mzmlable'] or dsdetails['details']['refinable'] in ['blocked', 'partly']:
+            response['error'] = True
+            response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
         dsdetails['model'] = {'set': False}
         try:
             dsdetails['details']['qtype'] = dset.quantdataset.quanttype.name
@@ -66,6 +67,12 @@ def get_datasets(request):
             response['error'] = True
             response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
         else:
+            dsfiles = files.filter(rawfile__datasetrawfile__dataset_id=dsid)
+            refineddsfiles = dsfiles.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID)
+            if refineddsfiles.count():
+                dsfiles = refineddsfiles
+            else:
+                dsfiles = dsfiles.filter(filetype_id=settings.MZML_SFGROUP_ID)
             if 'lex' in dset.quantdataset.quanttype.name:
                 dsdetails['details']['channels'] = {
                     ch.channel.channel.name: ch.sample for ch in
@@ -73,10 +80,10 @@ def get_datasets(request):
                         'channel__channel').filter(dataset_id=dsid)}
                 dsdetails['model']['denoms'] = {
                     x: False for x in dsdetails['details']['channels']}
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''} for x in files.filter(filetype_id=settings.MZML_SFGROUP_ID, rawfile__datasetrawfile__dataset_id=dsid)]
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''} for x in dsfiles]
             else:
                 dsdetails['details']['channels'] = {}
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.sample} for x in files.filter(filetype_id=settings.MZML_SFGROUP_ID).select_related('rawfile__datasetrawfile__quantsamplefile')]
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.sample} for x in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile')]
                 [x.update({'setname': x['sample']}) for x in dsdetails['files']]
     # FIXME labelfree quantsamplefile without sample prep error msg
     response['dsets'] = dsetinfo

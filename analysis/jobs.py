@@ -84,9 +84,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
 
 def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):
     # FIXME setnames will be for files, already given an assoc_id
-    return filemodels.StoredFile.objects.select_related(
-        'rawfile__datasetrawfile__dataset__runname', 'filetype').filter(
-        rawfile__datasetrawfile__dataset__id__in=dset_ids, filetype__filetype='mzml')
+    return filemodels.StoredFile.objects.filter(pk__in=fractions.keys())
 
 
 def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs, *dset_mzmls):

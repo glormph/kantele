@@ -294,14 +294,19 @@ def get_dset_info(request, dataset_id):
 
 def get_nr_raw_mzml_files(files, info):
     storedfiles = {'raw': files.filter(filetype_id=settings.RAW_SFGROUP_ID).count(),
-                   'mzML': files.filter(filetype__name='raw_mzml', checked=True).count(),
-                   'refined_mzML': files.filter(filetype__name='refined_mzml', checked=True).count()}
+                   'mzML': files.filter(filetype_id=settings.MZML_SFGROUP_ID, checked=True).count(),
+                   'refined_mzML': files.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True).count()}
+    info.update({'refinable': False, 'mzmlable': 'ready'})
     if storedfiles['mzML'] == storedfiles['raw']:
         info['mzmlable'] = False
+        if 'refine_mzmls' in [x['name'] for x in info['jobs']]:
+            info['refinable'] = 'blocked'
+        elif not storedfiles['refined_mzML']:
+            info['refinable'] = 'ready'
+        elif storedfiles['refined_mzML'] != storedfiles['raw']:
+            info['refinable'] = 'partly'
     elif 'convert_dataset_mzml' in [x['name'] for x in info['jobs']]:
         info['mzmlable'] = 'blocked'
-    else:
-        info['mzmlable'] = 'ready'
     return storedfiles, info
 
 

@@ -85,9 +85,10 @@
 			</div>
 			<div class="subtitle is-6">
 				<span>{{ ds.details.qtype }} </span>
-				<span>// {{ ds.details.nrrawfiles }} rawfiles</span>
+		                <span v-for="(nrfiles, ftype) in ds.details.nrstoredfiles"> // {{ nrfiles }} {{ ftype }} files </span>
 				<span>// {{ ds.details.instruments.join(', ') }} </span>
 			</div>
+			<div v-if="ds.details.nrstoredfiles.refined_mzML" class="subtitle is-6"><strong>Enforcing use of refined mzML(s)</strong></div>
 			</div>
 			<div class="column">
 				<div class="field" v-show="ds.hr">
