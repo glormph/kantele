@@ -64,7 +64,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
-    params, rundir, gitwfdir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls)
+    params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3])
@@ -74,12 +74,12 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
                     mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
             mzstr = '{}\n'.format(mzstr)
             fp.write(mzstr)
-    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', runname])
-    outfiles = execute_normal_nf(run, params, rundir, gitwfdir)
+    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', run['runname']])
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id)
     postdata.update({'state': 'ok'})
     outfiles_db = register_resultfiles(outfiles)
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
-    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, analysis_id, fileurl, self.request.id)
+    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
     check_rawfile_resultfiles_match(fn_ids)
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
@@ -89,29 +89,31 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
 def refine_mzmls(self, run, params, mzmls, stagefiles):
     print('Got message to run mzRefine workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
-    postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
+    postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'raw_ids': [x[3] for x in mzmls]}
-    params, rundir, gitwfdir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls)
+    params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
+        # FIXME does not write to mzmldef!
         for fn in mzmls:
             # FIXME not have set, etc, pass rawfnid here!
             mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, fn[2]), refined_sfid=fn[3])
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
-    outfiles = execute_normal_nf(run, params, rundir, gitwfdir)
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id)
     outfiles_db = {fn: {'file_id': os.path.basename(fn).split('___')[0], 'md5': calc_md5(fn)}
                    for fn in outfiles}
     postdata.update({'state': 'ok'})
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzrefinefile'))
-    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, analysis_id, fileurl, self.request.id)
+    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
 
-def prepare_nextflow_run(run, runname, taskid, stagefiles, mzmls):
+def prepare_nextflow_run(run, taskid, stagefiles, mzmls, params):
     log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
     runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
+    run['runname'] = runname
     rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
     gitwfdir = os.path.join(rundir, 'gitwfs')
     if not os.path.exists(rundir):
@@ -129,10 +131,10 @@ def prepare_nextflow_run(run, runname, taskid, stagefiles, mzmls):
     except:
         taskfail_update_db(taskid, 'Could not stage files for analysis')
         raise
-    return params, rundir, gitwfdir
+    return params, rundir, gitwfdir, stagedir
 
 
-def execute_normal_nf(run, params, rundir, gitwfdir):
+def execute_normal_nf(run, params, rundir, gitwfdir, taskid):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     try:
         run_nextflow(run, params, rundir, gitwfdir)
@@ -157,7 +159,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
     mzmls = {}
-    params, rundir, gitwfdir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls)
+    params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
     try:
         run_nextflow(run, params, rundir, gitwfdir, profile='qc')
     except subprocess.CalledProcessError:
@@ -188,11 +190,13 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     postdata.update({'state': 'ok', 'plots': qcreport})
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
     outfiles_db = register_resultfiles(qcfiles.values())
-    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, analysis_id, fileurl, self.request.id)
+    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
     check_rawfile_resultfiles_match(fn_ids)
-    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
+    with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
+        nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
                  ' cleaning. NF log: \n{}'.format(nflog))
+    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
 
@@ -206,8 +210,6 @@ def check_md5(fn_id):
 
 def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
-    log_analysis(analysis_id, 'Workflow finished, transferring result and'
-                 ' cleaning. NF log: \n{}'.format(nflog))
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
     postdata.update({'log': '[{}] - Analysis completed.'.format(
         datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')),

@@ -189,13 +189,14 @@ def mzrefine_file_done(request):
     if ('client_id' not in data or
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
-    sfile = StoredFile.objects.get(pk=data['fn_id'])
+    sfile = StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=data['fn_id'])
     sfile.path = data['outdir']
     sfile.filename = data['filename']
     sfile.md5 = data['md5']
     sfile.checked = True
     sfile.save()
-    create_file_job('move_single_file', sfile.id, newname=sfile.filename.split('___')[1])
+    create_file_job('move_single_file', sfile.id, sfile.rawfile.datasetrawfile.dataset.storage_loc,
+                    newname=sfile.filename.split('___')[1])
     return HttpResponse()
 
 

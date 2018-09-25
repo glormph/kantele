@@ -16,6 +16,9 @@ from jobs.post import create_db_task
 # run should check if already ran with same commit/analysis
 
 
+def refine_mzmls_getfiles(dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs):
+    return filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID)
+
 
 def refine_mzmls(job_id, dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs, *dset_mzmls):
     analysis = models.Analysis.objects.get(pk=analysis_id)
@@ -26,7 +29,7 @@ def refine_mzmls(job_id, dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs, *
         pk__in=dset_mzmls)
     analysisshare = filemodels.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
     mzmls = [(x.servershare.name, x.path, x.filename, 
-              get_or_create_mzmlentry(mzmlfn, settings.REFINEDMZML_SFGROUP_ID).id, analysisshare)
+              get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, analysisshare).id, analysisshare)
              for x in mzmlfiles]
     allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
     if len(allinstr) > 1:
@@ -43,10 +46,10 @@ def refine_mzmls(job_id, dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs, *
            'name': analysis.name,
            'outdir': analysis.user.username,
            }
-    res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles)
+    res = tasks.refine_mzmls.delay(run, params, mzmls, stagefiles)
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
-    create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)
+    create_db_task(res.id, job_id, run, params, mzmls, stagefiles)
 
 
 def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
@@ -74,6 +77,8 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
            }
     views.create_nf_search_entries(analysis, wf.id, nfwf.id, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
+    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
+    analysis.save()
     create_db_task(res.id, job_id, run, params, stagefiles)
 
 

@@ -74,7 +74,6 @@ QC_ORGANISM = os.environ.get('QC_ORGANISM')
 INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
 INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
 INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
-QC_WORKFLOW_ID = os.environ.get('QC_WFID')
 
 # nextflow
 LIBRARY_FILE_PATH = 'databases'
@@ -82,6 +81,8 @@ ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE')
 NEXTFLOW_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 LONGQC_NXF_WF_ID = os.environ.get('LONGQC_WFID')
 LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
+MZREFINER_NXF_WF_ID = os.environ.get('REFINE_MZML_WFID')
+MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
 
 # django
 ALLOWED_HOSTS = [os.environ.get('KANTELEHOST')]

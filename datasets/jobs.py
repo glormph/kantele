@@ -107,7 +107,7 @@ def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
                                       filetype_id=group_id)
     except StoredFile.DoesNotExist:
         mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=settings.MZML_SFGROUP_ID,
+        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=group_id,
                           path=fn.rawfile.datasetrawfile.dataset.storage_loc,
                           servershare_id=servershare_id,
                           filename=mzmlfilename, md5='', checked=False)

@@ -37,12 +37,14 @@ def create_swestore_backup(job_id, sf_id, md5):
     print('Swestore task queued')
 
 
-def move_single_file(job_id, fn_id, dst_path, newname=False):
+def move_single_file(job_id, fn_id, dst_path, oldname=False, newname=False):
     fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
         pk=fn_id)
-    tid = dstasks.move_file_storage.delay(fn.rawfile.name, fn.servershare.name,
+    if not oldname:
+        oldname = fn.rawfile.name
+    tid = dstasks.move_file_storage.delay(oldname, fn.servershare.name,
                                           fn.path, dst_path, fn.id, newname).id
-    create_db_task(tid, job_id, md5, fn.rawfile.name, fn.servershare.name,
+    create_db_task(tid, job_id, fn.rawfile.name, fn.servershare.name,
                    fn.path, dst_path, fn.id, newname)
 
 

@@ -20,7 +20,6 @@ urlpatterns = [
     url(r'^set/mzmldone/$', views.scp_mzml, name='scpmzml'),
     url(r'^set/longqc/$', views.store_longitudinal_qc, name='storelongqc'),
     url(r'^set/analysis/$', views.analysis_run_done, name='analysisdone'),
-    url(r'^set/refined/$', views.mzrefine_run_done, name='mzrefinedone'),
     url(r'^set/refinedfile/$', views.mzrefine_file_done, name='mzrefinefile'),
     url(r'^set/analysisfiles/$', views.store_analysis_result, name='analysisfile'),
 ]

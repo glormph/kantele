@@ -68,6 +68,9 @@ jobmap = {'move_files_storage':
           'run_ipaw_nextflow':
           {'type': Jobtypes.PROCESS, 'func': anjobs.run_nextflow,
            'getfns': anjobs.run_nextflow_getfiles, 'retry': True},
+          'refine_mzmls':
+          {'type': Jobtypes.PROCESS, 'func': anjobs.refine_mzmls,
+           'getfns': anjobs.refine_mzmls_getfiles, 'retry': True},
           }
 
 
