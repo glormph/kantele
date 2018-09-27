@@ -429,6 +429,19 @@ def save_new_dataset(data, project, experiment, runname, user_id):
 
 
 @login_required
+def set_deleted_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if data['dataset_id']:
+        user_denied = check_save_permission(data['dataset_id'], request.user)
+        if user_denied:
+            return user_denied
+        models.Dataset.objects.filter(pk=data['dataset_id']).update(deleted=True)
+        return HttpResponse()
+    else:
+        return HttpResponseNotFound()
+
+
+@login_required
 def save_dataset(request):
     data = json.loads(request.body.decode('utf-8'))
     if data['dataset_id']:

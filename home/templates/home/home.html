@@ -11,9 +11,12 @@
 		template: `
 			<!-- here starts datasets list box, component or container? -->
 			<div class="content is-small" >
-					<input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to search datasets">
+					<input type="checkbox" v-model="searchdeleted">Search deleted datasets
+<input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to search datasets">
                         <a class="button" v-on:click="analyzeDatasets" v-show="selectedDsets.length">Analyze datasets</a>
+                        <a class="button" v-on:click="deleteDataset" v-show="selectedDsets.length">Delete datasets</a>
                         <a class="button" disabled v-show="!selectedDsets.length">Analyze datasets</a>
+                        <a class="button" disabled v-show="!selectedDsets.length">Delete datasets</a>
 			<table class="table">
 				<thead>
 					<tr>
@@ -54,10 +57,10 @@
                                                                <i class="fa fa-check has-text-success"></i>
 		</span></td>
 		<td><span v-for="state in ds.jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span></td>
-						<td>{{ ds.proj }}</td>
-						<td>{{ ds.exp }}</td>
-						<td>{{ ds.run }}</td>
-						<td>{{ ds.usr }}</td>
+						<td v-for="name in [ds.proj, ds.exp, ds.run, ds.usr]">
+							<del v-if="ds.deleted">{{ name }}</del>
+							<span v-if="!ds.deleted">{{ name }}</span>
+                                                </td>
 						<td>
 							<span v-if="!ds.prefrac">{{ ds.dtype }}</span>
 							<span v-else-if="ds.hr">{{ ds.hr }}</span>
@@ -106,6 +109,7 @@
 				datasets: {},
 				findDsQuery: '',
 				allSelector: false,
+				searchdeleted: false,
 				selectedDsets: [],
 		{% endverbatim %}
                                 initialDsids: [{{ dsids|join:',' }} ],
@@ -129,6 +133,19 @@
 			},
 			analyzeDatasets: function() {
 					window.open(`/analysis/init?dsids=${this.selectedDsets.join(',')}`, '_blank');
+			},
+			deleteDataset: function() {
+				for (dset_id of this.selectedDsets) {
+					this.$http.post(`datasets/delete/`, {'dataset_id': dset_id})
+					.then(response => {
+						return response
+					}, response => {
+						console.log(response);
+						// error code
+					}).then(result => {
+						this.datasets[dset_id].deleted = true;
+					})
+				}
 			},
                         retryJob: function(job_id) {
 				this.$http.post(`jobs/retry/${job_id}`)
@@ -156,7 +173,7 @@
 			},
 			findDatasets: function() {
 				this.$http.get('/find/datasets/',
-					{params: {q: this.findDsQuery.split(' ').join(',') }})
+					{params: {deleted: this.searchdeleted, q: this.findDsQuery.split(' ').join(',') }})
 				.then(response => {
 					return response.json()
 				}, response => {
