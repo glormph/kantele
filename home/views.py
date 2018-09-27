@@ -237,20 +237,24 @@ def get_analysis_info(request, nfs_id):
         logentry = [x for y in json.loads(nfs.analysis.log) for x in y.split('\n')][-10:]
     linkedfiles = [[x.sfile.filename, x.id] for x in 
                    av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
-    return JsonResponse({'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
-                                            'retry': jj.is_job_retryable(nfs.job), 'id': nfs.job.id,
-                                            'time': nfs.job.timestamp}},
-                         'wf': {'fn': nfs.nfworkflow.filename, 
-                                'commit': nfs.nfworkflow.commit,
-                                'repo': nfs.nfworkflow.nfworkflow.repo},
-                         'proj': [{'name': x.name, 'id': x.id} for x in projs],
-                         'dsets': [x.id for x in dsets],
-                         'quants': list({x.quantdataset.quanttype.name for x in dsets}),
-                         'nrfiles': fjobs.count(),
-                         'storage_locs': [{'server': x.servershare.name, 'path': x.path}
-                                          for x in storeloc.values()],
-                         'log': logentry, 'servedfiles': linkedfiles,
-                        })
+    resp = {'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
+                                'retry': jj.is_job_retryable(nfs.job), 'id': nfs.job.id,
+                                'time': nfs.job.timestamp}},
+             'wf': {'fn': nfs.nfworkflow.filename, 
+                    'commit': nfs.nfworkflow.commit,
+                    'repo': nfs.nfworkflow.nfworkflow.repo},
+             'proj': [{'name': x.name, 'id': x.id} for x in projs],
+             'dsets': [x.id for x in dsets],
+             'nrfiles': fjobs.count(),
+             'storage_locs': [{'server': x.servershare.name, 'path': x.path}
+                              for x in storeloc.values()],
+             'log': logentry, 'servedfiles': linkedfiles,
+            }
+    try:
+        resp['quants'] = list({x.quantdataset.quanttype.name for x in dsets})
+    except dsmodels.QuantDataset.DoesNotExist:
+        pass
+    return JsonResponse(resp)
 
 
 @login_required
@@ -322,6 +326,11 @@ def fetch_dset_details(dset):
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
     info['nrrawfiles'] = raws.count()
     info['storage_loc'] = dset.storage_loc
+    try:
+        info['qtype'] = {'name': dset.quantdataset.quanttype.name, 
+                         'short': dset.quantdataset.quanttype.shortname}
+    except dsmodels.QuantDataset.DoesNotExist:
+        info['qtype'] = False
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(

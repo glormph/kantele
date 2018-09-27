@@ -570,7 +570,7 @@
 			<h5 class="subtitle is-5 has-text-weight-bold">Input data</h5>
 			<div>Workflow version commit <a target="_blank" v-bind:href="wfrepo">{{ details.wf.commit.slice(0,8) }}...</a></div>
  			<div><a v-bind:href="'?tab=datasets&dsids='+details.dsets.join(',')" target="_blank">{{ details.dsets.length }} datasets</a> from project(s) <span v-for="proj in details.proj">{{ proj.name }} </span></div>
- 			<div>Quant type: {{ details.quants.join(', ') }}</div>
+ 			<div v-if="details.quants">Quant type: {{ details.quants.join(', ') }}</div>
  			<div>{{ details.nrfiles }} rawfiles analysed</div>
                         </section>
 		</td>
