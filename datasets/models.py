@@ -15,6 +15,7 @@ class Project(models.Model):
     name = models.CharField(max_length=100)
     pi = models.ForeignKey(PrincipalInvestigator)
     corefac = models.BooleanField()
+    active = models.BooleanField(default=True)
 
 
 class Experiment(models.Model):
@@ -60,6 +61,8 @@ class Dataset(models.Model):
     runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
     storage_loc = models.TextField(max_length=200, unique=True)
+    deleted = models.BooleanField(default=False)
+    purged = models.BooleanField(default=False)
 
 
 class DatasetComponentState(models.Model):

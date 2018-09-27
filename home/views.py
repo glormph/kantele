@@ -60,7 +60,8 @@ def find_datasets(request):
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__start=term)
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__end=term)
         query &= subquery
-    dbdsets = dsmodels.Dataset.objects.filter(query)
+    showdeleted = False  # TODO make check box
+    dbdsets = dsmodels.Dataset.objects.filter(query, deleted=showdeleted)
     return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
 
 
@@ -110,7 +111,7 @@ def show_datasets(request):
         dbdsets = dsmodels.Dataset.objects.filter(pk__in=dsids)
     else:
         # last month datasets of a user
-        dbdsets = dsmodels.Dataset.objects.filter(user_id=request.user.id,
+        dbdsets = dsmodels.Dataset.objects.filter(deleted=False, user_id=request.user.id,
                                                   date__gt=datetime.today() - timedelta(30))
     return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
 
@@ -343,5 +344,6 @@ def fetch_dset_details(dset):
 
 @login_required
 def create_mzmls(request, dataset_id):
-    jj.create_dataset_job('convert_dataset_mzml', dataset_id)
+    if models.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
+        jj.create_dataset_job('convert_dataset_mzml', dataset_id)
     return HttpResponse()

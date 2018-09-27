@@ -32,7 +32,7 @@ def new_dataset(request):
 @login_required
 def show_dataset(request, dataset_id):
     try:
-        dset = models.Dataset.objects.filter(pk=dataset_id).select_related(
+        dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related(
             'runname__experiment__project').get()
     except models.Dataset.DoesNotExist:
         return HttpResponseNotFound()
@@ -46,13 +46,16 @@ def show_dataset(request, dataset_id):
 def dataset_project(request, dataset_id):
     response_json = empty_dataset_proj_json()
     if dataset_id:
-        dset = models.Dataset.objects.filter(pk=dataset_id).select_related(
-            'runname__experiment__project', 'datatype',
-            'prefractionationdataset__prefractionation',
-            'prefractionationdataset__hiriefdataset',
-            'prefractionationdataset__prefractionationfractionamount',
-            'prefractionationdataset__prefractionationlength'
-        ).get()
+        try:
+            dset = models.Dataset.objects.select_related(
+                'runname__experiment__project', 'datatype',
+                'prefractionationdataset__prefractionation',
+                'prefractionationdataset__hiriefdataset',
+                'prefractionationdataset__prefractionationfractionamount',
+                'prefractionationdataset__prefractionationlength'
+            ).filter(purged=False, pk=dataset_id).get()
+        except models.Dataset.DoesNotExist:
+            return HttpResponseNotFound()
         species = models.DatasetSpecies.objects.filter(
             dataset_id=dset.id).select_related('species')
         components = models.DatatypeComponent.objects.filter(
@@ -73,6 +76,8 @@ def dataset_project(request, dataset_id):
 def dataset_files(request, dataset_id):
     response_json = empty_files_json()
     if dataset_id:
+        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
+            return HttpResponseNotFound()
         response_json.update(
             {'datasetAssociatedFiles':
              {'id_{}'.format(x.rawfile_id):
@@ -89,6 +94,8 @@ def dataset_files(request, dataset_id):
 def dataset_acquisition(request, dataset_id):
     response_json = empty_acquisition_json()
     if dataset_id:
+        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
+            return HttpResponseNotFound()
         try:
             response_json.update({'operator_id':
                                   models.OperatorDataset.objects.get(
@@ -109,6 +116,8 @@ def dataset_acquisition(request, dataset_id):
 def dataset_sampleprep(request, dataset_id):
     response_json = empty_sampleprep_json()
     if dataset_id:
+        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
+            return HttpResponseNotFound()
         try:
             qtype = models.QuantDataset.objects.filter(
                 dataset_id=dataset_id).select_related('quanttype').get()
@@ -148,6 +157,8 @@ def dataset_sampleprep(request, dataset_id):
 @login_required
 def dataset_componentstates(request, dataset_id):
     if dataset_id:
+        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
+            return HttpResponseNotFound()
         return JsonResponse({
             '{}_state'.format(x.dtcomp.component.name): x.state for x in
             models.DatasetComponentState.objects.filter(
@@ -324,9 +335,11 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
 
 
 def check_ownership(user, dset):
-    if dset.user_id == user.id or user.is_staff:
+    if dset.deleted:
+        return False
+    elif dset.user_id == user.id or user.is_staff:
         return True
-    if not dset.runname.experiment.project.corefac:
+    elif not dset.runname.experiment.project.corefac:
         return False
     try:
         cfmodels.CorefacUser.objects.get(user_id=user.id)
@@ -337,7 +350,7 @@ def check_ownership(user, dset):
 
 def check_save_permission(dset_id, logged_in_user):
     try:
-        dset = models.Dataset.objects.filter(pk=dset_id).select_related(
+        dset = models.Dataset.objects.filter(purged=False, pk=dset_id).select_related(
             'runname__experiment__project').get()
     except models.Dataset.DoesNotExist:
         return HttpResponseNotFound()
@@ -424,6 +437,8 @@ def save_dataset(request):
             return user_denied
         print('Updating')
         return update_dataset(data)
+    else:
+        return HttpResponseNotFound()
     if 'newprojectname' in data:
         project = newproject_save(data)
     else:
