@@ -39,8 +39,7 @@ def get_allwfs(request):
 @login_required
 def get_datasets(request):
     dsids = request.GET['dsids'].split(',')
-    # FIXME quanttype not exist --> error! when sample prep is not filled in
-    # Or do not allow selection of those in prev view
+    response = {'isoquants': [], 'error': False, 'errmsg': []}
     dsjobs = rm.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
         storedfile__rawfile__datasetrawfile__dataset_id__in=dsids).select_related('job')
     info = {'jobs': [unijob for unijob in
@@ -49,9 +48,12 @@ def get_datasets(request):
     files = rm.StoredFile.objects.select_related('rawfile').filter(
         rawfile__datasetrawfile__dataset_id__in=dsids)
     nrstoredfiles, sfinfo = hv.get_nr_raw_mzml_files(files, info)
-    response = {'isoquants': [], 'error': False, 'errmsg': []}
     # FIXME default to refined mzmls if exist, now we enforce if exist for simplicity, make optional
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
+    deleted = dbdsets.filter(deleted=True)
+    if deleted.count():
+        response['error'] = True
+        response['errmsg'].append('Deleted datasets can not be analysed')
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
     for dsid, dsdetails in dsetinfo.items():
         dset = dsdetails.pop('dbentry')
@@ -145,6 +147,8 @@ def start_analysis(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     req = json.loads(request.body.decode('utf-8'))
+    if dm.Dataset.objects.filter(pk__in=req['dsids'], deleted=True):
+    	return JsonResponse({'state': 'error', 'msg': 'Deleted datasets cannot be analyzed'})
     analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
     analysis.save()
     strips = {}
