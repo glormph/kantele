@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 
 from jobs.models import Job
 
@@ -50,6 +51,20 @@ class StoredFile(models.Model):
 
     def __str__(self):
         return self.rawfile.name
+
+
+class UserFileUpload(models.Model):
+    user = models.ForeignKey(User)
+    filetype = models.ForeignKey(StoredFileType)
+    key = models.CharField(max_length=36) # UUID keys
+    timestamp = models.DateTimeField(auto_now=True)
+    expires = models.DateTimeField()
+
+
+class UserFile(models.Model):
+    sfile = models.ForeignKey(StoredFile)
+    description = models.CharField(max_length=100)
+    upload = models.ForeignKey(UserFileUpload)
 
 
 class SwestoreBackedupFile(models.Model):
