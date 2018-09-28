@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
                          HttpResponseForbidden)
 from django.db.utils import IntegrityError
+from django.utils import timezone
 
 from kantele import settings
 from datasets import models
@@ -398,7 +399,7 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     dtype = get_datatype(data['datatype_id'])
     prefrac = get_prefrac(data['prefrac_id'])
     qprot_id = get_quantprot_id()
-    dset = models.Dataset(user_id=user_id, date=datetime.now(),
+    dset = models.Dataset(user_id=user_id, date=timezone.now(),
                           runname_id=runname.id,
                           storage_loc=get_storage_location(
                               project, experiment, runname, qprot_id, hrf_id,

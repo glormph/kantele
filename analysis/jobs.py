@@ -2,6 +2,8 @@ from datetime import datetime
 import json
 import re
 
+from django.utils import timezone
+
 from kantele import settings
 from analysis import tasks, models, views
 from rawstatus import models as filemodels
@@ -47,7 +49,7 @@ def refine_mzmls(job_id, dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs, *
            'outdir': analysis.user.username,
            }
     res = tasks.refine_mzmls.delay(run, params, mzmls, stagefiles)
-    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
+    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
     create_db_task(res.id, job_id, run, params, mzmls, stagefiles)
 
@@ -77,7 +79,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
            }
     views.create_nf_search_entries(analysis, wf.id, nfwf.id, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
-    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
+    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
     create_db_task(res.id, job_id, run, params, stagefiles)
 
@@ -113,6 +115,6 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
            'outdir': analysis.user.username,
            }
     res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles)
-    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'))])
+    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
     create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)

@@ -2,6 +2,7 @@ from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponse, HttpResponseNotAllowed)
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.utils import timezone
 import os
 import requests
 from hashlib import md5
@@ -324,7 +325,7 @@ def download_px_project(request):
     # get or create dataset
     dset = dsviews.get_or_create_px_dset(request.POST['exp'], request.POST['px_acc'], request.POST['user_id'])
     # get or create raw/storedfiles
-    date = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M')
+    date = datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M')
     tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
     raw_ids = []
     extprod = Producer.objects.get(pk=settings.EXTERNAL_PRODUCER_ID)

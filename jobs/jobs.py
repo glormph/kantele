@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 from celery import states
+from django.utils import timezone
 
 from jobs.models import Job, Task
 from rawstatus.models import FileJob
@@ -78,7 +79,7 @@ def create_file_job(name, sf_id, *args, **kwargs):
     """MD5, backup, etc"""
     jobargs = [sf_id] + list(args)
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
-              timestamp=datetime.now(),
+              timestamp=timezone.now(),
               state=Jobstates.PENDING, args=json.dumps(jobargs),
               kwargs=json.dumps(kwargs))
     job.save()
@@ -97,7 +98,7 @@ def store_ds_job(name, prejob_args, **kwargs):
     sf_ids = [x.id for x in pjres]
     jobargs = prejob_args + sf_ids
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
-              timestamp=datetime.now(),
+              timestamp=timezone.now(),
               state=Jobstates.PENDING, args=json.dumps(jobargs),
               kwargs=json.dumps(kwargs))
     job.save()

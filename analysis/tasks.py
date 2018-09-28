@@ -9,6 +9,7 @@ from urllib.parse import urljoin
 from dulwich.porcelain import clone, reset, pull
 
 from django.urls import reverse
+from django.utils import timezone
 from celery import shared_task
 
 from jobs.post import update_db, taskfail_update_db
@@ -54,7 +55,7 @@ def stage_files(stagedir, stagefiles, params=False):
 
 def log_analysis(analysis_id, message):
     logurl = urljoin(settings.KANTELEHOST, reverse('analysis:appendlog'))
-    entry = '[{}] - {}'.format(datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'), message)
+    entry = '[{}] - {}'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'), message)
     update_db(logurl, json={'analysis_id': analysis_id, 'message': entry})
 
 
@@ -212,7 +213,7 @@ def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
     postdata.update({'log': '[{}] - Analysis completed.'.format(
-        datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')),
+        datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')),
                      'analysis_id': analysis_id})
     shutil.rmtree(rundir)
     shutil.rmtree(stagedir)
