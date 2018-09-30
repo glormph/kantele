@@ -3,14 +3,17 @@ from django.http import (JsonResponse, HttpResponseForbidden,
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from datetime import timedelta
 import os
+import json
 import requests
 from hashlib import md5
 from urllib.parse import urlsplit
 
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
-                              SwestoreBackedupFile, StoredFileType)
+                              SwestoreBackedupFile, StoredFileType, UserFile,
+                              UserFileUpload)
 from rawstatus import jobs as rsjobs
 from analysis.models import (Analysis, LibraryFile, AnalysisResultFile)
 from datasets import views as dsviews
@@ -59,10 +62,7 @@ def register_file(request):
     if request.method == 'POST':
         try:
             client_id = request.POST['client_id']
-            fn = request.POST['fn']
-            size = request.POST['size']
-            md5 = request.POST['md5']
-            filedate_raw = request.POST['date']
+            fn, size, md5, filedate_raw = get_registration_postdetails(request.POST)
         except KeyError as error:
             print('POST request to register_file with missing parameter, '
                   '{}'.format(error))
@@ -84,6 +84,48 @@ def register_file(request):
         return JsonResponse(response)
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
+
+
+def get_registration_postdetails(postdata):
+    return postdata['fn'], postdata['size'], postdata['md5'], postdata['date'],
+
+
+def register_userupload(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    try:
+        fn, size, md5, filedate_raw = get_registration_postdetails(request.POST)
+        desc = request.POST['description']
+    except KeyError as error:
+        print('POST request to register_file with missing parameter, '
+              '{}'.format(error))
+        return HttpResponseForbidden()
+    try:
+        file_date = datetime.strftime(
+            datetime.fromtimestamp(float(filedate_raw)), '%Y-%m-%d %H:%M')
+    except ValueError as error:
+        print('POST request to register_file with incorrect formatted '
+              'date parameter {}'.format(error))
+        return HttpResponseForbidden()
+    producer = Producer.objects.get(shortname='admin')
+    try:
+        upload = UserFileUpload.objects.get(token=request.POST['token'])
+    except (KeyError, UserFileUpload.DoesNotExist):
+        return HttpResponseForbidden()
+    if UserFile.objects.filter(upload=upload).count():
+        print('This token {} is already active for another upload'.format(request.POST['token']))
+        return HttpResponseForbidden()
+    response = get_or_create_rawfile(md5, fn, producer, size, file_date, {'claimed': True})
+    raw = RawFile.objects.get(pk=response['file_id'])
+    sfile = StoredFile(rawfile_id=response['file_id'], 
+                       filename='userfile_{}_{}'.format(raw.id, raw.name), md5='',
+                       checked=False, filetype=upload.filetype,
+                       path=settings.UPLOADDIR,
+                       servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
+    sfile.save()
+    ufile = UserFile(sfile=sfile, description=desc, upload=upload)
+    ufile.save()
+    return JsonResponse(response)
 
 
 def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
@@ -161,6 +203,36 @@ def file_transferred(request):
         return HttpResponseNotAllowed(permitted_methods=['POST'])
 
 
+def upload_userfile(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    try:
+        ufile = UserFile.objects.select_related('sfile__servershare', 'upload').get(
+            upload__token=request.POST['token'])
+    except (KeyError, UserFileUpload.DoesNotExist) as e:
+        print(e)
+        return HttpResponseForbidden()
+    else:
+        if ufile.upload.expires < timezone.now():
+            print('expired', ufile.upload.expires)
+            return HttpResponseForbidden()
+    # FIXME chekc if only one FILE
+    dstdir = os.path.join(settings.SHAREMAP[ufile.sfile.servershare.name], ufile.sfile.path) 
+    try:
+        os.makedirs(dstdir)
+    except FileExistsError:
+        pass
+    except Exception:
+        raise
+    dst = os.path.join(dstdir, ufile.sfile.filename)
+    tmpfp = request.FILES['file']
+    with open(dst, 'wb') as fp:
+        for chunk in tmpfp.chunks():
+            fp.write(chunk)
+    jobutil.create_file_job('get_md5', ufile.sfile.id)
+    return HttpResponse()
+
+
 def check_md5_success(request):
     if not request.method == 'GET':
         return HttpResponseNotAllowed(permitted_methods=['GET'])
@@ -180,18 +252,43 @@ def check_md5_success(request):
     except KeyError:
         return HttpResponseForbidden('File type does not exist')
     try:
-        file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
-                                              filetype_id=ftypeid)
+        file_transferred = StoredFile.objects.select_related('rawfile').get(
+            rawfile_id=fn_id, filetype_id=ftypeid)
     except StoredFile.DoesNotExist:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
+    else:
+        return do_md5_check(file_transferred, fn_id)
+
+
+def check_md5_success_userfile(request):
+    if not request.method == 'GET':
+        return HttpResponseNotAllowed(permitted_methods=['GET'])
+    try:
+        fn_id = request.GET['fn_id']
+        token = request.GET['token']
+    except KeyError:
+        return HttpResponseForbidden()
+    try:
+        upload = UserFileUpload.objects.get(token=request.GET['token'], finished=False)
+    except UserFileUpload.DoesNotExist:
+        return HttpResponseForbidden()
+    print('Transfer state requested for userfile fn_id {}'.format(fn_id))
+    resp = do_md5_check(upload.userfile.sfile)
+    if json.loads(resp.content)['md5_state']:
+        upload.finished = True
+        upload.save()
+    return resp
+
+
+def do_md5_check(file_transferred):
     file_registered = file_transferred.rawfile
     if not file_transferred.md5:
-        return JsonResponse({'fn_id': fn_id, 'md5_state': False})
+        return JsonResponse({'fn_id': file_registered.id, 'md5_state': False})
     elif file_registered.source_md5 == file_transferred.md5:
         if not file_transferred.checked:
             file_transferred.checked = True
             file_transferred.save()
-        if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and 
+        if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and
                 SwestoreBackedupFile.objects.filter(
                 storedfile_id=file_transferred.id).count() == 0):
             fn = file_transferred.filename
@@ -199,9 +296,9 @@ def check_md5_success(request):
                 singlefile_qc(file_transferred.rawfile, file_transferred)
             jobutil.create_file_job('create_swestore_backup',
                                     file_transferred.id, file_transferred.md5)
-        return JsonResponse({'fn_id': fn_id, 'md5_state': 'ok'})
+        return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
     else:
-        return JsonResponse({'fn_id': fn_id, 'md5_state': 'error'})
+        return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'error'})
 
 
 def singlefile_qc(rawfile, storedfile):

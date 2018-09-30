@@ -56,15 +56,16 @@ class StoredFile(models.Model):
 class UserFileUpload(models.Model):
     user = models.ForeignKey(User)
     filetype = models.ForeignKey(StoredFileType)
-    key = models.CharField(max_length=36) # UUID keys
+    token = models.CharField(max_length=36, unique=True) # UUID keys
     timestamp = models.DateTimeField(auto_now=True)
     expires = models.DateTimeField()
+    finished = models.BooleanField(default=False)
 
 
 class UserFile(models.Model):
-    sfile = models.ForeignKey(StoredFile)
+    sfile = models.OneToOneField(StoredFile)
     description = models.CharField(max_length=100)
-    upload = models.ForeignKey(UserFileUpload)
+    upload = models.OneToOneField(UserFileUpload)
 
 
 class SwestoreBackedupFile(models.Model):

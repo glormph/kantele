@@ -66,6 +66,7 @@ REFINEDMZML_SFGROUP_ID = os.environ.get('REFINED_SF_GROUP_ID')
 # external datasets
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')
+UPLOADDIR = 'uploadfiles'
 
 # qc datasets
 QC_USER_ID = os.environ.get('QC_USER_ID')
