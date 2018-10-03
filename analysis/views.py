@@ -102,10 +102,9 @@ def get_workflow(request):
     files = wf.workflowfileparam_set.select_related('param')
     fixedfiles = wf.workflowpredeffileparam_set.select_related('libfile__sfile')
     flags = params.filter(param__ptype='flag')
-    values = params.filter(param__ptype='value')
-    ftypes = files.values('param__filetype')
+    ftypes = files.values('param__filetype__name').distinct()
     libfiles = [x for x in am.LibraryFile.objects.select_related('sfile__filetype').filter(
-        sfile__filetype__filetype__in=Subquery(files.values('param__filetype')))]
+        sfile__filetype__in=Subquery(files.values('param__filetype')))]
     versions = [{'name': wfv.update, 'id': wfv.id, 'latest': False,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
                 am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id)][::-1]
@@ -114,7 +113,7 @@ def get_workflow(request):
         'wf': {
             'flags': {f.param.nfparam: f.param.name for f in flags},
             'files': [{'name': f.param.name, 'nf': f.param.nfparam,
-                       'ftype': f.param.filetype} for f in files],
+                       'ftype': f.param.filetype.name} for f in files],
             'fixedfiles': [{'name': f.param.name, 'nf': f.param.nfparam,
                             'fn': f.libfile.sfile.filename,
                             'id': f.libfile.sfile.id,
@@ -123,10 +122,10 @@ def get_workflow(request):
              'wftype': wf.shortname.name,
         },
         'versions': versions,
-        'files': {ft['param__filetype']: [{'id': x.sfile.id, 'desc': x.description,
+        'files': {ft['param__filetype__name']: [{'id': x.sfile.id, 'desc': x.description,
                                            'name': x.sfile.filename}
                                           for x in libfiles
-                                          if x.sfile.filetype.filetype == ft['param__filetype']]
+                                          if x.sfile.filetype.name == ft['param__filetype__name']]
                   for ft in ftypes}
     }
     return JsonResponse(resp)

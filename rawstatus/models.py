@@ -38,6 +38,9 @@ class StoredFileType(models.Model):
     name = models.CharField(max_length=100, unique=True) 
     filetype = models.CharField(max_length=20) # fasta, tabular, mzml, raw, analysisoutput
 
+    def __str__(self):
+        return self.name
+
 
 class StoredFile(models.Model):
     """Files transferred from instrument to storage"""

@@ -53,7 +53,7 @@ class LibraryFile(models.Model):
 class FileParam(models.Model):
     name = models.CharField(max_length=50)
     nfparam = models.CharField(max_length=50)
-    filetype = models.CharField(max_length=20)
+    filetype = models.ForeignKey(filemodels.StoredFileType)
 
     def __str__(self):
         return self.name
