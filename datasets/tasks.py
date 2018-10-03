@@ -59,12 +59,13 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
 
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
-def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, newname=False):
+def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=False, newname=False):
     src = os.path.join(config.SHAREMAP[srcshare], srcpath, fn)
-    if newname:
-        dst = os.path.join(config.STORAGESHARE, dstpath, newname)
-    else:
-        dst = os.path.join(config.STORAGESHARE, dstpath, fn)
+    if not dstshare:
+        dstshare = config.STORAGESHARENAME
+    if not newname:
+        newname = fn
+    dst = os.path.join(config.SHAREMAP[dstshare], dstpath, newname)
     print('Moving file {} to {}'.format(src, dst))
     dstdir = os.path.split(dst)[0]
     if not os.path.exists(dstdir):
@@ -85,7 +86,7 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, newname=False
     except Exception as e:
         taskfail_update_db(self.request.id)
         raise RuntimeError('Could not move file tot storage:', e)
-    postdata = {'fn_id': fn_id, 'servershare': config.STORAGESHARENAME,
+    postdata = {'fn_id': fn_id, 'servershare': dstshare,
                 'dst_path': dstpath, 'newname': os.path.basename(dst),
                 'client_id': config.APIKEY, 'task': self.request.id}
     url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
