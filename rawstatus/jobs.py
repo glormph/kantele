@@ -41,7 +41,7 @@ def move_single_file(job_id, fn_id, dst_path, oldname=False, dstshare=False, new
     fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
         pk=fn_id)
     if not oldname:
-        oldname = fn.rawfile.name
+        oldname = fn.filename
     tid = dstasks.move_file_storage.delay(oldname, fn.servershare.name,
                                           fn.path, dst_path, fn.id, dstshare=dstshare,
                                           newname=newname).id

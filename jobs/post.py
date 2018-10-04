@@ -43,8 +43,8 @@ def save_task_chain(taskchain, args, job_id):
         TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])
 
 
-def create_db_task(task_id, job_id, *args):
-    strargs = json.dumps(args)
+def create_db_task(task_id, job_id, *args, **kwargs):
+    strargs = json.dumps([args, kwargs])
     t = Task(asyncid=task_id, job_id=job_id, state=states.PENDING, args=strargs)
     t.save()
     return t

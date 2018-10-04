@@ -451,8 +451,6 @@ def save_dataset(request):
             return user_denied
         print('Updating')
         return update_dataset(data)
-    else:
-        return HttpResponseNotFound()
     if 'newprojectname' in data:
         project = newproject_save(data)
     else:

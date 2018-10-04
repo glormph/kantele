@@ -257,7 +257,7 @@ def check_md5_success(request):
     except StoredFile.DoesNotExist:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
     else:
-        return do_md5_check(file_transferred, fn_id)
+        return do_md5_check(file_transferred)
 
 
 def check_md5_success_userfile(request):

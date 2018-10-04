@@ -81,9 +81,9 @@ def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
                                               fn.id).id
             create_db_task(tid, job_id, fn.servershare.name, fullpath, fn.id)
         else:
-            tid = tasks.move_stored_file_tmp.delay(fn.rawfile.name, fn.path,
+            tid = tasks.move_stored_file_tmp.delay(fn.filename, fn.path,
                                                    fn.id).id
-            create_db_task(tid, job_id, fn.rawfile.name, fn.path, fn.id)
+            create_db_task(tid, job_id, fn.filename, fn.path, fn.id)
 
 
 def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue):
