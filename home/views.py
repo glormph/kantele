@@ -354,6 +354,23 @@ def fetch_dset_details(dset):
 
 @login_required
 def create_mzmls(request, dataset_id):
-    if models.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
+    if dsmodels.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
         jj.create_dataset_job('convert_dataset_mzml', dataset_id)
+    return HttpResponse()
+
+
+@login_required
+def refine_mzmls(request, dataset_id):
+    """Creates a job that runs the workflow with the latest version of the mzRefine containing NXF repo.
+    Jobs and analysis entries are not created for dsets with full set of refined mzmls (403)."""
+    # FIXME get analysis if it does exist, in case someone reruns?
+    if not filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dataset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__filetype_id=settings.REFINEDMZML_SFGROUP_ID).count():
+        return HttpResponseForbidden()
+    
+    dset = dsmodels.Dataset.objects.select_related('quantdataset__quanttype').get(pk=dataset_id)
+    analysis = anmodels.Analysis(user_id=request.user.id, name='refine_dataset_{}'.format(dataset_id))
+    analysis.save()
+    if dsmodels.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
+        jj.create_dataset_job('refine_mzmls', dataset_id, analysis.id, settings.MZREFINER_NXFWFV_ID, 
+                              settings.MZREFINER_FADB_ID, dset.quantdataset.quanttype.name)
     return HttpResponse()

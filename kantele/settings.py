@@ -82,7 +82,7 @@ ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE')
 NEXTFLOW_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 LONGQC_NXF_WF_ID = os.environ.get('LONGQC_WFID')
 LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
-MZREFINER_NXF_WF_ID = os.environ.get('REFINE_MZML_WFID')
+MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
 
 # django

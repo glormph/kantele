@@ -18,11 +18,12 @@ from jobs.post import create_db_task
 # run should check if already ran with same commit/analysis
 
 
-def refine_mzmls_getfiles(dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs):
-    return filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID)
+def refine_mzmls_getfiles(dset_id, analysis_id, wfv_id, dbfn_id, qtype):
+    """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
+    return filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__filetype_id=settings.REFINEDMZML_SFGROUP_ID)
 
 
-def refine_mzmls(job_id, dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs, *dset_mzmls):
+def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, *dset_mzmls):
     analysis = models.Analysis.objects.get(pk=analysis_id)
     nfwf = models.NextflowWfVersion.objects.get(pk=wfv_id)
     dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
@@ -38,8 +39,8 @@ def refine_mzmls(job_id, dset_id, analysis_id, wf_id, wfv_id, dbfn_id, inputs, *
         raise RuntimeError('Trying to run a refiner job on dataset containing more than one instrument is not possible')
     params = ['--instrument']
     params.append('velos' if 'elos' in allinstr else 'qe')
-    if inputs['qtype'] != 'labelfree':
-        params.extend(['--isobaric', inputs['qtype']])
+    if qtype != 'labelfree':
+        params.extend(['--isobaric', qtype])
     run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
            'analysis_id': analysis.id,
            'wf_commit': nfwf.commit,

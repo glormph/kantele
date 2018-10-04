@@ -14,4 +14,5 @@ urlpatterns = [
     url(r'^show/job/(?P<job_id>[0-9]+)$', views.get_job_info, name="jobinfo"),
     url(r'^refresh/job/(?P<job_id>[0-9]+)$', views.refresh_job, name="jobrefresh"),
     url(r'^createmzml/(?P<dataset_id>[0-9]+)$', views.create_mzmls),
+    url(r'^refinemzml/(?P<dataset_id>[0-9]+)$', views.refine_mzmls),
 ]

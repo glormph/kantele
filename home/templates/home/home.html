@@ -74,8 +74,10 @@
 		<div>{{ ds.details.nrrawfiles }} claimed files</div>
 		<div v-for="(nrfiles, ftype) in ds.details.nrstoredfiles">{{ nrfiles }} stored files of type {{ ftype }}</div>
 		{{ ds.details.nrbackupfiles }} backed up files
-		<div v-if="ds.details.mzmlable === 'ready'"><a class="button is-small is-primary" v-on:click="createMzml(ds.id)">Create (missing) mzMLs</a></div>
+		<div v-if="ds.details.mzmlable === 'ready'"><a class="button is-small is-primary" v-on:click="createRefineMzml('create', ds.id)">Create (missing) mzMLs</a></div>
 		<div v-if="ds.details.mzmlable === 'blocked'" ><a class="button is-small is-primary" disabled>mzML job running</a></div>
+		<div v-if="ds.details.refinable === 'ready'"><a class="button is-small is-primary" v-on:click="createRefineMzml('refine', ds.id)">Create refined mzMLs</a></div>
+		<div v-if="ds.details.refinable === 'blocked'"><a class="button is-small is-primary" disabled>Create refined mzMLs</a></div>
 		</td>
 		<td colspan="2">
 		<div v-for="(state, comp) in ds.details.compstates">
@@ -120,8 +122,19 @@
 			this.fetchDatasets(this.initialDsids);
 		},
 		methods: {
-			createMzml: function(ds_id) {
-				this.$http.get(`/createmzml/${ds_id}`)
+			createRefineMzml: function(func, ds_id) {
+				this.$http.get(`/${func}mzml/${ds_id}`)
+				.then(response => {
+					return response
+				}, response => {
+					console.log(response);
+					// error code
+				}).then(result => {
+					this.dsetInfo(ds_id);
+				})
+			},
+			refineMzml: function(ds_id) {
+				this.$http.get(`/refinemzml/${ds_id}`)
 				.then(response => {
 					return response
 				}, response => {
