@@ -60,8 +60,9 @@ def find_datasets(request):
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__start=term)
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__end=term)
         query &= subquery
-    showdeleted = request.GET['deleted'] == 'true'
-    dbdsets = dsmodels.Dataset.objects.filter(query, deleted=showdeleted)
+    dbdsets = dsmodels.Dataset.objects.filter(query)
+    if request.GET['deleted'] == 'false':
+        dbdsets = dbdsets.filter(deleted=False)
     return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
 
 
