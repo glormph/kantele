@@ -116,6 +116,61 @@ def show_datasets(request):
     return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
 
 
+@login_required
+def find_files(request):
+    """Loop through comma-separated q-param in GET, do a lot of OR queries on
+    datasets to find matches. String GET-derived q-params by AND."""
+    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+    query = Q(filename__icontains=searchterms[0])
+    query |= Q(rawfile__name__icontains=searchterms[0])
+    query |= Q(rawfile__producer__name__icontains=searchterms[0])
+    query |= Q(path__icontains=searchterms[0])
+    for term in searchterms[1:]:
+        subquery = Q(runname__name__icontains=term)
+        subquery |= Q(runname__experiment__name__icontains=term)
+        subquery |= Q(runname__experiment__project__name__icontains=term)
+        subquery |= Q(datatype__name__icontains=term)
+        subquery |= Q(user__username__icontains=term)
+        query &= subquery
+    dbfns = filemodels.StoredFile.objects.filter(query)
+    if request.GET['deleted'] == 'false':
+        dbfns = dbfns.filter(deleted=False)
+    return populate_files(dbfns)
+
+
+@login_required
+def show_files(request):
+    if 'fnids' in request.GET:
+        fnids = request.GET['fnids'].split(',')
+        dbfns = filemodels.StoredFile.objects.filter(pk__in=fnids)
+    else:
+        # last month files 
+        dbfns = filemodels.StoredFile.objects.filter(regdate__gt=datetime.today() - timedelta(30), deleted=False)
+    return populate_files(dbfns)
+
+
+def populate_files(dbfns):
+    popfiles = []
+    for fn in dbfns.select_related('rawfile__datasetrawfile__dataset__user', 'analysisresultfile__analysis', 'swestorebackedupfile', 'filetype'):
+        it = {'name': fn.filename,
+              'date': fn.regdate if fn.filetype != settings.RAW_SFGROUP_ID else fn.rawfile.date,
+              'stored': fn.checked,
+              'ftype': fn.filetype.name,
+             }
+        try:
+            it['backup'] = fn.swestorebackedupfile is not 0
+        except filemodels.SwestoreBackedupFile.DoesNotExist:
+            it['backup'] = False
+        if not fn.rawfile.claimed:
+            it['owner'] = fn.rawfile.producer.name
+        elif hasattr(fn.rawfile, 'datasetrawfile'):
+            it['owner'] = fn.rawfile.datasetrawfile.dataset.user.username
+        elif hasattr(fn, 'analysisresultfile'):
+            it['owner'] = fn.analysisresultfile.analysis.user.username
+        popfiles.append(it)
+    return JsonResponse({'files': popfiles})
+
+
 def get_ds_jobs(dbdsets):
     jobmap = {}
     for filejob in filemodels.FileJob.objects.select_related('job').exclude(

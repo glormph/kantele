@@ -7,6 +7,99 @@
 </section>
 <script>
 	{% verbatim %}
+	Vue.component('file-box', {
+		template: `
+			<div class="content is-small" >
+					<input type="checkbox" v-model="searchdeleted">Search deleted files 
+			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find analyses">
+			<table class="table">
+				<thead>
+					<tr>
+						<th><input type="checkbox" v-model="allSelector" v-on:click=""></th>
+						<th>File</th>
+						<th>Date</th>
+						<th>Stored</th>
+						<th>Backed up</th>
+						<th>Belongs</th>
+						<th>Type</th>
+					</tr>
+				</thead>
+				<tbody>
+				<template v-for="fn in files">
+<tr v-if="!fn.deleted">
+<td></td>
+<td>{{ fn.name }}</td>
+<td>{{ fn.date }}</td>
+<td>
+    <span class="has-icon" v-if="fn.stored"><i class="fa fa-check has-text-success"></i></span>
+    <span v-else>-</span>
+</td>
+<td>
+    <span class="has-icon" v-if="fn.backup"><i class="fa fa-check has-text-success"></i></span>
+    <span v-else>-</span>
+</td>
+<td>{{ fn.owner }}</td>
+<td>{{ fn.ftype }}</td>
+</tr>
+<tr v-else>
+<td></td>
+<td><s>{{ fn.name }}</s></td>
+<td><s>{{ fn.date }}</s></td>
+<td>-</td>
+<td>-</td>
+<td><s>{{ fn.owner }}</s></td>
+<td><s>{{ fn.ftype }}</s></td>
+</tr>
+				</template>
+				</tbody>
+			</table>
+</div>
+`,
+		data: function() {
+			return {
+				files: {},
+				findQuery: '',
+				allSelector: false,
+				searchdeleted: false,
+				searchUrl: '/find/files/',
+				selectedDsets: [],
+		{% endverbatim %}
+                                initialFnids: [{{ fnids|join:',' }} ],
+		{% verbatim %}
+				}
+		},
+		mounted: function() {
+			this.fetchFiles(this.initialFnids);
+		},
+                methods: {
+			findItems: function() {
+				this.$http.get(this.searchUrl,
+					{params: {deleted: this.searchdeleted, q: this.findQuery.split(' ').join(',') }})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.files = result['files'];
+					}
+				})
+			},
+    		fetchFiles: function(fnids) {
+    			url = '/show/files/'
+    			url = fnids.length ? url + `?fnids=${fnids.join(',')}` : url;
+    			this.$http.get(url)
+    			.then(response => {
+    				return response.json()
+    			}, response => {
+    			}).then(result => {
+    				for (key in result) {
+    					this.files= result['files'];
+    				}
+    			})
+    		},
+                },
+
+})
 	Vue.component('dataset-box', {
 		template: `
 			<!-- here starts datasets list box, component or container? -->
@@ -243,6 +336,9 @@
 					<li v-bind:class="tabclass_searches">
 						<a v-on:click="showSearches"><span>Analyses</span></a>
 					</li>
+					<li v-bind:class="tabclass_files">
+						<a v-on:click="showFiles"><span>Files</span></a>
+					</li>
 					<li v-bind:class="tabclass_jobs">
 						<a v-on:click="showJobs"><span>Jobs</span></a>
 					</li>
@@ -251,6 +347,7 @@
 		<dataset-box v-show="tabclass_datasets!==''"></dataset-box>
 		<search-box v-show="tabclass_searches!==''"></search-box>
 		<jobs-box v-show="tabclass_jobs!==''"></jobs-box>
+		<file-box v-show="tabclass_files!==''"></file-box>
 		</div>
 		`,
 		data: function() {
@@ -261,6 +358,7 @@
 				tabclass_projects: '',
 				tabclass_searches: '',
 				tabclass_jobs: '',
+				tabclass_files: '',
                                 initialTab: "{{ tab }}",
 				}
 		},
@@ -279,6 +377,9 @@
 			},
 			showJobs: function() {
 				this.activateTabClass('tabclass_jobs');
+			},
+			showFiles: function() {
+				this.activateTabClass('tabclass_files');
 			},
 			activateTabClass: function(tabname) {
 				tabs = ['tabclass_datasets', 'tabclass_projects', 'tabclass_searches', 'tabclass_jobs', 'tabclass_files'];

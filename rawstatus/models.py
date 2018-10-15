@@ -28,7 +28,6 @@ class RawFile(models.Model):
     size = models.BigIntegerField('size in bytes')
     date = models.DateTimeField('date/time created')
     claimed = models.BooleanField()
-    deleted = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -48,9 +47,11 @@ class StoredFile(models.Model):
     filename = models.CharField(max_length=200)
     servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
+    regdate = models.DateTimeField(auto_now=True)
     md5 = models.CharField(max_length=32)
     checked = models.BooleanField()
     filetype = models.ForeignKey(StoredFileType)
+    deleted = models.BooleanField(default=False)
 
     def __str__(self):
         return self.rawfile.name
@@ -75,6 +76,7 @@ class SwestoreBackedupFile(models.Model):
     storedfile = models.OneToOneField(StoredFile)
     swestore_path = models.CharField(max_length=200)
     success = models.BooleanField()
+    deleted = models.BooleanField(default=False)
 
 
 class FileJob(models.Model):
