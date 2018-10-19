@@ -428,5 +428,5 @@ def refine_mzmls(request, dataset_id):
     analysis.save()
     if dsmodels.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
         jj.create_dataset_job('refine_mzmls', dataset_id, analysis.id, settings.MZREFINER_NXFWFV_ID, 
-                              settings.MZREFINER_FADB_ID, dset.quantdataset.quanttype.name)
+                              settings.MZREFINER_FADB_ID, dset.quantdataset.quanttype.shortname)
     return HttpResponse()
