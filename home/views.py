@@ -127,11 +127,10 @@ def find_files(request):
     query |= Q(rawfile__producer__name__icontains=searchterms[0])
     query |= Q(path__icontains=searchterms[0])
     for term in searchterms[1:]:
-        subquery = Q(runname__name__icontains=term)
-        subquery |= Q(runname__experiment__name__icontains=term)
-        subquery |= Q(runname__experiment__project__name__icontains=term)
-        subquery |= Q(datatype__name__icontains=term)
-        subquery |= Q(user__username__icontains=term)
+        subquery = Q(filename__icontains=term)
+        subquery |= Q(rawfile__name__icontains=term)
+        subquery |= Q(rawfile__producer__name__icontains=term)
+        subquery |= Q(path__icontains=term)
         query &= subquery
     dbfns = filemodels.StoredFile.objects.filter(query)
     if request.GET['deleted'] == 'false':
