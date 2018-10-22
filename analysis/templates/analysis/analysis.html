@@ -148,6 +148,7 @@
 		<div class="select">
 		<select v-model="inputfiles[file.nf]">
 					<option disabled value="">Please select one</option>
+					<option value="">Do not use this parameter</option>
 					<template v-for="libfn in libfiles[file.ftype]">
 					<option v-bind:value="libfn.id">
 		{{ libfn.name }} -- {{ libfn.desc }} 
@@ -266,7 +267,9 @@
 					fns[file.nf] = file.id;
 				}
 				for (file of this.workflow.files) {
-					fns[file.nf] = this.inputfiles[file.nf];
+					if (this.inputfiles[file.nf]) {
+						fns[file.nf] = this.inputfiles[file.nf];
+					}
 				}
 				setnames = {};
 				for (dsid in this.dsets) {
@@ -282,13 +285,9 @@
 				}
  				fractions = {};
 				for (dsid in this.dsets) {
-					if (this.dsets[dsid].hr && this.matchedFr[dsid]) { 
-						for (fn of this.dsets[dsid].files) {
-							if (fn.fr) {
-								fractions[fn.id] = fn.fr;
-							}
-						}	
-					}
+					for (fn of this.dsets[dsid].files) {
+						fractions[fn.id] = fn.fr;
+					}	
 				}
 				this.runmsg.push(`${allsets.length} set(s) found`);
 				this.runmsg.push(`Using ${Object.keys(this.dsets).length} dataset(s)`);
@@ -390,7 +389,10 @@
 					if (match) {
 						fn.fr = match[1];
 						allfrs.add(match[1]);
-					}
+					} else {
+						fn.fr = 'NA';
+                                        }
+
 				}
 				this.matchedFr[ds.id] = allfrs.size;
 			},
