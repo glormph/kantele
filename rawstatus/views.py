@@ -6,6 +6,7 @@ from django.utils import timezone
 from datetime import timedelta
 import os
 import json
+from uuid import uuid4
 import requests
 from hashlib import md5
 from urllib.parse import urlsplit
@@ -88,6 +89,19 @@ def register_file(request):
 
 def get_registration_postdetails(postdata):
     return postdata['fn'], postdata['size'], postdata['md5'], postdata['date'],
+
+
+@login_required
+def request_userupload(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    token = str(uuid4())
+    expiry = timezone.now() + timedelta(0.33)  # 8h expiry for big files
+    ftype_id = StoredFileType.objects.get(name=request.POST['ftype']).id
+    uupload = UserFileUpload(token=token, user=request.user, expires=expiry,
+                             filetype_id=ftype_id)
+    uupload.save()
+    return JsonResponse({'token': token, 'expires': expiry})
 
 
 def register_userupload(request):
