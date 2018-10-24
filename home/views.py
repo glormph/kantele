@@ -144,18 +144,21 @@ def show_files(request):
         fnids = request.GET['fnids'].split(',')
         dbfns = filemodels.StoredFile.objects.filter(pk__in=fnids)
     else:
-        # last month files 
-        dbfns = filemodels.StoredFile.objects.filter(regdate__gt=datetime.today() - timedelta(30), deleted=False)
+        # last week files 
+        # FIXME this is a very slow query
+        dbfns = filemodels.StoredFile.objects.filter(regdate__gt=datetime.today() - timedelta(7), deleted=False)
     return populate_files(dbfns)
 
 
 def populate_files(dbfns):
-    popfiles = []
+    popfiles = {}
     for fn in dbfns.select_related('rawfile__datasetrawfile__dataset__user', 'analysisresultfile__analysis', 'swestorebackedupfile', 'filetype'):
-        it = {'name': fn.filename,
-              'date': fn.regdate if fn.filetype != settings.RAW_SFGROUP_ID else fn.rawfile.date,
-              'stored': fn.checked,
+        it = {'id': fn.id,
+              'name': fn.filename,
+              'date': fn.regdate if fn.filetype_id != int(settings.RAW_SFGROUP_ID) else fn.rawfile.date,
+              'stored': fn.servershare.name if fn.checked else False,
               'ftype': fn.filetype.name,
+              'details': False,
              }
         try:
             it['backup'] = fn.swestorebackedupfile is not 0
@@ -167,7 +170,7 @@ def populate_files(dbfns):
             it['owner'] = fn.rawfile.datasetrawfile.dataset.user.username
         elif hasattr(fn, 'analysisresultfile'):
             it['owner'] = fn.analysisresultfile.analysis.user.username
-        popfiles.append(it)
+        popfiles[fn.id] = it
     return JsonResponse({'files': popfiles})
 
 
@@ -323,13 +326,17 @@ def refresh_job(request, job_id):
 
 @login_required
 def get_job_info(request, job_id):
-    job = jm.Job.objects.get(pk=job_id)
+    job = jm.Job.objects.select_related('joberror').get(pk=job_id)
     tasks = job.task_set.all()
     fj = job.filejob_set
     analysis = jj.get_job_analysis(job)
     if analysis:
         analysis = analysis.name
     errors = []
+    try:
+        errormsg = job.joberror.message
+    except jm.JobError.DoesNotExist:
+        errormsg = False
     for task in tasks.filter(state=tstates.FAILURE, taskerror__isnull=False):
         # Tasks chained in a taskchain are all set to error when one errors, 
         # otherwise we cannot retry jobs since that waits for all tasks to finish.
@@ -338,6 +345,7 @@ def get_job_info(request, job_id):
     return JsonResponse({'files': fj.count(), 'dsets': 0, 
                          'analysis': analysis, 
                          'time': datetime.strftime(job.timestamp, '%Y-%m-%d %H:%M'),
+                         'errmsg': errormsg,
                          'tasks': {'error': tasks.filter(state=tstates.FAILURE).count(),
                                    'procpen': tasks.filter(state=tstates.PENDING).count(),
                                    'done': tasks.filter(state=tstates.SUCCESS).count()},
@@ -350,6 +358,25 @@ def get_dset_info(request, dataset_id):
     dset = dsmodels.Dataset.objects.filter(pk=dataset_id).select_related(
         'runname__experiment__project').get()
     info = fetch_dset_details(dset)
+    return JsonResponse(info)
+
+
+@login_required
+def get_file_info(request, file_id):
+    sfile = filemodels.StoredFile.objects.filter(pk=file_id).select_related(
+        'filetype', 'rawfile__datasetrawfile', 'analysisresultfile__analysis').get()
+    info = {'server': sfile.servershare.name, 'path': sfile.path, 'analyses': []}
+    if hasattr(sfile.rawfile, 'datasetrawfile'):
+        dsrf = sfile.rawfile.datasetrawfile
+        info['dataset'] = dsrf.dataset_id
+        if sfile.filetype.filetype == 'mzml':
+            anjobs = filemodels.FileJob.objects.filter(storedfile_id=file_id, job__nextflowsearch__isnull=False)
+        elif sfile.filetype_id == int(settings.RAW_SFGROUP_ID):
+            mzmls = sfile.rawfile.storedfile_set.filter(filetype__filetype='mzml')
+            anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
+        info['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
+    if hasattr(sfile, 'analysisresultfile'):
+        info['analyses'].append(sfile.analysisresultfile.analysis_id)
     return JsonResponse(info)
 
 

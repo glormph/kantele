@@ -12,10 +12,12 @@
 			<div class="content is-small" >
 					<input type="checkbox" v-model="searchdeleted">Search deleted files 
 			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find analyses">
+			<div>Showing {{ Object.keys(files).length }} files</div>
 			<table class="table">
 				<thead>
 					<tr>
 						<th><input type="checkbox" v-model="allSelector" v-on:click=""></th>
+						<th></th>
 						<th>File</th>
 						<th>Date</th>
 						<th>Stored</th>
@@ -28,10 +30,17 @@
 				<template v-for="fn in files">
 <tr v-if="!fn.deleted">
 <td></td>
+<td>
+	<a v-on:click="toggleFile(fn.id)">
+		<span class="has-text-info icon is-small">
+		<i class="fa fa-eye" />
+		</span>
+	</a>
+</td>
 <td>{{ fn.name }}</td>
 <td>{{ fn.date }}</td>
 <td>
-    <span class="has-icon" v-if="fn.stored"><i class="fa fa-check has-text-success"></i></span>
+    <span class="tag is-info" v-if="fn.stored">{{ fn.stored }}</span>
     <span v-else>-</span>
 </td>
 <td>
@@ -43,6 +52,7 @@
 </tr>
 <tr v-else>
 <td></td>
+<td></td>
 <td><s>{{ fn.name }}</s></td>
 <td><s>{{ fn.date }}</s></td>
 <td>-</td>
@@ -50,6 +60,25 @@
 <td><s>{{ fn.owner }}</s></td>
 <td><s>{{ fn.ftype }}</s></td>
 </tr>
+
+<template v-if="fn.details !== false">
+<tr><td></td><td colspan="7">
+<div v-if="fn.details.path"><span class="has-text-weight-bold">Storage location:</span> {{ fn.details.path }} </div>
+<div>
+    <a v-if="fn.details.dataset" v-bind:href="'?tab=datasets&dsids='+fn.details.dataset" target="_blank"><span class="tag is-info">Dataset</span></a> 
+    <a v-if="fn.details.analyses" v-bind:href="'?tab=searches&anids='+fn.details.analyses.join(',')" target="_blank"><span class="tag is-primary">Analyses</span></a> 
+</div>
+</td>
+<!--
+		<div v-for="job in ds.details.jobs">
+			<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
+					<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
+					<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
+					<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
+			</div>
+-->
+</tr>
+		</template>
 				</template>
 				</tbody>
 			</table>
@@ -84,19 +113,35 @@
 					}
 				})
 			},
-    		fetchFiles: function(fnids) {
-    			url = '/show/files/'
-    			url = fnids.length ? url + `?fnids=${fnids.join(',')}` : url;
-    			this.$http.get(url)
-    			.then(response => {
-    				return response.json()
-    			}, response => {
-    			}).then(result => {
-    				for (key in result) {
-    					this.files= result['files'];
-    				}
-    			})
-    		},
+			toggleFile: function(fn_id) {
+				if (!this.files[fn_id].details) {
+					this.fileInfo(fn_id);
+				} else {
+					this.files[fn_id].details = false
+				}
+			},
+			fileInfo: function(fn_id) {
+				this.$http.get(`/show/file/${fn_id}`)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.files[fn_id].details = result;
+				})
+			},
+			fetchFiles: function(fnids) {
+				url = '/show/files/'
+				url = fnids.length ? url + `?fnids=${fnids.join(',')}` : url;
+				this.$http.get(url)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.files= result['files'];
+					}
+				})
+			},
                 },
 
 })
@@ -540,7 +585,13 @@
                                                     <span v-show="items[itkey].wantToDelete"><a v-on:click="sureDeleteJob(items[itkey].id)">Yes, delete job</a></span></td>
 					</tr>
                                         <tr v-if="items[itkey].details !== false">
-                                            <td></td><td :colspan="3">
+                                            <td></td><td :colspan="7">
+                                                <div class="columns"> 
+ <div class="column">
+                                                    <div v-if="items[itkey].details.errmsg">
+                                                        <h5 class="title is-5">Error message</h5>
+                                                        {{ items[itkey].details.errmsg }} 
+                                                    </div>
                                                 <h5 class="title is-5">Details</h5>
                                                     <div>Created: {{ items[itkey].details.time }} </div>
                                                     <div>{{ items[itkey].details.files }} files </div>
@@ -548,8 +599,8 @@
                         	                    <span class="tag is-danger">{{ items[itkey].details.tasks.error }}</span>
                         	                    <span class="tag is-warning">{{ items[itkey].details.tasks.procpen }}</span>
                         	                    <span class="tag is-success">{{ items[itkey].details.tasks.done }}</span>
-                        		    </td>
-                        		    <td colspan="4">
+                        		    </div>
+                        		    <div class="column">
                         			<h5 class="subtitle is-5">Errored tasks</h5>
                                                 <div v-if="items[itkey].details.errors.length === 0"><strong>-</strong></div>
                                                 <div v-for="err in items[itkey].details.errors">
@@ -557,6 +608,7 @@
                                                     <div><strong>Error</strong>: {{ err.msg }}</div>
                                                     <hr>
                         			</div>
+                        		    </div>
                         		</td>
                         </tr>
 				</template>
