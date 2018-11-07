@@ -171,7 +171,8 @@ def populate_files(dbfns):
         elif hasattr(fn, 'analysisresultfile'):
             it['owner'] = fn.analysisresultfile.analysis.user.username
         popfiles[fn.id] = it
-    return JsonResponse({'files': popfiles})
+    order = [x['id'] for x in sorted(popfiles.values(), key=lambda x: x['date'], reverse=True)]
+    return JsonResponse({'files': popfiles, 'order': order})
 
 
 def get_ds_jobs(dbdsets):

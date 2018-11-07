@@ -27,7 +27,7 @@
 					</tr>
 				</thead>
 				<tbody>
-				<template v-for="fn in files">
+				<template v-for="fn in orderedfiles">
 <tr v-if="!fn.deleted">
 <td></td>
 <td>
@@ -87,6 +87,7 @@
 		data: function() {
 			return {
 				files: {},
+                                order: [],
 				findQuery: '',
 				allSelector: false,
 				searchdeleted: false,
@@ -100,6 +101,11 @@
 		mounted: function() {
 			this.fetchFiles(this.initialFnids);
 		},
+                computed: {
+                    orderedfiles: function() {
+                        return this.order.map(x => this.files[x]);
+                    },
+                },
                 methods: {
 			findItems: function() {
 				this.$http.get(this.searchUrl,
@@ -110,6 +116,7 @@
 				}).then(result => {
 					for (key in result) {
 						this.files = result['files'];
+						this.order = result['order'];
 					}
 				})
 			},
@@ -139,6 +146,7 @@
 				}).then(result => {
 					for (key in result) {
 						this.files= result['files'];
+						this.order = result['order'];
 					}
 				})
 			},
