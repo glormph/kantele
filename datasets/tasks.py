@@ -66,6 +66,10 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=Fals
     if not newname:
         newname = fn
     dst = os.path.join(config.SHAREMAP[dstshare], dstpath, newname)
+    url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
+    if src == dst:
+        print('Source and destination are identical, not moving file')
+        update_db(url, json={'client_id': config.APIKEY, 'task': self.request.id})
     print('Moving file {} to {}'.format(src, dst))
     dstdir = os.path.split(dst)[0]
     if not os.path.exists(dstdir):
@@ -89,7 +93,6 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=Fals
     postdata = {'fn_id': fn_id, 'servershare': dstshare,
                 'dst_path': dstpath, 'newname': os.path.basename(dst),
                 'client_id': config.APIKEY, 'task': self.request.id}
-    url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
         update_db(url, json=postdata)
     except RuntimeError:
