@@ -37,11 +37,32 @@ def create_swestore_backup(job_id, sf_id, md5):
     print('Swestore task queued')
 
 
+def rename_file(job_id, fn_id, newname):
+    """Only renames file inside same path/server. Does not move cross directories.
+    This job checks if there is a RawFile entry with the same name in the same folder
+    to avoid possible renaming collisions. Updates RawFile in job instead of view 
+    since jobs are processed in a single queue.
+    FIXME: make impossible to overwrite using move jobs at all (also moving etc)
+    """
+    fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
+        pk=fn_id)
+    # FIXME task checks if src == dst, but we could do that already here?
+    if models.StoredFile.objects.exclude(pk=fn_id).filter(
+            rawfile__name=newname, path=fn.path,
+            servershare_id=fn.servershare_id).count():
+        raise RuntimeError('A file in path {} with name {} already exists or will soon be created. Please choose another name'.format(fn.path, newname))
+    fn.rawfile.name = newname
+    fn.rawfile.save()
+    tid = dstasks.move_file_storage.delay(fn.filename, fn.servershare.name,
+                                          fn.path, fn.path, fn.id, newname=newname).id
+    create_db_task(tid, job_id, fn.filename, fn.servershare.name,
+                   fn.path, fn.path, fn.id, newname=newname)
+
+
 def move_single_file(job_id, fn_id, dst_path, oldname=False, dstshare=False, newname=False):
     fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
         pk=fn_id)
-    if not oldname:
-        oldname = fn.filename
+    oldname = fn.filename if not oldname else oldname
     tid = dstasks.move_file_storage.delay(oldname, fn.servershare.name,
                                           fn.path, dst_path, fn.id, dstshare=dstshare,
                                           newname=newname).id

@@ -35,12 +35,16 @@ JOBSTATES_DONE = [Jobstates.DONE, Jobstates.CANCELED]
 job is retryable, which means the job should be side-effect free, i.e. possible
 to retry without messing things up.
 """
+# FIXME implement this as decorator for jobs: @job ? how to do with getfns?
 jobmap = {'move_files_storage':
           {'type': Jobtypes.MOVE, 'func': dsjobs.move_files_dataset_storage,
            'getfns': dsjobs.move_files_dataset_storage_getfiles, 'retry': True},
           'move_single_file':
           {'type': Jobtypes.MOVE, 'func': rsjobs.move_single_file,
            'retry': True},
+          'rename_file':
+          {'type': Jobtypes.MOVE, 'func': rsjobs.rename_file,
+           'retry': False},
           'move_stored_files_tmp':
           {'type': Jobtypes.MOVE, 'retry': True,
            'func': dsjobs.remove_files_from_dataset_storagepath,
