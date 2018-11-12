@@ -59,9 +59,9 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
 # datatypes
-RAW_SFGROUP_ID = os.environ.get('RAW_SF_GROUP_ID')
-MZML_SFGROUP_ID = os.environ.get('MZML_SF_GROUP_ID')
-REFINEDMZML_SFGROUP_ID = os.environ.get('REFINED_SF_GROUP_ID')
+RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID'))
+MZML_SFGROUP_ID = int(os.environ.get('MZML_SF_GROUP_ID'))
+REFINEDMZML_SFGROUP_ID = int(os.environ.get('REFINED_SF_GROUP_ID'))
 
 # external datasets
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')

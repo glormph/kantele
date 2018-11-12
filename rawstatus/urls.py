@@ -14,4 +14,5 @@ urlpatterns = [
     url(r'^md5/userfile/$', views.check_md5_success_userfile, name='md5checkuserfile'),
     url(r'^setlibrary/$', views.set_libraryfile),
     url(r'^libfile/$', views.check_libraryfile_ready),
+    url(r'^rename/$', views.rename_file),
 ]

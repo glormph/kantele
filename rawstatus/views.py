@@ -2,9 +2,11 @@ from django.http import (JsonResponse, HttpResponseForbidden,
                          HttpResponse, HttpResponseNotAllowed)
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
 import os
+import re
 import json
 from uuid import uuid4
 import requests
@@ -322,6 +324,42 @@ def singlefile_qc(rawfile, storedfile):
                             queue=settings.QUEUE_QCPWIZ)
     start_qc_analysis(rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
                       settings.LONGQC_FADB_ID)
+
+
+def get_file_owners(sfile):
+    owners = {x.id for x in User.objects.filter(is_superuser=True)}
+    if hasattr(sfile.rawfile, 'datasetrawfile'):
+        owners.add(sfile.rawfile.datasetrawfile.dataset.user.id)
+    elif hasattr(sfile, 'analysisresultfile'):
+        owners.add(sfile.analysisresultfile.analysis.user.id)
+    return owners
+ 
+
+@login_required
+def rename_file(request):
+    """Renames a single file. This checks if characters are correct, launches job
+    with bare filename (no extension), since job determines if mutliple files including
+    mzML have to be renamed."""
+    if not request.method == 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    data =  json.loads(request.body.decode('utf-8'))
+    try:
+        sfile = StoredFile.objects.filter(pk=data['sf_id']).select_related(
+            'rawfile').get()
+        newfilename = os.path.splitext(data['newname'])[0]
+        #mv_mzml = data['mvmzml']  # TODO optional mzml renaming too? Now it is default
+    except (StoredFile.DoesNotExist, KeyError):
+        print('Stored file to rename does not exist')
+        return HttpResponseForbidden()
+    if request.user.id not in get_file_owners(sfile):
+        print('No ownership of file to rename')
+        return HttpResponseForbidden()
+    if re.match('^[a-zA-Z_0-9\-]*$', newfilename) is None or sfile.filetype_id in [settings.MZML_SFGROUP_ID, settings.REFINEDMZML_SFGROUP_ID]:
+        # TODO Give proper errors to JSON if possible!
+        print('Illegal characters in filename {}'.format(newfilename))
+        return HttpResponseForbidden()
+    jobutil.create_file_job('rename_file', sfile.id, newfilename)
+
 
 
 def manyfile_qc(rawfiles, storedfiles):

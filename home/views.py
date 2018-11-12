@@ -366,7 +366,10 @@ def get_dset_info(request, dataset_id):
 def get_file_info(request, file_id):
     sfile = filemodels.StoredFile.objects.filter(pk=file_id).select_related(
         'filetype', 'rawfile__datasetrawfile', 'analysisresultfile__analysis').get()
-    info = {'server': sfile.servershare.name, 'path': sfile.path, 'analyses': []}
+    info = {'server': sfile.servershare.name, 'path': sfile.path, 'analyses': [],
+            'newname': sfile.filename,
+            'renameable': True if sfile.filetype_id not in 
+            [settings.MZML_SFGROUP_ID, settings.REFINEDMZML_SFGROUP_ID] else False}
     if hasattr(sfile.rawfile, 'datasetrawfile'):
         dsrf = sfile.rawfile.datasetrawfile
         info['dataset'] = dsrf.dataset_id

@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 from rawstatus import tasks, models
 from datasets import tasks as dstasks
 from jobs.post import create_db_task
+from kantele import settings
 
 
 def get_md5(job_id, sf_id):
@@ -42,21 +43,29 @@ def rename_file(job_id, fn_id, newname):
     This job checks if there is a RawFile entry with the same name in the same folder
     to avoid possible renaming collisions. Updates RawFile in job instead of view 
     since jobs are processed in a single queue.
+    Since it only expects raw files it will also rename all mzML attached converted
+    files. newname should NOT contain the file extension, only name.
     FIXME: make impossible to overwrite using move jobs at all (also moving etc)
     """
     fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
         pk=fn_id)
     # FIXME task checks if src == dst, but we could do that already here?
+    fn_ext = os.path.splitext(fn.filename)[1]
     if models.StoredFile.objects.exclude(pk=fn_id).filter(
-            rawfile__name=newname, path=fn.path,
+            rawfile__name=newname + fn_ext, path=fn.path,
             servershare_id=fn.servershare_id).count():
         raise RuntimeError('A file in path {} with name {} already exists or will soon be created. Please choose another name'.format(fn.path, newname))
-    fn.rawfile.name = newname
+    fn.rawfile.name = newname + fn_ext
     fn.rawfile.save()
-    tid = dstasks.move_file_storage.delay(fn.filename, fn.servershare.name,
-                                          fn.path, fn.path, fn.id, newname=newname).id
-    create_db_task(tid, job_id, fn.filename, fn.servershare.name,
-                   fn.path, fn.path, fn.id, newname=newname)
+    for changefn in fn.rawfile.storedfile_set.all():
+        oldname, ext = os.path.splitext(changefn.filename)
+        special_type = '_refined' if changefn.filetype_id == settings.REFINEDMZML_SFGROUP_ID else ''
+        print(newname, special_type)
+        tid = dstasks.move_file_storage.delay(changefn.filename, changefn.servershare.name,
+                                              changefn.path, changefn.path, changefn.id, 
+                                              newname='{}{}{}'.format(newname, special_type, ext)).id
+        create_db_task(tid, job_id, changefn.filename, changefn.servershare.name,
+                       changefn.path, changefn.path, changefn.id, newname=newname + ext)
 
 
 def move_single_file(job_id, fn_id, dst_path, oldname=False, dstshare=False, newname=False):

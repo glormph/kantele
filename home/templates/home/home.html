@@ -62,7 +62,15 @@
 </tr>
 
 <template v-if="fn.details !== false">
-<tr><td></td><td colspan="7">
+<tr v-if="fn.details.renameable">
+<td></td>
+<td colspan="6">
+<div class="field"><div class="control"><input class="input is-small" v-model="fn.details.newname" type="text"></div></div>
+</td><td>
+<div class="field"><div class="control"><a v-on:click="renameFile(fn.id, fn.details.newname)" class="button is-small is-primary">Rename file</a></div></div>
+</td>
+</tr>
+<tr><td></td><td colspan="6">
 <div v-if="fn.details.path"><span class="has-text-weight-bold">Storage location:</span> {{ fn.details.path }} </div>
 <div>
     <a v-if="fn.details.dataset" v-bind:href="'?tab=datasets&dsids='+fn.details.dataset" target="_blank"><span class="tag is-info">Dataset</span></a> 
@@ -150,6 +158,15 @@
 					}
 				})
 			},
+                        renameFile: function(fn_id, newname) {
+				this.$http.post(`/files/rename/`, {'newname': newname, 'sf_id': fn_id})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+                                    console.log(result);
+				})
+                        },
                 },
 
 })
