@@ -6,7 +6,7 @@ from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from jobs import models
-from jobs.jobs import Jobstates, is_job_ready, create_file_job, get_job_ownership
+from jobs.jobs import Jobstates, is_job_ready, create_file_job, get_job_ownership, is_job_retryable
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
                               SwestoreBackedupFile, Producer)
 from analysis.models import AnalysisResultFile
@@ -258,7 +258,7 @@ def retry_job(request, job_id):
     force = True if request.user.is_staff else False
     job = models.Job.objects.get(pk=job_id)
     ownership = get_job_ownership(job, request)
-    if not ownership['owner_loggedin'] and not ownership['is_staff']:
+    if not ownership['owner_loggedin'] and not ownership['is_staff'] or not is_job_retryable(job):
         return HttpResponseForbidden()
     do_retry_job(job, force)
     return HttpResponse()
@@ -266,6 +266,8 @@ def retry_job(request, job_id):
 
 def do_retry_job(job, force=False):
     tasks = models.Task.objects.filter(job=job)
+    if not is_job_retryable(job):
+        print('Cannot retry job which is not idempotent')
     if not is_job_ready(job=job, tasks=tasks) and not force:
         print('Tasks not all ready yet, will not retry, try again later')
         return

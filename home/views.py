@@ -211,7 +211,7 @@ def show_jobs(request):
 
 def get_job_actions(job, ownership):
     actions = []
-    if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']):
+    if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']) and jj.is_job_retryable(job):
         actions.append('retry')
     elif job.state == jj.Jobstates.PROCESSING and ownership['is_staff']:
         actions.append('force retry')
