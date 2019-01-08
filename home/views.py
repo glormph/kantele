@@ -4,7 +4,7 @@ from celery import states as tstates
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.db.models import Q
 from collections import OrderedDict
 
@@ -450,9 +450,11 @@ def refine_mzmls(request, dataset_id):
     """Creates a job that runs the workflow with the latest version of the mzRefine containing NXF repo.
     Jobs and analysis entries are not created for dsets with full set of refined mzmls (403)."""
     # FIXME get analysis if it does exist, in case someone reruns?
-    if not filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dataset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__filetype_id=settings.REFINEDMZML_SFGROUP_ID).count():
+    # Check if files lack refined mzMLs
+    nr_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dataset_id, filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True).count()
+    nr_mzml = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dataset_id, filetype_id=settings.MZML_SFGROUP_ID)
+    if nr_mzml == nr_refined:
         return HttpResponseForbidden()
-    
     dset = dsmodels.Dataset.objects.select_related('quantdataset__quanttype').get(pk=dataset_id)
     analysis = anmodels.Analysis(user_id=request.user.id, name='refine_dataset_{}'.format(dataset_id))
     analysis.save()

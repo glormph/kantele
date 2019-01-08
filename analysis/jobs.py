@@ -20,7 +20,8 @@ from jobs.post import create_db_task
 
 def refine_mzmls_getfiles(dset_id, analysis_id, wfv_id, dbfn_id, qtype):
     """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
-    return filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__filetype_id=settings.REFINEDMZML_SFGROUP_ID)
+    existing_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
+    return filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__in=existing_refined)
 
 
 def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, *dset_mzmls):

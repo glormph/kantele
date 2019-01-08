@@ -184,6 +184,9 @@ def analysis_run_done(request):
 
 
 def mzrefine_file_done(request):
+    """Refined mzML files must get MD5, fn, path and moved to their dataset directory from the
+    analysis output dir (they result from a nextflow analysis run"""
+    # FIXME need to remove the empty dir after moving all the files, how?
     data = request.POST
     # create analysis file
     if ('client_id' not in data or
