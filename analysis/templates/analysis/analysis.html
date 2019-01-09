@@ -248,6 +248,18 @@
 				if (!this.wfversion || this.wfversion === 0) {
 					this.errors.push('You must select a workflow version');
 				}
+				for (dsid in this.dsets) {
+					if (!this.dsets[dsid].filesaresets && (!(dsid in this.dssetnames) || this.dssetnames[dsid] === "")) {
+						ds = this.dsets[dsid];
+						this.errors.push(`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`);
+					} else if (this.dsets[dsid].filesaresets) {
+						for (fn of this.dsets[dsid].files) {
+							if (fn.setname === "") {
+								this.errors.push(`File ${fn.name} needs to have a setname`);
+							}
+						}
+					}
+				}
 				if (this.errors.length > 0) {
 					return false;
 				} else { return true;}
