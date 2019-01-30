@@ -54,7 +54,7 @@ def move_files_dataset_storage(job_id, dset_id, dst_path, rawfn_ids, *sf_ids):
             'Not all files to move have been transferred or '
             'registered as transferred yet, or have non-matching MD5 sums '
             'between their registration and after transfer from input source. '
-            'Holding this job and temporarily retrying it')
+            'Holding this job, you may retry it when files have arrived')
     for fn in dset_files:
         # TODO check for diff os.path.join(sevrershare, dst_path), not just
         # path?

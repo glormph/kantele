@@ -65,6 +65,9 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename
 @shared_task(queue=config.QUEUE_STORAGE, bind=True)
 def get_md5(self, source_md5, sfid, fnpath, servershare):
     # This should be run on the storage server
+    """Checks MD5 of file and compares with source_md5. Report to host.
+    If they do not match, host will set checked to False of storedfile
+    """
     print('MD5 requested for file {}'.format(sfid))
     fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
     try:

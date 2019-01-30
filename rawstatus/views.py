@@ -403,7 +403,7 @@ def add_to_qc(rawfile, storedfile):
 
 
 def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id):
-    analysis = Analysis(user_id=settings.QC_USER_ID, 
+    analysis = Analysis(user_id=settings.QC_USER_ID,
                         name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
     analysis.save()
     jobutil.create_file_job('run_longit_qc_workflow', storedfile.id,
@@ -411,41 +411,42 @@ def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id):
 
 
 def set_libraryfile(request):
-    if request.method == 'POST':
-        try:
-            client_id = request.POST['client_id']
-            fn_id = request.POST['fn_id']
-        except KeyError as error:
-            print('POST request to register_file with missing parameter, '
-                  '{}'.format(error))
-            return HttpResponseForbidden()
-        if client_id != settings.ADMIN_APIKEY:
-            print('POST request with incorrect client id '
-                  '{}'.format(client_id))
-            return HttpResponseForbidden()
-        try:
-            rawfn = RawFile.objects.get(pk=fn_id)
-        except RawFile.DoesNotExist:
-            print('POST request with incorrect fn id '
-                  '{}'.format(fn_id))
-            return HttpResponseForbidden()
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    try:
+        client_id = request.POST['client_id']
+        fn_id = request.POST['fn_id']
+    except KeyError as error:
+        print('POST request to register_file with missing parameter, '
+              '{}'.format(error))
+        return HttpResponseForbidden()
+    if client_id != settings.ADMIN_APIKEY:
+        print('POST request with incorrect client id '
+              '{}'.format(client_id))
+        return HttpResponseForbidden()
+    try:
+        rawfn = RawFile.objects.get(pk=fn_id)
+    except RawFile.DoesNotExist:
+        print('POST request with incorrect fn id '
+              '{}'.format(fn_id))
+        return HttpResponseForbidden()
+    else:
+        sfile = StoredFile.objects.select_related('servershare').get(
+            rawfile_id=fn_id)
+        if LibraryFile.objects.filter(sfile__rawfile_id=fn_id):
+            response = {'library': True, 'state': 'ok'}
+        elif sfile.servershare.name == settings.TMPSHARENAME:
+            libfn = LibraryFile.objects.create(
+                sfile=sfile, description=request.POST['desc'])
+            jobutil.create_file_job(
+                'move_single_file', sfile.id, settings.LIBRARY_FILE_PATH,
+                newname='libfile_{}_{}'.format(libfn.id, sfile.filename))
+            response = {'library': True, 'state': 'ok'}
         else:
-            sfile = StoredFile.objects.select_related('servershare').get(
-                rawfile_id=fn_id)
-            if LibraryFile.objects.filter(sfile__rawfile_id=fn_id):
-                response = {'library': True, 'state': 'ok'}
-            elif sfile.servershare.name == settings.TMPSHARENAME:
-                libfn = LibraryFile.objects.create(
-                    sfile=sfile, description=request.POST['desc'])
-                jobutil.create_file_job(
-                    'move_single_file', sfile.id, settings.LIBRARY_FILE_PATH, 
-                    newname='libfile_{}_{}'.format(libfn.id, sfile.filename))
-                response = {'library': True, 'state': 'ok'}
-            else:
-                LibraryFile.objects.create(sfile=sfile, 
-                                           description=request.POST['desc'])
-                response = {'library': False, 'state': 'ok'}
-        return JsonResponse(response)
+            LibraryFile.objects.create(sfile=sfile,
+                                       description=request.POST['desc'])
+            response = {'library': False, 'state': 'ok'}
+    return JsonResponse(response)
 
 
 def check_libraryfile_ready(request):
@@ -469,7 +470,7 @@ def check_libraryfile_ready(request):
 @login_required
 def download_px_project(request):
     # FIXME check if pxacc exists on pride and here, before creating dset
-    # FIXME View checks project and returns maybe as a nicety how many files it will download. 
+    # FIXME View checks project and returns maybe as a nicety how many files it will download.
     # FIXME if already exist, update experiment name in view
     # get or create dataset
     dset = dsviews.get_or_create_px_dset(request.POST['exp'], request.POST['px_acc'], request.POST['user_id'])
@@ -489,7 +490,7 @@ def download_px_project(request):
         raw_ids.append(rawfn['file_id'])
         if not rawfn['stored']:
             sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=settings.RAW_SFGROUP_ID,
-                             servershare=tmpshare, path='', 
+                             servershare=tmpshare, path='',
                              filename=filename, md5='', checked=False)
             sfn.save()
     rsjob = jobutil.create_dataset_job(

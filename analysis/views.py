@@ -166,7 +166,6 @@ def start_analysis(request):
     # FIXME run_ipaw_nextflow rename job
     fname = 'run_ipaw_nextflow'
     arg_dsids = [int(x) for x in req['dsids']]
-    # FIXME do not check the analysis_id!
     # FIXME setnames have changed, is that ok?
     jobcheck = jj.check_existing_search_job(fname, arg_dsids, strips, req['fractions'], req['setnames'], req['wfid'], req['nfwfvid'], params)
     if jobcheck:

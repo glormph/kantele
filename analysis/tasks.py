@@ -91,8 +91,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
     print('Got message to run mzRefine workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
-                'analysis_id': run['analysis_id'], 'task': self.request.id,
-                'raw_ids': [x[3] for x in mzmls]}
+                'analysis_id': run['analysis_id'], 'task': self.request.id}
     params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         # FIXME does not write to mzmldef!

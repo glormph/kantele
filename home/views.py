@@ -285,8 +285,6 @@ def get_analysis_info(request, nfs_id):
         'analysis', 'job', 'workflow', 'nfworkflow').get()
     storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
                 anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
-    dssearch = anmodels.DatasetSearch.objects.select_related(
-        'dataset__runname__experiment__project').filter(analysis_id=nfs.analysis_id)
     fjobs = nfs.job.filejob_set.all().select_related(
         'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     dsets =  {x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs}
