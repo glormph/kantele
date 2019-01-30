@@ -147,6 +147,11 @@ def convert_tomzml(job_id, dset_id, *sf_ids):
             pk__in=sf_ids, rawfile__datasetrawfile__dataset_id=dset_id).select_related(
             'servershare', 'rawfile__datasetrawfile__dataset'):
         mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
+        if mzsf.servershare != fn.servershare:
+            # change servershare, get_files sets servershare to whereever is the
+            # raw servershare, could be tmp if the user is fast.
+            mzsf.servershare = fn.servershare
+            mzsf.save()
         if mzsf.checked:
             continue
         queue = next(queues)
