@@ -55,7 +55,7 @@
 	</ul>
 </div>
 <div class="container">
-		<project-box v-on:save="save_definition" v-on:revert="fetchProject" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:projsaved="projsaved" v-bind:pdata="projdata"></project-box>
+		<project-box v-on:save="save_definition" v-on:revert="fetchProject" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:saveerrors="projerrors" v-bind:dset_id="dataset_id" v-bind:projsaved="projsaved" v-bind:pdata="projdata"></project-box>
 		<acquisition-box v-on:save="save_acquisition" v-on:revert="fetchAcquisition" v-if="componentEnabled('acquisition')" v-show="viewtab === 'acquisition'" v-bind:acqsaved="acqsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
 		<files-box v-on:save="save_files" v-on:revert="fetchFiles" v-show="viewtab === 'files'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:fnsaved="fnsaved" v-bind:fndata="filesdata"></files-box>
 		<sampleprep-box v-on:save="save_sampleprep" v-on:revert="fetchSampleprep" v-if="componentEnabled('sampleprep')" v-show="viewtab === 'sampleprep'" v-bind:spsaved="spsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
@@ -788,7 +788,7 @@
 	})
 	
 	Vue.component('project-box', {
-		props: ['dset_id', 'is_owner', 'pdata', 'projsaved'],
+		props: ['dset_id', 'is_owner', 'pdata', 'projsaved', 'saveerrors'],
 		template: `
 	<div class="columns">
 		<div class="column"/>
@@ -798,6 +798,7 @@
 				<div class="message-body">
 					<ul>
 						{% verbatim %}
+						<li v-for="error in saveerrors">{{ error }}</li>
 						<li v-for="error in errors">{{ error }}</li>
 						{% endverbatim %}
 					</ul>
@@ -1164,6 +1165,7 @@
 			acquisition_state: '',
 			sampleprep_state: '',
 			files_state: '',
+                        projerrors: [],
 			projdata: {
 				projects: [],
 				external_pis: [],
@@ -1347,9 +1349,14 @@
 				}, response => {
 				console.log(response);
 				}).then(result => {
-					this.dataset_id = result.dataset_id;
-					this.fetchProject();
-					this.fetchStates();
+                                        if (result.error) {
+                                            this.projerrors.push(result.error);
+                                        } else {
+                                            this.projerrors = [];
+					    this.dataset_id = result.dataset_id;
+					    this.fetchProject();
+					    this.fetchStates();
+                                        }
 			})
 		},
 		save_files: function() {
