@@ -176,11 +176,11 @@ def scp_mzml(request):
 def analysis_run_done(request):
     if request.method == 'POST':
         data = json.loads(request.body.decode('utf-8'))
-        if 'log' in data:
-            write_analysis_log(data['log'], data['analysis_id'])
         if ('client_id' not in data or
                 data['client_id'] not in settings.CLIENT_APIKEYS):
             return HttpResponseForbidden()
+        if 'log' in data:
+            write_analysis_log(data['log'], data['analysis_id'])
         if 'task' in data:
             set_task_done(data['task'])
         return HttpResponse()
