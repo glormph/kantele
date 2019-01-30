@@ -23,11 +23,12 @@ def run_ready_jobs():
     print('Checking job queue')
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
         state__in=[Jobstates.DONE, Jobstates.WAITING])
-    job_fn_map, active_move_files, active_files = collect_job_file_activity(jobs_not_finished)
+    job_fn_map, active_files = collect_job_file_activity(jobs_not_finished)
     print('{} jobs in queue, including errored jobs'.format(jobs_not_finished.count()))
     for job in jobs_not_finished:
         jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
         print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
+        # Just print info about ERROR-jobs, but also process tasks
         if job.state == Jobstates.ERROR:
             print('ERROR MESSAGES:')
             tasks = Task.objects.filter(job_id=job.id)
@@ -35,17 +36,13 @@ def run_ready_jobs():
             for joberror in JobError.objects.filter(job_id=job.id):
                 print(joberror.message)
             print('END error messages')
+        # Ongoing jobs get updated
         elif job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)
             print('Updating task status for active job {} - {}'.format(job.id, job.funcname))
             process_job_tasks(job, tasks)
-        # FIXME Changed this, test it:
-        # why do we have a non-move job where we do not have to wait at all?
-        # scenario? is basically non-dep simulation based on jobtype which is bad
-        # like so, md5 on transferred QC is not done yet, qc jobs are queued. Move file, mzmlconv is not done
-        # bc file to move has job on it (md5), but qc job (process) is launched. Bam! error: there is no mzML.
-        # what do we lose if we just make all jobs wait instead?
-        # scenario all jobs wait: somewhere eternal wait? TESTING
+        # Pending jobs are trickier, wait queueing until any previous job on same files
+        # is finished. Errored jobs thus block pending jobs if they are on same files.
         elif job.state == Jobstates.PENDING: #and job.jobtype == Jobtypes.MOVE:
             print('Found new job {} - {}'.format(job.id, job.funcname))
             # do not start move job if there is activity on files
@@ -53,20 +50,10 @@ def run_ready_jobs():
                 print('Deferring move job since files {} are being used in '
                       'other job'.format(active_files.intersection(jobfiles)))
                 continue
-            else:
+            # Only add jobs with files (some jobs have none!) to "active_files"
+            elif job.id in job_fn_map:
                 [active_files.add(fn) for fn in job_fn_map[job.id]]
-                [active_move_files.add(fn) for fn in job_fn_map[job.id]]
-                run_job(job, jobmap)
-#        elif job.state == Jobstates.PENDING:
-#            print('Found new job {} - {}'.format(job.id, job.funcname))
-#            # do not start job if files are being moved
-#            if active_move_files.intersection(jobfiles):
-#                print('Deferring job since files {} being moved in active '
-#                      'job'.format(active_move_files.intersection(jobfiles)))
-#                continue
-#            else:
-#                [active_files.add(fn) for fn in job_fn_map[job.id]]
-#                run_job(job, jobmap)
+            run_job(job, jobmap)
 
 
 def run_job(job, jobmap):
@@ -91,20 +78,16 @@ def run_job(job, jobmap):
 
 
 def collect_job_file_activity(nonready_jobs):
-    job_fn_map, active_move_files, active_files = {}, set(), set()
+    job_fn_map, active_files = {}, set()
     for fj in FileJob.objects.select_related('job', 'storedfile').filter(
             job__in=nonready_jobs):
         try:
             job_fn_map[fj.job_id].add(fj.storedfile_id)
         except KeyError:
             job_fn_map[fj.job_id] = set([fj.storedfile.id])
-        if (fj.job.jobtype == Jobtypes.MOVE and
-                fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]):
-            active_move_files.add(fj.storedfile.id)
+        if fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
             active_files.add(fj.storedfile.id)
-        elif fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
-            active_files.add(fj.storedfile.id)
-    return job_fn_map, active_move_files, active_files
+    return job_fn_map, active_files
 
 
 def check_task_chain(task):
@@ -117,6 +100,7 @@ def check_task_chain(task):
 
 
 def process_job_tasks(job, jobtasks):
+    """Updates job state based on its task status"""
     job_updated, tasks_finished, tasks_failed = False, True, False
     # In case the job did not create tasks it may have been obsolete
     tasks_finished = True
