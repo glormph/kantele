@@ -18,7 +18,7 @@ from analysis import qc
 from rawstatus.tasks import calc_md5
 
 
-def run_nextflow(run, params, rundir, gitwfdir, profile=False):
+def run_nextflow(run, params, rundir, gitwfdir, profiles):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     print('Starting nextflow workflow {}'.format(run['nxf_wf_fn']))
     outdir = os.path.join(rundir, 'output')
@@ -32,9 +32,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profile=False):
     print('Checked out repo {} at commit {}'.format(run['repo'], run['wf_commit']))
     # There will be files inside data dir of WF repo so we must be in
     # that dir for WF to find them
-    if not profile:
-        profile = 'standard'
-    cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', profile, '-with-trace', '-resume']
+    cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', profiles, '-with-trace', '-resume']
     print(cmd)
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
     return rundir
@@ -60,7 +58,7 @@ def log_analysis(analysis_id, message):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
+def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     print('Got message to run nextflow workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
@@ -76,7 +74,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles):
             mzstr = '{}\n'.format(mzstr)
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', run['runname']])
-    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id)
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, profiles=profiles)
     postdata.update({'state': 'ok'})
     outfiles_db = register_resultfiles(outfiles)
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
@@ -134,10 +132,12 @@ def prepare_nextflow_run(run, taskid, stagefiles, mzmls, params):
     return params, rundir, gitwfdir, stagedir
 
 
-def execute_normal_nf(run, params, rundir, gitwfdir, taskid):
+def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
+    if not profiles:
+        profiles = 'standard'
     try:
-        run_nextflow(run, params, rundir, gitwfdir)
+        run_nextflow(run, params, rundir, gitwfdir, profiles)
     except subprocess.CalledProcessError as e:
         # FIXME report stderr with e
         errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
@@ -161,7 +161,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     mzmls = {}
     params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profile='qc')
+        run_nextflow(run, params, rundir, gitwfdir, profiles='qc')
     except subprocess.CalledProcessError:
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')
