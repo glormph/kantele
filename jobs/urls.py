@@ -11,7 +11,7 @@ urlpatterns = [
     url(r'^set/md5/$', views.set_md5, name='setmd5'),
     url(r'^delete/(?P<job_id>[0-9]+)$', views.delete_job,
         name='deletejob'),
-    url(r'^deletefile/$', views.delete_storedfile,
+    url(r'^deletefile/$', views.purge_storedfile,
         name='deletefile'),
     url(r'^set/pxdataset/$', views.downloaded_px_file, name='downloadpx'),
     url(r'^swestore/set/$', views.created_swestore_backup,

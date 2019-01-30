@@ -91,19 +91,23 @@ def delete_job(request, job_id):
     return HttpResponse()
 
 
-
-def delete_storedfile(request):
+def purge_storedfile(request):
+    """Ran after a job has deleted a file from the filesystem, sets
+    file DB entry to purged"""
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY,
                                 settings.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related(
-        'rawfile', 'filetype').get()
+    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').get()
+    # FIXME think about how to actually do this!
+    # delete, purge, etc. mzML, backup, refined files, etc etc etc
+    # user can delete file record from DB
+    # admin can set purge which deletes the underlying file
     if sfile.filetype_id == settings.RAW_SFGROUP_ID:
-        sfile.rawfile.deleted = True
-        sfile.rawfile.save()
-    sfile.delete()
+    # FIXME check if file is deleted?
+        sfile.purged = True
+        sfile.save()
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()

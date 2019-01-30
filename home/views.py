@@ -134,7 +134,7 @@ def find_files(request):
         query &= subquery
     dbfns = filemodels.StoredFile.objects.filter(query)
     if request.GET['deleted'] == 'false':
-        dbfns = dbfns.filter(deleted=False)
+        dbfns = dbfns.filter(deleted=False, purged=False)
     return populate_files(dbfns)
 
 

@@ -52,6 +52,7 @@ class StoredFile(models.Model):
     checked = models.BooleanField()
     filetype = models.ForeignKey(StoredFileType)
     deleted = models.BooleanField(default=False)
+    purged = models.BooleanField(default=False)
 
     def __str__(self):
         return self.rawfile.name
