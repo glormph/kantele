@@ -59,9 +59,13 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
 # datatypes
-RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID'))
-MZML_SFGROUP_ID = int(os.environ.get('MZML_SF_GROUP_ID'))
-REFINEDMZML_SFGROUP_ID = int(os.environ.get('REFINED_SF_GROUP_ID'))
+try:
+    RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID'))
+    MZML_SFGROUP_ID = int(os.environ.get('MZML_SF_GROUP_ID'))
+    REFINEDMZML_SFGROUP_ID = int(os.environ.get('REFINED_SF_GROUP_ID'))
+except TypeError:
+    # Tasks have no notion of these IDs so they will error
+    pass
 
 # external datasets
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
