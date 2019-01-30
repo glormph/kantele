@@ -137,10 +137,12 @@ def check_existing_search_job(fname, dset_ids, strips, fractions, setnames, wfid
     return False
 
 
+def is_job_retryable_ready(job, tasks=False):
+    return is_job_retryable(job) and is_job_ready(job)
+
+
 def is_job_retryable(job, tasks=False):
-    if job.funcname in jobmap and jobmap[job.funcname]['retry'] and is_job_ready(job):
-        return True
-    return False
+    return job.funcname in jobmap and jobmap[job.funcname]['retry']
 
 
 def is_job_ready(job=False, tasks=False):

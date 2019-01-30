@@ -6,7 +6,8 @@ from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from jobs import models
-from jobs.jobs import Jobstates, is_job_ready, create_file_job, get_job_ownership, is_job_retryable
+from jobs.jobs import (Jobstates, is_job_ready, create_file_job,
+    get_job_ownership, is_job_retryable, is_job_retryable_ready)
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
                               SwestoreBackedupFile, Producer)
 from analysis.models import AnalysisResultFile
@@ -258,12 +259,14 @@ def store_analysis_result(request):
 def retry_job(request, job_id):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
-    force = True if request.user.is_staff else False
     job = models.Job.objects.get(pk=job_id)
     ownership = get_job_ownership(job, request)
-    if not ownership['owner_loggedin'] and not ownership['is_staff'] or not is_job_retryable(job):
+    if ownership['is_staff'] and is_job_retryable(job):
+        do_retry_job(job, force=True)
+    elif ownership['owner_loggedin'] and is_job_retryable_ready(job):
+        do_retry_job(job)
+    else:
         return HttpResponseForbidden()
-    do_retry_job(job, force)
     return HttpResponse()
 
 

@@ -211,7 +211,7 @@ def show_jobs(request):
 
 def get_job_actions(job, ownership):
     actions = []
-    if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']) and jj.is_job_retryable(job):
+    if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']) and jj.is_job_retryable_ready(job):
         actions.append('retry')
     elif job.state == jj.Jobstates.PROCESSING and ownership['is_staff']:
         actions.append('force retry')
@@ -296,7 +296,7 @@ def get_analysis_info(request, nfs_id):
     linkedfiles = [[x.sfile.filename, x.id] for x in 
                    av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
     resp = {'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
-                                'retry': jj.is_job_retryable(nfs.job), 'id': nfs.job.id,
+                                'retry': jj.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
                                 'time': nfs.job.timestamp}},
              'wf': {'fn': nfs.nfworkflow.filename, 
                     'commit': nfs.nfworkflow.commit,
@@ -405,7 +405,7 @@ def fetch_dset_details(dset):
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).select_related('job')
     info = {'jobs': [unijob for unijob in
                     {x.job.id: {'name': x.job.funcname, 'state': x.job.state,
-                                'retry': jj.is_job_retryable(x.job), 'id': x.job.id,
+                                'retry': jj.is_job_retryable_ready(x.job), 'id': x.job.id,
                                 'time': x.job.timestamp} for x in dsjobs}.values()]}
     # FIXME add more datatypes and microscopy is hardcoded
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
