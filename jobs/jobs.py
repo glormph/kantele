@@ -26,9 +26,10 @@ class Jobstates(object):
     ERROR = 'error'
     DONE = 'done'
     CANCELED = 'canceled'
+    WAITING = 'wait'
 
 
-JOBSTATES_WAIT = [Jobstates.PENDING, Jobstates.PROCESSING]
+JOBSTATES_WAIT = [Jobstates.WAITING, Jobstates.PENDING, Jobstates.PROCESSING]
 JOBSTATES_DONE = [Jobstates.DONE, Jobstates.CANCELED]
 
 """Jobmap contains all jobs in system by name. The retry field indicates a

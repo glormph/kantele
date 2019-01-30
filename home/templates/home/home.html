@@ -386,7 +386,7 @@
 				})
 			},
 			jobTaskStateColor: function(state) {
- 				statecolors = {'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
+ 				statecolors = {'wait': 'has-text-grey-light', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning', 'done': 'has-text-success'};
 				return statecolors[state]
 			},
 		},
@@ -569,7 +569,7 @@
 				})
 			},
 			jobTaskStateColor: function(state) {
- 				statecolors = {'done': 'has-text-success', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
+ 				statecolors = {'wait': 'has-text-grey-light', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning', 'done': 'has-text-success'};
 				return statecolors[state]
 			},
 		},
@@ -601,7 +601,7 @@
 							<a v-on:click="refreshItem(items[itkey].id)"><span class="icon is-small has-text-info"><i class="fa fa-redo"/></span></a>
 						</td>
 						<td>
-							<span v-bind:class="jobTaskStateColor(items[itkey].state)" class="icon is-small"><i class="fa fa-square"/></span>
+							<span v-bind:title="'Job state: ' + items[itkey].state" v-bind:class="jobTaskStateColor(items[itkey].state)" class="icon is-small"><i class="fa fa-square"/></span>
 						</td>
 						<td v-for="key in itemdatakeys">{{ items[itkey][key] }}</td>
 						<td>
@@ -743,7 +743,7 @@
 				})
                         },
 			jobTaskStateColor: function(state) {
- 				statecolors = {'done': 'has-text-success', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning'};
+ 				statecolors = {'wait': 'has-text-grey-light', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning', 'done': 'has-text-success'};
 				return statecolors[state]
 			},
 		},

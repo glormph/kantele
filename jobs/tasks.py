@@ -22,7 +22,7 @@ from rawstatus.models import FileJob
 def run_ready_jobs():
     print('Checking job queue')
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
-        state=Jobstates.DONE)
+        state__in=[Jobstates.DONE, Jobstates.WAITING])
     job_fn_map, active_move_files, active_files = collect_job_file_activity(jobs_not_finished)
     print('{} jobs in queue, including errored jobs'.format(jobs_not_finished.count()))
     for job in jobs_not_finished:

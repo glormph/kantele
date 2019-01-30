@@ -203,7 +203,7 @@ def show_jobs(request):
                          'usr': ', '.join(ownership['usernames']),
                          'date': datetime.strftime(job.timestamp, '%Y-%m-%d'),
                          'actions': get_job_actions(job, ownership)}
-    stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING]
+    stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING, jj.Jobstates.WAITING]
     return JsonResponse({'items': items, 'order': 
                          [x for u in ['user', 'admin'] for s in stateorder 
                           for x in order[u][s]]})
