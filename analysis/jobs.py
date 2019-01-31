@@ -119,8 +119,8 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
     profiles = ['standard']
     if '--nfcore' in inputs['params']:
         inputs['params'] = [x for x in inputs['params'] if x != '--nfcore']
-        profiles.append('docker')
-    res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles, profiles.join(','))
+        profiles.extend(['docker', 'lehtio'])
+    res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles, ','.join(profiles))
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
     create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)
