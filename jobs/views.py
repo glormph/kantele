@@ -102,12 +102,10 @@ def purge_storedfile(request):
     sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').get()
     # FIXME think about how to actually do this!
     # delete, purge, etc. mzML, backup, refined files, etc etc etc
-    # user can delete file record from DB
-    # admin can set purge which deletes the underlying file
-    if sfile.filetype_id == settings.RAW_SFGROUP_ID:
-    # FIXME check if file is deleted?
-        sfile.purged = True
-        sfile.save()
+    # user can set file record to deleted in DB
+    # admin can set purged=True in DB after deleting the underlying file
+    sfile.purged = True
+    sfile.save()
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
