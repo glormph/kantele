@@ -9,7 +9,7 @@ from kantele import settings
 
 
 def dashboard(request):
-    instruments = Producer.objects.filter(name__in=['Luke', 'Leia', 'Barbie', 'Velos'])
+    instruments = Producer.objects.filter(name__in=['Luke', 'Leia', 'Barbie', 'Velos', 'Gin', 'Tonic'])
     return render(request, 'dashboard/dashboard.html',
                   {'instruments': zip([x.name for x in instruments], [x.id for x in instruments]),
                   'instrument_ids': [x.id for x in instruments]})
