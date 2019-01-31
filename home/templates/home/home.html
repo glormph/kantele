@@ -239,7 +239,7 @@
 		{{ ds.details.nrbackupfiles }} backed up files
 		<div v-if="ds.details.mzmlable === 'ready'"><a class="button is-small is-primary" v-on:click="createRefineMzml('create', ds.id)">Create (missing) mzMLs</a></div>
 		<div v-if="ds.details.mzmlable === 'blocked'" ><a class="button is-small is-primary" disabled>mzML job running</a></div>
-		<div v-if="ds.details.refinable === 'ready'"><a class="button is-small is-primary" v-on:click="createRefineMzml('refine', ds.id)">Create refined mzMLs</a></div>
+		<div v-if="ds.details.refinable === 'ready' || ds.details.refinable === 'partly'"><a class="button is-small is-primary" v-on:click="createRefineMzml('refine', ds.id)">Create refined mzMLs</a></div>
 		<div v-if="ds.details.refinable === 'blocked'"><a class="button is-small is-primary" disabled>Create refined mzMLs</a></div>
 		</td>
 		<td colspan="2">
