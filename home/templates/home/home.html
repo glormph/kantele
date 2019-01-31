@@ -260,6 +260,7 @@
 					<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
 					<span v-if="job.state==='processing'" class="tag is-warning">{{ job.name }}</span>
 					<span v-if="job.state==='pending'" class="tag is-warning">{{ job.name }}</span>
+					<span v-if="job.state==='wait'" class="tag is-grey-light">{{ job.name }}</span>
 			</div>
 		</td>
 		<td></td>
@@ -698,8 +699,10 @@
 				})
 			},
 			refreshAll: function() {
-				ids = Object.keys(this.items);
- 				this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
+			        params = this.initialIds.length ? {'ids': this.initialIds.join(',')}: {};
+			        this.fetchItems(this.showAllUrl, params);
+				//ids = Object.keys(this.items);
+ 				//this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
 			},
 			refreshItem: function(id) {
 				this.$http.get(this.refreshItemUrl + id)
