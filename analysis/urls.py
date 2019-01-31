@@ -6,6 +6,7 @@ app_name = 'analysis'
 urlpatterns = [
     url(r'^init/$', views.get_analysis_init),
     url(r'^run/$', views.start_analysis),
+    url(r'^delete/$', views.delete_analysis),
     url(r'^dsets/$', views.get_datasets),
     url(r'^workflow/$', views.get_workflow),
     url(r'^allworkflows/$', views.get_allwfs),

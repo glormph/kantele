@@ -79,7 +79,7 @@ def find_analysis(request):
         subquery |= Q(workflow__name__icontains=term)
         subquery |= Q(analysis__user__username__icontains=term)
         query &= subquery
-    dbanalyses = anmodels.NextflowSearch.objects.filter(query)
+    dbanalyses = anmodels.NextflowSearch.objects.filter(query, analysis__deleted=False)
     items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
     return JsonResponse({'items': items, 'order': it_order})
 
@@ -93,11 +93,11 @@ def show_analyses(request):
         # last 6month analyses of a user plus current analyses PENDING/PROCESSING
         run_ana = anmodels.NextflowSearch.objects.select_related(
             'workflow', 'analysis').filter(
-            job__state__in=jj.JOBSTATES_WAIT).exclude(
+            job__state__in=jj.JOBSTATES_WAIT, analysis__deleted=False).exclude(
             analysis__user_id=request.user.id)
         user_ana = anmodels.NextflowSearch.objects.select_related(
             'workflow', 'analysis').filter(
-            analysis__user_id=request.user.id, 
+            analysis__user_id=request.user.id, analysis__deleted=False,
             analysis__date__gt=datetime.today() - timedelta(183))
         dbanalyses = user_ana | run_ana
     items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
@@ -232,6 +232,7 @@ def populate_analysis(nfsearches, user):
                 'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
                 'jobstates': [nfs.job.state],
                 'wf': nfs.workflow.name,
+                'deleted': nfs.analysis.deleted,
                 'details': False,
                 'selected': False,
             }

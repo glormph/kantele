@@ -465,11 +465,13 @@
 		template: `
 		<div class="content is-small" >
 			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find analyses">
+                        <a class="button" v-on:click="deleteAnalyses" v-show="selectedItems.length">Delete analyses</a>
+                        <a class="button" disabled v-show="!selectedItems.length">Delete analyses</a>
 			<table class="table">
 				<thead>
 					<tr>
 						<th></th>
-						<th></th>
+						<th><input type="checkbox" v-model="allSelector" v-on:click="selectAll"></th>
 						<th><span class="icon is-small"><i class="fa fa-hourglass-half"/></span></th>
 						<th v-for="f in itemdatafields">{{ f }}</th>
 					</tr>
@@ -484,18 +486,14 @@
 								</span>
 							</a>
 						</td>
-						<td>
-							<span v-if="items[itkey].own" class="icon has-text-info is-small">
-									<i class="fa fa-edit"></i>
-							</span>
-							<span v-else-if="!items[itkey].own" class="icon has-text-grey-light is-small">
-									<i class="fa fa-edit"></i>
-							</span>
-						</td>
+						<td><input type="checkbox" v-bind:value="itkey" v-model="selectedItems"> </td>
 						<td>
 							<span v-for="state in items[itkey].jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span>
 						</td>
-						<td v-for="key in itemdatakeys">{{ items[itkey][key] }}</td>
+						<td v-for="key in itemdatakeys">
+							<del v-if="items[itkey].deleted">{{ items[itkey][key] }}</del>
+							<span v-else>{{ items[itkey][key] }}</span>
+						</td>
 					</tr>
 					<details-box :details="items[itkey].details" :nfs_id="items[itkey].id" v-on:refreshItem="refreshAll" v-if="items[itkey].details !== false"></details-box>
 				</template>
@@ -506,6 +504,7 @@
 		data: function() {
 			return {
 				searchUrl: '/find/analyses/',
+				deleteUrl: '/analysis/delete/',
 				showAllUrl: '/show/analyses/',
 				showItemUrl: '/show/analysis/',
 				itemdatafields: ['Analysis name', 'Workflow', 'User', 'Date'],
@@ -513,6 +512,8 @@
 				items: {},
                                 order: [],
 				findQuery: '',
+				allSelector: false,
+				selectedItems: [],
 				{% endverbatim %}
 						initialAnalysisIds: [{{ anids|join:',' }} ],
 				{% verbatim %}
@@ -535,6 +536,16 @@
 					this.order = result['order'];
 				})
 			},
+			selectAll: function() {
+				this.selectedItems = [];
+				this.allSelector = this.allSelector === false;
+				if (!this.allSelector) {
+					return;
+				}
+				for (key in this.items) {
+				        this.selectedItems.push(key);
+				}
+			},
 			refreshAll: function() {
 				ids = Object.keys(this.items);
  				this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
@@ -551,6 +562,19 @@
 						this.order = result['order'];
 					}
 				})
+			},
+			deleteAnalyses: function() {
+				for (ana_id of this.selectedItems) {
+					this.$http.post(this.deleteUrl, {'analysis_id': ana_id})
+					.then(response => {
+						return response
+					}, response => {
+						console.log(response);
+						// error code
+					}).then(result => {
+						this.items[ana_id].deleted = true;
+					})
+				}
 			},
 			toggleItem: function(id) {
 				if (!this.items[id].details) {

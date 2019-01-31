@@ -176,6 +176,20 @@ def start_analysis(request):
 
 
 @login_required
+def delete_analysis(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    req = json.loads(request.body.decode('utf-8'))
+    analysis = am.Analysis.objects.get(nextflowsearch__id=req['analysis_id'])
+    if analysis.user == request.user or request.user.is_staff:
+        analysis.deleted = True
+        analysis.save()
+        return HttpResponse()
+    else:
+        return HttpResponseForbidden()
+
+
+@login_required
 def serve_analysis_file(request, file_id):
     try:
         sf = get_servable_files(am.AnalysisResultFile.objects.select_related(
