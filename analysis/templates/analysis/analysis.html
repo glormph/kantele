@@ -113,7 +113,11 @@
 <!-- labelfree, lfree hirief (plasma), tmt (LG, labelcheck), tmt hirief, FIX ALL OF THEM-->
 		<div class="box" v-if="analysiserrors.size === 0 && analysis.qtype !== 'labelfree'">
 		<div class="title is-5">Isobaric quantification</div>
-		<div v-for="name in allsets">
+		<div v-if="allsets.length===1"> 
+                  <input type="checkbox" v-model="mediansweep">
+                  <label class="checkbox">Use median sweeping (no predefined denominators, using DEqMS)</label>
+                </div>
+		<div v-if="!mediansweep" v-for="name in allsets">
 			<div class="has-text-primary title is-6">Isobaric denominator channels</div>
 			<div class="title is-6">{{ name }}</div>
 			<template v-if="setdenoms[name]">
@@ -216,6 +220,7 @@
 				matchedFr: {},
 				isoquants: [],
 				setdenommodel: {},
+				mediansweep: false,
 				errors: [],
 				runButtonActive: true,
 				postingAnalysis: false,
@@ -320,7 +325,7 @@
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
 				}
-				if (denoms.length > 0) {
+				if (denoms.length > 0 && !this.mediansweep) {
 					post.params.denoms =  ['--denoms', denoms.join(' ')];
 				}
 				this.runmsg.push(`Posting analysis job for ${this.analysisname}`);

@@ -96,7 +96,7 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
     or shoudl inputs be DB things fields flag,sf_id (how for mzmls though?)
-{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '-profile', 'slurm'], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
+{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--nfcore', '--hirief'], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
     """
     analysis = models.Analysis.objects.select_related('user').get(pk=analysis_id)
     nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
