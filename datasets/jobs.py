@@ -15,6 +15,9 @@ from jobs.post import save_task_chain, create_db_task
 
 
 def move_dataset_storage_loc_getfiles(dset_id, src_path, dst_path):
+    # FIXME this must be moved to the actual job since it can be executed before
+    # there is a storedfile with a dataset_id? It seems like this can happen but I
+    # do not understand why yet.
     return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id)
 
 

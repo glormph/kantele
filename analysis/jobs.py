@@ -12,8 +12,6 @@ from datasets.jobs import get_or_create_mzmlentry
 from jobs.post import create_db_task
 
 # FIXMEs
-# DONE? search must wait for convert, why does it not?
-# DONE? store qc data does not finish tasks
 # rerun qc data and displaying qcdata for a given qc file, how? 
 # run should check if already ran with same commit/analysis
 
