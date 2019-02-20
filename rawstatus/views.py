@@ -94,7 +94,17 @@ def get_registration_postdetails(postdata):
 
 
 @login_required
-def request_userupload(request):
+def browser_userupload(request):
+    # prior to this view being called user will have done an upload to a tmpdir
+    # "request upload" puts user/filetype in db
+    upl_req_resp = request_userupload(request)
+    # extract from the response JSON the token and put in the request
+    # keep the cookies CSRF etc
+    upload_userfile(newrequest)
+    
+
+@login_required
+def request_token_userupload(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     token = str(uuid4())
@@ -219,7 +229,7 @@ def file_transferred(request):
         return HttpResponseNotAllowed(permitted_methods=['POST'])
 
 
-def upload_userfile(request):
+def upload_userfile_token(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     try:
@@ -232,6 +242,12 @@ def upload_userfile(request):
         if ufile.upload.expires < timezone.now():
             print('expired', ufile.upload.expires)
             return HttpResponseForbidden()
+    move_uploaded_file(ufile, request.FILES['file'])
+    jobutil.create_file_job('get_md5', ufile.sfile.id)
+    return HttpResponse()
+
+
+def move_uploaded_file(ufile, tmpfp):
     # FIXME chekc if only one FILE
     dstdir = os.path.join(settings.SHAREMAP[ufile.sfile.servershare.name], ufile.sfile.path) 
     try:
@@ -241,12 +257,9 @@ def upload_userfile(request):
     except Exception:
         raise
     dst = os.path.join(dstdir, ufile.sfile.filename)
-    tmpfp = request.FILES['file']
     with open(dst, 'wb') as fp:
         for chunk in tmpfp.chunks():
             fp.write(chunk)
-    jobutil.create_file_job('get_md5', ufile.sfile.id)
-    return HttpResponse()
 
 
 def check_md5_success(request):
