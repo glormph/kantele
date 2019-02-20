@@ -105,8 +105,9 @@ def get_workflow(request):
     ftypes = files.values('param__filetype__name').distinct()
     selectable_files = [x for x in am.LibraryFile.objects.select_related('sfile__filetype').filter(
         sfile__filetype__in=Subquery(files.values('param__filetype')))]
-    selectable_files.extend([x for x in rm.UserFile.objects.select_related('sfile__filetype').filter(
-        sfile__filetype__in=Subquery(files.values('param__filetype')))])
+    userfiles = [x for x in rm.UserFile.objects.select_related('sfile__filetype').filter(
+        sfile__filetype__in=Subquery(files.values('param__filetype')))]
+    selectable_files.extend(userfiles)
     versions = [{'name': wfv.update, 'id': wfv.id, 'latest': False,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
                 am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id)][::-1]
