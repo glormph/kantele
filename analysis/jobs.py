@@ -118,6 +118,9 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
     if '--nfcore' in inputs['params']:
         inputs['params'] = [x for x in inputs['params'] if x != '--nfcore']
         profiles.extend(['docker', 'lehtio'])
+        inputs['params']['--name'] = 'RUNNAME__PLACEHOLDER'
+    else:
+        inputs['params']['--searchname'] = 'RUNNAME__PLACEHOLDER'
     res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles, ','.join(profiles))
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()

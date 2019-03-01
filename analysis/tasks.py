@@ -73,7 +73,8 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
                     mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
             mzstr = '{}\n'.format(mzstr)
             fp.write(mzstr)
-    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt'), '--searchname', run['runname']])
+    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
+    params = [x if x != 'RUNNAME__PLACEHOLDER' else run['runname'] for x in params]
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, profiles=profiles)
     postdata.update({'state': 'ok'})
     outfiles_db = register_resultfiles(outfiles)
@@ -110,6 +111,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
 
 def prepare_nextflow_run(run, taskid, stagefiles, mzmls, params):
     log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
+    # runname is set in task so timestamp corresponds to execution start and not job queue
     runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
     run['runname'] = runname
     rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
