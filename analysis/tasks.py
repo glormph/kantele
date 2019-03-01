@@ -150,8 +150,8 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
                  ' cleaning. NF log: \n{}'.format(nflog))
-    outfiles = os.listdir(os.path.join(rundir, 'output'))
-    return [os.path.join(rundir, 'output', x) for x in outfiles]
+    outfiles = [os.path.join(rundir, 'output', x) for x in os.listdir(os.path.join(rundir, 'output'))]
+    return [x for x in outfiles if not os.path.isdir(x)]
 
 
 @shared_task(bind=True, queue=settings.QUEUE_QC_NXF)
