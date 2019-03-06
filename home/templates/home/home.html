@@ -464,7 +464,7 @@
 	{% verbatim %}
 	Vue.component('search-box', {
 		template: `
-		<div class="content is-small" >
+		<div class="content" >
 			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find analyses">
                         <a class="button" v-on:click="deleteAnalyses" v-show="selectedItems.length">Delete analyses</a>
                         <a class="button" disabled v-show="!selectedItems.length">Delete analyses</a>
@@ -788,12 +788,15 @@
                         </div>
  			<div v-if="details.storage_locs.length===0">No output (yet)</div>
 <hr>
+                    <h5 class="title is-5">Pipeline parameters</h5>
+<p v-for="param in details.invocation.files">{{ param[2] }}: <code>{{ param[0] }} {{param[1] }}</code></p>
+<p>Other parameters: <code>{{ details.invocation.params.join(' ') }}<code></p>
+<hr>
                     <h5 class="title is-5">Analysis log</h5>
                     <a v-if="details.log[0].slice(0,16) !== 'Analysis without'" :href="'analysis/log/' + nfs_id" class="is-size-7" target="_blank">Click for full log</a>
  			<div v-for="line in details.log">{{ line }}</div>
 		</td>
-		<td></td>
-		<td colspan="2">
+		<td colspan="3">
 			<h5 class="subtitle is-5" v-if="Object.keys(details.jobs).length">Jobs</h5>
 			<div v-for="job in details.jobs">
 				<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>

@@ -280,6 +280,22 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
 # Etc CANNOT dynamically code the table too much
 # Make three tables and make them share some code but not all
 
+def get_analysis_invocation(job):
+    params = json.loads(job.args)[7]
+    fnmap = {x['pk']: (x['filename'], x['libraryfile__description'], x['userfile__description']) for x in filemodels.StoredFile.objects.filter(pk__in=params['singlefiles'].values()).values('pk', 'filename', 'libraryfile__description', 'userfile__description')}
+    for fn in fnmap.values():
+        if fn[1] is not None:
+            desc = fn[1]
+        elif fn[2] is not None:
+            desc = fn[2]
+        else:
+            desc = ''
+        fn = [fn[0], desc]
+    invoc = {'files': [[x[0], *fnmap[x[1]]] for x in params['singlefiles'].items()]}
+    invoc['params'] = params['params']
+    return invoc
+
+    
 @login_required
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
@@ -308,6 +324,7 @@ def get_analysis_info(request, nfs_id):
              'storage_locs': [{'server': x.servershare.name, 'path': x.path}
                               for x in storeloc.values()],
              'log': logentry, 'servedfiles': linkedfiles,
+             'invocation': get_analysis_invocation(nfs.job),
             }
     try:
         resp['quants'] = list({x.quantdataset.quanttype.name for x in dsets})
