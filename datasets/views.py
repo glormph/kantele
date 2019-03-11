@@ -277,6 +277,8 @@ def update_dataset(data):
         create_dataset_job('rename_storage_loc', dset.id, dset.storage_loc,
                            new_storage_loc)
         dset.storage_loc = new_storage_loc
+    elif new_storage_loc != dset.storage_loc:
+        dset.storage_loc = new_storage_loc
     dset.save()
     if data['is_corefac']:
         if dset.corefacdatasetcontact.email != data['corefaccontact']:
@@ -466,6 +468,7 @@ def save_dataset(request):
     try:
         dset = save_new_dataset(data, project, experiment, runname, request.user.id)
     except IntegrityError:
+        print('Cannot save dataset with non-unique location')
         return JsonResponse({'error': 'Cannot save dataset, storage location not unique'})
     return JsonResponse({'dataset_id': dset.id})
 
