@@ -402,8 +402,10 @@ def get_file_info(request, file_id):
 
 def get_nr_raw_mzml_files(files, info):
     storedfiles = {'raw': files.filter(filetype_id=settings.RAW_SFGROUP_ID).count(),
-                   'mzML': files.filter(filetype_id=settings.MZML_SFGROUP_ID, checked=True).count(),
-                   'refined_mzML': files.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True).count()}
+                   'mzML': files.filter(filetype_id=settings.MZML_SFGROUP_ID, 
+                                        purged=False, checked=True).count(),
+                   'refined_mzML': files.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID,
+                                                purged=False, checked=True).count()}
     info.update({'refinable': False, 'mzmlable': 'ready'})
     if storedfiles['mzML'] == storedfiles['raw']:
         info['mzmlable'] = False

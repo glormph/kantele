@@ -137,7 +137,7 @@ def convert_dset_tomzml_getfiles(dset_id):
             'servershare', 'rawfile__datasetrawfile__dataset').filter(
             rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.RAW_SFGROUP_ID):
         mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
-        if mzsf.checked:
+        if mzsf.checked and not mzsf.purged:
             continue
         yield fn
 
@@ -155,8 +155,13 @@ def convert_tomzml(job_id, dset_id, *sf_ids):
             # raw servershare, could be tmp if the user is fast.
             mzsf.servershare = fn.servershare
             mzsf.save()
-        if mzsf.checked:
+        if mzsf.checked and not mzsf.purged:
             continue
+        # refresh file status for previously purged (deleted from disk)  mzmls 
+        if mzsf.purged:
+            mzsf.checked = False
+            mzsf.purged = False
+            mzsf.save()
         queue = next(queues)
         outqueue = settings.QUEUES_PWIZOUT[queue]
         args, runchain = get_mzmlconversion_taskchain(fn, mzsf, dset.storage_loc, queue, outqueue)
