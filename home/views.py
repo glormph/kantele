@@ -282,15 +282,17 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
 
 def get_analysis_invocation(job):
     params = json.loads(job.args)[7]
+    if type(params) == int:
+        return {'params': [], 'files': []}
     fnmap = {x['pk']: (x['filename'], x['libraryfile__description'], x['userfile__description']) for x in filemodels.StoredFile.objects.filter(pk__in=params['singlefiles'].values()).values('pk', 'filename', 'libraryfile__description', 'userfile__description')}
-    for fn in fnmap.values():
+    for pk, fn in fnmap.items():
         if fn[1] is not None:
             desc = fn[1]
         elif fn[2] is not None:
             desc = fn[2]
         else:
             desc = ''
-        fn = [fn[0], desc]
+        fnmap[pk] = [fn[0], desc]
     invoc = {'files': [[x[0], *fnmap[x[1]]] for x in params['singlefiles'].items()]}
     invoc['params'] = params['params']
     return invoc
