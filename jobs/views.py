@@ -111,6 +111,18 @@ def purge_storedfile(request):
     return HttpResponse()
 
 
+def removed_emptydir(request):
+    """Ran after a job has deleted an empty dir from the filesystem"""
+    data = request.POST
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.STORAGECLIENT_APIKEY,
+                                settings.SWESTORECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    if 'task' in data:
+        set_task_done(data['task'])
+    return HttpResponse()
+
+
 def downloaded_px_file(request):
     """Storedfile and rawfn update proper md5 and set checked
     Creates job to add file to dset to move file to storage.

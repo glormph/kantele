@@ -13,6 +13,8 @@ urlpatterns = [
         name='deletejob'),
     url(r'^deletefile/$', views.purge_storedfile,
         name='deletefile'),
+    url(r'^deletedir/$', views.removed_emptydir,
+        name='rmdir'),
     url(r'^set/pxdataset/$', views.downloaded_px_file, name='downloadpx'),
     url(r'^swestore/set/$', views.created_swestore_backup,
         name='createswestore'),

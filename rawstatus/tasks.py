@@ -119,6 +119,29 @@ def delete_file(self, servershare, filepath, fn_id):
             raise
 
 
+@shared_task(bind=True, queue=config.QUEUE_STORAGE)
+def delete_empty_dir(self, servershare, directory):
+    dirpath = os.path.join(config.SHAREMAP[servershare], directory)
+    try:
+        os.rmdir(dirpath)
+    except (OSError, Exception):
+        # OSError raised on dir not empty
+        taskfail_update_db(self.request.id)
+        raise
+    msg = ('Could not update database with deletion of dir {} :'
+           '{}'.format(dirpath, '{}'))
+    url = urljoin(config.KANTELEHOST, reverse('jobs:rmdir'))
+    postdata = {'task': self.request.id, 'client_id': config.APIKEY}
+    try:
+        update_db(url, postdata, msg)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            update_db(url, postdata, msg)
+            raise
+
+
 @shared_task(bind=True, queue=config.QUEUE_SWESTORE)
 def swestore_upload(self, md5, servershare, filepath, fn_id):
     print('Uploading file {} to swestore'.format(filepath))
