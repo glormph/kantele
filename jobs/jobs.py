@@ -31,6 +31,7 @@ class Jobstates(object):
 
 JOBSTATES_WAIT = [Jobstates.WAITING, Jobstates.PENDING, Jobstates.PROCESSING]
 JOBSTATES_DONE = [Jobstates.DONE, Jobstates.CANCELED]
+JOBSTATES_PREJOB = [Jobstates.WAITING, Jobstates.PENDING]
 
 """Jobmap contains all jobs in system by name. The retry field indicates a
 job is retryable, which means the job should be side-effect free, i.e. possible

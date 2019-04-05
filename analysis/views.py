@@ -181,10 +181,14 @@ def delete_analysis(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     req = json.loads(request.body.decode('utf-8'))
-    analysis = am.Analysis.objects.get(nextflowsearch__id=req['analysis_id'])
+    analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['analysis_id'])
     if analysis.user == request.user or request.user.is_staff:
         analysis.deleted = True
         analysis.save()
+        ana_job = analysis.nextflowsearch.job
+        if ana_job.state in jj.JOBSTATES_PREJOB:
+            ana_job.state = jj.Jobstates.CANCELED
+            ana_job.save()
         return HttpResponse()
     else:
         return HttpResponseForbidden()
