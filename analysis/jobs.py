@@ -1,12 +1,14 @@
 from datetime import datetime
 import json
 import re
+import os
 
 from django.utils import timezone
 
 from kantele import settings
 from analysis import tasks, models, views
-from rawstatus import models as filemodels
+from rawstatus import models as rm
+from rawstatus import tasks as filetasks
 from datasets import models as dsmodels
 from datasets.jobs import get_or_create_mzmlentry
 from jobs.post import create_db_task
@@ -18,8 +20,8 @@ from jobs.post import create_db_task
 
 def refine_mzmls_getfiles(dset_id, analysis_id, wfv_id, dbfn_id, qtype):
     """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
-    existing_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
-    return filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__in=existing_refined)
+    existing_refined = rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
+    return rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__in=existing_refined)
 
 
 def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, *dset_mzmls):
@@ -27,9 +29,9 @@ def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, *dset_mzm
     nfwf = models.NextflowWfVersion.objects.get(pk=wfv_id)
     dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
     stagefiles = {'--tdb': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
-    mzmlfiles = filemodels.StoredFile.objects.select_related('rawfile').filter(
+    mzmlfiles = rm.StoredFile.objects.select_related('rawfile').filter(
         pk__in=dset_mzmls)
-    analysisshare = filemodels.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
+    analysisshare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
     mzmls = [(x.servershare.name, x.path, x.filename, 
               get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, analysisshare).id, analysisshare)
              for x in mzmlfiles]
@@ -59,7 +61,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
     analysis = models.Analysis.objects.get(pk=analysis_id)
     nfwf = models.NextflowWfVersion.objects.get(pk=wfv_id)
     dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
-    mzml = filemodels.StoredFile.objects.select_related(
+    mzml = rm.StoredFile.objects.select_related(
         'rawfile__producer', 'servershare', 'filetype').get(rawfile__storedfile__id=sf_id,
                                                 filetype__filetype='mzml')
     
@@ -86,7 +88,7 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
 
 def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):
     # FIXME setnames will be for files, already given an assoc_id
-    return filemodels.StoredFile.objects.filter(pk__in=fractions.keys())
+    return rm.StoredFile.objects.filter(pk__in=fractions.keys())
 
 
 def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs, *dset_mzmls):
@@ -101,11 +103,11 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
         pk=wfv_id)
     stagefiles = {}
     for flag, sf_id in inputs['singlefiles'].items():
-        sf = filemodels.StoredFile.objects.get(pk=sf_id)
+        sf = rm.StoredFile.objects.get(pk=sf_id)
         stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
     mzmls = [(x.servershare.name, x.path, x.filename, setnames[str(x.id)],
               platenames[str(x.rawfile.datasetrawfile.dataset_id)], fractions.get(str(x.id), False)) for x in
-             filemodels.StoredFile.objects.filter(pk__in=dset_mzmls)]
+             rm.StoredFile.objects.filter(pk__in=dset_mzmls)]
     run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
            'analysis_id': analysis.id,
            'wf_commit': nfwf.commit,
@@ -125,3 +127,18 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
     create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)
+
+
+def purge_analysis_getfiles(analysis_id):
+    return rm.StoredFile.objects.filter(analysisresultfile__analysis__id=analysis_id)
+
+
+def purge_analysis(job_id, analysis_id, *sf_ids):
+    """Queues tasks for deleting files from analysis from disk, then queues 
+    job for directory removal"""
+    for fn in rm.StoredFile.objects.filter(pk__in=sf_ids):
+        fullpath = os.path.join(fn.path, fn.filename)
+        print('Purging {} from analysis {}'.format(fullpath, analysis_id))
+        tid = filetasks.delete_file.delay(fn.servershare.name, fullpath,
+                fn.id).id
+        create_db_task(tid, job_id, fn.servershare.name, fullpath, fn.id)

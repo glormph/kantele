@@ -122,6 +122,7 @@ def delete_file(self, servershare, filepath, fn_id):
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def delete_empty_dir(self, servershare, directory):
     dirpath = os.path.join(config.SHAREMAP[servershare], directory)
+    print('Trying to delete empty directory {}'.format(dirpath))
     try:
         os.rmdir(dirpath)
     except (OSError, Exception):

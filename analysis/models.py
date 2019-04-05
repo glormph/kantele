@@ -99,6 +99,7 @@ class Analysis(models.Model):
     name = models.CharField(max_length=500)
     log = models.TextField(default='')
     deleted = models.BooleanField(default=False)
+    purged = models.BooleanField(default=False)
 
 
 class AnalysisError(models.Model):

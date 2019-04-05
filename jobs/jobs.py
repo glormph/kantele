@@ -77,6 +77,12 @@ jobmap = {'move_files_storage':
           'refine_mzmls':
           {'type': Jobtypes.PROCESS, 'func': anjobs.refine_mzmls,
            'getfns': anjobs.refine_mzmls_getfiles, 'retry': True},
+          'purge_analysis':
+          {'func': anjobs.purge_analysis, 'type': Jobtypes.MOVE,
+           'getfns': anjobs.purge_analysis_getfiles, 'retry': True},
+          'delete_analysis_directory':
+          {'func': rsjobs.delete_empty_directory, 'type': Jobtypes.MOVE,
+           'getfns': anjobs.purge_analysis_getfiles, 'retry': True},
           }
 
 

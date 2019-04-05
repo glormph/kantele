@@ -191,6 +191,23 @@ def delete_analysis(request):
 
 
 @login_required
+def purge_analysis(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    elif not request.user.is_staff:
+        return HttpResponseForbidden()
+    req = json.loads(request.body.decode('utf-8'))
+    analysis = am.Analysis.objects.get(nextflowsearch__id=req['analysis_id'])
+    if not analysis.deleted:
+        return HttpResponseForbidden()
+    analysis.purged = True
+    analysis.save()
+    jj.create_dataset_job('purge_analysis', analysis.id)
+    jj.create_dataset_job('delete_analysis_directory', analysis.id)
+    return HttpResponse()
+
+
+@login_required
 def serve_analysis_file(request, file_id):
     try:
         sf = get_servable_files(am.AnalysisResultFile.objects.select_related(

@@ -79,6 +79,21 @@ def move_single_file(job_id, fn_id, dst_path, oldname=False, dstshare=False, new
                    fn.path, dst_path, fn.id, dstshare=dstshare, newname=newname)
 
 
+def delete_empty_directory(job_id, analysis_id, *dependent_sfids):
+    """Check first if all the sfids are set to purged, indicating the dir is actually empty.
+    Then queue a task. The sfids also make this job dependent on other jobs on those, as in
+    the file-purging tasks before this directory deletion"""
+    sfiles = models.StoredFile.objects.filter(pk__in=dependent_sfids)
+    if sfiles.count() == sfiles.filter(purged=True).count():
+        fn = sfiles.select_related('servershare').last()
+        tid = tasks.delete_empty_dir.delay(fn.servershare.name, fn.path).id
+        create_db_task(tid, job_id, fn.servershare.name, fn.path)
+    else:
+        raise RuntimeError('Cannot delete dir: according to the DB, there are still storedfiles which '
+            'have not been purged yet in the directory')
+        
+
+
 def download_px_project_getfiles(dset_id, pxacc, rawfnids, sharename):
     """get only files that are NOT downloaded yet
     they will have: storedfile not checked, md5 == md5('fnstring')

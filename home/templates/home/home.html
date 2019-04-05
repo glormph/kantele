@@ -461,13 +461,18 @@
 			},
 		},
 	})
-	{% verbatim %}
 	Vue.component('search-box', {
 		template: `
-		<div class="content" >
+		<div class="content is-small" >
+			<input type="checkbox" v-model="searchdeleted">Search deleted analyses
 			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find analyses">
                         <a class="button" v-on:click="deleteAnalyses" v-show="selectedItems.length">Delete analyses</a>
                         <a class="button" disabled v-show="!selectedItems.length">Delete analyses</a>
+{% if user.is_staff %}
+                        <a class="button" v-on:click="purgeAnalyses" v-show="selectedItems.length">Purge analyses</a>
+                        <a class="button" disabled v-show="!selectedItems.length">Purge analyses</a>
+{% endif %}
+	{% verbatim %}
 			<table class="table">
 				<thead>
 					<tr>
@@ -492,7 +497,8 @@
 							<span v-for="state in items[itkey].jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span>
 						</td>
 						<td v-for="key in itemdatakeys">
-							<del v-if="items[itkey].deleted">{{ items[itkey][key] }}</del>
+							<del class="has-text-grey" v-if="items[itkey].purged">{{ items[itkey][key] }}</del>
+							<del v-else-if="items[itkey].deleted">{{ items[itkey][key] }}</del>
 							<span v-else>{{ items[itkey][key] }}</span>
 						</td>
 					</tr>
@@ -505,6 +511,7 @@
 		data: function() {
 			return {
 				searchUrl: '/find/analyses/',
+				purgeUrl: '/analysis/purge/',
 				deleteUrl: '/analysis/delete/',
 				showAllUrl: '/show/analyses/',
 				showItemUrl: '/show/analysis/',
@@ -514,6 +521,7 @@
                                 order: [],
 				findQuery: '',
 				allSelector: false,
+				searchdeleted: false,
 				selectedItems: [],
 				{% endverbatim %}
 						initialAnalysisIds: [{{ anids|join:',' }} ],
@@ -553,7 +561,7 @@
 			},
 			findItems: function() {
 				this.$http.get(this.searchUrl,
-					{params: {q: this.findQuery.split(' ').join(',') }})
+					{params: {deleted: this.searchdeleted, q: this.findQuery.split(' ').join(',') }})
 				.then(response => {
 					return response.json()
 				}, response => {
@@ -575,6 +583,21 @@
 					}).then(result => {
 						this.items[ana_id].deleted = true;
 					})
+				}
+			},
+			purgeAnalyses: function() {
+				for (ana_id of this.selectedItems) {
+					if (this.items[ana_id].deleted) {
+						this.$http.post(this.purgeUrl, {'analysis_id': ana_id})
+						.then(response => {
+							return response
+						}, response => {
+							console.log(response);
+							// error code
+						}).then(result => {
+							this.items[ana_id].purged = true;
+						})
+					}
 				}
 			},
 			toggleItem: function(id) {
