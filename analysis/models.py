@@ -44,7 +44,7 @@ class Workflow(models.Model):
 
 class LibraryFile(models.Model):
     description = models.CharField(max_length=100)
-    sfile = models.ForeignKey(filemodels.StoredFile)
+    sfile = models.OneToOneField(filemodels.StoredFile)
 
     def __str__(self):
         return self.description

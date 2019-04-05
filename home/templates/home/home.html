@@ -71,6 +71,8 @@
 </td>
 </tr>
 <tr><td></td><td colspan="6">
+<div v-if="fn.details.producer"><span class="has-text-weight-bold">Producer:</span> {{ fn.details.producer }} </div>
+<div v-if="fn.details.description"><span class="has-text-weight-bold">Description:</span> {{ fn.details.description }} </div>
 <div v-if="fn.details.path"><span class="has-text-weight-bold">Storage location:</span> {{ fn.details.path }} </div>
 <div>
     <a v-if="fn.details.dataset" v-bind:href="'?tab=datasets&dsids='+fn.details.dataset" target="_blank"><span class="tag is-info">Dataset</span></a> 

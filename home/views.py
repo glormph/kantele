@@ -386,11 +386,19 @@ def get_dset_info(request, dataset_id):
 @login_required
 def get_file_info(request, file_id):
     sfile = filemodels.StoredFile.objects.filter(pk=file_id).select_related(
-        'filetype', 'rawfile__datasetrawfile', 'analysisresultfile__analysis').get()
+        'filetype', 'rawfile__datasetrawfile', 'analysisresultfile__analysis', 'libraryfile', 'userfile').get()
     info = {'server': sfile.servershare.name, 'path': sfile.path, 'analyses': [],
+            'producer': sfile.rawfile.producer.name,
             'newname': sfile.filename,
             'renameable': True if sfile.filetype_id not in 
             [settings.MZML_SFGROUP_ID, settings.REFINEDMZML_SFGROUP_ID] else False}
+    if hasattr(sfile, 'libraryfile'):
+        desc = sfile.libraryfile.description
+    elif hasattr(sfile, 'userfile'):
+        desc = sfile.userfile.description
+    else:
+        desc = False
+    info['description'] = desc
     if hasattr(sfile.rawfile, 'datasetrawfile'):
         dsrf = sfile.rawfile.datasetrawfile
         info['dataset'] = dsrf.dataset_id
