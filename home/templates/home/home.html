@@ -10,6 +10,7 @@
 </section>
 <script>
   {% if user.is_staff %}
+	{% verbatim %}
 Vue.component('admin-box', {
   template: `
   <!--
@@ -19,18 +20,19 @@ Vue.component('admin-box', {
      - 5 deleted-non-purged analyses, 2 older than month (clickable, target=blank)
      - 
   -->
-  <article class="message is-danger"> 
+  <article class="message is-info"> 
     <div class="message-body">
-      <h4 class="title is-4">Admin news</h4>
-      <div v-if="purgable_analyses">There are {{ purgable_analyses.length }} analyses that can be purged</div>
-      <div v-if="old_purgable_analyses">{{ old_purgable_analyses }} purgable analyses are older than {{ olddef }}</div>
+      <h5 class="title is-5">Admin news</h5>
+      <div v-if="purgable_analyses">There are <a target="_blank" :href="get_purgable_analyses_ids(purgable_analyses)">{{ purgable_analyses.length }} analyses</a> that can be purged</div>
+      <div v-if="old_purgable_analyses"><a target="_blank" :href="get_purgable_analyses_ids(old_purgable_analyses)">{{ old_purgable_analyses.length }} purgable analyses</a> are older than {{ olddef }}</div>
     </div>
   </article>
   `, 
   data: function() {
     return {
-      files: {},
-      order: [],
+      olddef: false,
+      purgable_analyses: false,
+      old_purgable_analyses: false,
     }
   }, 
   mounted: function() {
@@ -43,19 +45,24 @@ Vue.component('admin-box', {
   },
   methods: {
     fetchMessages: function() {
-      url = '/show/messages/';
+      url = '/messages/';
       this.$http.get(url)
 	.then(response => {
 	  return response.json()
 	}, response => {
 	}).then(result => {
+	  this.olddef = result['olddef'];
 	  this.purgable_analyses = result['purgable_analyses'];
 	  this.old_purgable_analyses = result['old_purgable_analyses'];
-	  }
-	})
+	  })
+	},
+    get_purgable_analyses_ids: function(analyses) {
+      return `?tab=searches&anids=${analyses.join(',')}`;
     },
-  },
+ },
 })
+	{% endverbatim %}
+{% endif %}
 
 	{% verbatim %}
 	Vue.component('file-box', {

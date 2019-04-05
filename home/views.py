@@ -95,7 +95,7 @@ def show_analyses(request):
         # last 6month analyses of a user plus current analyses PENDING/PROCESSING
         run_ana = anmodels.NextflowSearch.objects.select_related(
             'workflow', 'analysis').filter(
-            job__state__in=jj.Jobstates_WAIT, analysis__deleted=False).exclude(
+            job__state__in=jj.JOBSTATES_WAIT, analysis__deleted=False).exclude(
             analysis__user_id=request.user.id)
         user_ana = anmodels.NextflowSearch.objects.select_related(
             'workflow', 'analysis').filter(
@@ -506,16 +506,24 @@ def show_messages(request):
     # Im not so interested in that, because then we need to generate the messages periodically or only 
     # on completion of jobs etc.
     # Maybe three types of message: 
-      - dynamic (resolve it and it disappear)
-      - notification from database (remove when read) - your job is done
-      - expiring at date - check out our new functionality, maintenance coming
-    out = {}
+    #  - dynamic (resolve it and it disappear)
+    #  - notification from database (remove when read) - your job is done
+    #  - expiring at date - check out our new functionality, maintenance coming
+    max_age_old = 30 # days
+    out = {'olddef': '{} days'.format(max_age_old)}
     if request.user.is_staff:
-        purgable = anmodels.Analysis.objects.select_related('analysisdeleted').filter(deleted=True, purged=False)
-        max_age_old = 30 # days
+        purgable = anmodels.Analysis.objects.select_related('nextflowsearch', 'analysisdeleted').filter(deleted=True, purged=False)
         purgable_old = purgable.filter(analysisdeleted__date__lt=datetime.today() - timedelta(max_age_old))
-        out['purgable_analyses'] = [x.id for x in purgable]
-        out['old_purgable_analyses'] = [x.id for x in purgable_old]
+        if purgable:
+            purgable_ana = [x.nextflowsearch.id for x in purgable if hasattr(x, 'nextflowsearch')]
+        else:
+            purgable_ana = False
+        if purgable_old:
+            purgable_ana_old = [x.nextflowsearch.id for x in purgable_old if hasattr(x, 'nextflowsearch')]
+        else:
+            purgable_ana_old = False
+        out['purgable_analyses'] = purgable_ana
+        out['old_purgable_analyses'] = purgable_ana_old
         return JsonResponse(out)
     else:
         return HttpResponseForbidden()
