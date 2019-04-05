@@ -15,6 +15,7 @@ urlpatterns = [
     url(r'^show/file/(?P<file_id>[0-9]+)$', views.get_file_info, name="fninfo"),
     url(r'^show/analysis/(?P<nfs_id>[0-9]+)$', views.get_analysis_info, name="anainfo"),
     url(r'^show/job/(?P<job_id>[0-9]+)$', views.get_job_info, name="jobinfo"),
+    url(r'^messages/$', views.show_messages, name="messages"),
     url(r'^refresh/job/(?P<job_id>[0-9]+)$', views.refresh_job, name="jobrefresh"),
     url(r'^createmzml/(?P<dataset_id>[0-9]+)$', views.create_mzmls),
     url(r'^refinemzml/(?P<dataset_id>[0-9]+)$', views.refine_mzmls),

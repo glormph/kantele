@@ -185,6 +185,8 @@ def delete_analysis(request):
     if analysis.user == request.user or request.user.is_staff:
         analysis.deleted = True
         analysis.save()
+        del_record = am.AnalysisDeleted(analysis=analysis)
+        del_record.save()
         ana_job = analysis.nextflowsearch.job
         if ana_job.state in jj.JOBSTATES_PREJOB:
             ana_job.state = jj.Jobstates.CANCELED

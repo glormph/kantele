@@ -2,10 +2,61 @@
 {% block content %}
 <section id="apps">
 <div class="container">
+  {% if user.is_staff %}
+  <admin-box></admin-box>
+  {% endif %}
 <main-box></main-box>
 </div>
 </section>
 <script>
+  {% if user.is_staff %}
+Vue.component('admin-box', {
+  template: `
+  <!--
+  This box shows up when:
+   - admin logs in, refreshes page
+   - shows messages for admin:
+     - 5 deleted-non-purged analyses, 2 older than month (clickable, target=blank)
+     - 
+  -->
+  <article class="message is-danger"> 
+    <div class="message-body">
+      <h4 class="title is-4">Admin news</h4>
+      <div v-if="purgable_analyses">There are {{ purgable_analyses.length }} analyses that can be purged</div>
+      <div v-if="old_purgable_analyses">{{ old_purgable_analyses }} purgable analyses are older than {{ olddef }}</div>
+    </div>
+  </article>
+  `, 
+  data: function() {
+    return {
+      files: {},
+      order: [],
+    }
+  }, 
+  mounted: function() {
+    this.fetchMessages();
+  },
+  computed: {
+    orderedfiles: function() {
+      return this.order.map(x => this.files[x]);
+    },
+  },
+  methods: {
+    fetchMessages: function() {
+      url = '/show/messages/';
+      this.$http.get(url)
+	.then(response => {
+	  return response.json()
+	}, response => {
+	}).then(result => {
+	  this.purgable_analyses = result['purgable_analyses'];
+	  this.old_purgable_analyses = result['old_purgable_analyses'];
+	  }
+	})
+    },
+  },
+})
+
 	{% verbatim %}
 	Vue.component('file-box', {
 		template: `

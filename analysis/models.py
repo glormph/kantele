@@ -102,6 +102,12 @@ class Analysis(models.Model):
     purged = models.BooleanField(default=False)
 
 
+# Can this be generalized to deleted log for also files?
+class AnalysisDeleted(models.Model):
+    analysis = models.OneToOneField(Analysis)
+    date = models.DateTimeField(auto_now_add=True)
+
+
 class AnalysisError(models.Model):
     message = models.TextField()
     analysis = models.OneToOneField(Analysis)

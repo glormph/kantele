@@ -493,3 +493,29 @@ def refine_mzmls(request, dataset_id):
         jj.create_dataset_job('refine_mzmls', dataset_id, analysis.id, settings.MZREFINER_NXFWFV_ID, 
                               settings.MZREFINER_FADB_ID, dset.quantdataset.quanttype.shortname)
     return HttpResponse()
+
+
+@login_required
+def show_messages(request):
+    """Shows messages for admin and possibly also for normal users"""
+    # Candidate messages for admin and normal:
+    # purgable files
+    # analysis is done
+    # refine/convert is finished
+    # if we are serious about this then we need to know if the message has been read yet...
+    # Im not so interested in that, because then we need to generate the messages periodically or only 
+    # on completion of jobs etc.
+    # Maybe three types of message: 
+      - dynamic (resolve it and it disappear)
+      - notification from database (remove when read) - your job is done
+      - expiring at date - check out our new functionality, maintenance coming
+    out = {}
+    if request.user.is_staff:
+        purgable = anmodels.Analysis.objects.select_related('analysisdeleted').filter(deleted=True, purged=False)
+        max_age_old = 30 # days
+        purgable_old = purgable.filter(analysisdeleted__date__lt=datetime.today() - timedelta(max_age_old))
+        out['purgable_analyses'] = [x.id for x in purgable]
+        out['old_purgable_analyses'] = [x.id for x in purgable_old]
+        return JsonResponse(out)
+    else:
+        return HttpResponseForbidden()
