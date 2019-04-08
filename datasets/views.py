@@ -337,10 +337,14 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
     return '{}/{}{}/{}'.format(project.name, exp.name, subdir, runname.name)
 
 
+def get_dataset_owners_ids(dset):
+    return [x.id for x in dset.datasetowner_set.all()]
+
+
 def check_ownership(user, dset):
     if dset.deleted:
         return False
-    elif dset.user_id == user.id or user.is_staff:
+    elif user.id in get_dataset_owners_ids(dset) or user.is_staff:
         return True
     elif not dset.runname.experiment.project.corefac:
         return False

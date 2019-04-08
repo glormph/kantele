@@ -38,7 +38,7 @@ def find_datasets(request):
     query |= Q(runname__experiment__name__icontains=searchterms[0])
     query |= Q(runname__experiment__project__name__icontains=searchterms[0])
     query |= Q(datatype__name__icontains=searchterms[0])
-    query |= Q(user__username__icontains=searchterms[0])
+    #query |= Q(user__username__icontains=searchterms[0])
     try:
         float(searchterms[0])
     except ValueError:
@@ -51,7 +51,7 @@ def find_datasets(request):
         subquery |= Q(runname__experiment__name__icontains=term)
         subquery |= Q(runname__experiment__project__name__icontains=term)
         subquery |= Q(datatype__name__icontains=term)
-        subquery |= Q(user__username__icontains=term)
+        #subquery |= Q(user__username__icontains=term)
         try:
             float(term)
         except ValueError:
@@ -169,7 +169,7 @@ def populate_files(dbfns):
         if not fn.rawfile.claimed:
             it['owner'] = fn.rawfile.producer.name
         elif hasattr(fn.rawfile, 'datasetrawfile'):
-            it['owner'] = fn.rawfile.datasetrawfile.dataset.user.username
+            it['owner'] = fn.rawfile.datasetrawfile.dataset.datasetowner_set.select_related('user').first().user.username
         elif hasattr(fn, 'analysisresultfile'):
             it['owner'] = fn.analysisresultfile.analysis.user.username
         popfiles[fn.id] = it
@@ -255,8 +255,8 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
                                           'prefractionationdataset'):
         dsets[dataset.id] = {
             'id': dataset.id,
-            'own': dataset.user_id == user.id,
-            'usr': dataset.user.username,
+            'own': check_ownership(user, dataset),
+            'usr': dataset.datasetowner_set.select_related('user').first().user.username,
             'deleted': dataset.deleted,
             'proj': dataset.runname.experiment.project.name,
             'exp': dataset.runname.experiment.name,

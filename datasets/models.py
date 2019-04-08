@@ -56,13 +56,17 @@ class DatatypeComponent(models.Model):
 
 
 class Dataset(models.Model):
-    user = models.ForeignKey(User)
     date = models.DateTimeField('date created')
     runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
     storage_loc = models.TextField(max_length=200, unique=True)
     deleted = models.BooleanField(default=False)
     purged = models.BooleanField(default=False)
+
+
+class DatasetOwner(models.Model):
+    dataset = models.ForeignKey(Dataset)
+    user = models.ForeignKey(User)
 
 
 class DatasetComponentState(models.Model):
