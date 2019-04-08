@@ -154,7 +154,7 @@ def show_files(request):
 
 def populate_files(dbfns):
     popfiles = {}
-    for fn in dbfns.select_related('rawfile__datasetrawfile__dataset__user', 'analysisresultfile__analysis', 'swestorebackedupfile', 'filetype'):
+    for fn in dbfns.select_related('rawfile__datasetrawfile__dataset', 'analysisresultfile__analysis', 'swestorebackedupfile', 'filetype'):
         it = {'id': fn.id,
               'name': fn.filename,
               'date': fn.regdate if fn.filetype_id != int(settings.RAW_SFGROUP_ID) else fn.rawfile.date,
@@ -255,7 +255,7 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
                                           'prefractionationdataset'):
         dsets[dataset.id] = {
             'id': dataset.id,
-            'own': check_ownership(user, dataset),
+            'own': dsviews.check_ownership(user, dataset),
             'usr': dataset.datasetowner_set.select_related('user').first().user.username,
             'deleted': dataset.deleted,
             'proj': dataset.runname.experiment.project.name,
