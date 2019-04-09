@@ -889,7 +889,7 @@ def save_sampleprep(request):
         if not data['multisample']:
             data['samples'] = {}
             for fn in data['filenames']:
-                data['samples'][fn['associd']] = data['sample']
+                data['samples'][str(fn['associd'])] = data['sample']
             print('No multisample')
         models.QuantSampleFile.objects.bulk_create([
             models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][str(fid)])
