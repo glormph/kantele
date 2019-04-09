@@ -252,7 +252,7 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
     if showjobs:
         jobmap = get_ds_jobs(dbdsets)
     dsets = OrderedDict()
-    for dataset in dbdsets.select_related('runname__experiment__project',
+    for dataset in dbdsets.select_related('runname__experiment__project__projtype__ptype',
                                           'prefractionationdataset'):
         dsets[dataset.id] = {
             'id': dataset.id,
@@ -263,7 +263,7 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
             'exp': dataset.runname.experiment.name,
             'run': dataset.runname.name,
             'dtype': dataset.datatype.name,
-            'is_corefac': dataset.runname.experiment.project.corefac,
+            'ptype': dataset.runname.experiment.project.projtype.ptype.name,
             'details': False,
             'selected': False,
         }

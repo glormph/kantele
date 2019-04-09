@@ -246,7 +246,7 @@ Vue.component('admin-box', {
 						<th><input type="checkbox" v-model="allSelector" v-on:click="selectAll"></th>
 						<th></th>
 						<th></th>
-						<th>CF</th>
+						<th>Project type</th>
 		<th><span class="icon is-small"><i class="fa fa-hourglass-half"/></span></th>
 						<th>Project</th>
 						<th>Experiment</th>
@@ -276,9 +276,7 @@ Vue.component('admin-box', {
 							</span>
 								</a>
 						</td>
-						<td><span class="has-icon" v-if="ds.is_corefac">
-                                                               <i class="fa fa-check has-text-success"></i>
-		</span></td>
+						<td>{{ ds.ptype }}</td>
 		<td><span v-for="state in ds.jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span></td>
 						<td v-for="name in [ds.proj, ds.exp, ds.run, ds.usr]">
 							<del v-if="ds.deleted">{{ name }}</del>

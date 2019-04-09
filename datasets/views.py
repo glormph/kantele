@@ -12,7 +12,6 @@ from django.utils import timezone
 from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
-from corefac import models as cfmodels
 from jobs.jobs import create_dataset_job
 
 
@@ -26,7 +25,8 @@ COMPSTATE_INCOMPLETE = 'incomplete'
 def new_dataset(request):
     """Returns dataset view with Vue apps that will separately request
     forms"""
-    context = {'dataset_id': '', 'newdataset': True, 'is_owner': 'true'}
+    context = {'dataset_id': '', 'newdataset': True, 'is_owner': 'true',
+               'local_ptype_id': settings.LOCAL_PTYPE_ID}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -39,7 +39,8 @@ def show_dataset(request, dataset_id):
         return HttpResponseNotFound()
     context = {'dataset_id': dataset_id, 'newdataset': False,
                'is_owner': {True: 'true', False: 'false'}[
-                   check_ownership(request.user, dset)]}
+                   check_ownership(request.user, dset)],
+               'local_ptype_id': settings.LOCAL_PTYPE_ID}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -49,7 +50,7 @@ def dataset_project(request, dataset_id):
     if dataset_id:
         try:
             dset = models.Dataset.objects.select_related(
-                'runname__experiment__project', 'datatype',
+                'runname__experiment__project__projtype', 'datatype',
                 'prefractionationdataset__prefractionation',
                 'prefractionationdataset__hiriefdataset',
                 'prefractionationdataset__prefractionationfractionamount',
@@ -62,14 +63,13 @@ def dataset_project(request, dataset_id):
         components = models.DatatypeComponent.objects.filter(
             datatype_id=dset.datatype_id).select_related('component')
         response_json.update(
-            dataset_proj_json(dset, dset.runname.experiment.project, species,
-                              components))
+            dataset_proj_json(dset, species, components))
         if hasattr(dset, 'prefractionationdataset'):
             response_json.update(pf_dataset_proj_json(
                 dset.prefractionationdataset))
-        if dset.runname.experiment.project.corefac:
-            mail = models.CorefacDatasetContact.objects.get(dataset_id=dset.id)
-            response_json.update(cf_dataset_proj_json(mail))
+        if dset.runname.experiment.project.projtype.ptype_id != settings.LOCAL_PTYPE_ID:
+            mail = models.ExternalDatasetContact.objects.get(dataset_id=dset.id)
+            response_json.update({'externalcontactmail': mail.email})
     return JsonResponse(response_json)
 
 
@@ -280,10 +280,10 @@ def update_dataset(data):
     elif new_storage_loc != dset.storage_loc:
         dset.storage_loc = new_storage_loc
     dset.save()
-    if data['is_corefac']:
-        if dset.corefacdatasetcontact.email != data['corefaccontact']:
-            dset.corefacdatasetcontact.email = data['corefaccontact']
-            dset.corefacdatasetcontact.save()
+    if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
+        if dset.externaldatasetcontact.email != data['externalcontact']:
+            dset.externaldatasetcontact.email = data['externalcontact']
+            dset.externaldatasetcontact.save()
     return JsonResponse({'dataset_id': dset.id})
 
 
@@ -291,13 +291,12 @@ def newproject_save(data):
     if 'newpiname' in data:
         pi = models.PrincipalInvestigator(name=data['newpiname'])
         pi.save()
-        project = models.Project(name=data['newprojectname'], pi=pi,
-                                 corefac=data['is_corefac'])
+        project = models.Project(name=data['newprojectname'], pi=pi)
     else:
-        project = models.Project(name=data['newprojectname'],
-                                 pi_id=data['pi_id'],
-                                 corefac=data['is_corefac'])
+        project = models.Project(name=data['newprojectname'], pi_id=data['pi_id'])
     project.save()
+    ptype = models.ProjType(project=project, ptype_id=data['ptype_id'])
+    ptype.save()
     return project
 
 
@@ -342,16 +341,18 @@ def get_dataset_owners_ids(dset):
 
 
 def check_ownership(user, dset):
+    pt_id = dset.runname.experiment.project.projtype.ptype_id 
     if dset.deleted:
         return False
     elif user.id in get_dataset_owners_ids(dset) or user.is_staff:
         return True
-    elif not dset.runname.experiment.project.corefac:
+    elif pt_id == settings.LOCAL_PTYPE_ID:
         return False
-    try:
-        cfmodels.CorefacUser.objects.get(user_id=user.id)
-    except cfmodels.CorefacUser.DoesNotExist:
-        return False
+    else:
+        try:
+            models.UserPtype.objects.get(ptype_id=pt_id, user_id=user.id)
+        except models.UserPtype.DoesNotExist:
+            return False
     return True
 
 
@@ -379,7 +380,7 @@ def get_or_create_px_dset(exp, px_acc, user_id):
         run = models.RunName(name=px_acc, experiment=experiment)
         run.save()
         data = {'datatype_id': get_quantprot_id(), 'prefrac_id': False,
-                'is_corefac': False, 'organism_ids': [settings.QC_ORGANISM]}
+                'ptype_id': settings.LOCAL_PTYPE_ID, 'organism_ids': [settings.QC_ORGANISM]}
         return save_new_dataset(data, project, experiment, run, user_id)
 
 
@@ -395,7 +396,7 @@ def get_or_create_qc_dataset(data):
         run = models.RunName.objects.get(pk=data['runname_id'])
         data['datatype_id'] = settings.QC_DATATYPE
         data['prefrac_id'] = False
-        data['is_corefac'] = False
+        data['ptype_id'] = settings.LOCAL_PTYPE_ID
         data['organism_ids'] = [settings.QC_ORGANISM]
         return save_new_dataset(data, project, exp, run, settings.QC_USER_ID)
 
@@ -419,9 +420,9 @@ def save_new_dataset(data, project, experiment, runname, user_id):
          for sid in data['organism_ids']])
     if data['prefrac_id']:
         save_dataset_prefrac(dset.id, data, hrf_id)
-    if data['is_corefac']:
-        dset_mail = models.CorefacDatasetContact(dataset=dset,
-                                                 email=data['corefaccontact'])
+    if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
+        dset_mail = models.ExternalDatasetContact(dataset=dset,
+                                                 email=data['externalcontact'])
         dset_mail.save()
     dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
                                                   component__name='definition')
@@ -529,9 +530,9 @@ def update_dataset_prefrac(pfds, data, hrf_id):
 
 
 def empty_dataset_proj_json():
-    projects = [{'name': x.name, 'id': x.id, 'corefac': x.corefac,
+    projects = [{'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
                  'select': False, 'pi_id': x.pi_id} for x in
-                models.Project.objects.all()]
+                models.Project.objects.select_related('projtype').all()]
     experiments = {x['id']: [] for x in projects}
     for exp in models.Experiment.objects.select_related('project').all():
         run_names = [{'name': x.name, 'id': x.id} for x in
@@ -539,6 +540,7 @@ def empty_dataset_proj_json():
         experiments[exp.project.id].append({'id': exp.id, 'name': exp.name,
                                             'run_names': run_names})
     edpr = {'projects': projects, 'experiments': experiments,
+            'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
             'external_pis': [{'name': x.name, 'id': x.id} for x in
                              models.PrincipalInvestigator.objects.all()],
             'datatypes': [{'name': x.name, 'id': x.id} for x in
@@ -566,13 +568,14 @@ def empty_dataset_proj_json():
     return edpr
 
 
-def dataset_proj_json(dset, project, species, components):
+def dataset_proj_json(dset, species, components):
+    project = dset.runname.experiment.project
     return {'dataset_id': dset.id,
             'experiment_id': dset.runname.experiment_id,
             'runname': dset.runname.name,
             'pi_id': project.pi_id,
             'project_id': project.id,
-            'existingproject_iscf': project.corefac,
+            'ptype_id': project.projtype.ptype_id,
             'datatype_id': dset.datatype_id,
             'storage_location': dset.storage_loc,
             'organism_ids': {x.species_id: {'id': x.species_id,
@@ -583,12 +586,7 @@ def dataset_proj_json(dset, project, species, components):
             }
 
 
-def cf_dataset_proj_json(dset_mail):
-    return {'externalcontactmail': dset_mail.email}
-
-
 def pf_dataset_proj_json(pfds):
-    
     resp_json = {'prefrac_id': pfds.prefractionation.id,
                  'prefrac_amount': pfds.prefractionationfractionamount.fractions}
     if hasattr(pfds, 'hiriefdataset'):

@@ -67,6 +67,9 @@ except TypeError:
     # Tasks have no notion of these IDs so they will error
     pass
 
+# local datasets
+LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID'))
+
 # external datasets
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')

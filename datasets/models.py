@@ -14,8 +14,21 @@ class PrincipalInvestigator(models.Model):
 class Project(models.Model):
     name = models.CharField(max_length=100)
     pi = models.ForeignKey(PrincipalInvestigator)
-    corefac = models.BooleanField()
     active = models.BooleanField(default=True)
+
+
+class ProjectTypeName(models.Model):
+    name = models.CharField(max_length=50)
+
+
+class ProjType(models.Model):
+    project = models.OneToOneField(Project)
+    ptype = models.ForeignKey(ProjectTypeName)
+
+
+class UserPtype(models.Model):
+    ptype = models.ForeignKey(ProjectTypeName)
+    user = models.ForeignKey(User)
 
 
 class Experiment(models.Model):
@@ -227,7 +240,7 @@ class HiriefRange(models.Model):
         return '{}_{}'.format(self.start, self.end)
 
 
-class CorefacDatasetContact(models.Model):
+class ExternalDatasetContact(models.Model):
     dataset = models.OneToOneField(Dataset)
     email = models.CharField(max_length=100)
 

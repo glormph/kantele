@@ -55,7 +55,7 @@
 	</ul>
 </div>
 <div class="container">
-		<project-box v-on:save="save_definition" v-on:revert="fetchProject" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:saveerrors="projerrors" v-bind:dset_id="dataset_id" v-bind:projsaved="projsaved" v-bind:pdata="projdata"></project-box>
+		<project-box v-on:save="save_definition" v-on:revert="fetchProject" v-show="viewtab === 'definition'" v-bind:is_owner="is_owner" v-bind:local_ptype_id="local_ptype_id" v-bind:saveerrors="projerrors" v-bind:dset_id="dataset_id" v-bind:projsaved="projsaved" v-bind:pdata="projdata"></project-box>
 		<acquisition-box v-on:save="save_acquisition" v-on:revert="fetchAcquisition" v-if="componentEnabled('acquisition')" v-show="viewtab === 'acquisition'" v-bind:acqsaved="acqsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:acqdata="acqdata"></acquisition-box>
 		<files-box v-on:save="save_files" v-on:revert="fetchFiles" v-show="viewtab === 'files'" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:fnsaved="fnsaved" v-bind:fndata="filesdata"></files-box>
 		<sampleprep-box v-on:save="save_sampleprep" v-on:revert="fetchSampleprep" v-if="componentEnabled('sampleprep')" v-show="viewtab === 'sampleprep'" v-bind:spsaved="spsaved" v-bind:is_owner="is_owner" v-bind:dset_id="dataset_id" v-bind:assoc_filenames="filesdata.datasetAssociatedFiles" v-bind:spdata="sampledata"></sampleprep-box>
@@ -788,7 +788,7 @@
 	})
 	
 	Vue.component('project-box', {
-		props: ['dset_id', 'is_owner', 'pdata', 'projsaved', 'saveerrors'],
+		props: ['dset_id', 'local_ptype_id', 'is_owner', 'pdata', 'projsaved', 'saveerrors'],
 		template: `
 	<div class="columns">
 		<div class="column"/>
@@ -831,22 +831,27 @@
 			</div>
 		        <div class="field">
 		        	<div class="control">
-		        	<label class="checkbox">
-					<input type="checkbox" v-on:change="editing=true" v-model="newproject_iscf">
-		        		Core facility project
-		        	</label>
+				<label class="label">Project type</label>
+				<div class="select">
+					<select v-model="pdata.ptype_id" v-on:change="editing=true">
+						<option disabled value="">Please select one</option>
+					        {% verbatim %}
+						<option v-for="ptype in pdata.ptypes" v-bind:value="ptype.id">{{ ptype.name }}</option>
+					        {% endverbatim %}
+					</select>
+				</div>
 		        	</div>
 		        </div>
 			</template>
 		</div>
 		
-		<div class="field" v-if="is_corefac">
+		<div class="field" v-if="is_external">
 			<label class="label">contact(s)
 				<template v-if="isNewProject">
 					<a class="button is-danger is-outlined is-small" v-show="isNewPI" v-on:click="new_pi">Use existing PI</a>
 					<a class="button is-danger is-outlined is-small" v-show="!isNewPI" v-on:click="new_pi">Create new PI</a>
 				</template>
-				<span class="tag is-success is-medium">Core facility project</span>
+				<span class="tag is-success is-medium">External project</span>
 	 	      	</label>
 			<template v-if="isNewProject">
 			<div class="control" v-if="!isNewPI">
@@ -988,7 +993,6 @@
 			isNewProject: false,
 			isNewExperiment: false,
 			isNewPI: false,
-			newproject_iscf: false,
 			organismfilter: '',
 			mostusedorganisms: true,
 			editing: false,
@@ -1009,13 +1013,13 @@
 				return false
 			}
 		},
-		is_corefac: function() {
+		is_external: function() {
 			if (this.isNewProject) {
-				this.pdata.is_corefac = this.newproject_iscf;
-				return this.newproject_iscf}
+				this.pdata.is_external= this.pdata.ptype_id !== this.local_ptype_id;
+				return this.pdata.is_external}
 			else {
-				this.pdata.is_corefac = this.pdata.existingproject_iscf;
-				return this.pdata.existingproject_iscf}
+				this.pdata.is_external = this.pdata.existingproject_is_external;
+				return this.pdata.existingproject_is_external}
 			
 			},
 		filteredorganisms: function() {
@@ -1068,8 +1072,9 @@
 			project_selected: function() {
 				this.editing = true;
 				if (this.pdata.project_id) {
-					this.pdata.existingproject_iscf = this.pdata.project_lookup[this.pdata.project_id].corefac;
+					this.pdata.existingproject_is_external = this.pdata.project_lookup[this.pdata.project_id].ptype_id !== this.local_ptype_id;
 					this.pdata.pi_id = this.pdata.project_lookup[this.pdata.project_id].pi_id;
+					this.pdata.ptype_id = this.pdata.project_lookup[this.pdata.project_id].ptype_id;
 				}
 			},
 		       	toggle_project: function() {
@@ -1129,7 +1134,7 @@
 				if (!this.pdata.datatype_id) {
 					this.errors.push('Datatype is required');
 				}
-				if (this.is_corefac) {
+				if (this.is_external) {
 					if (!this.pdata.newpiname && !this.pdata.pi_id) {
 						this.errors.push('Need to select or create a PI');
 					}
@@ -1173,10 +1178,11 @@
 				internal_pi_id: '',
 				pi_id: '',
 				project_id: '',
+			        ptype_id: {{ local_ptype_id }},
 				datatype_id: '',
 				experiment_id: '',
 				experiments: {},
-				existingproject_iscf: false,
+				existingproject_is_external: false,
 				externpi: '',
 				externalcontactmail: '',
 				runname: '',
@@ -1224,6 +1230,7 @@
 			acqsaved: true,
 			dataset_id: '{{ dataset_id }}',
 			is_owner: {{ is_owner }},
+			local_ptype_id: {{ local_ptype_id }},
 		}
 	},
 	mounted: function() {
@@ -1275,7 +1282,7 @@
 					}
 				this.projdata.project_lookup = {};
 				for (var i = 0; i < result.projects.length; i++) {
-					this.projdata.project_lookup[result.projects[i].id] = {'corefac': result.projects[i].corefac, 'pi_id': result.projects[i].pi_id, 'name': result.projects[i].name};
+					this.projdata.project_lookup[result.projects[i].id] = {'ptype_id': result.projects[i].ptype_id, 'pi_id': result.projects[i].pi_id, 'name': result.projects[i].name};
 					}
 				this.dtypecomponents = this.projdata.components;
 				})
@@ -1313,7 +1320,7 @@
 		save_definition: function() {
 			data = {
 				dataset_id: this.dataset_id,
-				is_corefac: this.projdata.is_corefac,
+				ptype_id: this.projdata.ptype_id,
 				datatype_id: this.projdata.datatype_id,
 				organism_ids: this.projdata.organism_ids,
 				runname: this.projdata.runname,
@@ -1335,10 +1342,10 @@
 			if (this.projdata.isNewPI) {
 			data.newpiname = this.projdata.newpiname;
 			} else {
-			data.pi_id = this.projdata.is_corefac ? this.projdata.externpi: this.projdata.internal_pi_id;
+			data.pi_id = this.projdata.is_external ? this.projdata.externpi : this.projdata.internal_pi_id;
 			}
-			if (this.projdata.is_corefac) {
-			data.corefaccontact = this.projdata.externalcontactmail;
+			if (this.projdata.ptype_id !== this.local_ptype_id) {
+			data.externalcontact = this.projdata.externalcontactmail;
 			}
 			this.$http.post('/datasets/save/project/', data
 				).then(response => {
