@@ -178,9 +178,9 @@ def get_job_ownership(job, request):
         usernames = [ana.user.username]
         owner_loggedin = request.user.id == ana.user.id
     else:
-        fjs = job.filejob_set.select_related('storedfile__rawfile__datasetrawfile__dataset__user')
+        fjs = job.filejob_set.select_related('storedfile__rawfile__datasetrawfile__dataset')
         try:
-            users = list({x.storedfile.rawfile.datasetrawfile.dataset.user for x in fjs})
+            users = list({y.user for x in fjs for y in x.storedfile.rawfile.datasetrawfile.dataset.datasetowner_set.all()})
         except dm.DatasetRawFile.DoesNotExist:
             usernames = list({x.storedfile.rawfile.producer.name for x in fjs})
             ownertype = 'admin'

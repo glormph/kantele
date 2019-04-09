@@ -338,7 +338,7 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
 
 
 def get_dataset_owners_ids(dset):
-    return [x.id for x in dset.datasetowner_set.all()]
+    return [x.user.id for x in dset.datasetowner_set.all()]
 
 
 def check_ownership(user, dset):
@@ -405,13 +405,15 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     dtype = get_datatype(data['datatype_id'])
     prefrac = get_prefrac(data['prefrac_id'])
     qprot_id = get_quantprot_id()
-    dset = models.Dataset(user_id=user_id, date=timezone.now(),
+    dset = models.Dataset(date=timezone.now(),
                           runname_id=runname.id,
                           storage_loc=get_storage_location(
                               project, experiment, runname, qprot_id, hrf_id,
                               dtype, prefrac, data),
                           datatype=dtype)
     dset.save()
+    dsowner = models.DatasetOwner(dataset=dset, user_id=user_id)
+    dsowner.save()
     models.DatasetSpecies.objects.bulk_create(
         [models.DatasetSpecies(species_id=sid, dataset_id=dset.id)
          for sid in data['organism_ids']])

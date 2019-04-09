@@ -6,7 +6,7 @@ import os
 from django.utils import timezone
 
 from kantele import settings
-from analysis import tasks, models, views
+from analysis import tasks, models
 from rawstatus import models as rm
 from rawstatus import tasks as filetasks
 from datasets import models as dsmodels
@@ -79,11 +79,20 @@ def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
            'name': 'longqc',
            'outdir': 'internal_results',
            }
-    views.create_nf_search_entries(analysis, wf.id, nfwf.id, job_id)
+    create_nf_search_entries(analysis, wf.id, nfwf.id, job_id)
     res = tasks.run_nextflow_longitude_qc.delay(run, params, stagefiles)
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
     create_db_task(res.id, job_id, run, params, stagefiles)
+
+
+def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
+    try:
+        nfs = models.NextflowSearch.objects.get(analysis=analysis)
+    except models.NextflowSearch.DoesNotExist:
+        nfs = models.NextflowSearch(nfworkflow_id=nfv_id, job_id=job_id,
+                                    workflow_id=wf_id, analysis=analysis)
+        nfs.save()
 
 
 def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):

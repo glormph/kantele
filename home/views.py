@@ -13,6 +13,7 @@ from datasets import models as dsmodels
 from analysis import models as anmodels
 from analysis import views as av
 from datasets import jobs as dsjobs
+from datasets.views import check_ownership
 from rawstatus import models as filemodels
 from jobs import jobs as jj
 from jobs import models as jm
@@ -114,7 +115,7 @@ def show_datasets(request):
         dbdsets = dsmodels.Dataset.objects.filter(pk__in=dsids)
     else:
         # last month datasets of a user
-        dbdsets = dsmodels.Dataset.objects.filter(deleted=False, user_id=request.user.id,
+        dbdsets = dsmodels.Dataset.objects.filter(deleted=False, datasetowner__user_id=request.user.id,
                                                   date__gt=datetime.today() - timedelta(30))
     return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
 
@@ -255,7 +256,7 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
                                           'prefractionationdataset'):
         dsets[dataset.id] = {
             'id': dataset.id,
-            'own': dsviews.check_ownership(user, dataset),
+            'own': check_ownership(user, dataset),
             'usr': dataset.datasetowner_set.select_related('user').first().user.username,
             'deleted': dataset.deleted,
             'proj': dataset.runname.experiment.project.name,

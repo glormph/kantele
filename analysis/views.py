@@ -9,6 +9,7 @@ from django.db.models import Subquery
 
 from kantele import settings
 from analysis import models as am
+from analysis import jobs as aj
 from datasets import models as dm
 from rawstatus import models as rm
 from home import views as hv
@@ -172,7 +173,7 @@ def start_analysis(request):
     if jobcheck:
     	return JsonResponse({'state': 'error', 'msg': 'This analysis already exists', 'link': '/?tab=searches&search_id={}'.format(jobcheck.nextflowsearch.id)})
     job = jj.create_dataset_job(fname, arg_dsids, strips, req['fractions'], req['setnames'], analysis.id, req['wfid'], req['nfwfvid'], params)
-    create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
+    aj.create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
     return JsonResponse({'state': 'ok'})
 
 
@@ -227,15 +228,6 @@ def serve_analysis_file(request, file_id):
 
 def get_servable_files(resultfiles):
     return resultfiles.filter(sfile__filename__in=settings.SERVABLE_FILENAMES)
-
-
-def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
-    try:
-        nfs = am.NextflowSearch.objects.get(analysis=analysis)
-    except am.NextflowSearch.DoesNotExist:
-        nfs = am.NextflowSearch(nfworkflow_id=nfv_id, job_id=job_id,
-                                    workflow_id=wf_id, analysis=analysis)
-        nfs.save()
 
 
 def write_analysis_log(logline, analysis_id):
