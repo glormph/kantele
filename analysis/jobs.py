@@ -30,7 +30,7 @@ def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, *dset_mzm
     dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
     stagefiles = {'--tdb': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
     mzmlfiles = rm.StoredFile.objects.select_related('rawfile').filter(
-        pk__in=dset_mzmls)
+        pk__in=dset_mzmls, rawfile__datasetrawfile__dataset_id=dset_id)
     analysisshare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
     mzmls = [(x.servershare.name, x.path, x.filename, 
               get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, analysisshare).id, analysisshare)
