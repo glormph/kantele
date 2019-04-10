@@ -4,6 +4,7 @@ from celery import states as tstates
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.db.models import Q
 from collections import OrderedDict
@@ -117,7 +118,8 @@ def show_datasets(request):
         # last month datasets of a user
         dbdsets = dsmodels.Dataset.objects.filter(deleted=False, datasetowner__user_id=request.user.id,
                                                   date__gt=datetime.today() - timedelta(30))
-    return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
+    return JsonResponse({'dsets': populate_dset(dbdsets, request.user),
+                         'allowners': {x.id: '{} {}'.format(x.first_name, x.last_name) for x in User.objects.filter(is_active=True)}})
 
 
 @login_required
@@ -445,6 +447,8 @@ def fetch_dset_details(dset):
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
     info['nrrawfiles'] = raws.count()
     info['storage_loc'] = dset.storage_loc
+    info['owners'] = {x.user_id: x.user.username for x in dset.datasetowner_set.select_related('user').all()}
+    info['owner_to_add'] = ''
     try:
         info['qtype'] = {'name': dset.quantdataset.quanttype.name, 
                          'short': dset.quantdataset.quanttype.shortname}

@@ -336,6 +336,28 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
     return '{}/{}{}/{}'.format(project.name, exp.name, subdir, runname.name)
 
 
+@login_required
+def change_owners(request):
+    data = json.loads(request.body.decode('utf-8'))
+    try:
+        dset = models.Dataset.objects.get(pk=data['dataset_id'])
+    except models.Dataset.DoesNotExist:
+        print('change_owners could not find dataset with that ID {}'.format(data['dataset_id']))
+        return HttpResponseNotFound()
+    if not check_ownership(request.user, dset):
+        return HttpResponseForbidden()
+    is_already_owner = models.DatasetOwner.objects.filter(dataset_id=dset, user_id=data['owner'])
+    if data['op'] == 'add' and not is_already_owner:
+        newowner = models.DatasetOwner(dataset=dset, user_id=data['owner'])
+        newowner.save()
+        return JsonResponse({'result': 'ok'})
+    elif data['op'] == 'del' and is_already_owner and dset.datasetowner_set.count() > 1:
+        is_already_owner.delete()
+        return JsonResponse({'result': 'ok'})
+    else:
+        return JsonResponse({'result': 'error', 'message': 'Something went wrong trying to change ownership'})
+    
+
 def get_dataset_owners_ids(dset):
     return [x.user.id for x in dset.datasetowner_set.all()]
 

@@ -312,7 +312,7 @@ Vue.component('admin-box', {
 
 		</div>
 		</td>
-		<td colspan="2">
+		<td>
 		<div v-for="job in ds.details.jobs">
 			<a v-if="job.state==='error' && job.retry" v-on:click="retryJob(job.id)" class="button is-small is-outlined is-danger">Retry {{ job.name }}</a>
 					<span v-else-if="job.state==='error'" class="tag is-danger">{{ job.name }}</span>
@@ -321,7 +321,26 @@ Vue.component('admin-box', {
 					<span v-if="job.state==='wait'" class="tag is-grey-light">{{ job.name }}</span>
 			</div>
 		</td>
-		<td></td>
+		<td colspan="2">
+<div class="has-text-weight-bold">Owners</div>
+  <div class="field is-grouped is-grouped-multiline">
+    <div class="control" v-for="(owner, user_id) in ds.details.owners">
+      <div class="tags has-addons">
+        <span class="tag is-light">{{ owner }}</span>
+        <a class="tag is-info is-delete" v-on:click="removeOwner(ds, user_id)"></a>
+      </div>
+    </div>
+  </div>
+
+<div class="field"><div class="control">
+  <div class="select">
+    <select v-model="ds.details.owner_to_add" v-on:change="addOwner(ds)">
+      <option disabled value="">Add an owner</option>
+      <option v-for="user_id in new_owners(allowners, ds.details.owners)" :value="user_id">{{ allowners[user_id] }}</option>
+  </select>
+  </div>
+</div></div>
+                </td>
 		</template>
 		                        </template>
 				</tbody>
@@ -335,6 +354,7 @@ Vue.component('admin-box', {
 				allSelector: false,
 				searchdeleted: false,
 				selectedDsets: [],
+                                allowners: {},
 		{% endverbatim %}
                                 initialDsids: [{{ dsids|join:',' }} ],
 		{% verbatim %}
@@ -344,6 +364,37 @@ Vue.component('admin-box', {
 			this.fetchDatasets(this.initialDsids);
 		},
 		methods: {
+		  new_owners: function(allowners, oldowners) {
+                    difference = Object.keys(allowners).concat(Object.keys(oldowners)).reduce(function(r, cur) {
+                      if (!r.delete(cur)) {
+                        r.add(cur);
+                      } return r}, new Set());
+                    return Array.from(difference);
+		  },
+		  addOwner: function(dset) {
+                    if (dset.details.owner_to_add) {
+                      this.$http.post(`datasets/save/owner/`, {'dataset_id': dset.id, 'op': 'add', 'owner': dset.details.owner_to_add})
+   	                .then(response => {
+   		          return response
+   	                }, response => {
+   		          console.log(response);
+   		          // error code
+   	                }).then(result => {
+   		          this.dsetInfo(dset.id);
+   	                })
+		    }
+		  },
+		  removeOwner: function(dset, user_id) {
+                    this.$http.post(`datasets/save/owner/`, {'dataset_id': dset.id, 'op': 'del', 'owner': user_id})
+   	              .then(response => {
+   		        return response
+   	              }, response => {
+   		        console.log(response);
+   		        // error code
+   	              }).then(result => {
+   		        this.dsetInfo(dset.id);
+   	              })
+		  },
 			createRefineMzml: function(func, ds_id) {
 				this.$http.get(`/${func}mzml/${ds_id}`)
 				.then(response => {
@@ -401,9 +452,9 @@ Vue.component('admin-box', {
 					return response.json()
 				}, response => {
 				}).then(result => {
-					for (key in result) {
-						this.datasets = result['dsets'];
-					}
+					this.datasets = result['dsets'];
+					this.allowners = result['allowners'];
+ 
 				})
 			},
 			findDatasets: function() {
