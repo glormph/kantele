@@ -142,7 +142,7 @@
 			<input v-bind:value="flag" v-model="analysis.params.flags" type="checkbox">
 			<label class="checkbox">{{ desc }}</label>: <code>{{ flag }}</code>
 		</div>
-		<div v-show="analysis.params.flags.length === 0">No parameters for this workflow</div>
+		<div v-show="'flags' in workflow && Object.keys(workflow.flags).length === 0">No parameters for this workflow</div>
 		</div>
 
 		<div class="box" v-if="analysiserrors.size === 0">
@@ -478,11 +478,9 @@
 				if (qtypeshort !== 'labelfree') {
 					params.quant = ['--isobaric', qtypeshort]
 				} else { params.quant = [] }
-				for (fk in this.workflow.flags) {
-					if (fk !== '--normalize' || qtypeshort !== 'labelfree') {
-						params.flags.push(fk)
-					}
-				}	
+                if ('invisible_flags' in this.workflow) {
+				  params.flags.push(...Object.keys(this.workflow.invisible_flags));
+                }
 				return {'qtype': qtype,
 					'qtshort': qtypeshort,
 					'inst': inst,

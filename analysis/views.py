@@ -115,7 +115,8 @@ def get_workflow(request):
     versions[0]['latest'] = True
     resp = {
         'wf': {
-            'flags': {f.param.nfparam: f.param.name for f in flags},
+            'invisible_flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=False)}, 
+            'flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=True)},
             'files': [{'name': f.param.name, 'nf': f.param.nfparam,
                        'ftype': f.param.filetype.name} for f in files],
             'fixedfiles': [{'name': f.param.name, 'nf': f.param.nfparam,

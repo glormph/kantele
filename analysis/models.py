@@ -63,6 +63,7 @@ class Param(models.Model):
     name = models.CharField(max_length=50)
     nfparam = models.CharField(max_length=50)
     ptype = models.CharField(max_length=10)  # file, flag or value
+    visible = models.BooleanField(default=True)
 
     def __str__(self):
         return self.name
