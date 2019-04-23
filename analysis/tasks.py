@@ -63,7 +63,16 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
+    # write sampletable if it is present
+    if 'SAMPLETABLE' in params:
+        st_ix = params.index('sampletable')
+        with open(os.path.join(rundir, 'sampletable.txt'), 'w') as fp:
+            for sample in params[st_ix + 1].strip().split('::::'):
+                fp.write(sample.replace('::', '\t'))
+        params = params[0:st_ix] + params[st_ix + 2:]
+    # stage files, create dirs etc
     params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
+    # create input file of filenames
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3])
