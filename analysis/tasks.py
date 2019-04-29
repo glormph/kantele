@@ -18,7 +18,7 @@ from analysis import qc
 from rawstatus.tasks import calc_md5
 
 
-def run_nextflow(run, params, rundir, gitwfdir, profiles):
+def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     print('Starting nextflow workflow {}'.format(run['nxf_wf_fn']))
     outdir = os.path.join(rundir, 'output')
@@ -34,7 +34,10 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles):
     # that dir for WF to find them
     cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', profiles, '-with-trace', '-resume']
     print(cmd)
-    subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir)
+    env = {}
+    if nf_version:
+        env['NXF_VER'] = nf_version
+    subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
     return rundir
 
 
@@ -147,8 +150,12 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     if not profiles:
         profiles = 'standard'
+    nf_version = False
+    if '--nf1901' in params:
+        params.pop(params.index('--nf1901'))
+        nf_version = '19.01.0'
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profiles)
+        run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError as e:
         # FIXME report stderr with e
         errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
