@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
                          HttpResponseForbidden)
-from django.db.utils import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from kantele import settings
@@ -117,8 +117,10 @@ def dataset_acquisition(request, dataset_id):
 def dataset_sampleprep(request, dataset_id):
     response_json = empty_sampleprep_json()
     if dataset_id:
-        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
+        dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
+        if not dset:
             return HttpResponseNotFound()
+        response_json['projsamples'] = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=dset.get().runname.experiment.project_id)}
         try:
             qtype = models.QuantDataset.objects.filter(
                 dataset_id=dataset_id).select_related('quanttype').get()
@@ -134,25 +136,49 @@ def dataset_sampleprep(request, dataset_id):
         if qtype.quanttype.name == 'labelfree':
             qfiles = models.QuantSampleFile.objects.filter(
                 rawfile__dataset_id=dataset_id)
-            if len(set([x.sample for x in qfiles])) == 1:
-                # FIXME maybe not very secure
-                response_json['labelfree_multisample'] = False
-                response_json['quants'][qtid]['model'] = qfiles[0].sample
+            if len(set([x.projsample_id for x in qfiles])) == 1:
+                response_json['labelfree_singlesample']['model'] = qfiles[0].projsample_id
             else:
                 response_json['labelfree_multisample'] = True
-                response_json['samples'] = {fn.rawfile_id: fn.sample
-                                            for fn in qfiles}
+            response_json['samples'] = {fn.rawfile_id: {'model': fn.projsample_id, 'newprojsample': ''}
+                                        for fn in qfiles}
         else:
-            response_json['quants'][qtid]['chans'] = []
+            response_json['samples'] = {fn.id: {'model': '', 'newprojsample': ''} 
+                    for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
+            response_json['quants'][qtid]['chans'] = [] # resetting from empty sampleprep to re-populate
+
             for qsc in models.QuantChannelSample.objects.filter(
                     dataset_id=dataset_id).select_related('channel__channel'):
                 response_json['quants'][qtid]['chans'].append(
                     {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
-                     'model': qsc.sample, 'pk': qsc.id})
+                     'model': qsc.projsample_id, 'newprojsample': '', 'pk': qsc.id})
+
             # Trick to sort N before C:
             response_json['quants'][qtid]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
         get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
     return JsonResponse(response_json)
+
+
+@login_required
+def save_projsample(request):
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return user_denied
+    dset = models.Dataset.objects.select_related(
+            'runname__experiment').get(purged=False, pk=data['dataset_id'])
+    proj_id = dset.runname.experiment.project_id
+    psample = models.ProjectSample(sample=data['samplename'], project_id=proj_id)
+    with transaction.atomic():
+        try:
+            psample.save()
+        except IntegrityError:
+            print('Not so fast, proj sample saver, this alreasdy exusts')
+            psample = False
+    if not psample:     
+        psample = models.ProjectSample.objects.get(sample=data['samplename'], project_id=proj_id)
+    newprojsamples = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=proj_id)}
+    return JsonResponse({'projsamples': newprojsamples, 'psid': psample.id})
 
 
 @login_required
@@ -628,13 +654,15 @@ def empty_sampleprep_json():
                                          'name': chan.quanttype.name}
         quants[chan.quanttype.id]['chans'].append({'id': chan.id,
                                                    'name': chan.channel.name,
+                                                   'newprojsample': '',
                                                    'model': ''})
         # Trick to sort N before C:
         quants[chan.quanttype.id]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
     labelfree = models.QuantType.objects.get(name='labelfree')
-    quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree',
-                            'model': ''}
+    quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree'}
     return {'params': params, 'quants': quants,
+            'labelfree_multisample': False,
+            'labelfree_singlesample': {'model': '', 'newprojsample': ''},
             'show_enzymes': [{'id': x.id, 'name': x.name}
                              for x in models.Enzyme.objects.all()]}
 
@@ -859,10 +887,6 @@ def update_sampleprep(data, qtype):
     if data['labelfree']:
         oldqsf = models.QuantSampleFile.objects.filter(
             rawfile__dataset_id=dset_id)
-        if not data['multisample']:
-            data['samples'] = {}
-            for fn in data['filenames']:
-                data['samples'][str(fn['associd'])] = data['sample']
         oldqsf = {x.rawfile_id: x for x in oldqsf}
         # iterate filenames because that is correct object, 'samples'
         # can contain models that are not active
@@ -872,10 +896,10 @@ def update_sampleprep(data, qtype):
             except KeyError:
                 models.QuantSampleFile.objects.create(
                     rawfile_id=fn['associd'],
-                    sample=data['samples'][str(fn['associd'])])
+                    projsample_id=data['samples'][str(fn['associd'])]['model'])
             else:
-                if data['samples'][str(fn['associd'])] != samplefile.sample:
-                    samplefile.sample = data['samples'][str(fn['associd'])]
+                if data['samples'][str(fn['associd'])]['model'] != samplefile.projsample_id:
+                    samplefile.projsample_id = data['samples'][str(fn['associd'])]['model']
                     samplefile.save()
         # delete non-existing qsf (files have been popped)
         [qsf.delete() for qsf in oldqsf.values()]
@@ -896,7 +920,7 @@ def save_sampleprep(request):
         qtype = models.QuantDataset.objects.select_related(
             'quanttype').get(dataset_id=dset_id)
     except models.QuantDataset.DoesNotExist:
-        pass  # insert
+        pass  # new data, insert, not updating
     else:
         return update_sampleprep(data, qtype)
     if data['enzymes']:
@@ -908,11 +932,6 @@ def save_sampleprep(request):
         store_new_channelsamples(data)
     else:
         print('Saving labelfree')
-        if not data['multisample']:
-            data['samples'] = {}
-            for fn in data['filenames']:
-                data['samples'][str(fn['associd'])] = data['sample']
-            print('No multisample')
         models.QuantSampleFile.objects.bulk_create([
             models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][str(fid)])
             for fid in [x['associd'] for x in data['filenames']]])

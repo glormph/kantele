@@ -78,15 +78,15 @@ def get_datasets(request):
                 dsfiles = dsfiles.filter(filetype_id=settings.MZML_SFGROUP_ID)
             if 'lex' in dset.quantdataset.quanttype.name:
                 dsdetails['details']['channels'] = {
-                    ch.channel.channel.name: ch.sample for ch in
+                    ch.channel.channel.name: ch.projsample.sample for ch in
                     dm.QuantChannelSample.objects.select_related(
-                        'channel__channel').filter(dataset_id=dsid)}
+                        'projsample', 'channel__channel').filter(dataset_id=dsid)}
                 dsdetails['model']['denoms'] = {
                     x: False for x in dsdetails['details']['channels']}
                 dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''} for x in dsfiles]
             else:
                 dsdetails['details']['channels'] = {}
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.sample} for x in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile')]
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.projsample.sample} for x in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample')]
                 [x.update({'setname': x['sample']}) for x in dsdetails['files']]
     # FIXME labelfree quantsamplefile without sample prep error msg
     response['dsets'] = dsetinfo

@@ -126,18 +126,15 @@
 					</div>
 					</template>
 				</div>
-			{% endverbatim %}
 			</div>
 			</template>
 			<div class="field">
 				<label class="label">Quant type</label>
 				<div class="control">
 					<div class="select">
-						<select v-on:change="editing=true" v-model="spdata.quanttype">
+						<select v-on:change="editing=true; parseNewSamples()" v-model="spdata.quanttype">
 							<option disabled value="">Please select one</option>
-							{% verbatim %}
 							<option v-for="quant in spdata.quants" v-bind:value="quant.id">{{ quant.name }}</option>
-							{% endverbatim %}
 						</select>
 					</div>
 				</div>
@@ -146,35 +143,70 @@
 				<label class="label">Samples</label>
 				<textarea class="textarea" v-model="trysamplenames" placeholder="Try this: paste your sample names here (one line per sample, tab separated sample/file or channel)"></textarea>
 				<a class="button is-primary" v-on:click="parseSampleNames">Parse sample names</a>
+
+
+
+
 				<div class="control">
 					<div id="labelfree_samples" v-if="spdata.quanttype === labelfree_quant_id">
-						<input type="checkbox" v-model="spdata.labelfree_multisample">One sample per file?
+						<input type="checkbox" v-on:change="parseNewSamples" v-model="spdata.labelfree_multisample">One sample per file?
 					</div>
 				</div>
+				
+		        <div v-if="!filenames.length" class="notification is-danger">CLAIM FILES FIRST</div></td>
 				<table class="table is-fullwidth" >
 					<thead>
 						<tr>
 							<th v-if="spdata.quanttype === labelfree_quant_id && spdata.labelfree_multisample">Filename</th>
 							<th v-if="spdata.quanttype != labelfree_quant_id">Channel</th>
-							<th>Sample name</th>
+							<th colspan="2">Sample name
+				<a class="button is-danger is-small is-pulled-right" v-on:click="saveNewSamples()" v-if="foundNewSamples">Save new samples</a>
+				<a class="button is-danger is-small is-pulled-right" v-if="!foundNewSamples" disabled>Save new samples</a>
+        </th>
 						</tr>
 					</thead>
-					{% verbatim %}
 					<tbody>
 						<tr v-for="channel in spdata.quants[spdata.quanttype].chans" v-if="spdata.quanttype != labelfree_quant_id">
 							<td>{{ channel.name }}</td>
-							<td><input v-model="channel.model" class="input is-normal"></td>
+							<td>
+								<div class="select">
+									<select v-model="channel.model" v-on:change="channel.newprojsample=''; parseNewSamples()">
+										<option disabled value="">Pick a project-sample</option>
+										<option v-for="(sample, s_id) in spdata.projsamples" v-bind:value="s_id">{{ sample }}</option>
+									</select>
+								</div>
+							</td>
+							<td>
+                                <input v-model="channel.newprojsample" class="input is-normal" v-on:change="checkNewSample(channel)" placeholder="or define a new sample">
+                                <span class="icon" v-show="channel.loading">
+                                    <i class="fas fa-flask fa-spin"></i>
+                                </span>
+                            </td>
 						</tr>
+
 						<template v-if="spdata.quanttype === labelfree_quant_id">
-						<tr v-if="!filenames.length">
-							<td><div class="notification is-danger">CLAIM FILES FIRST</div></td>
-						</tr>
-						<tr v-show="spdata.labelfree_multisample && filenames.length && parsedsamples" v-for="file in filenames">
+						<tr v-show="spdata.labelfree_multisample" v-for="file in filenames">
 							<td>{{ file.name }}</td>
-							<td><input v-model="spdata.samples[file.associd]" class="input is-normal"></td>
+							<td>
+								<div class="select">
+									<select v-model="spdata.samples[file.associd].model" v-on:change="spdata.samples[file.associd].newprojsample=''; parseNewSamples()">
+										<option disabled value="">Pick a project-sample</option>
+										<option v-for="(sample, s_id) in spdata.projsamples" v-bind:value="s_id">{{ sample }}</option>
+									</select>
+								</div>
+							</td>
+							<td><input v-model="spdata.samples[file.associd].newprojsample" v-on:change="checkNewSample(spdata.samples[file.associd])" placeholder="or define a new sample" class="input is-normal"></td>
 						</tr>
 						<tr v-show="!spdata.labelfree_multisample && filenames.length && spdata.quanttype === labelfree_quant_id">
-							<td><input v-model="spdata.quants[spdata.quanttype].model" class="input is-normal"></td>
+							<td>
+								<div class="select">
+									<select v-model="spdata.labelfree_singlesample.model" v-on:change="spdata.labelfree_singlesample.newprojsample=''; parseNewSamples()">
+										<option disabled value="">Pick a project-sample</option>
+										<option v-for="(sample, s_id) in spdata.projsamples" v-bind:value="s_id">{{ sample }}</option>
+									</select>
+								</div>
+							</td>
+							<td><input v-model="spdata.labelfree_singlesample.newprojsample" v-on:change="checkNewSample(spdata.labelfree_singlesample)" placeholder="or define a new sample" class="input is-normal"></td>
 						</tr>
 						</template>
 					</tbody>
@@ -192,8 +224,8 @@
 		return { 
 			editing: false,
 			errors: [],
-                        trysamplenames: '',
-			parsedsamples: true,
+            trysamplenames: '',
+            foundNewSamples: false,
 			}
 		},
 		mounted: function() {
@@ -232,7 +264,7 @@
 						}
 					}
 				},
-			},
+        },
 		
 		methods: {
 			wait_noedit: async function() {
@@ -246,9 +278,10 @@
 				return new Promise(resolve => setTimeout(resolve, ms));
 			},
 			parseSampleNames: function() {
-				this.parsedsamples = false;
 				fnmap = {};
-				if (this.labelfree_quant_id === this.spdata.quanttype) {
+				if (this.labelfree_quant_id === this.spdata.quanttype && !this.spdata.labelfree_multisample) {
+                    return 0;
+                } else if (this.labelfree_quant_id === this.spdata.quanttype) {
 					for (fn of this.filenames) {
 						fnmap[fn.name] = fn;
 					}
@@ -258,24 +291,100 @@
 					}
 				}
 				for (line of this.trysamplenames.trim().split('\n')) {
- 					line = line.trim().split('\t');
+                    if (line.indexOf('\t') > -1) {
+                        line = line.trim().split('\t').map(x => x.trim());
+                    } else if (line.indexOf('    ') > -1) {
+                        line = line.trim().split('    ').map(x => x.trim());
+                    }
 					if (this.labelfree_quant_id === this.spdata.quanttype) {
 						if (line[0] in fnmap) {
-							this.spdata.samples[fnmap[line[0]].associd] = line[1];
+							this.spdata.samples[fnmap[line[0]].associd].newprojsample = line[1];
+                            this.checkNewSample(this.spdata.samples[fnmap[line[0]].associd]);
 						} else if (line[1] in fnmap) {
-							this.spdata.samples[fnmap[line[1]].associd] = line[0];
+							this.spdata.samples[fnmap[line[1]].associd].newprojsample = line[0];
+                            this.checkNewSample(this.spdata.samples[fnmap[line[1]].associd]);
 						}
 					} else {
 						if (line[0] in fnmap) {
-							fnmap[line[0]].model = line[1];
+							fnmap[line[0]].newprojsample = line[1];
+                            this.checkNewSample(fnmap[line[0]]);
 						} else if (line[1] in fnmap) {
-							fnmap[line[1]].model = line[0];
+							fnmap[line[1]].newprojsample = line[0];
+                            this.checkNewSample(fnmap[line[1]]);
 						}
 					}
 				}
 				this.editing = true;
-				this.parsedsamples = true;
 			},
+            checkNewSample: function(chan_or_sample) {
+                uppername = chan_or_sample.newprojsample.trim().toUpperCase();
+                found = false;
+                for (psam of Object.entries(this.spdata.projsamples)) {
+                    if  (psam[1].toUpperCase() == uppername) {
+                        found = psam[0];
+                        break;
+                    } 
+                }
+                if (found) {
+                    chan_or_sample.model = found;
+                    chan_or_sample.newprojsample = '';
+                } else {
+                    chan_or_sample.model = '';
+                }
+                this.parseNewSamples();
+            },
+            parseNewSamples: function() {
+                found = false;
+                if (this.spdata.quanttype !== this.labelfree_quant_id) {
+					for (ch of this.spdata.quants[this.spdata.quanttype].chans) {
+                        if (!ch.model && ch.newprojsample) { found = true; }
+					}
+                } else if (!this.spdata.labelfree_multisample) {
+                    if (this.spdata.labelfree_singlesample.newprojsample && !this.spdata.labelfree_singlesample.model) { found = true; }
+				} else {
+					for (fn of this.filenames) {
+                        if (this.spdata.samples[fn.associd].newprojsample && !this.spdata.samples[fn.associd].model) { found = true; }
+					}
+                }
+                this.foundNewSamples = found;
+            },
+            doSampleSave: function(ch_or_samfn) {
+                data = {'dataset_id': this.dset_id, 'samplename': ch_or_samfn.newprojsample};
+                postresp = this.$http.post('/datasets/save/projsample/', data).then(
+                    function(response) {
+                        return response.json();
+                    }, function(response) {
+                    }).then(function(result) {
+                        this.spdata.projsamples = result.projsamples;
+                        ch_or_samfn.newprojsample = '';
+                        ch_or_samfn.model = result.psid;
+                        this.parseNewSamples(); // this is to populate the dropdown, it is not re-rendered otherwise
+                    })
+                return postresp;
+            },
+            saveNewSamples: function() {
+                if (!this.labelfree_quant_id === this.spdata.quanttype) {
+                    saves = []
+					for (ch of this.spdata.quants[this.spdata.quanttype].chans) {
+                        if (ch.newprojsample && !ch.model) { 
+                            saves.push(this.doSampleSave(ch));
+                        }
+					}
+                    saved = Promise.all(saves);
+                } else if (!this.spdata.labelfree_multisample && this.spdata.labelfree_singlesample.newprojsample && !this.spdata.labelfree_singlesample.model) {
+                    saved = this.doSampleSave(this.spdata.labelfree_singlesample);
+				} else {
+                    saves = []
+					for (fn of this.filenames) {
+                        samfn = this.spdata.samples[fn.associd];
+                        if (samfn.newprojsample && !samfn.model) {
+                            saves.push(this.doSampleSave(samfn));
+                        }
+					}
+                    saved = Promise.all(saves);
+				}
+                return saved;
+            },
 			validate: function() {
 				this.errors = [];
 				if (!this.spdata.no_enzyme && !this.spdata.enzymes.length) {
@@ -286,18 +395,13 @@
 				}
 				if (this.labelfree_quant_id === this.spdata.quanttype) {
 					this.spdata.labelfree = true;
-					if (this.spdata.labelfree_multisample) {
-						for (fn of this.filenames) {
-							if (!this.spdata.samples[fn.associd]) {
-								this.errors.push('Labelfree multi-sample requires sample name for each file');
-								break;
-							}
-								
-					 	}	
-					}
-					else if (!this.spdata.quants[this.spdata.quanttype].model) {
-						this.errors.push('Labelfree requires sample name');
+					for (fn of this.filenames) {
+						if (!this.spdata.samples[fn.associd].model && !this.spdata.samples[fn.associd].newprojsample) {
+							this.errors.push('Labelfree multi-sample requires sample name for each file');
+							break;
 						}
+							
+					}	
 				} else {
 					this.spdata.labelfree = false;
 					for (ch of this.spdata.quants[this.spdata.quanttype].chans) {
@@ -324,8 +428,22 @@
 				if (!this.validate()) {
 					return false
 				}
-				this.editing = false;
-				this.$emit('save');
+				if (this.labelfree_quant_id === this.spdata.quanttype && !this.spdata.labelfree_multisample) {
+                    saved = this.saveNewSamples();
+                    saved = saved.then(() =>
+                        { 
+                            for (drf of this.filenames) {
+                                this.spdata.samples[drf.associd].model = this.spdata.labelfree_singlesample.model;
+                                this.spdata.samples[drf.associd].newprojsample = this.spdata.labelfree_singlesample.newprojsample; 
+                            }
+                        }, function() {console.log('error in saving new samples');});
+                } else {
+                    saved = this.saveNewSamples();
+                }
+                finish = saved.then(() => { 
+                    this.editing = false;
+                    this.$emit('save');
+                } );
 			},
 		},
 	})
@@ -1362,6 +1480,7 @@
                                             this.projerrors = [];
 					    this.dataset_id = result.dataset_id;
 					    this.fetchProject();
+					    this.fetchSampleprep();
 					    this.fetchStates();
                                         }
 			})
@@ -1413,7 +1532,7 @@
 				} else {
 					data.multisample = false;
 					data.filenames = this.sampledata.filenames;
-					data.sample = this.sampledata.quants[this.sampledata.quanttype].model;
+					data.samples = this.sampledata.samples;
 				}
 				this.$http.post('/datasets/save/sampleprep/', data
 					).then(response => {

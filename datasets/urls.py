@@ -20,5 +20,6 @@ urlpatterns = [
     url(r'^save/acquisition/$', views.save_acquisition, name="saveacqui"),
     url(r'^save/sampleprep/$', views.save_sampleprep, name="saveprep"),
     url(r'^save/owner/$', views.change_owners, name="changeowner"),
+    url(r'^save/projsample/$', views.save_projsample),
     url(r'^delete/$', views.set_deleted_dataset),
 ]

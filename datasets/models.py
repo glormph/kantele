@@ -217,15 +217,23 @@ class QuantDataset(models.Model):
     quanttype = models.ForeignKey(QuantType)
 
 
+class ProjectSample(models.Model):
+    sample = models.CharField(max_length=100)
+    project = models.ForeignKey(Project)
+
+    class Meta:
+        unique_together = [['sample', 'project']]
+
+
 class QuantSampleFile(models.Model):
     rawfile = models.OneToOneField(DatasetRawFile)
-    sample = models.CharField(max_length=100)
+    projsample = models.ForeignKey(ProjectSample)
 
 
 class QuantChannelSample(models.Model):
     dataset = models.ForeignKey(Dataset)
     channel = models.ForeignKey(QuantTypeChannel)
-    sample = models.CharField(max_length=100)
+    projsample = models.ForeignKey(ProjectSample)
 
 
 class HiriefRange(models.Model):
