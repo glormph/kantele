@@ -34,7 +34,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
     # that dir for WF to find them
     cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', profiles, '-with-trace', '-resume']
     print(cmd)
-    env = {}
+    env = os.environ
     if nf_version:
         env['NXF_VER'] = nf_version
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
