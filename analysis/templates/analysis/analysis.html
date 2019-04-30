@@ -70,7 +70,7 @@
 - setname for dset or optionally each set is a file when not using hirief, give checkbox
 -->
 
-			<div v-if="!ds.hr">
+			<div v-if="!ds.prefrac">
 				<input type="checkbox" v-model="ds.filesaresets">
 				<label class="checkbox">Each file is a different sample</label>
 			</div>
@@ -91,11 +91,11 @@
 			<div v-if="ds.details.nrstoredfiles.refined_mzML" class="subtitle is-6"><strong>Enforcing use of refined mzML(s)</strong></div>
 			</div>
 			<div class="column">
-				<div class="field" v-show="ds.hr">
+				<div class="field" v-show="ds.prefrac">
 					<label class="label">Regex for fraction detection</label>
 					<input type="text" class="input" v-on:change="matchFractions(ds)" v-model="frregex[ds.id]">
 				</div>
-				<span v-if="ds.hr">{{ matchedFr[ds.id] }} fractions matched</span>
+				<span v-if="ds.prefrac">{{ matchedFr[ds.id] }} fractions matched</span>
 			</div>
 			</div>
                         <div class="columns" v-for="fn in ds.files" v-show="ds.filesaresets">
@@ -375,7 +375,7 @@
 						this.dsets = result['dsets']
 						this.isoquants = result['isoquants']
 						for (dsid of this.dsids) {
-							if (this.dsets[dsid].hr) {
+							if (this.dsets[dsid].prefrac) {
 								this.matchFractions(this.dsets[dsid]);
 							}
 						}
@@ -451,7 +451,13 @@
 			platenames: function() {
 				plates = {}
 				for (dsid in this.dsets) {
-					if (this.dsets[dsid].hr) { pln = this.dsets[dsid].hr; } else { pln = false; }
+					if (this.dsets[dsid].hr) {
+                                            pln = this.dsets[dsid].hr; 
+} else if (this.dsets[dsid].prefrac) { 
+    pln = 'unknown_plate'; 
+} else { 
+    pln = false; 
+}
 					plates[dsid] = pln;
 				}
 				return plates;
