@@ -65,9 +65,7 @@
 <script>
 	Vue.component('sampleprep-box', {
 		template: `
-	<div class="columns">
-			<div class="column" />
-			<div class="column is-two-thirds">
+        <div>
 			<div class="box" v-if="!isOpen">
 				<div class="title is-5">MS Samples and preparation</div>
 				<article class="message is-danger"> 
@@ -215,8 +213,6 @@
 			</div>
 	</div>
 </div>
-			<div class="column" />
-			</div>
 `,
 
 		props: ['dset_id', 'is_owner', 'spdata', 'assoc_filenames', 'spsaved'],

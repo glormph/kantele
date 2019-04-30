@@ -325,9 +325,11 @@
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
 				}
-				if (denoms.length > 0 && !this.mediansweep) {
-					post.params.denoms =  ['--denoms', denoms.join(' ')];
-				}
+                if (denoms.length > 0 && !this.mediansweep) {
+					post.params.denoms =  ['--denoms', denoms.join(' ')]; 
+                } else if (this.mediansweep && post.params.flags.indexOf('--normalize') < 0) { 
+                    post.params.flags.push('--normalize');
+                }
 				this.runmsg.push(`Posting analysis job for ${this.analysisname}`);
 				this.$http.post('/analysis/run/', post 
 					).then(response => {
