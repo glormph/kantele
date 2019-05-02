@@ -836,7 +836,7 @@ def save_acquisition(request):
 def store_new_channelsamples(data):
     models.QuantChannelSample.objects.bulk_create([
         models.QuantChannelSample(dataset_id=data['dataset_id'],
-                                  sample=chan['model'], channel_id=chan['id'])
+                                  projsample_id=chan['model'], channel_id=chan['id'])
         for chan in data['samples']])
 
 

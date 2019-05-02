@@ -359,7 +359,7 @@
                 return postresp;
             },
             saveNewSamples: function() {
-                if (!this.labelfree_quant_id === this.spdata.quanttype) {
+                if (this.labelfree_quant_id !== this.spdata.quanttype) {
                     saves = []
 					for (ch of this.spdata.quants[this.spdata.quanttype].chans) {
                         if (ch.newprojsample && !ch.model) { 
