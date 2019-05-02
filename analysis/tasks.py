@@ -70,8 +70,9 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     if 'SAMPLETABLE' in params:
         st_ix = params.index('sampletable')
         with open(os.path.join(rundir, 'sampletable.txt'), 'w') as fp:
-            for sample in params[st_ix + 1].strip().split('::::'):
-                fp.write(sample.replace('::', '\t'))
+            for sample in params[st_ix + 1].strip():
+                fp.write('\t'.join(sample))
+                fp.write('\n')
         params = params[0:st_ix] + params[st_ix + 2:]
     # stage files, create dirs etc
     params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)

@@ -113,18 +113,45 @@
 <!-- labelfree, lfree hirief (plasma), tmt (LG, labelcheck), tmt hirief, FIX ALL OF THEM-->
 		<div class="box" v-if="analysiserrors.size === 0 && analysis.qtype !== 'labelfree'">
 		<div class="title is-5">Isobaric quantification</div>
+        <div class="field" v-if="deqmsPossible">
+        <input type="checkbox" v-model="useDeqms">
+        <label class="checkbox">Use DEqMS on sample groups</label>
 		<div v-if="allsets.length===1"> 
-                  <input type="checkbox" v-model="mediansweep">
-                  <label class="checkbox">Use median sweeping (no predefined denominators, using DEqMS)</label>
-                </div>
-		<div v-if="!mediansweep" v-for="name in allsets">
-			<div class="has-text-primary title is-6">Isobaric denominator channels</div>
-			<div class="title is-6">{{ name }}</div>
-			<template v-if="setdenoms[name]">
-				<div v-for="ch in sorted_channels(setdenoms[name])">
-					<input type="checkbox" v-bind:value="ch" v-model="setdenommodel[name]">{{ ch }} - {{ setdenoms[name][ch] }}
-				</div>
-			</template>
+          <input type="checkbox" v-model="mediansweep">
+          <label class="checkbox">Use median sweeping (no predefined denominators)</label>
+        </div>
+        </div>
+		<div v-for="name in allsets">
+          <div class="has-text-primary title is-6">Isobaric denominator channels</div>
+          <div class="title is-6">{{ name }}</div>
+          <div class="columns">
+            <div class="column is-three-quarters">
+        	    <table class="table is-striped is-narrow" v-if="setdenoms[name]">
+                  <thead>
+                    <tr>
+                      <th v-show="!mediansweep">Denominator</th>
+                      <th v-show="mediansweep"><del>Denominator</del></th>
+                      <th>Channel</th>
+                      <th>Sample name</th>
+                      <th v-show="useDeqms">Sample group (LEAVE EMPTY FOR INTERNAL STANDARDS!)</th>
+        		    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="ch in sorted_channels(setdenoms[name])">
+                      <td>
+                        <input v-show="!mediansweep" type="checkbox" v-bind:value="ch" v-model="setdenommodel[name]" />
+                        <input v-show="mediansweep" type="checkbox" disabled="true" /> 
+                      </td>
+                      <td>{{ ch }} </td>
+                      <td> {{ setdenoms[name][ch] }}</td>
+                      <td>
+                        <input v-show="useDeqms" type="text" class="input" v-model="samplegroupmodel[name][ch]" placeholder="Sample group or empty (e.g. CTRL, TREAT)">
+                      </td>
+        		    </tr>
+                  </tbody>
+                </table>
+            </div>
+          </div>
 		</div>
 		</div>
 
@@ -220,7 +247,9 @@
 				matchedFr: {},
 				isoquants: [],
 				setdenommodel: {},
+				samplegroupmodel: {},
 				mediansweep: false,
+				useDeqms: false,
 				errors: [],
 				runButtonActive: true,
 				postingAnalysis: false,
@@ -265,6 +294,19 @@
 						}
 					}
 				}
+				for (sname of this.allsets) {
+                    if (this.useDeqms) {
+                        dqms_ok = false;
+                        for (ch of this.sorted_channels(this.setdenoms[sname])) {
+                            if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
+                                dqms_ok = true;
+                                break;
+                            }
+                        if (!dqms_ok) { this.errors.push(`No sample groups filled in for set ${sname}`); }
+                        }
+                    }
+				}
+
 				if (this.errors.length > 0) {
 					return false;
 				} else { return true;}
@@ -320,11 +362,23 @@
 					'analysisname': `${this.workflow.wftype}_${this.analysisname}`,
 				}
 				denoms = [];
+                // we can push sampletables on ANY workflow as nextflow will ignore it.
+                sampletable = []
 				for (sname of this.allsets) {
 					if (Object.keys(this.setdenoms[sname]).length) {
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
+                    for (ch of this.sorted_channels(this.setdenoms[sname])) {
+                        if (!this.deqmsPossible) {
+                            sampletable.push([ch, sname, this.setdenoms[sname][ch]]);
+                        } else if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
+                            sampletable.push([ch, sname, this.setdenoms[sname][ch], this.samplegroupmodel[sname][ch]]);
+                        } else {
+                            sampletable.push([ch, sname, this.setdenoms[sname][ch], 'X__POOL']);
+                        }
+                    }
 				}
+                post.sampletable =  sampletable;
                 if (denoms.length > 0 && !this.mediansweep) {
 					post.params.denoms =  ['--denoms', denoms.join(' ')]; 
                 } else if (this.mediansweep && post.params.flags.indexOf('--normalize') < 0) { 
@@ -424,6 +478,7 @@
 		computed: {
 			setdenoms: function() {
 				this.setdenommodel = {};
+				this.samplegroupmodel = {};
 				setds = {};
 				for (dsid in this.dsets) {
 					if (!this.dsets[dsid].filesaresets) {
@@ -433,6 +488,7 @@
 								setds[this.dssetnames[dsid]][ch] = this.dsets[dsid].details.channels[ch];
 							}
 							this.setdenommodel[this.dssetnames[dsid]] = [];
+                            this.samplegroupmodel[this.dssetnames[dsid]] = {};
 						}
 					} else {
 						for (fn of this.dsets[dsid].files) {
@@ -461,6 +517,9 @@
 					plates[dsid] = pln;
 				}
 				return plates;
+			},
+			deqmsPossible: function() {
+                return 'invisible_flags' in this.workflow && 'deqmspossible' in this.workflow.invisible_flags;
 			},
 			analysis: function() {
 				data = {};

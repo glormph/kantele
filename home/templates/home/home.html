@@ -923,6 +923,24 @@ Vue.component('admin-box', {
                     <h5 class="title is-5">Pipeline parameters</h5>
 <p v-for="param in details.invocation.files">{{ param[2] }}: <code>{{ param[0] }} {{param[1] }}</code></p>
 <p>Other parameters: <code>{{ details.invocation.params.join(' ') }}<code></p>
+        <div v-if="'sampletable' in details.invocation">
+            <h6 class="title" >Samples:</h6> 
+            <table class="table">
+                <thead>
+                    <tr>
+        <th>Channel</th>
+        <th>Sample set</th>
+        <th>Sample name</th>
+        <th>Sample group</th>
+                    </tr>
+                </thead>
+                <tbody>
+        <tr v-for="sample in details.invocation.sampletable">
+        <td v-for="txt in sample">{{ txt }}</td>
+        </tr>
+                </tbody>
+            </table>
+        </div>
 <hr>
                     <h5 class="title is-5">Analysis log</h5>
                     <a v-if="details.log[0].slice(0,16) !== 'Analysis without'" :href="'analysis/log/' + nfs_id" class="is-size-7" target="_blank">Click for full log</a>

@@ -32,8 +32,8 @@ def get_analysis_init(request):
 
 @login_required
 def get_allwfs(request):
-    allwfs = {x.id: {'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name} for x in
-              am.Workflow.objects.filter(public=True)}
+    allwfs = [{'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name} for x in
+            am.Workflow.objects.filter(public=True)[::-1]]
     return JsonResponse({'allwfs': allwfs})
 
 
@@ -166,6 +166,8 @@ def start_analysis(request):
             # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients 
     params = {'singlefiles': {nf: fnid for nf, fnid in req['files'].items()},
               'params': [y for x in req['params'].values() for y in x]}
+    if 'sampletable' in req and len(req['sampletable']):
+        params['sampletable'] = req['sampletable']
     # FIXME run_ipaw_nextflow rename job
     fname = 'run_ipaw_nextflow'
     arg_dsids = [int(x) for x in req['dsids']]

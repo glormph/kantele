@@ -292,6 +292,7 @@ def get_analysis_invocation(job):
         return {'params': [], 'files': []}
     fnmap = {x['pk']: (x['filename'], x['libraryfile__description'], x['userfile__description']) for x in filemodels.StoredFile.objects.filter(pk__in=params['singlefiles'].values()).values('pk', 'filename', 'libraryfile__description', 'userfile__description')}
     for pk, fn in fnmap.items():
+        # description is library file or userfile or nothing, pick
         if fn[1] is not None:
             desc = fn[1]
         elif fn[2] is not None:
@@ -301,6 +302,8 @@ def get_analysis_invocation(job):
         fnmap[pk] = [fn[0], desc]
     invoc = {'files': [[x[0], *fnmap[x[1]]] for x in params['singlefiles'].items()]}
     invoc['params'] = params['params']
+    if 'sampletable' in params:
+        invoc['sampletable'] = [x.split('::') for x in params['sampletable'].split('::::')]
     return invoc
 
     

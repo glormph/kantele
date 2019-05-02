@@ -133,6 +133,8 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
         inputs['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
     else:
         inputs['params'].extend(['--searchname', 'RUNNAME__PLACEHOLDER'])
+    if 'sampletable' in inputs:
+        inputs['params'].extend(['SAMPLETABLE', inputs['sampletable']])
     res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles, ','.join(profiles))
     analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
     analysis.save()
