@@ -303,7 +303,7 @@ def get_analysis_invocation(job):
     invoc = {'files': [[x[0], *fnmap[x[1]]] for x in params['singlefiles'].items()]}
     invoc['params'] = params['params']
     if 'sampletable' in params:
-        invoc['sampletable'] = [x.split('::') for x in params['sampletable'].split('::::')]
+        invoc['sampletable'] = [x for x in params['sampletable']]
     return invoc
 
     

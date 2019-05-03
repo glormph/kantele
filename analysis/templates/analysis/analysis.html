@@ -379,6 +379,7 @@
                     }
 				}
                 post.sampletable =  sampletable;
+                if (this.useDeqms) { post.params.deqms = ['--deqms']; }
                 if (denoms.length > 0 && !this.mediansweep) {
 					post.params.denoms =  ['--denoms', denoms.join(' ')]; 
                 } else if (this.mediansweep && post.params.flags.indexOf('--normalize') < 0) { 

@@ -91,6 +91,7 @@ LONGQC_NXF_WF_ID = os.environ.get('LONGQC_WFID')
 LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
+NXF_VER = os.environ.get('NXF_VER')
 
 # django
 ALLOWED_HOSTS = [os.environ.get('KANTELEHOST')]

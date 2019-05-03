@@ -37,6 +37,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
     env = os.environ
     if nf_version:
         env['NXF_VER'] = nf_version
+    log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
     return rundir
 
@@ -66,16 +67,26 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
+    rundir = create_runname_dir(run)
     # write sampletable if it is present
-    if 'SAMPLETABLE' in params:
-        st_ix = params.index('sampletable')
-        with open(os.path.join(rundir, 'sampletable.txt'), 'w') as fp:
-            for sample in params[st_ix + 1].strip():
+    sampletable = False
+    try:
+        st_ix = params.index('SAMPLETABLE')
+    except ValueError:
+        pass
+    else:
+        sampletable = params[st_ix + 1]
+        params = params[0:st_ix] + params[st_ix + 2:]
+        print('Sampletable found')
+    # stage files, create dirs etc
+    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
+    if sampletable:
+        sampletable_fn = os.path.join(rundir, 'sampletable.txt')
+        with open(sampletable_fn, 'w') as fp:
+            for sample in sampletable:
                 fp.write('\t'.join(sample))
                 fp.write('\n')
-        params = params[0:st_ix] + params[st_ix + 2:]
-    # stage files, create dirs etc
-    params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
+        params.extend(['--sampletable', sampletable_fn])
     # create input file of filenames
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
@@ -104,7 +115,8 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
-    params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
+    rundir = create_runname_dir(run)
+    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         # FIXME does not write to mzmldef!
         for fn in mzmls:
@@ -122,12 +134,15 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
     return run
 
 
-def prepare_nextflow_run(run, taskid, stagefiles, mzmls, params):
-    log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
-    # runname is set in task so timestamp corresponds to execution start and not job queue
+def create_runname_dir(run):
     runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
     run['runname'] = runname
-    rundir = os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
+    return os.path.join(settings.NEXTFLOW_RUNDIR, runname).replace(' ', '_')
+
+
+def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
+    log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
+    # runname is set in task so timestamp corresponds to execution start and not job queue
     gitwfdir = os.path.join(rundir, 'gitwfs')
     if not os.path.exists(rundir):
         try:
@@ -135,7 +150,7 @@ def prepare_nextflow_run(run, taskid, stagefiles, mzmls, params):
         except (OSError, PermissionError):
             taskfail_update_db(taskid, 'Could not create workdir on analysis server')
             raise
-    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, runname)
+    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, run['runname'])
     log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
     print('Staging files to {}'.format(stagedir))
     try:
@@ -144,14 +159,14 @@ def prepare_nextflow_run(run, taskid, stagefiles, mzmls, params):
     except:
         taskfail_update_db(taskid, 'Could not stage files for analysis')
         raise
-    return params, rundir, gitwfdir, stagedir
+    return params, gitwfdir, stagedir
 
 
 def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     if not profiles:
         profiles = 'standard'
-    nf_version = False
+    nf_version = settings.NXF_VER
     if '--nf1901' in params:
         params.pop(params.index('--nf1901'))
         nf_version = '19.01.0'
@@ -178,7 +193,8 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id}
     mzmls = {}
-    params, rundir, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, stagefiles, mzmls, params)
+    rundir = create_runname_dir(run)
+    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     try:
         run_nextflow(run, params, rundir, gitwfdir, profiles='qc')
     except subprocess.CalledProcessError:
