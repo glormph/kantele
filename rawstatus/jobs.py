@@ -1,6 +1,7 @@
 import os
 import requests
 from urllib.parse import urlsplit
+from datetime import datetime
 
 from rawstatus import tasks, models
 from datasets import tasks as dstasks
@@ -18,6 +19,23 @@ def get_md5(job_id, sf_id):
     create_db_task(res.id, job_id, sfile.rawfile.source_md5, sfile.id, fnpath,
                    sfile.servershare.name)
     print('MD5 task queued')
+
+
+def create_pdc_archive(job_id, sf_id, md5):
+    print('Running swestore backup job')
+    sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
+        'servershare').get()
+    yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
+    # only create entry when not already exists, no sideeffects
+    try:
+        models.PDCBackedupFile.objects.get(storedfile=sfile)
+    except models.PDCBackedupFile.DoesNotExist:
+        models.PDCBackedupFile.objects.create(storedfile=sfile, 
+                pdcpath='', success=False)
+    fnpath = os.path.join(sfile.path, sfile.filename)
+    res = tasks.pdc_archive.delay(md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
+    create_db_task(res.id, job_id, md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
+    print('PDC archival task queued')
 
 
 def create_swestore_backup(job_id, sf_id, md5):

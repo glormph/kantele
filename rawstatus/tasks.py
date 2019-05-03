@@ -144,6 +144,55 @@ def delete_empty_dir(self, servershare, directory):
 
 
 @shared_task(bind=True, queue=config.QUEUE_SWESTORE)
+def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
+    print('Archiving file {} to PDC tape'.format(filepath))
+    basedir = config.SHAREMAP[servershare]
+    fileloc = os.path.join(basedir, filepath)
+    link = os.symlink(basedir, os.path.join(basedir, yearmonth, md5))
+    try:
+        os.makedirs(os.path.dirname(link))
+    except FileExistsError:
+        pass
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    try:
+        os.symlink(fileloc, link)
+    except FileExistsError:
+        os.unlink(link)
+        os.symlink(fileloc, link)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    # dsmc archive can be reran without error if file already exists
+    # it will arvchive again
+    cmd = ['dsmc', 'archive', link]
+    env = os.environ
+    env['DSM_DIR'] = settings.DSM_DIR
+    try:
+        subprocess.check_call(cmd, env=env)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    postdata = {'sfid': fn_id, 'pdcpath': link,
+                'task': self.request.id, 'client_id': config.APIKEY}
+    url = urljoin(config.KANTELEHOST, reverse('jobs:createpdcarchive'))
+    msg = ('Could not update database with for fn {} with PDC path {} :'
+           '{}'.format(filepath, uri, '{}'))
+    try:
+        update_db(url, postdata, msg)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            # FIXME this makes no sense, you cannot update DB
+            update_db(url, postdata, msg)
+            raise
+    else:
+        os.unlink(link)
+
+
+@shared_task(bind=True, queue=config.QUEUE_SWESTORE)
 def swestore_upload(self, md5, servershare, filepath, fn_id):
     print('Uploading file {} to swestore'.format(filepath))
     fileloc = os.path.join(config.SHAREMAP[servershare], filepath)

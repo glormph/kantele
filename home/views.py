@@ -157,7 +157,7 @@ def show_files(request):
 
 def populate_files(dbfns):
     popfiles = {}
-    for fn in dbfns.select_related('rawfile__datasetrawfile__dataset', 'analysisresultfile__analysis', 'swestorebackedupfile', 'filetype'):
+    for fn in dbfns.select_related('rawfile__datasetrawfile__dataset', 'analysisresultfile__analysis', 'swestorebackedupfile', 'pdcbackedupfile', 'filetype'):
         it = {'id': fn.id,
               'name': fn.filename,
               'date': fn.regdate if fn.filetype_id != int(settings.RAW_SFGROUP_ID) else fn.rawfile.date,
@@ -165,10 +165,14 @@ def populate_files(dbfns):
               'ftype': fn.filetype.name,
               'details': False,
              }
+        # TODO make unified backup model?
         try:
             it['backup'] = fn.swestorebackedupfile is not 0
         except filemodels.SwestoreBackedupFile.DoesNotExist:
-            it['backup'] = False
+            try:
+                it['backup'] = fn.pdcbackedupfile is not 0
+            except filemodels.PDCBackedupFile.DoesNotExist:
+                it['backup'] = False
         if not fn.rawfile.claimed:
             it['owner'] = fn.rawfile.producer.name
         elif hasattr(fn.rawfile, 'datasetrawfile'):

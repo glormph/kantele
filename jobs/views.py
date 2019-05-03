@@ -148,6 +148,18 @@ def downloaded_px_file(request):
     return HttpResponse()
 
 
+def created_pdc_archive(request):
+    data = request.POST
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.SWESTORECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    backup = PDCBackedupFile.objects.filter(storedfile_id=data['sfid'])
+    backup.update(pdcpath=data['pdcpath'], success=True)
+    if 'task' in request.POST:
+        set_task_done(request.POST['task'])
+    return HttpResponse()
+
+
 def created_swestore_backup(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(

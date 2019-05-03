@@ -60,6 +60,9 @@ jobmap = {'move_files_storage':
           'convert_single_mzml':
           {'type': Jobtypes.MOVE, 'func': dsjobs.convert_single_mzml,
            'retry': True},
+          'create_pdc_archive':
+          {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_pdc_archive,
+           'retry': True},
           'create_swestore_backup':
           {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_swestore_backup,
            'retry': True},

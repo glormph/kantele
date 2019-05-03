@@ -15,6 +15,8 @@ CERTLOC = os.environ.get('CERTLOC')
 CERTKEYLOC = os.environ.get('CERTKEYLOC')
 CERTPASS = os.environ.get('CERTPASS')
 
+DSM_DIR = os.environ.get('DSM_DIR')
+
 # mzml converters
 PUTTYKEY = os.environ.get('PUTTYKEY')
 

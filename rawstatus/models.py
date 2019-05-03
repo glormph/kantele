@@ -73,6 +73,13 @@ class UserFile(models.Model):
     upload = models.OneToOneField(UserFileUpload)
 
 
+class PDCBackedupFile(models.Model):
+    storedfile = models.OneToOneField(StoredFile)
+    pdcpath = models.TextField()
+    success = models.BooleanField()
+    deleted = models.BooleanField(default=False)
+
+
 class SwestoreBackedupFile(models.Model):
     storedfile = models.OneToOneField(StoredFile)
     swestore_path = models.CharField(max_length=200)

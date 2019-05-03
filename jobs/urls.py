@@ -18,6 +18,8 @@ urlpatterns = [
     url(r'^set/pxdataset/$', views.downloaded_px_file, name='downloadpx'),
     url(r'^swestore/set/$', views.created_swestore_backup,
         name='createswestore'),
+    url(r'^pdcarchive/set/$', views.created_pdc_archive,
+        name='createpdcarchive'),
     url(r'^set/mzmlcreate/$', views.created_mzml, name='createmzml'),
     url(r'^set/mzmldone/$', views.scp_mzml, name='scpmzml'),
     url(r'^set/longqc/$', views.store_longitudinal_qc, name='storelongqc'),
