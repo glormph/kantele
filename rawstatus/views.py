@@ -324,7 +324,7 @@ def do_md5_check(file_transferred):
             # FIXME hardcoded instruments are not dynamic!
             if 'QC' in fn and 'hela' in fn.lower() and any([x in fn for x in ['QE', 'HFLu', 'HFLe', 'Velos', 'HFTo', 'HFGi']]):
                 singlefile_qc(file_transferred.rawfile, file_transferred)
-            jobutil.create_file_job('create_swestore_backup',
+            jobutil.create_file_job('create_pdc_archive',
                                     file_transferred.id, file_transferred.md5)
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
     else:

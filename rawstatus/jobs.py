@@ -22,7 +22,7 @@ def get_md5(job_id, sf_id):
 
 
 def create_pdc_archive(job_id, sf_id, md5):
-    print('Running swestore backup job')
+    print('Running PDC archive job')
     sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
         'servershare').get()
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')

@@ -32,6 +32,7 @@ CLIENT_APIKEYS = [SWESTORECLIENT_APIKEY, STORAGECLIENT_APIKEY, MZMLCLIENT_APIKEY
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_PXDOWNLOAD = 'pxdownload'
 QUEUE_SWESTORE = 'create_swestore'
+QUEUE_PDC = 'pdc_archive'
 QUEUE_NXF = 'nextflow'
 QUEUE_QC_NXF = 'qc_nextflow'
 

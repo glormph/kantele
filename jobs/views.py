@@ -9,7 +9,7 @@ from jobs import models
 from jobs.jobs import (Jobstates, is_job_ready, create_file_job,
     get_job_ownership, is_job_retryable, is_job_retryable_ready)
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
-                              SwestoreBackedupFile, Producer)
+                              SwestoreBackedupFile, PDCBackedupFile, Producer)
 from analysis.models import AnalysisResultFile
 from analysis.views import write_analysis_log
 from dashboard import views as dashviews
@@ -151,7 +151,7 @@ def downloaded_px_file(request):
 def created_pdc_archive(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.SWESTORECLIENT_APIKEY]):
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     backup = PDCBackedupFile.objects.filter(storedfile_id=data['sfid'])
     backup.update(pdcpath=data['pdcpath'], success=True)

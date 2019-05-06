@@ -143,12 +143,12 @@ def delete_empty_dir(self, servershare, directory):
             raise
 
 
-@shared_task(bind=True, queue=config.QUEUE_SWESTORE)
+@shared_task(bind=True, queue=config.QUEUE_PDC)
 def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
     print('Archiving file {} to PDC tape'.format(filepath))
     basedir = config.SHAREMAP[servershare]
     fileloc = os.path.join(basedir, filepath)
-    link = os.symlink(basedir, os.path.join(basedir, yearmonth, md5))
+    link = os.path.join(basedir, yearmonth, md5)
     try:
         os.makedirs(os.path.dirname(link))
     except FileExistsError:
@@ -168,7 +168,7 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
     # it will arvchive again
     cmd = ['dsmc', 'archive', link]
     env = os.environ
-    env['DSM_DIR'] = settings.DSM_DIR
+    env['DSM_DIR'] = config.DSM_DIR
     try:
         subprocess.check_call(cmd, env=env)
     except Exception:
@@ -178,7 +178,7 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:createpdcarchive'))
     msg = ('Could not update database with for fn {} with PDC path {} :'
-           '{}'.format(filepath, uri, '{}'))
+           '{}'.format(filepath, link, '{}'))
     try:
         update_db(url, postdata, msg)
     except RuntimeError:

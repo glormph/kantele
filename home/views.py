@@ -167,10 +167,10 @@ def populate_files(dbfns):
              }
         # TODO make unified backup model?
         try:
-            it['backup'] = fn.swestorebackedupfile is not 0
+            it['backup'] = fn.swestorebackedupfile.success
         except filemodels.SwestoreBackedupFile.DoesNotExist:
             try:
-                it['backup'] = fn.pdcbackedupfile is not 0
+                it['backup'] = fn.pdcbackedupfile.success
             except filemodels.PDCBackedupFile.DoesNotExist:
                 it['backup'] = False
         if not fn.rawfile.claimed:
