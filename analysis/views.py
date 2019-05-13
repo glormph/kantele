@@ -33,7 +33,7 @@ def get_analysis_init(request):
 @login_required
 def get_allwfs(request):
     allwfs = [{'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name} for x in
-            am.Workflow.objects.filter(public=True)[::-1]]
+            am.Workflow.objects.filter(public=True).order_by('pk')[::-1]]
     return JsonResponse({'allwfs': allwfs})
 
 
@@ -111,7 +111,7 @@ def get_workflow(request):
     selectable_files.extend(userfiles)
     versions = [{'name': wfv.update, 'id': wfv.id, 'latest': False,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
-                am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id)][::-1]
+                am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id).order_by('pk')][::-1]
     versions[0]['latest'] = True
     resp = {
         'wf': {
