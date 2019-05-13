@@ -268,13 +268,12 @@
 		methods: {
 			validate: function() {
 				this.errors = [];
-				re = RegExp('^[a-z0-9-_]+$', 'i');
+				re = RegExp('^[a-z0-9_-]+$', 'i');
 				this.errors = [];
 				if (!this.analysisname) {
 					this.errors.push('Analysisname must be filled in');
-				}
-				else if (!re.test(this.analysisname)) {
-					this.errors.push('Analysisname may only contain a-z 0-9 - _');
+				} else if (!re.test(this.analysisname)) {
+					this.errors.push('Analysisname may only contain a-z 0-9 _ -');
 				}
 				if (!this.wfid || this.wfid === 0) {
 					this.errors.push('You must select a workflow');
@@ -282,10 +281,13 @@
 				if (!this.wfversion || this.wfversion === 0) {
 					this.errors.push('You must select a workflow version');
 				}
+				re = RegExp('^[a-z0-9_]+$', 'i');
 				for (dsid in this.dsets) {
+				    ds = this.dsets[dsid];
 					if (!this.dsets[dsid].filesaresets && (!(dsid in this.dssetnames) || this.dssetnames[dsid] === "")) {
-						ds = this.dsets[dsid];
 						this.errors.push(`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`);
+                    } else if (!re.test(this.dssetnames[dsid])) {
+						this.errors.push(`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have another set name: only a-z 0-9 _ are allowed`);
 					} else if (this.dsets[dsid].filesaresets) {
 						for (fn of this.dsets[dsid].files) {
 							if (fn.setname === "") {
@@ -296,13 +298,13 @@
 				}
 				for (sname of this.allsets) {
                     if (this.useDeqms) {
-                        dqms_ok = false;
                         for (ch of this.sorted_channels(this.setdenoms[sname])) {
-                            if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
-                                dqms_ok = true;
+                            if (!ch in this.samplegroupmodel[sname] || this.samplegroupmodel[sname][ch] === '') {
+                                this.errors.push(`Not all sample groups filled in for set ${sname}`);
                                 break;
+                            } else if (!re.test(this.samplegroupmodel[sname][ch])) {
+                                this.errors.push(`Incorrect sample group name for set ${sname}, channel ${ch}, only A-Z a-z 0-9 _ are allowed`);
                             }
-                        if (!dqms_ok) { this.errors.push(`No sample groups filled in for set ${sname}`); }
                         }
                     }
 				}
