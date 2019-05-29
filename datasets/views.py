@@ -118,6 +118,8 @@ def dataset_sampleprep(request, dataset_id):
     response_json = empty_sampleprep_json()
     if dataset_id:
         dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
+        response_json['samples'] = {fn.id: {'model': '', 'newprojsample': ''} 
+                for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
         if not dset:
             return HttpResponseNotFound()
         response_json['projsamples'] = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=dset.get().runname.experiment.project_id)}
@@ -143,8 +145,6 @@ def dataset_sampleprep(request, dataset_id):
             response_json['samples'] = {fn.rawfile_id: {'model': fn.projsample_id, 'newprojsample': ''}
                                         for fn in qfiles}
         else:
-            response_json['samples'] = {fn.id: {'model': '', 'newprojsample': ''} 
-                    for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
             response_json['quants'][qtid]['chans'] = [] # resetting from empty sampleprep to re-populate
 
             for qsc in models.QuantChannelSample.objects.filter(
@@ -933,7 +933,7 @@ def save_sampleprep(request):
     else:
         print('Saving labelfree')
         models.QuantSampleFile.objects.bulk_create([
-            models.QuantSampleFile(rawfile_id=fid, sample=data['samples'][str(fid)])
+            models.QuantSampleFile(rawfile_id=fid, projsample_id=data['samples'][str(fid)]['model'])
             for fid in [x['associd'] for x in data['filenames']]])
     save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
