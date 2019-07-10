@@ -158,7 +158,9 @@ def start_analysis(request):
     strips = {}
     for dsid in req['dsids']:
         strip = req['strips'][dsid]
-        if strip:
+        if strip == 'unknown_plate':
+            strips[dsid] = strip
+        elif strip:
             strip = re.sub('[a-zA-Z]', '', strip)
             strips[dsid] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in strip.split('-')])
         else:
