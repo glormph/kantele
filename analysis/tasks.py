@@ -185,7 +185,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
     outfiles = [os.path.join(rundir, 'output', x) for x in os.listdir(os.path.join(rundir, 'output'))]
     outfiles = [x for x in outfiles if not os.path.isdir(x)]
     reportfile = os.path.join(rundir, 'output', 'Documentation', 'pipeline_report.html')
-    if os.path.exists(reportfile)
+    if os.path.exists(reportfile):
         outfiles.append(reportfile)
     return outfiles
 
