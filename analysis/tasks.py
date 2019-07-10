@@ -183,7 +183,11 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
                  ' cleaning. NF log: \n{}'.format(nflog))
     outfiles = [os.path.join(rundir, 'output', x) for x in os.listdir(os.path.join(rundir, 'output'))]
-    return [x for x in outfiles if not os.path.isdir(x)]
+    outfiles = [x for x in outfiles if not os.path.isdir(x)]
+    reportfile = os.path.join(rundir, 'output', 'Documentation', 'pipeline_report.html')
+    if os.path.exists(reportfile)
+        outfiles.append(reportfile)
+    return outfiles
 
 
 @shared_task(bind=True, queue=settings.QUEUE_QC_NXF)
