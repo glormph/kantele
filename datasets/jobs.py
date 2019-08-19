@@ -124,6 +124,11 @@ def convert_single_mzml(job_id, sf_id, queue=settings.QUEUES_PWIZ[0]):
         'servershare', 'rawfile__datasetrawfile__dataset').get(pk=sf_id)
     storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
     mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
+    if mzsf.servershare_id != fn.servershare_id:
+        # change servershare, in case of bugs the raw sf is set to tmp servershare
+        # then after it wont be changed when rerunning the job
+        mzsf.servershare_id = fn.servershare_id
+        mzsf.save()
     if mzsf.checked:
         return
     args, runchain = get_mzmlconversion_taskchain(fn, mzsf, storageloc, queue,
