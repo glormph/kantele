@@ -23,7 +23,7 @@ def run_ready_jobs():
     print('Checking job queue')
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
         state__in=[Jobstates.DONE, Jobstates.WAITING])
-    job_fn_map, active_files = collect_job_file_activity(jobs_not_finished)
+    job_fn_map, active_files = collect_job_file_activity(list(jobs_not_finished))
     print('{} jobs in queue, including errored jobs'.format(jobs_not_finished.count()))
     for job in jobs_not_finished:
         jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
