@@ -419,7 +419,7 @@ def get_file_info(request, file_id):
             anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
         info['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
     if hasattr(sfile, 'analysisresultfile'):
-        info['analyses'].append(sfile.analysisresultfile.analysis_id)
+        info['analyses'].append(sfile.analysisresultfile.analysis.nextflowsearch.id)
     return JsonResponse(info)
 
 
