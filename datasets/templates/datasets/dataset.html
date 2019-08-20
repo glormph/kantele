@@ -138,6 +138,7 @@
 				</div>
 			</div>
 			<div class="field" v-if="spdata.quanttype">
+                            <div v-if="filenames.length">
 				<label class="label">Samples</label>
 				<textarea class="textarea" v-model="trysamplenames" placeholder="Try this: paste your sample names here (one line per sample, tab separated sample/file or channel)"></textarea>
 				<a class="button is-primary" v-on:click="parseSampleNames">Parse sample names</a>
@@ -150,6 +151,7 @@
 						<input type="checkbox" v-on:change="parseNewSamples" v-model="spdata.labelfree_multisample">One sample per file?
 					</div>
 				</div>
+                            </div>
 				
 		        <div v-if="!filenames.length" class="notification is-danger">CLAIM FILES FIRST</div></td>
 				<table class="table is-fullwidth" >
