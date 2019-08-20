@@ -72,6 +72,7 @@ class Param(models.Model):
 class WorkflowFileParam(models.Model):
     wf = models.ForeignKey(Workflow)
     param = models.ForeignKey(FileParam)
+    allow_resultfiles = models.BooleanField(default=False)
 
     def __str__(self):
         return '{} -- {}'.format(self.wf.name, self.param.name)

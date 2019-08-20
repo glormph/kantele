@@ -180,9 +180,14 @@
 		<select v-model="inputfiles[file.nf]">
 					<option disabled value="">Please select one</option>
 					<option value="">Do not use this parameter</option>
-					<template v-for="libfn in libfiles[file.ftype]">
+					<template v-if="file.ftype in libfiles" v-for="libfn in libfiles[file.ftype]">
 					<option v-bind:value="libfn.id">
 		{{ libfn.name }} -- {{ libfn.desc }} 
+					</option>
+					</template>
+					<template v-if="file.allow_resultfile" v-for="resfile in prevresultfiles">
+					<option v-bind:value="resfile.id">
+        {{ resfile.analysisname }} -- {{ resfile.analysisdate }} -- {{ resfile.name }} 
 					</option>
 					</template>
 				</select>
@@ -443,7 +448,7 @@
 			fetchWorkflow: function() {
 				if (this.wfid > 0) {
 				this.$http.get(`/analysis/workflow/`,
-					{params: {wfid: this.wfid}})
+					{params: {wfid: this.wfid, dsids: this.dsids.join(',')}})
 				.then(response => {
 					return response.json()
 				}, response => {
@@ -453,6 +458,7 @@
 					this.workflow = result['wf'];
 					this.versions = result['versions'];
 					this.libfiles = result['files'];
+					this.prevresultfiles = result['prev_resultfiles'];
 				})
 
 				}
