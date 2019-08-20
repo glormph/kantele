@@ -15,6 +15,7 @@ from celery import shared_task, states
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
 from jobs.jobs import Jobstates, Jobtypes, jobmap
+from jobs import jobs as jj
 from rawstatus.models import FileJob
 
 
@@ -22,7 +23,7 @@ from rawstatus.models import FileJob
 def run_ready_jobs():
     print('Checking job queue')
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
-        state__in=[Jobstates.DONE, Jobstates.WAITING])
+        state__in=jj.JOBSTATES_DONE + [Jobstates.WAITING])
     job_fn_map, active_files = collect_job_file_activity(list(jobs_not_finished))
     print('{} jobs in queue, including errored jobs'.format(jobs_not_finished.count()))
     for job in jobs_not_finished:
@@ -43,15 +44,15 @@ def run_ready_jobs():
             process_job_tasks(job, tasks)
         # Pending jobs are trickier, wait queueing until any previous job on same files
         # is finished. Errored jobs thus block pending jobs if they are on same files.
-        elif job.state == Jobstates.PENDING: #and job.jobtype == Jobtypes.MOVE:
+        elif job.state == Jobstates.PENDING:
             print('Found new job {} - {}'.format(job.id, job.funcname))
-            # do not start move job if there is activity on files
+            # do not start job if there is activity on files
             if active_files.intersection(jobfiles):
-                print('Deferring move job since files {} are being used in '
+                print('Deferring job since files {} are being used in '
                       'other job'.format(active_files.intersection(jobfiles)))
                 continue
             # Only add jobs with files (some jobs have none!) to "active_files"
-            elif job.id in job_fn_map:
+            if job.id in job_fn_map:
                 [active_files.add(fn) for fn in job_fn_map[job.id]]
             run_job(job, jobmap)
 
@@ -79,14 +80,13 @@ def run_job(job, jobmap):
 
 def collect_job_file_activity(nonready_jobs):
     job_fn_map, active_files = {}, set()
-    for fj in FileJob.objects.select_related('job', 'storedfile').filter(
-            job__in=nonready_jobs):
+    for fj in FileJob.objects.select_related('job').filter(job__in=nonready_jobs):
         try:
             job_fn_map[fj.job_id].add(fj.storedfile_id)
         except KeyError:
-            job_fn_map[fj.job_id] = set([fj.storedfile.id])
+            job_fn_map[fj.job_id] = set([fj.storedfile_id])
         if fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
-            active_files.add(fj.storedfile.id)
+            active_files.add(fj.storedfile_id)
     return job_fn_map, active_files
 
 

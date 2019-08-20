@@ -120,8 +120,7 @@ def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
 
 def convert_single_mzml(job_id, sf_id, queue=settings.QUEUES_PWIZ[0]):
     # FIXME may be this method can be moved to another module like rawstatus
-    fn = StoredFile.objects.select_related(
-        'servershare', 'rawfile__datasetrawfile__dataset').get(pk=sf_id)
+    fn = StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=sf_id)
     storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
     mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
     if mzsf.servershare_id != fn.servershare_id:
