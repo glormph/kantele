@@ -211,9 +211,8 @@ def delete_analysis(request):
         del_record = am.AnalysisDeleted(analysis=analysis)
         del_record.save()
         ana_job = analysis.nextflowsearch.job
-        if ana_job.state in jj.JOBSTATES_PREJOB:
-            ana_job.state = jj.Jobstates.CANCELED
-            ana_job.save()
+        ana_job.state = jj.Jobstates.CANCELED
+        ana_job.save()
         return HttpResponse()
     else:
         return HttpResponseForbidden()
