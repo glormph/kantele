@@ -118,7 +118,8 @@ def get_workflow(request):
             'invisible_flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=False)}, 
             'flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=True)},
             'files': [{'name': f.param.name, 'nf': f.param.nfparam,
-                       'ftype': f.param.filetype.name} for f in files],
+                'ftype': f.param.filetype.name, 
+                'allow_resultfile': f.allow_resultfiles} for f in files],
             'fixedfiles': [{'name': f.param.name, 'nf': f.param.nfparam,
                             'fn': f.libfile.sfile.filename,
                             'id': f.libfile.sfile.id,
@@ -133,6 +134,21 @@ def get_workflow(request):
                                           if x.sfile.filetype.name == ft['param__filetype__name']]
                   for ft in ftypes}
     }
+    # Get files from earlier analyses on same datasets
+    # double filtering gets first all DsS records that that have an analysis with ANY of the records,
+    # and then strip out:
+    #    - with analysis that also have MORE datasets
+    #    - analysis that have a subset of datasets
+    dsids = [int(x) for x in request.GET['dsids'].split(',')]
+    superset_analysis = am.DatasetSearch.objects.filter(analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values('analysis')
+    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids).exclude(pk__in=superset_analysis)
+    for dsid in dsids:
+        qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
+    resp['prev_resultfiles'] = [{'id': x.sfile.id, 'name': x.sfile.filename, 
+        'analysisname': x.analysis.name, 
+        'analysisdate': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
+        for x in am.AnalysisResultFile.objects.filter(
+            analysis__in=qset_analysis.distinct()).select_related('analysis')]
     return JsonResponse(resp)
 
 
@@ -155,6 +171,7 @@ def start_analysis(request):
     	return JsonResponse({'state': 'error', 'msg': 'Deleted datasets cannot be analyzed'})
     analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
     analysis.save()
+    DatasetSearch.objects.bulk_create([DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
     strips = {}
     for dsid in req['dsids']:
         strip = req['strips'][dsid]
