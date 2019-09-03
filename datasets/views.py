@@ -860,10 +860,13 @@ def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
             store_new_channelsamples(data)
         else:
             print('new samples')
+            existing_samples = {x.id: (x.projsample_id, x) for x in 
+                QuantChannelSample.objects.filter(dataset_id=data['dataset_id'])}
             for chan in data['samples']:
-                qcs = models.QuantChannelSample.objects.get(pk=chan['pk'])
-                qcs.sample = chan['model']
-                qcs.save()
+                exis_qcs = existing_samples[chan['pk']]
+                if chan['model'] != exis_qcs[0]:
+                    exis_qcs[1].projsample_id = chan['model']
+                    exis_qcs[1].save()
 
 
 def update_sampleprep(data, qtype):
