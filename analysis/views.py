@@ -171,7 +171,7 @@ def start_analysis(request):
     	return JsonResponse({'state': 'error', 'msg': 'Deleted datasets cannot be analyzed'})
     analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
     analysis.save()
-    DatasetSearch.objects.bulk_create([DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
+    am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
     strips = {}
     for dsid in req['dsids']:
         strip = req['strips'][dsid]
