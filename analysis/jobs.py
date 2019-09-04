@@ -108,7 +108,7 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
 {'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--nfcore', '--hirief', 'SAMPLETABLE', "126::set1::treat1::treat::::127::set1::treat2::treat..."
 ], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
     """
-    analysis = models.Analysis.objects.select_related('user').get(pk=analysis_id)
+    analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow__shortname').get(pk=analysis_id)
     nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
         pk=wfv_id)
     stagefiles = {}
@@ -125,6 +125,7 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
            'repo': nfwf.nfworkflow.repo,
            'name': analysis.name,
            'outdir': analysis.user.username,
+           'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger'
            }
     profiles = ['standard']
     if '--nfcore' in inputs['params']:

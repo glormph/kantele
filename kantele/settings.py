@@ -89,7 +89,11 @@ INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
 # nextflow
 LIBRARY_FILE_PATH = 'databases'
 ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE')
-NEXTFLOW_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
+SMALL_NFRUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
+LARGER_NFRUNDIR = os.environ.get('LARGER_NFRUNDIR')
+NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
+              'larger': LARGER_NFRUNDIR,
+            }
 LONGQC_NXF_WF_ID = os.environ.get('LONGQC_WFID')
 LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
