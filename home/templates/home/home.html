@@ -511,7 +511,10 @@ Vue.component('admin-box', {
 						<a v-on:click="showDatasets"><span>Datasets</span></a>
 					</li>
 					<li v-bind:class="tabclass_projects">
-						<a v-on:click="showProjects"><span>Projects (TBD)</span></a>
+						<a v-on:click="showProjects"><span>Projects</span></a>
+					</li>
+					<li v-bind:class="tabclass_samples">
+						<a v-on:click="showSamples"><span>Samples (TBD)</span></a>
 					</li>
 					<li v-bind:class="tabclass_searches">
 						<a v-on:click="showSearches"><span>Analyses</span></a>
@@ -525,6 +528,7 @@ Vue.component('admin-box', {
 				</ul>
 			</div>
 		<dataset-box v-show="tabclass_datasets!==''"></dataset-box>
+		<project-box v-show="tabclass_projects!==''"></project-box>
 		<search-box v-show="tabclass_searches!==''"></search-box>
 		<jobs-box v-show="tabclass_jobs!==''"></jobs-box>
 		<file-box v-show="tabclass_files!==''"></file-box>
@@ -570,6 +574,153 @@ Vue.component('admin-box', {
 			},
 		},
 	})
+	{% verbatim %}
+	Vue.component('project-box', {
+		template: `
+		<div class="content is-small" >
+        <a href="#" v-on:click="fetchItems(showAllUrl, {})">Show all</a>
+			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find projects">
+			<table class="table">
+				<thead>
+					<tr>
+						<th></th>
+						<th><input type="checkbox" v-model="allSelector" v-on:click="selectAll"></th>
+						<th v-for="f in itemdatafields">{{ f }}</th>
+					</tr>
+				</thead>
+				<tbody>
+				<template v-for="itkey in order">
+                    <tr>
+						<td>
+							<a v-on:click="toggleItem(itkey)">
+								<span class="has-text-info icon is-small">
+								<i class="fa fa-eye" />
+								</span>
+							</a>
+						</td>
+						<td><input type="checkbox" v-bind:value="itkey" v-model="selectedItems"> </td>
+						<td v-for="key in itemdatakeys">
+							<del class="has-text-grey" v-if="!items[itkey].active">{{ items[itkey][key] }}</del>
+							<span v-else>{{ items[itkey][key] }}</span>
+						</td>
+					</tr>
+        <!--<details-box :details="items[itkey].details" :nfs_id="items[itkey].id" v-on:refreshItem="refreshAll" v-if="items[itkey].details !== false"></details-box>-->
+                </template>
+				</tbody>
+			</table>
+
+        </div>`,
+        data: function() {
+			return {
+				searchUrl: '/find/projects/',
+				showAllUrl: '/show/projects/',
+				showItemUrl: '/show/project/',
+				itemdatafields: ['Name', 'Type', 'Registered', 'Last active'],
+				itemdatakeys: ['name', 'ptype', 'start', 'lastactive'],
+				items: {},
+                order: [],
+				findQuery: '',
+				allSelector: false,
+				searchinactive: false,
+				selectedItems: [],
+				{% endverbatim %}initialProjIds: [{{ projids|join:',' }} ],{% verbatim %}
+			}
+		},
+		mounted: function() {
+			params = this.initialProjIds.length ? {'ids': this.initialProjIds.join(',')}: {};
+			this.fetchItems(this.showAllUrl, params);
+		},
+		methods: {
+			fetchItems: function(url, getparams) {
+				this.$http.get(url,
+					{params: getparams})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.items = result['items'];
+					this.order = result['order'];
+				})
+			},
+			selectAll: function() {
+				this.selectedItems = [];
+				this.allSelector = this.allSelector === false;
+				if (!this.allSelector) {
+					return;
+				}
+				for (key in this.items) {
+				        this.selectedItems.push(key);
+				}
+			},
+			refreshAll: function() {
+				ids = Object.keys(this.items);
+ 				this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
+			},
+			findItems: function() {
+				this.$http.get(this.searchUrl,
+					{params: {inactive: this.searchinactive, q: this.findQuery.split(' ').join(',') }})
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					for (key in result) {
+						this.items = result['items'];
+						this.order = result['order'];
+					}
+				})
+			},
+			deleteAnalyses: function() {
+				for (ana_id of this.selectedItems) {
+					this.$http.post(this.deleteUrl, {'analysis_id': ana_id})
+					.then(response => {
+						return response
+					}, response => {
+						console.log(response);
+						// error code
+					}).then(result => {
+						this.items[ana_id].deleted = true;
+					})
+				}
+			},
+			purgeAnalyses: function() {
+				for (ana_id of this.selectedItems) {
+					if (this.items[ana_id].deleted) {
+						this.$http.post(this.purgeUrl, {'analysis_id': ana_id})
+						.then(response => {
+							return response
+						}, response => {
+							console.log(response);
+							// error code
+						}).then(result => {
+							this.items[ana_id].purged = true;
+						})
+					}
+				}
+			},
+			toggleItem: function(id) {
+				if (!this.items[id].details) {
+					this.getItemInfo(id);
+				} else {
+					this.items[id].details = false
+				}
+			},
+			getItemInfo: function(id) {
+				this.$http.get(this.showItemUrl + id)
+				.then(response => {
+					return response.json()
+				}, response => {
+				}).then(result => {
+					this.items[id].details = result;
+				})
+			},
+			jobTaskStateColor: function(state) {
+ 				statecolors = {'wait': 'has-text-grey-light', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning', 'done': 'has-text-success'};
+				return statecolors[state]
+			},
+		},
+	})
+	{% endverbatim %}
+
 	Vue.component('search-box', {
 		template: `
 		<div class="content is-small" >

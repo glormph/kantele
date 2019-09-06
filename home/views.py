@@ -26,9 +26,33 @@ def home(request):
     context = {'tab': request.GET['tab'] if 'tab' in request.GET else 'datasets',
                'dsids': request.GET['dsids'].split(',') if 'dsids' in request.GET else [],
                'anids': request.GET['anids'].split(',') if 'anids' in request.GET else [],
+               'projids': request.GET['projids'].split(',') if 'projids' in request.GET else [],
                'jobids': request.GET['jobids'].split(',') if 'jobids' in request.GET else [],
                'username': request.user.username}
     return render(request, 'home/home.html', context)
+
+
+@login_required
+def find_projects(request):
+    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+    dsquery = Q(runname__name__icontains=searchterms[0])
+    dsquery |= Q(runname__experiment__name__icontains=searchterms[0])
+    dsquery |= Q(runname__experiment__project__name__icontains=searchterms[0])
+    query = Q(name__icontains=searchterms[0])
+    for term in searchterms[1:]:
+        dssubquery = Q(runname__name__icontains=term)
+        dssubquery |= Q(runname__experiment__name__icontains=term)
+        dssubquery |= Q(runname__experiment__project__name__icontains=term)
+        subquery |= Q(name__icontains=term)
+        query &= subquery
+        dsquery &= dssubquery
+    dbdsets = dsmodels.Dataset.objects.filter(dsquery).select_related('runname__experiment__project').values('runname__experiment__project').distinct()
+    query |= Q(pk__in=dbdsets)
+    dbprojects = dsmodels.Project.objects.filter(query )
+    if request.GET['inactive'] == 'false':
+        dbprojects = dbprojects.filter(active=True)
+    items, order = populate_proj(dbprojects, request.user)
+    return JsonResponse({'items': items, 'order': order})
 
 
 @login_required
@@ -107,6 +131,17 @@ def show_analyses(request):
     items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
     return JsonResponse({'items': items, 'order': it_order})
 
+
+@login_required
+def show_projects(request):
+    if 'pids' in request.GET:
+        pids = request.GET['pids'].split(',')
+        dbprojects = dsmodels.Project.objects.filter(pk__in=pids)
+    else:
+        # last month datasets of a user
+        dbprojects = dsmodels.Project.objects.filter(active=True) 
+    items, order = populate_proj(dbprojects, request.user)
+    return JsonResponse({'items': items, 'order': order})
 
 
 @login_required
@@ -252,6 +287,39 @@ def populate_analysis(nfsearches, user):
         else:
             order.append(nfs.id)
     return ana_out, order
+
+
+def get_proj_info(request):
+    return HttpResponse()
+
+
+def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
+#    if showjobs:
+#        jobmap = get_ds_jobs(dbdsets)
+    projs, order = {}, []
+    for proj in dbprojs[::-1]:
+        order.append(proj.id)
+        projs[proj.id] = {
+            'id': proj.id,
+            'name': proj.name,
+            'active': proj.active,
+            'start': 'tomorrow', # FIXME proj.start,
+            'ptype': proj.projtype.ptype.name,
+            'lastactive': False,
+            'details': False,
+            'selected': False,
+        }
+        # last active: last added dataset, last run analysis
+        projdsets = dsmodels.Dataset.objects.filter(runname__experiment__project_id=proj.id)
+        lastdset = projdsets.last()
+        lastanalysis = anmodels.Analysis.objects.filter(datasetsearch__dataset__runname__experiment__project_id=proj.id).last()
+        if lastdset and lastanalysis:
+            projs[proj.id]['lastactive'] = sorted([lastanalysis.date, lastdset.date])[-1]
+        elif lastdset:
+            projs[proj.id]['lastactive'] = lastdset.date
+        elif lastanalysis:
+            projs[proj.id]['lastactive'] = lastanalysis.date
+    return projs, order
 
 
 def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
