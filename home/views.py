@@ -322,7 +322,8 @@ def get_proj_info(request, proj_id):
 def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
     projs, order = {}, []
     dbprojs = dbprojs.annotate(Max('experiment__runname__dataset__date')).annotate(Max('experiment__runname__dataset__datasetsearch__analysis__date'))
-    for proj in dbprojs[::-1]:
+    for proj in dbprojs.order_by('-experiment__runname__dataset__date__max'): # latest first
+
         order.append(proj.id)
         projs[proj.id] = {
             'id': proj.id,
