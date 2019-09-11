@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
-from django.db.models import Q
+from django.db.models import Q, Sum
 from collections import OrderedDict
 
 from kantele import settings
@@ -289,13 +289,37 @@ def populate_analysis(nfsearches, user):
     return ana_out, order
 
 
-def get_proj_info(request):
-    return HttpResponse()
+@login_required
+def get_proj_info(request, proj_id):
+    raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset__runname__experiment__project_id=proj_id)
+    info = {'nrrawfiles': raws.count()}
+    files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(
+        rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id)
+    sfiles = {}
+    for sfile in files:
+        try:
+            sfiles[sfile.filetype.name].append(sfile)
+        except KeyError:
+            sfiles[sfile.filetype.name] = [sfile]
+    def getxbytes(bytes, op=50):
+        if bytes is None:
+            return '0B'
+        if bytes >> op:
+            return '{}{}B'.format(bytes >> op, {10:'K', 20:'M', 30:'G', 40:'T', 50:'P'}[op])
+        else:
+            return getxbytes(bytes, op-10)
+
+    info['stored_total_xbytes'] = getxbytes(files.aggregate(Sum('rawfile__size'))['rawfile__size__sum'])
+    info['stored_bytes'] = {ft: getxbytes(sum([fn.rawfile.size for fn in fns])) for ft, fns in sfiles.items()}
+    info['nrstoredfiles'] = {ft: len([fn for fn in fns]) for ft, fns in sfiles.items()}
+    info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
+    info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(
+        storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count() + filemodels.PDCBackedupFile.objects.filter(
+        storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count()
+    return JsonResponse(info)
 
 
 def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
-#    if showjobs:
-#        jobmap = get_ds_jobs(dbdsets)
     projs, order = {}, []
     for proj in dbprojs[::-1]:
         order.append(proj.id)
@@ -537,7 +561,7 @@ def fetch_dset_details(dset):
         nrstoredfiles, info = get_nr_raw_mzml_files(files, info)
     else:
         nrstoredfiles = {nonms_dtypes[dset.datatype_id]: files.filter(filetype_id=settings.RAW_SFGROUP_ID).count()}
-    info['instruments'] = list(set([x.rawfile.producer.shortname for x in files]))
+    info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
     info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()

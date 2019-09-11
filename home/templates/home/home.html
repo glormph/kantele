@@ -577,9 +577,9 @@ Vue.component('admin-box', {
 	{% verbatim %}
 	Vue.component('project-box', {
 		template: `
-		<div class="content is-small" >
+        <div class="content is-small" >
         <a href="#" v-on:click="fetchItems(showAllUrl, {})">Show all</a>
-			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find projects">
+        <input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find projects">
 			<table class="table">
 				<thead>
 					<tr>
@@ -604,7 +604,26 @@ Vue.component('admin-box', {
 							<span v-else>{{ items[itkey][key] }}</span>
 						</td>
 					</tr>
-        <!--<details-box :details="items[itkey].details" :nfs_id="items[itkey].id" v-on:refreshItem="refreshAll" v-if="items[itkey].details !== false"></details-box>-->
+
+        <template v-if="items[itkey].details !== false">
+        <tr><td></td><td colspan="9"> <span class="has-text-weight-bold">Storage amount:</span><span> {{ items[itkey].details.stored_total_xbytes }} </span></td></tr>
+		<td></td>
+		<td colspan="4">
+        <div>{{ items[itkey].details.nrrawfiles }} claimed files from instrument(s): <b>{{ items[itkey].details.instruments.join(', ') }}</b></div>
+        <div v-for="(nrfiles, ftype) in items[itkey].details.nrstoredfiles">{{ nrfiles }} stored files of type {{ ftype }} ({{ items[itkey].details.stored_bytes[ftype] }})</div>
+		{{ items[itkey].details.nrbackupfiles }} backed up files
+		</td>
+
+		<td colspan="2">
+		</td>
+
+		<td>
+		</td>
+
+		<td colspan="2">
+                </td>
+		</template>
+
                 </template>
 				</tbody>
 			</table>
@@ -654,55 +673,27 @@ Vue.component('admin-box', {
 			},
 			refreshAll: function() {
 				ids = Object.keys(this.items);
- 				this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
-			},
-			findItems: function() {
-				this.$http.get(this.searchUrl,
-					{params: {inactive: this.searchinactive, q: this.findQuery.split(' ').join(',') }})
-				.then(response => {
-					return response.json()
-				}, response => {
-				}).then(result => {
-					for (key in result) {
-						this.items = result['items'];
-						this.order = result['order'];
-					}
-				})
-			},
-			deleteAnalyses: function() {
-				for (ana_id of this.selectedItems) {
-					this.$http.post(this.deleteUrl, {'analysis_id': ana_id})
-					.then(response => {
-						return response
-					}, response => {
-						console.log(response);
-						// error code
-					}).then(result => {
-						this.items[ana_id].deleted = true;
-					})
-				}
-			},
-			purgeAnalyses: function() {
-				for (ana_id of this.selectedItems) {
-					if (this.items[ana_id].deleted) {
-						this.$http.post(this.purgeUrl, {'analysis_id': ana_id})
-						.then(response => {
-							return response
-						}, response => {
-							console.log(response);
-							// error code
-						}).then(result => {
-							this.items[ana_id].purged = true;
-						})
-					}
-				}
-			},
-			toggleItem: function(id) {
-				if (!this.items[id].details) {
+                    this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
+                },
+                findItems: function() {
+                    this.$http.get(this.searchUrl,
+                        {params: {inactive: this.searchinactive, q: this.findQuery.split(' ').join(',') }})
+                    .then(response => {
+                        return response.json()
+                    }, response => {
+                    }).then(result => {
+                        for (key in result) {
+                            this.items = result['items'];
+                            this.order = result['order'];
+                        }
+                    })
+                },
+                toggleItem: function(id) {
+                  if (!this.items[id].details) {
 					this.getItemInfo(id);
-				} else {
+				  } else {
 					this.items[id].details = false
-				}
+				  }
 			},
 			getItemInfo: function(id) {
 				this.$http.get(this.showItemUrl + id)
