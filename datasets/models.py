@@ -15,6 +15,7 @@ class Project(models.Model):
     name = models.CharField(max_length=100)
     pi = models.ForeignKey(PrincipalInvestigator)
     active = models.BooleanField(default=True)
+    registered = models.DateTimeField(auto_now_add=True)
 
 
 class ProjectTypeName(models.Model):
