@@ -563,7 +563,7 @@ def fetch_dset_details(dset):
         nrstoredfiles, info = get_nr_raw_mzml_files(files, info)
     else:
         nrstoredfiles = {nonms_dtypes[dset.datatype_id]: files.filter(filetype_id=settings.RAW_SFGROUP_ID).count()}
-    info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
+    info['instruments'] = list(set([x.rawfile.producer.shortname for x in files]))
     info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
