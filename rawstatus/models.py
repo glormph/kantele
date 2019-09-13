@@ -47,7 +47,7 @@ class StoredFile(models.Model):
     filename = models.CharField(max_length=200)
     servershare = models.ForeignKey(ServerShare)
     path = models.CharField(max_length=200)
-    regdate = models.DateTimeField(auto_now=True)
+    regdate = models.DateTimeField(auto_now_add=True)
     md5 = models.CharField(max_length=32)
     checked = models.BooleanField()
     filetype = models.ForeignKey(StoredFileType)
@@ -62,7 +62,7 @@ class UserFileUpload(models.Model):
     user = models.ForeignKey(User)
     filetype = models.ForeignKey(StoredFileType)
     token = models.CharField(max_length=36, unique=True) # UUID keys
-    timestamp = models.DateTimeField(auto_now=True)
+    timestamp = models.DateTimeField(auto_now=True) # this can be updated
     expires = models.DateTimeField()
     finished = models.BooleanField(default=False)
 
