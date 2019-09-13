@@ -8,10 +8,13 @@ from datetime import timedelta
 import os
 import re
 import json
+import shutil
+from tempfile import NamedTemporaryFile
 from uuid import uuid4
 import requests
 from hashlib import md5
 from urllib.parse import urlsplit
+from Bio import SeqIO
 
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
@@ -95,25 +98,69 @@ def get_registration_postdetails(postdata):
 
 @login_required
 def browser_userupload(request):
-    # prior to this view being called user will have done an upload to a tmpdir
-    # "request upload" puts user/filetype in db
-    upl_req_resp = request_userupload(request)
-    # extract from the response JSON the token and put in the request
-    # keep the cookies CSRF etc
-    upload_userfile(newrequest)
-    
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    err_resp = {'error': 'File is not correct FASTA', 'success': False}
+    data = request.POST
+    # create userfileupload model (incl. fake token)
+    try:
+        int(data['ftype_id'])
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'Please select a file type'})
+    token, expiry, upload = store_userfileupload(data['ftype_id'], request.user)
+    # tmp write file 
+    upfile = request.FILES['file']
+    hash = md5()
+    producer = Producer.objects.get(shortname='admin')
+    desc = data['desc'].strip()
+    print(desc, 'description')
 
+    if desc == '':
+        return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+    with NamedTemporaryFile(mode='w+') as fp:
+        for chunk in upfile.chunks():
+            try:
+                text = chunk.decode('utf-8')
+            except UnicodeDecodeError:
+                return JsonResponse(err_resp)
+            else:
+                fp.write(text)
+            hash.update(chunk)
+        # check if it is correct FASTA (maybe add more parsing later)
+        fp.seek(0)
+        if not any(SeqIO.parse(fp, 'fasta')):
+            return JsonResponse(err_resp)
+        hash = hash.hexdigest() 
+        raw = get_or_create_rawfile(hash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
+        sfile = StoredFile(rawfile_id=raw['file_id'], 
+                       filename='userfile_{}_{}'.format(raw['file_id'], upfile.name), md5=hash,
+                       checked=False, filetype=upload.filetype,
+                       path=settings.UPLOADDIR,
+                       servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
+        sfile.save()
+        ufile = UserFile(sfile=sfile, description=desc, upload=upload)
+        ufile.save()
+        dst = os.path.join(settings.SHAREMAP[sfile.servershare.name], sfile.path,
+            sfile.filename)
+        shutil.copy(fp.name, dst)
+    return JsonResponse({'error': False, 'success': True})
+
+    
 @login_required
 def request_token_userupload(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
+    data = json.loads(request.body.decode('utf-8'))
+    token, expiry, ufu = store_userfileupload(data['ftype_id'], request.user)
+    return JsonResponse({'token': token, 'expires': expiry})
+
+
+def store_userfileupload(ftype_id, user):
     token = str(uuid4())
     expiry = timezone.now() + timedelta(0.33)  # 8h expiry for big files
-    ftype_id = StoredFileType.objects.get(name=request.POST['ftype']).id
-    uupload = UserFileUpload(token=token, user=request.user, expires=expiry,
-                             filetype_id=ftype_id)
+    uupload = UserFileUpload(token=token, user=user, expires=expiry, filetype_id=ftype_id)
     uupload.save()
-    return JsonResponse({'token': token, 'expires': expiry})
+    return token, expiry, uupload
 
 
 def register_userupload(request):

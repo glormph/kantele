@@ -722,8 +722,59 @@ Vue.component('admin-box', {
 {% if user.is_staff %}
                         <a class="button" v-on:click="purgeAnalyses" v-show="selectedItems.length">Purge analyses</a>
                         <a class="button" disabled v-show="!selectedItems.length">Purge analyses</a>
+                        <a class="button" v-on:click="toggleUploadWindow">Upload FASTA</a>
 {% endif %}
 	{% verbatim %}
+    <div :class="{'is-active': upwindisplay}" ref="uploadmodal" @keyup.esc="toggleUploadWindow" tabindex="-1" class="modal">
+      <div class="modal-background"></div>
+      <div class="modal-content">
+        <div class="box">
+    <h5 class="title is-5">Upload FASTA files</h5>
+    <div class="field">
+    <div class="file has-name is-fullwidth">
+      <label class="file-label">
+        <input @change="showUploadFile" ref="upfasta" class="file-input" type="file" name="resume"> <span class="file-cta">
+          <span class="file-icon">
+            <i class="fas fa-upload"></i>
+          </span>
+          <span class="file-label">
+            Choose a file...
+    </span>
+    </span>
+          <span class="file-name">
+    <span class="has-icon" v-show="uploadSuccess"><i class="fa fa-check has-text-success"></i></span>
+    <span class="has-icon" v-show="uploadError"><i class="fa fa-times has-text-danger"></i></span>
+    <span class="has-icon" v-show="uploadRunning"><i class="fa fa-spinner"></i></span>
+   {{ upfasta.name }} 
+    </span>
+      </label>
+    </div>
+    </div>
+
+	<div class="field">
+    <div class="control">
+        <div class="select">
+        <select v-model="upload_ftypeid">
+    <option>Select filetype</option>
+    <option v-for="(ftype, ftype_id) in upload_ftypes" :value="ftype_id">{{ ftype }}</option>
+        </select>
+        </div>
+	</div>
+	</div>
+	<div class="field">
+    <div class="control">
+    <input class="input" v-model="uploaddesc" type="text" placeholder="Description">
+	</div>
+	</div>
+
+      <div class="has-text-danger" v-if="uploadError">{{ uploadError }}</div>
+    <a class="button is-small" v-show="!upfasta" disabled>Upload file</a>
+    <a class="button is-small" @click="doUploadFile" v-show="upfasta">Upload</a>
+        </div>
+      </div>
+      <button v-on:click="toggleUploadWindow" class="modal-close is-large" aria-label="close"></button>
+    </div>
+
 			<table class="table">
 				<thead>
 					<tr>
@@ -759,121 +810,160 @@ Vue.component('admin-box', {
 			</table>
 		</div>
 		`,
-		data: function() {
-			return {
-				searchUrl: '/find/analyses/',
-				purgeUrl: '/analysis/purge/',
-				deleteUrl: '/analysis/delete/',
-				showAllUrl: '/show/analyses/',
-				showItemUrl: '/show/analysis/',
-				itemdatafields: ['Analysis name', 'Workflow', 'User', 'Date'],
-				itemdatakeys: ['name', 'wf', 'usr', 'date'],
-				items: {},
-                                order: [],
-				findQuery: '',
-				allSelector: false,
-				searchdeleted: false,
-				selectedItems: [],
-				{% endverbatim %}
-						initialAnalysisIds: [{{ anids|join:',' }} ],
-				{% verbatim %}
-			}
-		},
-		mounted: function() {
-			console.log(this.initialAnalysisIds);
-			params = this.initialAnalysisIds.length ? {'ids': this.initialAnalysisIds.join(',')}: {};
-			this.fetchItems(this.showAllUrl, params);
-		},
-		methods: {
-			fetchItems: function(url, getparams) {
-				this.$http.get(url,
-					{params: getparams})
-				.then(response => {
-					return response.json()
-				}, response => {
-				}).then(result => {
-					this.items = result['items'];
-					this.order = result['order'];
-				})
-			},
-			selectAll: function() {
-				this.selectedItems = [];
-				this.allSelector = this.allSelector === false;
-				if (!this.allSelector) {
-					return;
-				}
-				for (key in this.items) {
-				        this.selectedItems.push(key);
-				}
-			},
-			refreshAll: function() {
-				ids = Object.keys(this.items);
- 				this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
-			},
-			findItems: function() {
-				this.$http.get(this.searchUrl,
-					{params: {deleted: this.searchdeleted, q: this.findQuery.split(' ').join(',') }})
-				.then(response => {
-					return response.json()
-				}, response => {
-				}).then(result => {
-					for (key in result) {
-						this.items = result['items'];
-						this.order = result['order'];
-					}
-				})
-			},
-			deleteAnalyses: function() {
-				for (ana_id of this.selectedItems) {
-					this.$http.post(this.deleteUrl, {'analysis_id': ana_id})
-					.then(response => {
-						return response
-					}, response => {
-						console.log(response);
-						// error code
-					}).then(result => {
-						this.items[ana_id].deleted = true;
-					})
-				}
-			},
-			purgeAnalyses: function() {
-				for (ana_id of this.selectedItems) {
-					if (this.items[ana_id].deleted) {
-						this.$http.post(this.purgeUrl, {'analysis_id': ana_id})
-						.then(response => {
-							return response
-						}, response => {
-							console.log(response);
-							// error code
-						}).then(result => {
-							this.items[ana_id].purged = true;
-						})
-					}
-				}
-			},
-			toggleItem: function(id) {
-				if (!this.items[id].details) {
-					this.getItemInfo(id);
-				} else {
-					this.items[id].details = false
-				}
-			},
-			getItemInfo: function(id) {
-				this.$http.get(this.showItemUrl + id)
-				.then(response => {
-					return response.json()
-				}, response => {
-				}).then(result => {
-					this.items[id].details = result;
-				})
-			},
-			jobTaskStateColor: function(state) {
- 				statecolors = {'wait': 'has-text-grey-light', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning', 'done': 'has-text-success'};
-				return statecolors[state]
-			},
-		},
-	})
-	
+            data: function() {
+                return {
+                    searchUrl: '/find/analyses/',
+                    purgeUrl: '/analysis/purge/',
+                    deleteUrl: '/analysis/delete/',
+                    showAllUrl: '/show/analyses/',
+                    showItemUrl: '/show/analysis/',
+                    uploadUrl: '/files/upload/userfile/',
+                    itemdatafields: ['Analysis name', 'Workflow', 'User', 'Date'],
+                    itemdatakeys: ['name', 'wf', 'usr', 'date'],
+                    items: {},
+                                    order: [],
+                    findQuery: '',
+                    allSelector: false,
+                    searchdeleted: false,
+                    selectedItems: [],
+                    upwindisplay: false,
+                    upfasta: false,
+                    uploadSuccess: false,
+                    uploadRunning: false,
+                    uploadError: false,
+                    uploaddesc: '',
+                    upload_ftypeid: false,
+                    upload_ftypes: {},
+                    {% endverbatim %}
+                            initialAnalysisIds: [{{ anids|join:',' }} ],
+                    {% verbatim %}
+                }
+            },
+            mounted: function() {
+                console.log(this.initialAnalysisIds);
+                params = this.initialAnalysisIds.length ? {'ids': this.initialAnalysisIds.join(',')}: {};
+                this.fetchItems(this.showAllUrl, params);
+            },
+            methods: {
+                fetchItems: function(url, getparams) {
+                    this.$http.get(url,
+                        {params: getparams})
+                    .then(response => {
+                        return response.json()
+                    }, response => {
+                    }).then(result => {
+                        this.items = result['items'];
+                        this.order = result['order'];
+                        this.upload_ftypes = result['upload_ftypes'];
+                    })
+                },
+                selectAll: function() {
+                    this.selectedItems = [];
+                    this.allSelector = this.allSelector === false;
+                    if (!this.allSelector) {
+                        return;
+                    }
+                    for (key in this.items) {
+                            this.selectedItems.push(key);
+                    }
+                },
+                refreshAll: function() {
+                    ids = Object.keys(this.items);
+                    this.fetchItems(this.showAllUrl, {'ids': ids.join(',')});
+                },
+                findItems: function() {
+                    this.$http.get(this.searchUrl,
+                        {params: {deleted: this.searchdeleted, q: this.findQuery.split(' ').join(',') }})
+                    .then(response => {
+                        return response.json()
+                    }, response => {
+                    }).then(result => {
+                        for (key in result) {
+                            this.items = result['items'];
+                            this.order = result['order'];
+                        }
+                    })
+                },
+                deleteAnalyses: function() {
+                    for (ana_id of this.selectedItems) {
+                        this.$http.post(this.deleteUrl, {'analysis_id': ana_id})
+                        .then(response => {
+                            return response
+                        }, response => {
+                            console.log(response);
+                            // error code
+                        }).then(result => {
+                            this.items[ana_id].deleted = true;
+                        })
+                    }
+                },
+                purgeAnalyses: function() {
+                    for (ana_id of this.selectedItems) {
+                        if (this.items[ana_id].deleted) {
+                            this.$http.post(this.purgeUrl, {'analysis_id': ana_id})
+                            .then(response => {
+                                return response
+                            }, response => {
+                                console.log(response);
+                                // error code
+                            }).then(result => {
+                                this.items[ana_id].purged = true;
+                            })
+                        }
+                    }
+                },
+                toggleItem: function(id) {
+                    if (!this.items[id].details) {
+                        this.getItemInfo(id);
+                    } else {
+                        this.items[id].details = false
+                    }
+                },
+                getItemInfo: function(id) {
+                    this.$http.get(this.showItemUrl + id)
+                    .then(response => {
+                        return response.json()
+                    }, response => {
+                    }).then(result => {
+                        this.items[id].details = result;
+                    })
+                },
+                jobTaskStateColor: function(state) {
+                    statecolors = {'wait': 'has-text-grey-light', 'pending': 'has-text-info', 'error': 'has-text-danger', 'processing': 'has-text-warning', 'done': 'has-text-success'};
+                    return statecolors[state]
+                },
+                toggleUploadWindow: function() {
+                    this.upwindisplay = this.upwindisplay === false;
+                },
+                showUploadFile: function() {
+                    this.uploadSuccess = false;
+                    this.upfasta = this.$refs.upfasta.files[0];
+                },
+                doUploadFile: function() {
+                    fdata = new FormData();
+                    fdata.append('file', this.upfasta);
+                    fdata.append('desc', this.uploaddesc);
+                    fdata.append('ftype_id', this.upload_ftypeid);
+                    this.uploadRunning = true;
+                    this.uploadError = false;
+                    this.uploadSuccess = false;
+                    fetch(this.uploadUrl, {
+                        method: 'POST',
+                        body: fdata,
+                        credentials: 'same-origin',
+                    })
+                        .then(response => response.json())
+                        .then(response => {
+                            this.uploadRunning = false;
+                            this.uploadSuccess = response['success'];
+                            this.uploadError = response['error'];
+                        })
+                        .catch(err => console.log('An error occurred', err));
+                    
+                },
+            },
+        })
+
     Vue.component('jobs-box', {
 		template: `
 		<div class="content is-small" >

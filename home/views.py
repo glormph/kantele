@@ -129,7 +129,9 @@ def show_analyses(request):
             analysis__date__gt=datetime.today() - timedelta(183))
         dbanalyses = user_ana | run_ana
     items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
-    return JsonResponse({'items': items, 'order': it_order})
+    uploadable_filetypes = filemodels.StoredFileType.objects.filter(name__in=['database'])
+    return JsonResponse({'items': items, 'order': it_order, 
+        'upload_ftypes': {ft.id: ft.filetype for ft in uploadable_filetypes}})
 
 
 @login_required
