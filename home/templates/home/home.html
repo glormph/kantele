@@ -722,8 +722,8 @@ Vue.component('admin-box', {
 {% if user.is_staff %}
                         <a class="button" v-on:click="purgeAnalyses" v-show="selectedItems.length">Purge analyses</a>
                         <a class="button" disabled v-show="!selectedItems.length">Purge analyses</a>
-                        <a class="button" v-on:click="toggleUploadWindow">Upload FASTA</a>
 {% endif %}
+                        <a class="button" v-on:click="toggleUploadWindow">Upload FASTA</a>
 	{% verbatim %}
     <div :class="{'is-active': upwindisplay}" ref="uploadmodal" @keyup.esc="toggleUploadWindow" tabindex="-1" class="modal">
       <div class="modal-background"></div>
