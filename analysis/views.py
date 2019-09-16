@@ -30,6 +30,16 @@ def get_analysis_init(request):
     return render(request, 'analysis/analysis.html', context)
 
 
+def check_fasta_release(request):
+    try:
+        ensfile = am.EnsemblFasta.objects.select_related('libfile__sfile').get(version=request.GET['ensembl'])
+    except am.EnsemblFasta.DoesNotExist:
+        ens = {'release': False, 'stored': False}
+    else:
+        ens = {'release': True, 'stored': ensfile.libfile.sfile.checked}
+    return JsonResponse({'ensembl': ens})
+
+
 @login_required
 def get_allwfs(request):
     allwfs = [{'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name} for x in

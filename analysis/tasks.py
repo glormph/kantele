@@ -5,8 +5,10 @@ import requests
 import subprocess
 from time import sleep
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
+from ftplib import FTP
 from dulwich.porcelain import clone, reset, pull
+from tempfile import NamedTemporaryFile
 
 from django.urls import reverse
 from django.utils import timezone
@@ -16,6 +18,80 @@ from jobs.post import update_db, taskfail_update_db
 from kantele import settings
 from analysis import qc
 from rawstatus.tasks import calc_md5
+
+
+@shared_task(bind=True, queue=settings.QUEUE_PXDOWNLOAD)
+def check_ensembl_uniprot_fasta_download(self):
+    """Checks if there is a new version of ENSEMBL data,
+    downloads it to system over FTP"""
+    # TODO add uniprot
+    # TODO check sum(fn) to validate ENSEMBL checksum
+    # First check ENSEMBL
+    r = requests.get(settings.ENSEMBL_API, headers={'Content-type': 'application/json'})
+    try:
+        r.raise_for_status()
+    except:
+        self.retry(countdown=3600)
+    version = r.json()['release']
+    print('found version {} '.format(version))
+    # verify release with Kantele
+    url = urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease'))
+    print(url)
+    dbstate = requests.get(url=url, params={'ensembl': version}).json()
+    print('db says {}'.format(dbstate))
+    if not dbstate['ensembl']['stored']:
+        # Download time
+        url = urlsplit(settings.ENSEMBL_DL_URL.format(version))
+        reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
+        trf_url = urljoin(settings.KANTELEHOST, reverse('files:transferred'))
+        lib_url = urljoin(settings.KANTELEHOST, reverse('files:setlibfile'))
+        with FTP(url.netloc) as ftp, NamedTemporaryFile(mode='w+') as wfp:
+            ftp.login()
+            fn = [x for x in ftp.nlst(url.path) if 'pep.all.fa.gz' in x][0]
+            ftp.retrlines('RETR {}'.format(fn), wfp.write)
+            # Now register download in Kantele, still in context manager
+            # since tmp file will be deleted on close()
+            postdata = {'fn': os.path.basename(fn),
+                        'client_id': settings.APIKEY,
+                        'md5': calc_md5(wfp.name),
+                        'size': os.path.getsize(wfp.name),
+                        'date': str(os.path.getctime(wfp.name)),
+                        'claimed': True,
+                        }
+            print('Registering with', postdata)
+            resp = requests.post(url=reg_url, data=postdata)
+            try:
+                resp.raise_for_status()
+            except:
+                self.retry(countdown=3600)
+            regresp = resp.json()
+            print('Register resp', regresp)
+            # edgecase: if we already have this file due to parallel download, dont proceed.
+            # otherwise, copy it to tmp
+            if not check_md5(regresp['file_id']) == 'ok':
+                return # TODO return somethign?
+            else:
+                shutil.copy(wfp.name, os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], 'ENS{}_{}'.format(version, fn)))
+        # now register transfer, will fire md5 check and can create libfile of it
+        postdata = {'fn_id': regresp['file_id'],
+                    'client_id': settings.APIKEY,
+                    'ftype': 'database',
+                    'filename': os.path.basename(fn),
+                    }
+        resp = requests.post(url=trf_url, data=postdata)
+        postdata = {'fn_id': regresp['file_id'],
+                    'client_id': settings.APIKEY,
+                    'desc': 'ENSEMBL release {} pep.all fasta'.format(version),
+                    }
+        resp = requests.post(url=lib_url, data=postdata)
+        finished = False
+        while not finished:
+            r = requests.get(url=urljoin(settings.KANTELEHOST, 
+                reverse('files:checklibfile')), data={'fn_id': regresp['file_id']})
+            r.raise_for_status()
+            finished = r.json()['ready']
+            sleep(30)
+
 
 
 def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
@@ -274,6 +350,7 @@ def register_resultfiles(outfiles):
         resp = requests.post(url=reg_url, data=postdata, verify=settings.CERTFILE)
         resp.raise_for_status()
         rj = resp.json()
+        # check md5 of file so we can skip already transferred files in reruns
         if not check_md5(rj['file_id']) == 'ok':
             outfiles_db[fn] = resp.json()
     return outfiles_db

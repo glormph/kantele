@@ -249,8 +249,7 @@ def file_transferred(request):
             RawFile.objects.get(pk=fn_id)
         except RawFile.DoesNotExist:
             print('File has not been registered yet, cannot transfer')
-            return JsonResponse({'fn_id': request.POST['fn_id'],
-                                 'state': 'error'})
+            return JsonResponse({'fn_id': fn_id, 'state': 'error'})
         try:
             ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[ftype]
         except KeyError:
@@ -270,8 +269,7 @@ def file_transferred(request):
                   'MD5 check after a possible retransfer. Running MD5 check.')
             jobutil.create_file_job('get_md5', file_transferred.id)
         finally:
-            return JsonResponse({'fn_id': request.POST['fn_id'],
-                                 'state': 'ok'})
+            return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
 
@@ -477,6 +475,7 @@ def set_libraryfile(request):
     try:
         client_id = request.POST['client_id']
         fn_id = request.POST['fn_id']
+        desc = request.POST['desc']
     except KeyError as error:
         print('POST request to register_file with missing parameter, '
               '{}'.format(error))
@@ -497,15 +496,13 @@ def set_libraryfile(request):
         if LibraryFile.objects.filter(sfile__rawfile_id=fn_id):
             response = {'library': True, 'state': 'ok'}
         elif sfile.servershare.name == settings.TMPSHARENAME:
-            libfn = LibraryFile.objects.create(
-                sfile=sfile, description=request.POST['desc'])
+            libfn = LibraryFile.objects.create(sfile=sfile, description=desc)
             jobutil.create_file_job(
                 'move_single_file', sfile.id, settings.LIBRARY_FILE_PATH,
                 newname='libfile_{}_{}'.format(libfn.id, sfile.filename))
             response = {'library': True, 'state': 'ok'}
         else:
-            LibraryFile.objects.create(sfile=sfile,
-                                       description=request.POST['desc'])
+            LibraryFile.objects.create(sfile=sfile, description=desc)
             response = {'library': False, 'state': 'ok'}
     return JsonResponse(response)
 

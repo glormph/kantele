@@ -13,7 +13,7 @@ urlpatterns = [
     url(r'^transferred/$', views.file_transferred, name='transferred'),
     url(r'^md5/$', views.check_md5_success, name='md5check'),
     url(r'^md5/userfile/$', views.check_md5_success_userfile, name='md5checkuserfile'),
-    url(r'^setlibrary/$', views.set_libraryfile),
-    url(r'^libfile/$', views.check_libraryfile_ready),
+    url(r'^setlibrary/$', views.set_libraryfile, name='setlibfile'),
+    url(r'^libfile/$', views.check_libraryfile_ready, name='checklibfile'),
     url(r'^rename/$', views.rename_file),
 ]

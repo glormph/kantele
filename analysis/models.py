@@ -130,3 +130,13 @@ class DatasetSearch(models.Model):
 class AnalysisResultFile(models.Model):
     analysis = models.ForeignKey(Analysis)
     sfile = models.OneToOneField(filemodels.StoredFile)
+
+
+class EnsemblFasta(models.Model):
+    libfile = models.ForeignKey(LibraryFile)
+    version = models.IntegerField(unique=True)
+
+
+class UniProtFasta(models.Model):
+    libfile = models.OneToOneField(LibraryFile)
+    version = models.TextField(unique=True)

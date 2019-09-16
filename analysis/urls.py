@@ -14,4 +14,5 @@ urlpatterns = [
     url(r'^logappend/$', views.append_analysis_log, name='appendlog'),
     url(r'^log/(?P<nfs_id>[0-9]+)$', views.show_analysis_log),
     url(r'^showfile/(?P<file_id>[0-9]+)$', views.serve_analysis_file),
+    url(r'^fastarelease/check/$', views.check_fasta_release, name='checkfastarelease'),
 ]
