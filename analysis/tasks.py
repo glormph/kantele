@@ -33,13 +33,14 @@ def check_ensembl_uniprot_fasta_download(self):
     except:
         self.retry(countdown=3600)
     version = r.json()['release']
-    print('found version {} '.format(version))
+    print('found ENSEMBL version {} '.format(version))
     # verify release with Kantele
     url = urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease'))
-    print(url)
     dbstate = requests.get(url=url, params={'ensembl': version}).json()
-    print('db says {}'.format(dbstate))
-    if not dbstate['ensembl']['stored']:
+    if dbstate['ensembl']['stored']:
+        print('Already stored')
+    else:
+        print('Downloading new ENSEMBL Homo sapiens version {}'.format(version))
         # Download time
         url = urlsplit(settings.ENSEMBL_DL_URL.format(version))
         reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
@@ -49,48 +50,52 @@ def check_ensembl_uniprot_fasta_download(self):
             ftp.login()
             fn = [x for x in ftp.nlst(url.path) if 'pep.all.fa.gz' in x][0]
             ftp.retrlines('RETR {}'.format(fn), wfp.write)
+            dstfn = 'ENS{}_{}'.format(version, os.path.basename(fn))
             # Now register download in Kantele, still in context manager
             # since tmp file will be deleted on close()
-            postdata = {'fn': os.path.basename(fn),
-                        'client_id': settings.APIKEY,
+            postdata = {'fn': dstfn,
+                        'client_id': settings.ADMIN_APIKEY,
                         'md5': calc_md5(wfp.name),
                         'size': os.path.getsize(wfp.name),
                         'date': str(os.path.getctime(wfp.name)),
                         'claimed': True,
                         }
-            print('Registering with', postdata)
             resp = requests.post(url=reg_url, data=postdata)
             try:
                 resp.raise_for_status()
             except:
                 self.retry(countdown=3600)
             regresp = resp.json()
-            print('Register resp', regresp)
             # edgecase: if we already have this file due to parallel download, dont proceed.
             # otherwise, copy it to tmp
-            if not check_md5(regresp['file_id']) == 'ok':
-                return # TODO return somethign?
-            else:
-                shutil.copy(wfp.name, os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], 'ENS{}_{}'.format(version, fn)))
+            already_downloaded = check_md5(regresp['file_id'], 'database', settings.ADMIN_APIKEY) == 'ok'
+            print('File already downloaded? {}'.format(already_downloaded))
+            if not already_downloaded:
+                shutil.copy(wfp.name, os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], dstfn))
         # now register transfer, will fire md5 check and can create libfile of it
         postdata = {'fn_id': regresp['file_id'],
-                    'client_id': settings.APIKEY,
+                    'client_id': settings.ADMIN_APIKEY,
                     'ftype': 'database',
-                    'filename': os.path.basename(fn),
+                    'filename': dstfn,
                     }
         resp = requests.post(url=trf_url, data=postdata)
+        resp.raise_for_status()
         postdata = {'fn_id': regresp['file_id'],
-                    'client_id': settings.APIKEY,
+                    'client_id': settings.ADMIN_APIKEY,
                     'desc': 'ENSEMBL release {} pep.all fasta'.format(version),
                     }
         resp = requests.post(url=lib_url, data=postdata)
+        resp.raise_for_status()
         finished = False
-        while not finished:
+        while True:
             r = requests.get(url=urljoin(settings.KANTELEHOST, 
-                reverse('files:checklibfile')), data={'fn_id': regresp['file_id']})
+                reverse('files:checklibfile')), params={'fn_id': regresp['file_id']})
             r.raise_for_status()
-            finished = r.json()['ready']
-            sleep(30)
+            if r.json()['ready']:
+                break
+            print('Libfile not finished yet, checking in 10 sec')
+            sleep(10)
+        requests.post(urljoin(settings.KANTELEHOST, reverse('analysis:setfastarelease')), data={'ensembl': version, 'fn_id': regresp['file_id']})
 
 
 
@@ -316,10 +321,11 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     return run
 
 
-def check_md5(fn_id):
+def check_md5(fn_id, ftype, apikey=False):
+    if not apikey:
+        apikey = settings.APIKEY
     checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
-    params = {'client_id': settings.APIKEY, 'fn_id': fn_id,
-              'ftype': 'analysis_output'}
+    params = {'client_id': apikey, 'fn_id': fn_id, 'ftype': ftype}
     resp = requests.get(url=checkurl, params=params, verify=settings.CERTFILE)
     return resp.json()['md5_state']
 
@@ -351,7 +357,7 @@ def register_resultfiles(outfiles):
         resp.raise_for_status()
         rj = resp.json()
         # check md5 of file so we can skip already transferred files in reruns
-        if not check_md5(rj['file_id']) == 'ok':
+        if not check_md5(rj['file_id'], 'analysis_output') == 'ok':
             outfiles_db[fn] = resp.json()
     return outfiles_db
 
@@ -392,7 +398,7 @@ def check_rawfile_resultfiles_match(fn_ids):
     while False in fn_ids.values():
         for fn_id, checked in fn_ids.items():
             if not checked:
-                fn_ids[fn_id] = check_md5(fn_id)
+                fn_ids[fn_id] = check_md5(fn_id, 'analysis_output')
                 if fn_ids[fn_id] == 'error':
                     taskfail_update_db(task_id)
                     raise RuntimeError

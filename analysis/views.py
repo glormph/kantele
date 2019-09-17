@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime
 from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound)
+from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.db.models import Subquery
@@ -38,6 +39,16 @@ def check_fasta_release(request):
     else:
         ens = {'release': True, 'stored': ensfile.libfile.sfile.checked}
     return JsonResponse({'ensembl': ens})
+
+
+def set_protein_database_lib(request):
+    print(request.POST['fn_id'], request.POST)
+    libfile = am.LibraryFile.objects.get(sfile__rawfile_id=request.POST['fn_id'])
+    try:
+        am.EnsemblFasta.objects.create(version=request.POST['ensembl'], libfile_id=libfile.id)
+    except IntegrityError:
+        pass # FIXME
+    return HttpResponse()
 
 
 @login_required
