@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlsplit
 from ftplib import FTP
 from dulwich.porcelain import clone, reset, pull
 from tempfile import NamedTemporaryFile
+from gzip import GzipFile
 
 from django.urls import reverse
 from django.utils import timezone
@@ -24,67 +25,21 @@ from rawstatus.tasks import calc_md5
 def check_ensembl_uniprot_fasta_download(self):
     """Checks if there is a new version of ENSEMBL data,
     downloads it to system over FTP"""
-    # TODO add uniprot
-    # TODO check sum(fn) to validate ENSEMBL checksum
-    # First check ENSEMBL
-    r = requests.get(settings.ENSEMBL_API, headers={'Content-type': 'application/json'})
-    try:
-        r.raise_for_status()
-    except:
-        self.retry(countdown=3600)
-    version = r.json()['release']
-    print('found ENSEMBL version {} '.format(version))
-    # verify release with Kantele
-    url = urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease'))
-    dbstate = requests.get(url=url, params={'ensembl': version}).json()
-    if dbstate['ensembl']['stored']:
-        print('Already stored')
-    else:
-        print('Downloading new ENSEMBL Homo sapiens version {}'.format(version))
-        # Download time
-        url = urlsplit(settings.ENSEMBL_DL_URL.format(version))
-        reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
-        trf_url = urljoin(settings.KANTELEHOST, reverse('files:transferred'))
-        lib_url = urljoin(settings.KANTELEHOST, reverse('files:setlibfile'))
-        with FTP(url.netloc) as ftp, NamedTemporaryFile(mode='w+') as wfp:
-            ftp.login()
-            fn = [x for x in ftp.nlst(url.path) if 'pep.all.fa.gz' in x][0]
-            ftp.retrlines('RETR {}'.format(fn), wfp.write)
-            dstfn = 'ENS{}_{}'.format(version, os.path.basename(fn))
-            # Now register download in Kantele, still in context manager
-            # since tmp file will be deleted on close()
-            postdata = {'fn': dstfn,
-                        'client_id': settings.ADMIN_APIKEY,
-                        'md5': calc_md5(wfp.name),
-                        'size': os.path.getsize(wfp.name),
-                        'date': str(os.path.getctime(wfp.name)),
-                        'claimed': True,
-                        }
-            resp = requests.post(url=reg_url, data=postdata)
-            try:
-                resp.raise_for_status()
-            except:
-                self.retry(countdown=3600)
-            regresp = resp.json()
-            # edgecase: if we already have this file due to parallel download, dont proceed.
-            # otherwise, copy it to tmp
-            already_downloaded = check_md5(regresp['file_id'], 'database', settings.ADMIN_APIKEY) == 'ok'
-            print('File already downloaded? {}'.format(already_downloaded))
-            if not already_downloaded:
-                shutil.copy(wfp.name, os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], dstfn))
-        # now register transfer, will fire md5 check and can create libfile of it
+    def register_transfer_libfile(regresp, dstfn, description, fastatype):
+        # register transfer, will fire md5 check and create libfile of it
         postdata = {'fn_id': regresp['file_id'],
                     'client_id': settings.ADMIN_APIKEY,
                     'ftype': 'database',
                     'filename': dstfn,
                     }
-        resp = requests.post(url=trf_url, data=postdata)
+        resp = requests.post(url=urljoin(settings.KANTELEHOST, reverse('files:transferred')), data=postdata)
         resp.raise_for_status()
         postdata = {'fn_id': regresp['file_id'],
                     'client_id': settings.ADMIN_APIKEY,
-                    'desc': 'ENSEMBL release {} pep.all fasta'.format(version),
+                    'desc': description,
+                    'type': fastatype,
                     }
-        resp = requests.post(url=lib_url, data=postdata)
+        resp = requests.post(url=urljoin(settings.KANTELEHOST, reverse('files:setlibfile')), data=postdata)
         resp.raise_for_status()
         finished = False
         while True:
@@ -95,7 +50,76 @@ def check_ensembl_uniprot_fasta_download(self):
                 break
             print('Libfile not finished yet, checking in 10 sec')
             sleep(10)
-        requests.post(urljoin(settings.KANTELEHOST, reverse('analysis:setfastarelease')), data={'ensembl': version, 'fn_id': regresp['file_id']})
+
+    def register_and_copy_lib_fasta_db(dstfn, wfp):
+        postdata = {'fn': dstfn,
+                    'client_id': settings.ADMIN_APIKEY,
+                    'md5': calc_md5(wfp.name),
+                    'size': os.path.getsize(wfp.name),
+                    'date': str(os.path.getctime(wfp.name)),
+                    'claimed': True,
+                    }
+        resp = requests.post(url=urljoin(settings.KANTELEHOST, reverse('files:register')), data=postdata)
+        try:
+            resp.raise_for_status()
+        except:
+            self.retry(countdown=3600)
+        regresp = resp.json()
+        # edgecase: if we already have this file due to parallel download, dont proceed.
+        # otherwise, copy it to tmp
+        already_downloaded = check_md5(regresp['file_id'], 'database', settings.ADMIN_APIKEY) == 'ok'
+        print('File already downloaded? {}'.format(already_downloaded))
+        if not already_downloaded:
+            shutil.copy(wfp.name, os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], dstfn))
+            os.chmod(os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], dstfn), 0o640)
+        return regresp
+    # TODO check sum(fn) to validate ENSEMBL checksum
+    # First check ENSEMBL and uniprot
+    r = requests.get(settings.ENSEMBL_API, headers={'Content-type': 'application/json'})
+    ens_version = r.json()['release'] if r.ok else False
+    r = requests.get(settings.UNIPROT_API, stream=True)
+    up_version = r.headers['X-UniProt-Release'] if r.ok else False
+    # verify releases with Kantele
+    dbstate = requests.get(url=urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease')),
+            params={'ensembl': ens_version, 'uniprot': up_version}).json()
+    done_url = urljoin(settings.KANTELEHOST, reverse('analysis:setfastarelease'))
+    if dbstate['uniprot']:
+        print('Uniprot version {} is already stored'.format(ens_version))
+    else:
+        print('Downloading uniprot (H.sapiens, swiss, caniso) version {}'.format(ens_version))
+        with requests.get(settings.UNIPROT_API, stream=True) as req, NamedTemporaryFile(mode='wb') as wfp:
+            for chunk in req.iter_content(chunk_size=8192):
+                if chunk:
+                    wfp.write(chunk)
+            dstfn = 'Swissprot_{}_caniso.fa'.format(up_version)
+            regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
+        register_transfer_libfile(regresp, dstfn,
+                'Uniprot release {} swiss canonical/isoform fasta'.format(up_version),
+                'uniprot')
+        requests.post(done_url, data={'type': 'uniprot', 'version': up_version, 'fn_id': regresp['file_id']})
+        print('Finished downloading Uniprot database')
+    if dbstate['ensembl']:
+        print('ENSEMBL version {} is already stored'.format(up_version))
+    else:
+        print('Downloading new ENSEMBL Homo sapiens version {}'.format(ens_version))
+        # Download db, use FTP to get file, download zipped via HTTPS and unzip in stream
+        url = urlsplit(settings.ENSEMBL_DL_URL.format(ens_version))
+        with FTP(url.netloc) as ftp:
+            ftp.login()
+            fn = [x for x in ftp.nlst(url.path) if 'pep.all.fa.gz' in x][0]
+        with requests.get(urljoin('https://' + url.netloc, fn), stream=True).raw as reqfp:
+            with NamedTemporaryFile(mode='wb') as wfp, GzipFile(fileobj=reqfp) as gzfp:
+                for line in gzfp:
+                    wfp.write(line)
+                dstfn = 'ENS{}_{}'.format(ens_version, os.path.basename(fn).replace('.gz', ''))
+                # Now register download in Kantele, still in context manager
+                # since tmp file will be deleted on close()
+                regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
+        register_transfer_libfile(regresp, dstfn, 
+            'ENSEMBL release {} pep.all fasta'.format(ens_version), 'ensembl')
+        requests.post(done_url, data={'type': 'ensembl', 'version': ens_version, 'fn_id': regresp['file_id']})
+        print('Finished downloading ENSEMBL database')
+
 
 
 

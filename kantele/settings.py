@@ -75,6 +75,8 @@ LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID'))
 
 # external datasets
 ENSEMBL_API = 'https://rest.ensembl.org/info/software'
+# human, canonical/isoform, only swiss
+UNIPROT_API = 'https://www.uniprot.org/uniprot/?query=organism:9606+AND+reviewed:yes&format=fasta'
 ENSEMBL_DL_URL = 'ftp://ftp.ensembl.org/pub/release-{}/fasta/homo_sapiens/pep/'
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')

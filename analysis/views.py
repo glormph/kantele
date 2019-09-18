@@ -32,20 +32,23 @@ def get_analysis_init(request):
 
 
 def check_fasta_release(request):
-    try:
-        ensfile = am.EnsemblFasta.objects.select_related('libfile__sfile').get(version=request.GET['ensembl'])
-    except am.EnsemblFasta.DoesNotExist:
-        ens = {'release': False, 'stored': False}
-    else:
-        ens = {'release': True, 'stored': ensfile.libfile.sfile.checked}
-    return JsonResponse({'ensembl': ens})
+    resp, dbmods = {}, {'ensembl': am.EnsemblFasta, 'uniprot': am.UniProtFasta}
+    for ftype in ['ensembl', 'uniprot']:
+        if request.GET[ftype]:
+            try:
+                frec = dbmods[ftype].objects.select_related('libfile__sfile').get(version=request.GET[ftype])
+            except dbmods[ftype].DoesNotExist:
+                resp[ftype] = False
+            else:
+                resp[ftype] = frec.libfile.sfile.checked
+    return JsonResponse(resp)
 
 
 def set_protein_database_lib(request):
-    print(request.POST['fn_id'], request.POST)
     libfile = am.LibraryFile.objects.get(sfile__rawfile_id=request.POST['fn_id'])
+    dbmod = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[request.POST['type']]
     try:
-        am.EnsemblFasta.objects.create(version=request.POST['ensembl'], libfile_id=libfile.id)
+        dbmod.objects.create(version=request.POST['version'], libfile_id=libfile.id)
     except IntegrityError:
         pass # FIXME
     return HttpResponse()
