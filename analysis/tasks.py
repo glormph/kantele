@@ -25,11 +25,11 @@ from rawstatus.tasks import calc_md5
 def check_ensembl_uniprot_fasta_download(self):
     """Checks if there is a new version of ENSEMBL data,
     downloads it to system over FTP"""
-    def register_transfer_libfile(regresp, dstfn, description, fastatype):
+    def register_transfer_libfile(regresp, dstfn, description, ftype):
         # register transfer, will fire md5 check and create libfile of it
         postdata = {'fn_id': regresp['file_id'],
                     'client_id': settings.ADMIN_APIKEY,
-                    'ftype': 'database',
+                    'ftype': ftype,
                     'filename': dstfn,
                     }
         resp = requests.post(url=urljoin(settings.KANTELEHOST, reverse('files:transferred')), data=postdata)
@@ -37,7 +37,6 @@ def check_ensembl_uniprot_fasta_download(self):
         postdata = {'fn_id': regresp['file_id'],
                     'client_id': settings.ADMIN_APIKEY,
                     'desc': description,
-                    'type': fastatype,
                     }
         resp = requests.post(url=urljoin(settings.KANTELEHOST, reverse('files:setlibfile')), data=postdata)
         resp.raise_for_status()
@@ -84,9 +83,9 @@ def check_ensembl_uniprot_fasta_download(self):
             params={'ensembl': ens_version, 'uniprot': up_version}).json()
     done_url = urljoin(settings.KANTELEHOST, reverse('analysis:setfastarelease'))
     if dbstate['uniprot']:
-        print('Uniprot version {} is already stored'.format(ens_version))
+        print('Uniprot version {} is already stored'.format(up_version))
     else:
-        print('Downloading uniprot (H.sapiens, swiss, caniso) version {}'.format(ens_version))
+        print('Downloading uniprot (H.sapiens, swiss, caniso) version {}'.format(up_version))
         with requests.get(settings.UNIPROT_API, stream=True) as req, NamedTemporaryFile(mode='wb') as wfp:
             for chunk in req.iter_content(chunk_size=8192):
                 if chunk:
@@ -94,8 +93,7 @@ def check_ensembl_uniprot_fasta_download(self):
             dstfn = 'Swissprot_{}_caniso.fa'.format(up_version)
             regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
         register_transfer_libfile(regresp, dstfn,
-                'Uniprot release {} swiss canonical/isoform fasta'.format(up_version),
-                'uniprot')
+                'Uniprot release {} swiss canonical/isoform fasta'.format(up_version), 'database')
         requests.post(done_url, data={'type': 'uniprot', 'version': up_version, 'fn_id': regresp['file_id']})
         print('Finished downloading Uniprot database')
     if dbstate['ensembl']:
@@ -115,10 +113,22 @@ def check_ensembl_uniprot_fasta_download(self):
                 # Now register download in Kantele, still in context manager
                 # since tmp file will be deleted on close()
                 regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
-        register_transfer_libfile(regresp, dstfn, 
-            'ENSEMBL release {} pep.all fasta'.format(ens_version), 'ensembl')
+        register_transfer_libfile(regresp, dstfn, 'ENSEMBL release {} pep.all fasta'.format(ens_version),
+                'database')
+        # Download biomart for ENSEMBL
+        martxml = '<?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE Query> <Query  header="1" completionStamp="1" virtualSchemaName = "default" formatter = "TSV" uniqueRows = "0" count = "" datasetConfigVersion = "0.6" > <Dataset name = "hsapiens_gene_ensembl" interface = "default" > <Attribute name = "ensembl_gene_id" /> <Attribute name = "ensembl_peptide_id" /> <Attribute name = "description" /> <Attribute name = "external_gene_name" /> </Dataset> </Query>'
+        with requests.get(settings.BIOMART_URL, params={'query': martxml}, stream=True) as reqfp, NamedTemporaryFile(mode='wb') as wfp:
+            for chunk in reqfp.iter_content(chunk_size=8192):
+                if chunk:
+                    wfp.write(chunk)
+            dstfn = 'Biomart_table_ENS{}'.format(ens_version)
+            # Now register download in Kantele, still in context manager
+            # since tmp file will be deleted on close()
+            regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
+        register_transfer_libfile(regresp, dstfn, 'Biomart map for ENSEMBL release {}'.format(ens_version),
+                'martmap')
         requests.post(done_url, data={'type': 'ensembl', 'version': ens_version, 'fn_id': regresp['file_id']})
-        print('Finished downloading ENSEMBL database')
+        print('Finished downloading ENSEMBL database and mart map')
 
 
 
