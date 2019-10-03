@@ -1153,7 +1153,7 @@ Vue.component('admin-box', {
  			<div v-if="details.storage_locs.length===0">No output (yet)</div>
 <hr>
                     <h5 class="title is-5">Pipeline parameters</h5>
-<p v-for="param in details.invocation.files">{{ param[2] }}: <code>{{ param[0] }} {{param[1] }}</code></p>
+        <p v-for="param in details.invocation.files"><code><{{ param[0] }}</code>: {{ param[2] }} ( {{param[1] }} )</code></p>
 <p>Other parameters: <code>{{ details.invocation.params.join(' ') }}<code></p>
         <div v-if="'sampletable' in details.invocation">
             <h6 class="title" >Samples:</h6> 
