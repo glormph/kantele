@@ -75,9 +75,9 @@ def check_ensembl_uniprot_fasta_download(self):
     # TODO check sum(fn) to validate ENSEMBL checksum
     # First check ENSEMBL and uniprot
     r = requests.get(settings.ENSEMBL_API, headers={'Content-type': 'application/json'})
-    ens_version = r.json()['release'] if r.ok else False
+    ens_version = r.json()['release'] if r.ok else ''
     r = requests.get(settings.UNIPROT_API, stream=True)
-    up_version = r.headers['X-UniProt-Release'] if r.ok else False
+    up_version = r.headers['X-UniProt-Release'] if r.ok else ''
     # verify releases with Kantele
     dbstate = requests.get(url=urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease')),
             params={'ensembl': ens_version, 'uniprot': up_version}).json()

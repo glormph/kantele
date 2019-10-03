@@ -34,13 +34,17 @@ def get_analysis_init(request):
 def check_fasta_release(request):
     resp, dbmods = {}, {'ensembl': am.EnsemblFasta, 'uniprot': am.UniProtFasta}
     for ftype in ['ensembl', 'uniprot']:
-        if request.GET[ftype]:
+        if ftype in request.GET and request.GET[ftype]:
             try:
                 frec = dbmods[ftype].objects.select_related('libfile__sfile').get(version=request.GET[ftype])
             except dbmods[ftype].DoesNotExist:
                 resp[ftype] = False
             else:
                 resp[ftype] = frec.libfile.sfile.checked
+        else:
+            # Do not signal we dont have a database if it is not sure from the 
+            # request (False, '', no key). Return true so no download ensues.
+            resp[ftype] = True
     return JsonResponse(resp)
 
 
