@@ -1,12 +1,13 @@
 import json
 import re
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
                          HttpResponseForbidden)
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from kantele import settings
@@ -23,11 +24,10 @@ COMPSTATE_INCOMPLETE = 'incomplete'
 
 @login_required
 def new_dataset(request):
-    """Returns dataset view with Vue apps that will separately request
-    forms"""
-    context = {'dataset_id': '', 'newdataset': True, 'is_owner': 'true',
-               'local_ptype_id': settings.LOCAL_PTYPE_ID}
+    """Returns dataset view with JS app"""
+    context = {'dataset_id': 'false', 'newdataset': True, 'is_owner': 'true'}
     return render(request, 'datasets/dataset.html', context)
+
 
 
 @login_required
@@ -39,14 +39,26 @@ def show_dataset(request, dataset_id):
         return HttpResponseNotFound()
     context = {'dataset_id': dataset_id, 'newdataset': False,
                'is_owner': {True: 'true', False: 'false'}[
-                   check_ownership(request.user, dset)],
-               'local_ptype_id': settings.LOCAL_PTYPE_ID}
+                   check_ownership(request.user, dset)]}
     return render(request, 'datasets/dataset.html', context)
 
 
 @login_required
-def dataset_project(request, dataset_id):
-    response_json = empty_dataset_proj_json()
+def get_species(request):
+    if 'q' in request.GET:
+        query = Q(popname__icontains=request.GET['q'])
+        query |= Q(linnean__icontains=request.GET['q'])
+        return JsonResponse({x.id: {'id': x.id, 'linnean': x.linnean, 'name': x.popname} 
+                for x in models.Species.objects.filter(query)})
+    else:
+        return JsonResponse({x.species.id: {'id': x.species.id, 'linnean': x.species.linnean, 
+            'name': x.species.popname} for x in 
+            models.DatasetSpecies.objects.all().distinct('species').select_related('species')})
+
+
+@login_required
+def dataset_info(request, dataset_id):
+    response_json = {'projdata': empty_dataset_json(), 'dsinfo': {}}
     if dataset_id:
         try:
             dset = models.Dataset.objects.select_related(
@@ -58,18 +70,25 @@ def dataset_project(request, dataset_id):
             ).filter(purged=False, pk=dataset_id).get()
         except models.Dataset.DoesNotExist:
             return HttpResponseNotFound()
-        species = models.DatasetSpecies.objects.filter(
-            dataset_id=dset.id).select_related('species')
         components = models.DatatypeComponent.objects.filter(
             datatype_id=dset.datatype_id).select_related('component')
-        response_json.update(
-            dataset_proj_json(dset, species, components))
+        project = dset.runname.experiment.project
+        response_json['dsinfo'] = {
+                'dataset_id': dset.id,
+                'experiment_id': dset.runname.experiment_id,
+                'runname': dset.runname.name,
+                'pi_id': project.pi_id,
+                'project_id': project.id,
+                'ptype_id': project.projtype.ptype_id,
+                'datatype_id': dset.datatype_id,
+                'storage_location': dset.storage_loc,
+            }
         if hasattr(dset, 'prefractionationdataset'):
-            response_json.update(pf_dataset_proj_json(
+            response_json['dsinfo'].update(pf_dataset_info_json(
                 dset.prefractionationdataset))
         if dset.runname.experiment.project.projtype.ptype_id != settings.LOCAL_PTYPE_ID:
             mail = models.ExternalDatasetContact.objects.get(dataset_id=dset.id)
-            response_json.update({'externalcontactmail': mail.email})
+            response_json['dsinfo'].update({'externalcontactmail': mail.email})
     return JsonResponse(response_json)
 
 
@@ -79,15 +98,16 @@ def dataset_files(request, dataset_id):
     if dataset_id:
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
-        response_json.update(
-            {'datasetAssociatedFiles':
-             {'id_{}'.format(x.rawfile_id):
+        ds_files = models.DatasetRawFile.objects.select_related(
+                'rawfile__producer').filter(dataset_id=dataset_id).order_by('rawfile__date')
+        response_json.update({
+            'dsfn_order': [x.rawfile_id for x in ds_files],
+            'datasetFiles':
+            {x.rawfile_id:
               {'id': x.rawfile_id, 'name': x.rawfile.name, 'associd': x.id,
                'instrument': x.rawfile.producer.name,
                'size': round(x.rawfile.size / (2**20), 1),
-               'date': x.rawfile.date.timestamp() * 1000, 'checked': False}
-              for x in models.DatasetRawFile.objects.select_related(
-                  'rawfile__producer').filter(dataset_id=dataset_id)}})
+               'date': x.rawfile.date.timestamp() * 1000, 'checked': False} for x in ds_files}})
     return JsonResponse(response_json)
 
 
@@ -98,18 +118,17 @@ def dataset_acquisition(request, dataset_id):
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
         try:
-            response_json.update({'operator_id':
-                                  models.OperatorDataset.objects.get(
-                                      dataset_id=dataset_id).operator_id})
+            response_json['dsinfo']['operator_id'] = models.OperatorDataset.objects.get(
+                    dataset_id=dataset_id).operator_id
 
-            response_json['rp_length'] = models.ReversePhaseDataset.objects.get(
-                dataset_id=dataset_id).length
+            response_json['dsinfo']['rp_length'] = models.ReversePhaseDataset.objects.get(
+                    dataset_id=dataset_id).length
         except models.OperatorDataset.DoesNotExist:
             return JsonResponse(response_json)
         except models.ReversePhaseDataset.DoesNotExist:
-            response_json['dynamic_rp'] = True
-            response_json['rp_length'] = ''
-        get_admin_params_for_dset(response_json, dataset_id, 'acquisition')
+            response_json['dsinfo']['dynamic_rp'] = True
+            response_json['dsinfo']['rp_length'] = ''
+        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, 'acquisition')
     return JsonResponse(response_json)
 
 
@@ -128,33 +147,43 @@ def dataset_sampleprep(request, dataset_id):
                 dataset_id=dataset_id).select_related('quanttype').get()
         except models.QuantDataset.DoesNotExist:
             return JsonResponse(response_json)
-        response_json['enzymes'] = [
-            x.enzyme.id for x in models.EnzymeDataset.objects.filter(
-                dataset_id=dataset_id).select_related('enzyme')]
-        if not response_json['enzymes']:
-            response_json['no_enzyme'] = True
+        enzymes_used = {x.enzyme_id for x in 
+                models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
+        response_json['no_enzyme'] = True
+        for enzyme in response_json['enzymes']:
+            if enzyme['id'] in enzymes_used:
+                enzyme['checked'] = True
+                response_json['no_enzyme'] = False
         qtid = qtype.quanttype_id
         response_json['quanttype'] = qtid
         if qtype.quanttype.name == 'labelfree':
             qfiles = models.QuantSampleFile.objects.filter(
                 rawfile__dataset_id=dataset_id)
             if len(set([x.projsample_id for x in qfiles])) == 1:
-                response_json['labelfree_singlesample']['model'] = qfiles[0].projsample_id
+                response_json['labelfree_singlesample']['model'] = str(qfiles[0].projsample_id)
             else:
                 response_json['labelfree_multisample'] = True
-            response_json['samples'] = {fn.rawfile_id: {'model': fn.projsample_id, 'newprojsample': ''}
+            response_json['samples'] = {fn.rawfile_id: {'model': str(fn.projsample_id), 'newprojsample': ''}
                                         for fn in qfiles}
         else:
             response_json['quants'][qtid]['chans'] = [] # resetting from empty sampleprep to re-populate
-
             for qsc in models.QuantChannelSample.objects.filter(
                     dataset_id=dataset_id).select_related('channel__channel'):
                 response_json['quants'][qtid]['chans'].append(
                     {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
-                     'model': qsc.projsample_id, 'newprojsample': '', 'pk': qsc.id})
-
+                     'model': str(qsc.projsample_id), 'newprojsample': '', 'pk': qsc.id})
             # Trick to sort N before C:
+
             response_json['quants'][qtid]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
+        # species for dset and mostused ones TODO make sample specific
+        response_json['species'] = [{'id': x.species.id, 'linnean': x.species.linnean, 'name': x.species.popname} 
+                for x in models.DatasetSpecies.objects.select_related('species').filter(dataset_id=dataset_id)]
+        response_json['allspecies'] = ({str(x.species.id): {'id': x.species.id, 'linnean': x.species.linnean, 
+            'name': x.species.popname} for x in 
+            models.DatasetSpecies.objects.all().distinct('species').select_related('species')})
+
+        #########
+
         get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
     return JsonResponse(response_json)
 
@@ -178,18 +207,14 @@ def save_projsample(request):
     if not psample:     
         psample = models.ProjectSample.objects.get(sample=data['samplename'], project_id=proj_id)
     newprojsamples = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=proj_id)}
-    return JsonResponse({'projsamples': newprojsamples, 'psid': psample.id})
+    return JsonResponse({'projsamples': newprojsamples, 'psname': psample.sample, 'psid': str(psample.id)})
 
 
 @login_required
-def dataset_componentstates(request, dataset_id):
-    if dataset_id:
-        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
-            return HttpResponseNotFound()
-        return JsonResponse({
-            '{}_state'.format(x.dtcomp.component.name): x.state for x in
-            models.DatasetComponentState.objects.filter(
-                dataset_id=dataset_id).select_related('dtcomp__component')})
+def get_datatype_components(request, datatype_id):
+    if datatype_id:
+        dtcomps = models.DatatypeComponent.objects.filter(datatype_id=datatype_id).select_related('component')
+        return JsonResponse({'dt_id': datatype_id, 'components': [x.component.name for x in dtcomps]})
     else:
         return HttpResponse()
 
@@ -263,16 +288,6 @@ def update_dataset(data):
         print('Update data')
         dset.runname.name = data['runname']
         dset.runname.save()
-    # update species
-    print('Update species')
-    savedspecies = {x.species_id for x in
-                    models.DatasetSpecies.objects.filter(dataset_id=dset.id)}
-    newspec = {int(x) for x in data['organism_ids']}
-    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
-        dataset_id=dset.id, species_id=spid)
-        for spid in newspec.difference(savedspecies)])
-    models.DatasetSpecies.objects.filter(
-        species_id__in=savedspecies.difference(newspec)).delete()
     dset.datatype_id = data['datatype_id']
     # update prefrac
     try:
@@ -463,9 +478,6 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     dset.save()
     dsowner = models.DatasetOwner(dataset=dset, user_id=user_id)
     dsowner.save()
-    models.DatasetSpecies.objects.bulk_create(
-        [models.DatasetSpecies(species_id=sid, dataset_id=dset.id)
-         for sid in data['organism_ids']])
     if data['prefrac_id']:
         save_dataset_prefrac(dset.id, data, hrf_id)
     if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
@@ -577,64 +589,35 @@ def update_dataset_prefrac(pfds, data, hrf_id):
         pffa.save()
 
 
-def empty_dataset_proj_json():
-    projects = [{'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
-                 'select': False, 'pi_id': x.pi_id} for x in
-                models.Project.objects.select_related('projtype').all()]
-    experiments = {x['id']: [] for x in projects}
-    for exp in models.Experiment.objects.select_related('project').all():
-        run_names = [{'name': x.name, 'id': x.id} for x in
-                     models.RunName.objects.filter(experiment_id=exp.id)]
-        experiments[exp.project.id].append({'id': exp.id, 'name': exp.name,
-                                            'run_names': run_names})
-    edpr = {'projects': projects, 'experiments': experiments,
+@login_required
+def get_project(request, project_id):
+    proj = models.Project.objects.select_related('projtype').get(pk=project_id)
+    return JsonResponse({
+        'id': project_id, 'pi_id': proj.pi_id, 'ptype_id': proj.projtype.ptype_id,
+        'experiments': [{'id': x.id, 'name': x.name} for x in 
+        models.Experiment.objects.filter(project_id=project_id)]})
+
+
+def empty_dataset_json():
+    edpr = {'projects': [
+        {'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
+            'select': False, 'pi_id': x.pi_id} 
+        for x in models.Project.objects.select_related('projtype').all()],
             'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
             'external_pis': [{'name': x.name, 'id': x.id} for x in
                              models.PrincipalInvestigator.objects.all()],
-            'datatypes': [{'name': x.name, 'id': x.id} for x in
-                          models.Datatype.objects.all()],
             'internal_pi_id': INTERNAL_PI_PK,
+            'local_ptype_id': settings.LOCAL_PTYPE_ID,
             'datasettypes': [{'name': x.name, 'id': x.id} for x in
                              models.Datatype.objects.all()],
-            'organisms': [{'id': x.id, 'linnean': x.linnean, 'name': x.popname}
-                          for x in models.Species.objects.all()],
             'prefracs': [{'id': x.id, 'name': x.name}
                           for x in models.Prefractionation.objects.all()],
             'hirief_ranges': [{'name': str(x), 'id': x.id}
                               for x in models.HiriefRange.objects.all()]}
-    if settings.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
-        edpr['mostused_organisms'] = [
-            {'id': x.id, 'linnean': x.linnean, 'name': x.popname} for x in
-            set([dsp.species for dsp in
-                 models.DatasetSpecies.objects.select_related('species')])]
-    else:
-        edpr['mostused_organisms'] = [
-            {'id': x.species.id, 'linnean': x.species.linnean,
-             'name': x.species.popname} for x in
-                models.DatasetSpecies.objects.all().distinct(
-                    'species').select_related('species')]
     return edpr
 
 
-def dataset_proj_json(dset, species, components):
-    project = dset.runname.experiment.project
-    return {'dataset_id': dset.id,
-            'experiment_id': dset.runname.experiment_id,
-            'runname': dset.runname.name,
-            'pi_id': project.pi_id,
-            'project_id': project.id,
-            'ptype_id': project.projtype.ptype_id,
-            'datatype_id': dset.datatype_id,
-            'storage_location': dset.storage_loc,
-            'organism_ids': {x.species_id: {'id': x.species_id,
-                                            'linnean': x.species.linnean,
-                                            'name': x.species.popname}
-                             for x in species},
-            'components': [x.component.name for x in components],
-            }
-
-
-def pf_dataset_proj_json(pfds):
+def pf_dataset_info_json(pfds):
     resp_json = {'prefrac_id': pfds.prefractionation.id,
                  'prefrac_amount': pfds.prefractionationfractionamount.fractions}
     if hasattr(pfds, 'hiriefdataset'):
@@ -660,16 +643,15 @@ def empty_sampleprep_json():
         quants[chan.quanttype.id]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
     labelfree = models.QuantType.objects.get(name='labelfree')
     quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree'}
-    return {'params': params, 'quants': quants,
+    return {'params': params, 'quants': quants, 'species': [],
             'labelfree_multisample': False,
             'labelfree_singlesample': {'model': '', 'newprojsample': ''},
-            'show_enzymes': [{'id': x.id, 'name': x.name}
-                             for x in models.Enzyme.objects.all()]}
+            'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
+                for x in models.Enzyme.objects.all()]}
 
 
 def fill_admin_selectparam(params, p, value=False):
     """Fills params dict with select parameters passed, in proper JSON format
-    for Vue app.
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
     if p.param.id not in params:
@@ -685,26 +667,24 @@ def fill_admin_selectparam(params, p, value=False):
 
 def fill_admin_checkboxparam(params, p, value=False):
     """Fills params dict with select parameters passed, in proper JSON format
-    for Vue app.
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
+    # param must have a model for ability of checking if it is new param
+    # which dataset does not have
     if p.param.id not in params:
-        params[p.param.id] = {'param_id': p.param.id, 'fields': [],
+        params[p.param.id] = {'param_id': p.param.id, 'fields': [], 'model': True,
                               'inputtype': 'checkbox', 'title': p.param.title}
     if value:
         # fields key is already populated by call to empty params
-        try:
-            params[p.param.id]['model'].append(value)
-        except KeyError:
-            params[p.param.id]['model'] = [value]
+        for box in params[p.param_id]['fields']:
+            if box['value'] == value:
+                box['checked'] = True 
     else:
-        params[p.param.id]['model'] = []
-        params[p.param.id]['fields'].append({'value': p.id, 'text': p.value})
+        params[p.param.id]['fields'].append({'checked': False, 'value': p.id, 'text': p.value})
 
 
 def fill_admin_fieldparam(params, p, value=False):
     """Fills params dict with field parameters passed, in proper JSON format
-    for Vue app.
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
     params[p.id] = {'param_id': p.id, 'placeholder': p.placeholder,
@@ -730,24 +710,45 @@ def get_dynamic_emptyparams(category):
 
 
 def empty_acquisition_json():
-    params = get_dynamic_emptyparams('acquisition')
-    return {'params': params,
-            'operators': [{'id': x.id, 'name': '{} {}'.format(
+    return {'dsinfo': {'params': get_dynamic_emptyparams('acquisition')},
+            'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
                 x.user.first_name, x.user.last_name)}
-                for x in models.Operator.objects.select_related('user').all()],
+                for x in models.Operator.objects.select_related('user').all()]},
             }
 
 
-
-def empty_files_json():
-    return {'instruments': [x.name for x in filemodels.Producer.objects.all()],
-            'newFiles': {'id_{}'.format(x.id):
+@login_required
+def find_files(request):
+    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+    query = Q(name__icontains=searchterms[0])
+    query |= Q(producer__name__icontains=searchterms[0])
+    for term in searchterms[1:]:
+        subquery = Q(name__icontains=term)
+        subquery |= Q(producer__name__icontains=term)
+        query &= subquery
+    newfiles = filemodels.RawFile.objects.filter(query).filter(claimed=False)
+    return JsonResponse({
+        'newfn_order': [x.id for x in newfiles.order_by('-date')],
+        'newFiles': {x.id:
                          {'id': x.id, 'name': x.name, 
                           'size': round(x.size / (2**20), 1),
                           'date': x.date.timestamp() * 1000,
                           'instrument': x.producer.name, 'checked': False}
-                         for x in filemodels.RawFile.objects.select_related(
-                             'producer').filter(claimed=False)}}
+                         for x in newfiles}})
+
+
+def empty_files_json():
+    newfiles = filemodels.RawFile.objects.select_related('producer').filter(
+            claimed=False, date__gt=datetime.now() - timedelta(200))
+    return {'instruments': [x.name for x in filemodels.Producer.objects.all()],
+            'datasetFiles': [],
+            'newfn_order': [x.id for x in newfiles.order_by('-date')],
+            'newFiles': {x.id:
+                         {'id': x.id, 'name': x.name, 
+                          'size': round(x.size / (2**20), 1),
+                          'date': x.date.timestamp() * 1000,
+                          'instrument': x.producer.name, 'checked': False}
+                         for x in newfiles}}
 
 
 def save_or_update_files(data):
@@ -790,7 +791,7 @@ def save_files(request):
     if user_denied:
         return user_denied
     save_or_update_files(data)    
-    return HttpResponse()
+    return JsonResponse({})
 
 
 def update_acquisition(dset, data):
@@ -809,7 +810,7 @@ def update_acquisition(dset, data):
         dset.reversephasedataset.length = data['rp_length']
         dset.reversephasedataset.save()
     update_admin_defined_params(dset, data, 'acquisition')
-    return HttpResponse()
+    return JsonResponse({})
 
 
 @login_required
@@ -830,7 +831,7 @@ def save_acquisition(request):
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, 'acquisition', COMPSTATE_OK)
-    return HttpResponse()
+    return JsonResponse({})
 
 
 def store_new_channelsamples(data):
@@ -854,14 +855,14 @@ def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
     elif not data['labelfree']:
         print('Updating isobaric')
         if updated_qtype:
-            print('new quant type')
+            print('new quant type found')
             models.QuantChannelSample.objects.filter(
                 dataset_id=dset_id).delete()
             store_new_channelsamples(data)
         else:
-            print('new samples')
+            print('checking if new samples')
             existing_samples = {x.id: (x.projsample_id, x) for x in 
-                QuantChannelSample.objects.filter(dataset_id=data['dataset_id'])}
+                models.QuantChannelSample.objects.filter(dataset_id=data['dataset_id'])}
             for chan in data['samples']:
                 exis_qcs = existing_samples[chan['pk']]
                 if chan['model'] != exis_qcs[0]:
@@ -871,7 +872,7 @@ def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
 
 def update_sampleprep(data, qtype):
     dset_id = data['dataset_id']
-    new_enzymes = set(data['enzymes'])
+    new_enzymes = set([x['id'] for x in data['enzymes'] if x['checked']])
     for enzyme in models.EnzymeDataset.objects.filter(dataset_id=dset_id):
         if enzyme.enzyme_id in new_enzymes:
             new_enzymes.remove(enzyme.enzyme_id)
@@ -909,7 +910,16 @@ def update_sampleprep(data, qtype):
     dset = models.Dataset.objects.get(pk=dset_id)
     set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
     update_admin_defined_params(dset, data, 'sampleprep')
-    return HttpResponse()
+    # update species, TODO sample specific!
+    savedspecies = {x.species_id for x in
+                    models.DatasetSpecies.objects.filter(dataset_id=dset.id)}
+    newspec = {int(x['id']) for x in data['species']}
+    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
+        dataset_id=dset.id, species_id=spid)
+        for spid in newspec.difference(savedspecies)])
+    models.DatasetSpecies.objects.filter(
+        species_id__in=savedspecies.difference(newspec)).delete()
+    return JsonResponse({})
 
 
 @login_required
@@ -928,7 +938,7 @@ def save_sampleprep(request):
         return update_sampleprep(data, qtype)
     if data['enzymes']:
         models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
-            dataset_id=dset_id, enzyme_id=x) for x in data['enzymes']])
+            dataset_id=dset_id, enzyme_id=x['id']) for x in data['enzymes']])
     models.QuantDataset.objects.create(dataset_id=dset_id,
                                        quanttype_id=data['quanttype'])
     if not data['labelfree']:
@@ -939,8 +949,11 @@ def save_sampleprep(request):
             models.QuantSampleFile(rawfile_id=fid, projsample_id=data['samples'][str(fid)]['model'])
             for fid in [x['associd'] for x in data['filenames']]])
     save_admin_defined_params(data, dset_id)
+    # TODO species to sample specific
+    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
+        dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
     set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
-    return HttpResponse()
+    return JsonResponse({})
 
 
 def set_component_state(dset_id, compname, state):
@@ -977,6 +990,7 @@ def update_admin_defined_params(dset, data, category):
                 models.SelectParameterValue.objects.create(
                     dataset_id=data['dataset_id'], value_id=value)
         elif param['inputtype'] == 'checkbox':
+            value = [box['value'] for box in param['fields'] if box['checked']]
             if pid in checkboxparams:
                 oldvals = {val_id: pval for val_id, pval in checkboxparams[pid].items()}
                 models.CheckboxParameterValue.objects.bulk_create([
@@ -1003,14 +1017,16 @@ def update_admin_defined_params(dset, data, category):
 def save_admin_defined_params(data, dset_id):
     selects, checkboxes, fields = [], [], []
     for param in data['params'].values():
-        value = param['model']
         if param['inputtype'] == 'select':
+            value = param['model']
             selects.append(models.SelectParameterValue(dataset_id=dset_id,
                                                        value_id=value))
         elif param['inputtype'] == 'checkbox':
+            value = [box['value'] for box in param['fields'] if box['checked']]
             checkboxes.extend([models.CheckboxParameterValue(dataset_id=dset_id,
                                                             value_id=val) for val in value])
         else:
+            value = param['model']
             fields.append(models.FieldParameterValue(dataset_id=dset_id,
                                                      param_id=param['param_id'],
                                                      value=value))
