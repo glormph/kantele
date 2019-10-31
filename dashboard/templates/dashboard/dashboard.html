@@ -1,4 +1,12 @@
 {% extends "base.html" %}
+
+{% load static %}
+
+{% block head %}
+    <script src="{% static "datasets/vue.js" %}"></script>
+    <script src="{% static "datasets/vue-resource.js" %}"></script>
+{% endblock head %}
+
 {% block content %}
 <link href="https://cdn.pydata.org/bokeh/release/bokeh-0.12.13.min.css" rel="stylesheet" type="text/css">
 <script src="https://cdn.pydata.org/bokeh/release/bokeh-0.12.13.min.js"></script>

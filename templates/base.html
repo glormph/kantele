@@ -1,22 +1,26 @@
 <html>
 <head>
-<title>Kantele - metadata management</title>
-{% load static %}
-<script src="{% static "datasets/vue.js" %}"></script>
-<script src="{% static "datasets/vue-resource.js" %}"></script>
-<link rel="stylesheet" type="text/css" href="https://bulma.io/css/bulma-docs.min.css?v=201909111312">
-<link rel="stylesheet" type="text/css" href="{% static "datasets/style.css" %}">
-<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.3.1/css/all.css" integrity="sha384-mzrmE5qonljUremFsqc01SB46JvROS7bZs3IO2EmfFsd15uHvIt+Y8vEf7N7fWAU" crossorigin="anonymous">
+	<meta charset='utf-8'>
+	<meta name='viewport' content='width=device-width'>
+    <title>Kantele - metadata management</title>
+
+    {% block head %}
+    {% endblock head %}
+
+    {% load static %}
+    <link rel="stylesheet" type="text/css" href="https://bulma.io/css/bulma-docs.min.css?v=201909111312">
+    <link rel="stylesheet" type="text/css" href="{% static "datasets/style.css" %}">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.3.1/css/all.css" integrity="sha384-mzrmE5qonljUremFsqc01SB46JvROS7bZs3IO2EmfFsd15uHvIt+Y8vEf7N7fWAU" crossorigin="anonymous">
 </head>
 
 <body>
 <div class="container">
 	<nav id="navMenu" class="navbar">
-	<div class="navbar-brand">
-		<a class="navbar-item" href="{% url 'home:home' %}"><img id="navMenuLogo" src="{% static "datasets/logo.svg" %}"></a>
-	</div>
-	{% if user.is_authenticated %}
-	<div class="navbar-menu">
+	  <div class="navbar-brand">
+	  	<a class="navbar-item" href="{% url 'home:home' %}"><img id="navMenuLogo" src="{% static "datasets/logo.svg" %}"></a>
+	  </div>
+	  {% if user.is_authenticated %}
+	  <div class="navbar-menu">
 	    <div class="navbar-start">
 		    <a class="navbar-item " href="{% url 'home:home' %}">HOME</a>
 		    <a class="navbar-item " href="{% url 'datasets:new' %}">NEW DATASET</a>
@@ -26,11 +30,10 @@
 	    </div>
     </div>
 	{% endif %}
-</nav>
+  </nav>
 </div>
 
 {% block content %}
-
 {% endblock content %}
 
 </body>
