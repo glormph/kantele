@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 from datetime import datetime
 
 from rawstatus import tasks, models
+from analysis import models as am
 from datasets import tasks as dstasks
 from jobs.post import create_db_task
 from kantele import settings
@@ -102,10 +103,15 @@ def delete_empty_directory(job_id, analysis_id, *dependent_sfids):
     Then queue a task. The sfids also make this job dependent on other jobs on those, as in
     the file-purging tasks before this directory deletion"""
     sfiles = models.StoredFile.objects.filter(pk__in=dependent_sfids)
-    if sfiles.count() == sfiles.filter(purged=True).count():
+    if sfiles.count() and sfiles.count() == sfiles.filter(purged=True).count():
         fn = sfiles.select_related('servershare').last()
         tid = tasks.delete_empty_dir.delay(fn.servershare.name, fn.path).id
         create_db_task(tid, job_id, fn.servershare.name, fn.path)
+    elif not sfiles.count():
+        user = am.Analysis.objects.select_related('user').get(pk=analysis_id).user.username
+        raise RuntimeError('Cannot delete dir: there are no stored files according to DB, which indicates '
+            'the directory has never been made. To be sure check by hand for dir {}_* of user {}'
+            ''.format(analysis_id, user))
     else:
         raise RuntimeError('Cannot delete dir: according to the DB, there are still storedfiles which '
             'have not been purged yet in the directory')

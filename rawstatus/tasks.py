@@ -129,6 +129,10 @@ def delete_empty_dir(self, servershare, directory):
         # OSError raised on dir not empty
         taskfail_update_db(self.request.id)
         raise
+    except FileNotFoundError:
+        # Directory doesnt exist, no need to delete
+        print('Directory did not exist, do not delete')
+        pass
     msg = ('Could not update database with deletion of dir {} :'
            '{}'.format(dirpath, '{}'))
     url = urljoin(config.KANTELEHOST, reverse('jobs:rmdir'))
