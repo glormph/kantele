@@ -141,7 +141,7 @@ def dataset_sampleprep(request, dataset_id):
                 for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
         if not dset:
             return HttpResponseNotFound()
-        response_json['projsamples'] = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=dset.get().runname.experiment.project_id)}
+#        response_json['projsamples'] = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=dset.get().runname.experiment.project_id)}
         try:
             qtype = models.QuantDataset.objects.filter(
                 dataset_id=dataset_id).select_related('quanttype').get()
@@ -171,7 +171,7 @@ def dataset_sampleprep(request, dataset_id):
                     dataset_id=dataset_id).select_related('channel__channel'):
                 response_json['quants'][qtid]['chans'].append(
                     {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
-                     'model': str(qsc.projsample_id), 'newprojsample': '', 'pk': qsc.id})
+                     'model': str(qsc.projsample_id), 'newprojsample': '', 'qcsid': qsc.id})
             # Trick to sort N before C:
 
             response_json['quants'][qtid]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
@@ -185,6 +185,51 @@ def dataset_sampleprep(request, dataset_id):
         #########
 
         get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
+    return JsonResponse(response_json)
+
+
+@login_required
+def labelcheck_samples(request, dataset_id):
+    response_json = {
+            'quants': get_empty_isoquant(),
+#            'projsamples': {x.id: {'name': x.sample, 'id': x.id} for x in 
+#                models.ProjectSample.objects.filter(project_id=dset.runname.experiment.project_id)},
+            }
+    if dataset_id:
+        dset = models.Dataset.objects.select_related('runname__experiment').get(pk=dataset_id)
+        response_json = {
+                'quants': get_empty_isoquant(),
+    #            'projsamples': {x.id: {'name': x.sample, 'id': x.id} for x in 
+    #                models.ProjectSample.objects.filter(project_id=dset.runname.experiment.project_id)},
+                'samples': {fn.id: {'model': '', 'channel': '', 'newprojsample': ''} 
+                    for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
+                }
+        for qt, q in response_json['quants'].items():
+            q['chanorder'] = [ch['id'] for ch in q['chans']]
+            q['chans'] = {ch['id']: ch for ch in q['chans']}
+        ### Now return if no LC data stored yet
+        try:
+            qtype = models.QuantDataset.objects.filter(
+                dataset_id=dataset_id).get()
+        except models.QuantDataset.DoesNotExist:
+            return JsonResponse(response_json)
+        else:
+            response_json['quanttype'] = qtype.quanttype_id
+        # FIXME this makes no sense, I want the data as follows:
+        qcs = {qcs.projsample_id: qcs for qcs in models.QuantChannelSample.objects.filter(dataset_id=dataset_id)}
+        response_json['samples'] = {qsf.rawfile_id: {
+            'channel': qcs[qsf.projsample_id].channel_id,
+
+            'channelname': qcs[qsf.projsample_id].channel.channel.name,
+            'qcsid': qcs[qsf.projsample_id].id,
+            'sample': qsf.projsample_id,
+            'samplename': qsf.projsample.sample,
+            'newprojsample': '',
+            } for qsf in models.QuantSampleFile.objects.select_related('projsample').filter(rawfile__dataset_id=dataset_id)}
+        #response_json['samples'] = {qsf.rawfile_id: {
+        #    'channel': {'id': qcs[qsf.projsample_id].id, 'name': qcs[qsf.projsample_id].channel.name, },#'name', 'newprojsample'},
+        #    'model': {'id': qsf.projsample_id, 'name': qsf.projsample.sample},
+        #    } for qsf in models.QuantSampleFile.objects.select_related('projsample').filter(rawfile__dataset_id=dataset_id)}
     return JsonResponse(response_json)
 
 
@@ -365,7 +410,7 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
                          prefrac, postdata):
     subdir = ''
     if postdata['datatype_id'] != quantprot_id:
-        subdir = os.path.join(subdir, dtype.name)
+        subdir = dtype.name
     if prefrac and prefrac.id == hrf_id:
         subdir = os.path.join(subdir, models.HiriefRange.objects.get(
             pk=postdata['hiriefrange']).get_path())
@@ -374,7 +419,10 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
     subdir = re.sub('[^a-zA-Z0-9_\-\/\.]', '_', subdir)
     if len(subdir):
         subdir = '/{}'.format(subdir)
-    return '{}/{}{}/{}'.format(project.name, exp.name, subdir, runname.name)
+    if dtype.id == settings.LC_DTYPE_ID:
+        return os.path.join(project.name, exp.name, str(runname.id))
+    else:
+        return '{}/{}{}/{}'.format(project.name, exp.name, subdir, runname.name)
 
 
 @login_required
@@ -520,23 +568,33 @@ def save_dataset(request):
             return user_denied
         print('Updating')
         return update_dataset(data)
-    if 'newprojectname' in data:
-        project = newproject_save(data)
     else:
-        project = models.Project.objects.get(pk=data['project_id'])
-    if 'newexperimentname' in data:
-        experiment = models.Experiment(name=data['newexperimentname'],
-                                       project_id=project.id)
-        experiment.save()
-    else:
-        experiment = models.Experiment.objects.get(pk=data['experiment_id'])
-    runname = models.RunName(name=data['runname'], experiment=experiment)
-    runname.save()
-    try:
-        dset = save_new_dataset(data, project, experiment, runname, request.user.id)
-    except IntegrityError:
-        print('Cannot save dataset with non-unique location')
-        return JsonResponse({'error': 'Cannot save dataset, storage location not unique'})
+        if 'newprojectname' in data:
+            project = newproject_save(data)
+        else:
+            project = models.Project.objects.get(pk=data['project_id'])
+        if data['datatype_id'] == settings.LC_DTYPE_ID:
+            try:
+                experiment = models.Experiment.objects.get(project=project, name=settings.LCEXPNAME)
+            except models.Experiment.DoesNotExist:
+                experiment = models.Experiment(name=settings.LCEXPNAME, project=project)
+                experiment.save()
+            runname = models.RunName(name=settings.LCEXPNAME, experiment=experiment)
+        else:
+            if 'newexperimentname' in data:
+                experiment = models.Experiment(name=data['newexperimentname'],
+                                               project_id=project.id)
+                experiment.save()
+
+            elif 'experiment_id' in data:
+                experiment = models.Experiment.objects.get(pk=data['experiment_id'])
+                runname = models.RunName(name=data['runname'], experiment=experiment)
+        runname.save()
+        try:
+            dset = save_new_dataset(data, project, experiment, runname, request.user.id)
+        except IntegrityError:
+            print('Cannot save dataset with non-unique location')
+            return JsonResponse({'error': 'Cannot save dataset, storage location not unique'})
     return JsonResponse({'dataset_id': dset.id})
 
 
@@ -594,6 +652,7 @@ def get_project(request, project_id):
     proj = models.Project.objects.select_related('projtype').get(pk=project_id)
     return JsonResponse({
         'id': project_id, 'pi_id': proj.pi_id, 'ptype_id': proj.projtype.ptype_id,
+        'projsamples': {x.id: {'name': x.sample, 'id': x.id} for x in models.ProjectSample.objects.filter(project_id=project_id)},
         'experiments': [{'id': x.id, 'name': x.name} for x in 
         models.Experiment.objects.filter(project_id=project_id)]})
 
@@ -627,8 +686,7 @@ def pf_dataset_info_json(pfds):
     return resp_json
 
 
-def empty_sampleprep_json():
-    params = get_dynamic_emptyparams('sampleprep')
+def get_empty_isoquant():
     quants = {}
     for chan in models.QuantTypeChannel.objects.all().select_related(
             'quanttype', 'channel'):
@@ -641,6 +699,12 @@ def empty_sampleprep_json():
                                                    'model': ''})
         # Trick to sort N before C:
         quants[chan.quanttype.id]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
+    return quants
+
+
+def empty_sampleprep_json():
+    params = get_dynamic_emptyparams('sampleprep')
+    quants = get_empty_isoquant()
     labelfree = models.QuantType.objects.get(name='labelfree')
     quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree'}
     return {'params': params, 'quants': quants, 'species': [],
@@ -837,7 +901,7 @@ def save_acquisition(request):
 def store_new_channelsamples(data):
     models.QuantChannelSample.objects.bulk_create([
         models.QuantChannelSample(dataset_id=data['dataset_id'],
-                                  projsample_id=chan['model'], channel_id=chan['id'])
+            projsample_id=chan['model'], channel_id=chan['id'])
         for chan in data['samples']])
 
 
@@ -864,10 +928,41 @@ def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
             existing_samples = {x.id: (x.projsample_id, x) for x in 
                 models.QuantChannelSample.objects.filter(dataset_id=data['dataset_id'])}
             for chan in data['samples']:
-                exis_qcs = existing_samples[chan['pk']]
+                exis_qcs = existing_samples[chan['qcsid']]
                 if chan['model'] != exis_qcs[0]:
                     exis_qcs[1].projsample_id = chan['model']
                     exis_qcs[1].save()
+                if chan['id'] != exis_qcs[1].channel_id:
+                    exis_qcs[1].channel_id = chan['id']
+                    exis_qcs[1].save()
+
+
+def update_labelcheck(data, iso, qtype):
+    dset_id = data['dataset_id']
+    oldqtype = qtype.quanttype.name
+    updated_qtype = False
+    if data['quanttype'] != qtype.quanttype_id:
+        qtype.quanttype_id = data['quanttype']
+        qtype.save()
+        updated_qtype = True
+    quanttype_switch_isobaric_update(oldqtype, updated_qtype, iso, dset_id)
+    oldqsf = {x.rawfile_id: x for x in models.QuantSampleFile.objects.filter(
+        rawfile__dataset_id=dset_id)}
+    # iterate filenames because that is correct object, 'samples'
+    # can contain models that are not active
+    for fn in data['filenames']:
+        try:
+            samplefile = oldqsf.pop(fn['associd'])
+        except KeyError:
+            models.QuantSampleFile.objects.create(
+                rawfile_id=fn['associd'],
+                projsample_id=data['samples'][str(fn['associd'])]['sample'])
+        else:
+            if data['samples'][str(fn['associd'])]['sample'] != samplefile.projsample_id:
+                samplefile.projsample_id = data['samples'][str(fn['associd'])]['sample']
+                samplefile.save()
+    # delete non-existing qsf (files have been popped)
+    [qsf.delete() for qsf in oldqsf.values()]
 
 
 def update_sampleprep(data, qtype):
@@ -908,17 +1003,45 @@ def update_sampleprep(data, qtype):
         # delete non-existing qsf (files have been popped)
         [qsf.delete() for qsf in oldqsf.values()]
     dset = models.Dataset.objects.get(pk=dset_id)
-    set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
     update_admin_defined_params(dset, data, 'sampleprep')
     # update species, TODO sample specific!
     savedspecies = {x.species_id for x in
-                    models.DatasetSpecies.objects.filter(dataset_id=dset.id)}
+                    models.DatasetSpecies.objects.filter(dataset_id=dset_id)}
     newspec = {int(x['id']) for x in data['species']}
     models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
-        dataset_id=dset.id, species_id=spid)
+        dataset_id=dset_id, species_id=spid)
         for spid in newspec.difference(savedspecies)])
     models.DatasetSpecies.objects.filter(
         species_id__in=savedspecies.difference(newspec)).delete()
+    set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
+    return JsonResponse({})
+
+
+@login_required
+def save_labelcheck(request):
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return user_denied
+    dset_id = data['dataset_id']
+    iso = {'labelfree': False, 'dataset_id': dset_id, 
+            'samples': [{'model': sam['sample'], 'id': sam['channel']}
+                for sam in data['samples'].values()], }
+    try:
+        qtype = models.QuantDataset.objects.select_related(
+            'quanttype').get(dataset_id=dset_id)
+    except models.QuantDataset.DoesNotExist:
+        # new data, insert, not updating
+        models.QuantDataset.objects.create(dataset_id=dset_id, quanttype_id=data['quanttype'])
+        store_new_channelsamples(iso)
+        models.QuantSampleFile.objects.bulk_create([
+            models.QuantSampleFile(rawfile_id=fid, projsample_id=fn['sample'])
+            for fid, fn in data['samples'].items()])
+    else:
+        for datasam, isosam in zip(data['samples'].values(), iso['samples'].values()):
+            isosam['qcsid'] = datasam['qcsid']
+        update_labelcheck(data, iso, qtype)
+    set_component_state(dset_id, 'labelchecksamples', COMPSTATE_OK)
     return JsonResponse({})
 
 

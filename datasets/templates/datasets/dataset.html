@@ -5,7 +5,7 @@
 {% block head %}
     <link rel='stylesheet' href='{% static "datasets/bundle.css" %}'>
   <script>
-    let dataset_id = {{ dataset_id }};
+    let init_dataset_id = {{ dataset_id }};
     const ownership = {{ is_owner }};
   </script>
     <script defer src='{% static "datasets/bundle.js" %}'></script>
