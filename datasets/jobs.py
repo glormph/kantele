@@ -21,7 +21,7 @@ def move_dataset_storage_loc_getfiles(dset_id, src_path, dst_path):
     return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id)
 
 
-def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path, *sf_ids):
+def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path, sf_ids):
     # within a server share
     print('Renaming dataset storage location job')
     t = tasks.rename_storage_location.delay(src_path, dst_path, sf_ids)
@@ -39,7 +39,7 @@ def move_files_dataset_storage_getfiles(dset_id, dst_path, fn_ids):
         rawfile_id__in=fn_ids)
 
 
-def move_files_dataset_storage(job_id, dset_id, dst_path, rawfn_ids, *sf_ids):
+def move_files_dataset_storage(job_id, dset_id, dst_path, rawfn_ids, sf_ids):
     print('Moving dataset files to storage')
     new_sf_ids = StoredFile.objects.filter(
         rawfile__datasetrawfile__dataset_id=dset_id,
@@ -73,7 +73,7 @@ def remove_files_from_dataset_storagepath_getfiles(dset_id, fn_ids):
         
 
 
-def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, *sf_ids):
+def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, sf_ids):
     print('Moving files with ids {} from dataset storage to tmp, '
           'if not already there. Deleting if mzml'.format(fn_ids))
     for fn in StoredFile.objects.select_related('filetype').filter(
@@ -146,7 +146,7 @@ def convert_dset_tomzml_getfiles(dset_id):
         yield fn
 
 
-def convert_tomzml(job_id, dset_id, *sf_ids):
+def convert_tomzml(job_id, dset_id, sf_ids):
     """Multiple queues for this bc multiple boxes wo shared fs"""
     dset = Dataset.objects.get(pk=dset_id)
     queues = cycle(settings.QUEUES_PWIZ)

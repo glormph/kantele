@@ -98,11 +98,11 @@ def move_single_file(job_id, fn_id, dst_path, oldname=False, dstshare=False, new
                    fn.path, dst_path, fn.id, dstshare=dstshare, newname=newname)
 
 
-def delete_empty_directory(job_id, analysis_id, *dependent_sfids):
+def delete_empty_directory(job_id, analysis_id, sf_ids):
     """Check first if all the sfids are set to purged, indicating the dir is actually empty.
     Then queue a task. The sfids also make this job dependent on other jobs on those, as in
     the file-purging tasks before this directory deletion"""
-    sfiles = models.StoredFile.objects.filter(pk__in=dependent_sfids)
+    sfiles = models.StoredFile.objects.filter(pk__in=sf_ids)
     if sfiles.count() and sfiles.count() == sfiles.filter(purged=True).count():
         fn = sfiles.select_related('servershare').last()
         tid = tasks.delete_empty_dir.delay(fn.servershare.name, fn.path).id
@@ -131,7 +131,7 @@ def call_proteomexchange(pxacc):
     return [x for x in requests.get(prideurl).json()['list'] if x['fileType'] == 'RAW']
 
 
-def download_px_project(job_id, dset_id, pxacc, rawfnids, sharename, *sf_ids):
+def download_px_project(job_id, dset_id, pxacc, rawfnids, sharename, sf_ids):
     """gets sf_ids, of non-checked non-downloaded PX files.
     checks pride, fires tasks for files not yet downloaded. 
     """

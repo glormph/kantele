@@ -24,13 +24,13 @@ def refine_mzmls_getfiles(dset_id, analysis_id, wfv_id, dbfn_id, qtype):
     return rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__in=existing_refined)
 
 
-def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, *dset_mzmls):
+def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, sf_ids):
     analysis = models.Analysis.objects.get(pk=analysis_id)
     nfwf = models.NextflowWfVersion.objects.get(pk=wfv_id)
     dbfn = models.LibraryFile.objects.get(pk=dbfn_id).sfile
     stagefiles = {'--tdb': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
     mzmlfiles = rm.StoredFile.objects.select_related('rawfile').filter(
-        pk__in=dset_mzmls, rawfile__datasetrawfile__dataset_id=dset_id)
+        pk__in=sf_ids, rawfile__datasetrawfile__dataset_id=dset_id)
     analysisshare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
     mzmls = [(x.servershare.name, x.path, x.filename, 
               get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, analysisshare).id, analysisshare)
@@ -62,8 +62,7 @@ def run_lc_getfiles(dset_ids, analysis_id, wfv_id, inputs):
         rawfile__datasetrawfile__dataset_id__in=dset_ids,
         filetype_id=settings.MZML_SFGROUP_ID)
 
-def run_labelcheck_nf(job_id, dset_ids, analysis_id, wfv_id, inputs, *dset_mzmls):
-    #OR:  run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wfv_id, inputs, *dset_mzmls):
+def run_labelcheck_nf(job_id, dset_ids, analysis_id, wfv_id, inputs, sf_ids):
     """Assumes one file, one analysis"""
     # instrument type
     # mzmldef
@@ -75,14 +74,14 @@ def run_labelcheck_nf(job_id, dset_ids, analysis_id, wfv_id, inputs, *dset_mzmls
     for flag, sf_id in inputs['singlefiles'].items():
         sf = rm.StoredFile.objects.get(pk=sf_id)
         stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
-    dsrfs = {sfid: dsmodels.DatasetRawFile.objects.select_related('quantsamplefile__projsample').get(rawfile__storedfile=sfid).quantsamplefile for sfid in dset_mzmls}
+    dsrfs = {sfid: dsmodels.DatasetRawFile.objects.select_related('quantsamplefile__projsample').get(rawfile__storedfile=sfid).quantsamplefile for sfid in sf_ids}
     samples = {sfid: dsrf.projsample.sample for sfid, dsrf in dsrfs.items()}
     psf_to_sfile = {dsrf.projsample_id: sfid for sfid, dsrf in dsrfs.items()}
     channels = {psf_to_sfile[qcs.projsample_id]: qcs.channel.channel.name for qcs in dsmodels.QuantChannelSample.objects.filter(dataset_id__in=dset_ids).select_related('channel__channel')}
 
     mzmls = [(
         x.servershare.name, x.path, x.filename, channels[x.id], samples[x.id])
-        for x in rm.StoredFile.objects.filter(pk__in=dset_mzmls)]
+        for x in rm.StoredFile.objects.filter(pk__in=sf_ids)]
     run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
            'analysis_id': analysis.id,
            'wf_commit': nfwf.commit,
@@ -144,7 +143,7 @@ def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id
     return rm.StoredFile.objects.filter(pk__in=fractions.keys())
 
 
-def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wfv_id, inputs, *dset_mzmls):
+def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wfv_id, inputs, sf_ids):
     """
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
@@ -161,7 +160,7 @@ def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id,
         stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
     mzmls = [(x.servershare.name, x.path, x.filename, setnames[str(x.id)],
               platenames[str(x.rawfile.datasetrawfile.dataset_id)], fractions.get(str(x.id), False)) for x in
-             rm.StoredFile.objects.filter(pk__in=dset_mzmls)]
+             rm.StoredFile.objects.filter(pk__in=sf_ids)]
     run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
            'analysis_id': analysis.id,
            'wf_commit': nfwf.commit,
@@ -190,7 +189,7 @@ def purge_analysis_getfiles(analysis_id):
     return rm.StoredFile.objects.filter(analysisresultfile__analysis__id=analysis_id)
 
 
-def purge_analysis(job_id, analysis_id, *sf_ids):
+def purge_analysis(job_id, analysis_id, sf_ids):
     """Queues tasks for deleting files from analysis from disk, then queues 
     job for directory removal"""
     for fn in rm.StoredFile.objects.filter(pk__in=sf_ids):

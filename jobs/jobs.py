@@ -111,10 +111,8 @@ def create_dataset_job(name, dset_ids, *args, **kwargs):
     return store_ds_job(name, prejob_args, **kwargs)
 
 
-def store_ds_job(name, prejob_args, **kwargs):
-    pjres = jobmap[name]['getfns'](*prejob_args, **kwargs)
-    sf_ids = [x.id for x in pjres]
-    jobargs = prejob_args + sf_ids
+def store_ds_job(name, jobargs, **kwargs):
+    kwargs['sf_ids'] = [x.id for x in jobmap[name]['getfns'](*prejob_args, **kwargs)]
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
               timestamp=timezone.now(),
               state=Jobstates.PENDING, args=json.dumps(jobargs),
