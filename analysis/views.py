@@ -200,29 +200,33 @@ def start_analysis(request):
     analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
     analysis.save()
     am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
-    strips = {}
-    for dsid in req['dsids']:
-        strip = req['strips'][dsid]
-        if strip == 'unknown_plate':
-            strips[dsid] = strip
-        elif strip:
-            strip = re.sub('[a-zA-Z]', '', strip)
-            strips[dsid] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in strip.split('-')])
-        else:
-            strips[dsid] = False  # FIXME does that work?
-            # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients 
     params = {'singlefiles': {nf: fnid for nf, fnid in req['files'].items()},
               'params': [y for x in req['params'].values() for y in x]}
     if 'sampletable' in req and len(req['sampletable']):
         params['sampletable'] = req['sampletable']
-    # FIXME run_ipaw_nextflow rename job
-    fname = 'run_ipaw_nextflow'
     arg_dsids = [int(x) for x in req['dsids']]
-    # FIXME setnames have changed, is that ok?
-    jobcheck = jj.check_existing_search_job(fname, arg_dsids, strips, req['fractions'], req['setnames'], req['wfid'], req['nfwfvid'], params)
+    if req['dtype'].lower() != 'labelcheck':
+        fname = 'run_nf_search_workflow'
+        strips = {}
+        for dsid in req['dsids']:
+            strip = req['strips'][dsid]
+            if strip == 'unknown_plate':
+                strips[dsid] = strip
+            elif strip:
+                strip = re.sub('[a-zA-Z]', '', strip)
+                strips[dsid] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in strip.split('-')])
+            else:
+                strips[dsid] = False  # FIXME does that work?
+                # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients 
+        data_args = {'platenames': strips, 'fractions': req['fractions'], 'setnames': req['setnames']}
+    else:
+        fname = 'run_nf_lc_nextflow'
+        data_args = {}
+    param_args = {'wfv_id': req['nfwfvid'], 'inputs': params}
+    jobcheck = jj.check_existing_search_job(fname, req['wfid'], **{'dset_ids': arg_dsids, **data_args, **param_args})
     if jobcheck:
-    	return JsonResponse({'state': 'error', 'msg': 'This analysis already exists', 'link': '/?tab=searches&search_id={}'.format(jobcheck.nextflowsearch.id)})
-    job = jj.create_dataset_job(fname, arg_dsids, strips, req['fractions'], req['setnames'], analysis.id, req['wfid'], req['nfwfvid'], params)
+        return JsonResponse({'state': 'error', 'msg': 'This analysis already exists', 'link': '/?tab=searches&anids={}'.format(jobcheck.nextflowsearch.id)})
+    job = jj.create_dataset_job(fname, arg_dsids, **{'analysis_id': analysis.id, **data_args, **param_args})
     aj.create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
     return JsonResponse({'state': 'ok'})
 

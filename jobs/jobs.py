@@ -75,7 +75,7 @@ jobmap = {'move_files_storage':
           'run_longit_qc_workflow':
           {'type': Jobtypes.PROCESS, 'func': anjobs.auto_run_qc_workflow,
            'retry': True},
-          'run_ipaw_nextflow':
+          'run_nf_search_workflow':
           {'type': Jobtypes.PROCESS, 'func': anjobs.run_nextflow,
            'getfns': anjobs.run_nextflow_getfiles, 'retry': True},
           'refine_mzmls':
@@ -102,14 +102,14 @@ def create_file_job(name, sf_id, *args, **kwargs):
     return job
 
 
-def create_dataset_job(name, dset_id, *args, **kwargs):
+def create_dataset_job(name, dset_ids, *args, **kwargs):
     """Move, rename, search, convert"""
-    prejob_args = [dset_id] + list(args)
+    prejob_args = [dset_ids] + list(args)
     return store_ds_job(name, prejob_args, **kwargs)
 
 
 def store_ds_job(name, prejob_args, **kwargs):
-    pjres = jobmap[name]['getfns'](*prejob_args)
+    pjres = jobmap[name]['getfns'](*prejob_args, **kwargs)
     sf_ids = [x.id for x in pjres]
     jobargs = prejob_args + sf_ids
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
@@ -121,20 +121,25 @@ def store_ds_job(name, prejob_args, **kwargs):
     return job
 
 
-def check_existing_search_job(fname, dset_ids, strips, fractions, setnames, wfid, wfvid, params):
-    jobargs = json.dumps([dset_ids] + [strips] + [setnames])[:-1]  # leave out last bracket
-    for job in Job.objects.filter(funcname=fname, jobtype=jobmap[fname]['type'],
-            args__startswith=jobargs).select_related('nextflowsearch'):
+def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, platenames=False, fractions=False, setnames=False):
+    jobargs = json.dumps([dset_ids])[:-1]  # leave out last bracket
+    jobs = Job.objects.filter(funcname=fname, jobtype=jobmap[fname]['type'],
+            args__startswith=jobargs).select_related('nextflowsearch')
+    if platenames:
+        extraargs = json.dumps([dset_ids] + [platenames] + [setnames])[:-1]  # leave out last bracket
+        jobs = jobs.filter(args__startswith=extraargs)
+    for job in jobs:
         job_is_duplicate = True
-        storedargs = json.loads(job.args)[6]
+        storedargs = json.loads(job.kwargs)['inputs']
+        #storedargs = [x for x in json.loads(job.args) if type(x)==dict and 'params' in x][0]
         nfs = job.nextflowsearch
-        if nfs.workflow_id != wfid or nfs.nfworkflow_id != wfvid:
+        if nfs.workflow_id != wf_id or nfs.nfworkflow_id != wfv_id:
             continue
-        for p in params['params']:
+        for p in inputs['params']:
             if p not in storedargs['params']:
                 job_is_duplicate = False
                 break
-        for flag, fnid in params['singlefiles'].items():
+        for flag, fnid in inputs['singlefiles'].items():
             try:
                 if storedargs['singlefiles'][flag] != fnid:
                     job_is_duplicate = False

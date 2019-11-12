@@ -95,12 +95,12 @@ def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
         nfs.save()
 
 
-def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs):
+def run_nextflow_getfiles(dset_ids, platenames, fractions, setnames, analysis_id, wfv_id, inputs):
     # FIXME setnames will be for files, already given an assoc_id
     return rm.StoredFile.objects.filter(pk__in=fractions.keys())
 
 
-def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wf_id, wfv_id, inputs, *dset_mzmls):
+def run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wfv_id, inputs, *dset_mzmls):
     """
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}

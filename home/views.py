@@ -387,9 +387,11 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
 # Make three tables and make them share some code but not all
 
 def get_analysis_invocation(job):
-    params = json.loads(job.args)[7]
-    if type(params) == int:
+    kwargs = json.loads(job.kwargs)
+    # TODO remove old jobs from system so we dont need to check this:
+    if kwargs == {}:
         return {'params': [], 'files': []}
+    params = kwargs['inputs']
     fnmap = {x['pk']: (x['filename'], x['libraryfile__description'], x['userfile__description']) for x in filemodels.StoredFile.objects.filter(pk__in=params['singlefiles'].values()).values('pk', 'filename', 'libraryfile__description', 'userfile__description')}
     for pk, fn in fnmap.items():
         # description is library file or userfile or nothing, pick

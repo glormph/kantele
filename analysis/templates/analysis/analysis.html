@@ -71,7 +71,10 @@
 
 
 			<div class="title is-5">Datasets</div>
-			<div v-for="ds in dsets" class="box">
+			<div v-if="analysis.dtype.toLowerCase() === 'labelcheck'" v-for="ds in dsets" class="box">
+				<span class="has-text-primary">{{ ds.proj }} // Labelcheck // {{ ds.run }}</span>
+    </div>
+			<div v-if="analysis.dtype.toLowerCase() !== 'labelcheck'" v-for="ds in dsets" class="box">
 			<div class="columns">
 			<div class="column">
 <!-- labelfree, lfree hirief (plasma), tmt (LG, labelcheck), tmt hirief, FIX ALL OF THEM
@@ -119,7 +122,7 @@
 		</div>
 		 
 <!-- labelfree, lfree hirief (plasma), tmt (LG, labelcheck), tmt hirief, FIX ALL OF THEM-->
-		<div class="box" v-if="analysiserrors.size === 0 && analysis.qtype !== 'labelfree'">
+		<div class="box" v-if="analysiserrors.size === 0 && analysis.qtype !== 'labelfree' && analysis.dtype.toLowerCase() !== 'labelcheck'">
 		<div class="title is-5">Isobaric quantification</div>
         <div class="field" v-if="deqmsPossible">
         <input type="checkbox" v-model="useDeqms">
@@ -297,7 +300,7 @@
 				re = RegExp('^[a-z0-9_]+$', 'i');
 				for (dsid in this.dsets) {
 				    ds = this.dsets[dsid];
-					if (!this.dsets[dsid].filesaresets && (!(dsid in this.dssetnames) || this.dssetnames[dsid] === "")) {
+					if (this.analysis.dtype.toLowerCase() !== 'labelcheck' && !this.dsets[dsid].filesaresets && (!(dsid in this.dssetnames) || this.dssetnames[dsid] === "")) {
 						this.errors.push(`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`);
                     } else if (!re.test(this.dssetnames[dsid])) {
 						this.errors.push(`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have another set name: only a-z 0-9 _ are allowed`);
@@ -374,6 +377,7 @@
 					'params':  this.analysis.params,
 					'wfid': this.wfid,
 					'nfwfvid': this.wfversion,
+          'dtype': this.analysis.dtype,
 					'analysisname': `${this.workflow.wftype}_${this.analysisname}`,
 				}
 				denoms = [];
@@ -541,18 +545,24 @@
 			analysis: function() {
 				data = {};
 				qtype = '';
+				dtype = '';
 				inst = '';
 				// check quant, instrument
 				for (dsid in this.dsets) {
 					dsq = this.dsets[dsid].details.qtype;
+					dsdt = this.dsets[dsid].dtype;
 					dsins = this.dsets[dsid].details.instruments;
 					if (qtype && dsq !== qtype) {
 						this.analysiserrors.add('Mixed quantification types in selected datasets');
+					}
+					if (dtype && dsdt !== dtype) {
+						this.analysiserrors.add('Mixed dataset types in selected datasets');
 					}
 					if (!dsins.size > 1 || (inst && dsins[0] !== inst)) {
 						this.analysiserrors.add('Mixed instruments found in datasets');
 					}
 					qtype = dsq;
+					dtype = dsdt;
 					inst = dsins[0];
 				}
 
@@ -566,6 +576,7 @@
 				  params.flags.push(...Object.keys(this.workflow.invisible_flags));
                 }
 				return {'qtype': qtype,
+					'dtype': dtype,
 					'qtshort': qtypeshort,
 					'inst': inst,
 					'instnice': instmap[inst],
