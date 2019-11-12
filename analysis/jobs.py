@@ -56,6 +56,50 @@ def refine_mzmls(job_id, dset_id, analysis_id, wfv_id, dbfn_id, qtype, *dset_mzm
     create_db_task(res.id, job_id, run, params, mzmls, stagefiles)
 
 
+def run_lc_getfiles(dset_ids, analysis_id, wfv_id, inputs):
+    # FIXME setnames will be for files, already given an assoc_id
+    return rm.StoredFile.objects.select_related('rawfile').filter(
+        rawfile__datasetrawfile__dataset_id__in=dset_ids,
+        filetype_id=settings.MZML_SFGROUP_ID)
+
+def run_labelcheck_nf(job_id, dset_ids, analysis_id, wfv_id, inputs, *dset_mzmls):
+    #OR:  run_nextflow(job_id, dset_ids, platenames, fractions, setnames, analysis_id, wfv_id, inputs, *dset_mzmls):
+    """Assumes one file, one analysis"""
+    # instrument type
+    # mzmldef
+    # tdb
+    analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow__shortname').get(pk=analysis_id)
+    nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
+        pk=wfv_id)
+    stagefiles = {}
+    for flag, sf_id in inputs['singlefiles'].items():
+        sf = rm.StoredFile.objects.get(pk=sf_id)
+        stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
+    dsrfs = {sfid: dsmodels.DatasetRawFile.objects.select_related('quantsamplefile__projsample').get(rawfile__storedfile=sfid).quantsamplefile for sfid in dset_mzmls}
+    samples = {sfid: dsrf.projsample.sample for sfid, dsrf in dsrfs.items()}
+    psf_to_sfile = {dsrf.projsample_id: sfid for sfid, dsrf in dsrfs.items()}
+    channels = {psf_to_sfile[qcs.projsample_id]: qcs.channel.channel.name for qcs in dsmodels.QuantChannelSample.objects.filter(dataset_id__in=dset_ids).select_related('channel__channel')}
+
+    mzmls = [(
+        x.servershare.name, x.path, x.filename, channels[x.id], samples[x.id])
+        for x in rm.StoredFile.objects.filter(pk__in=dset_mzmls)]
+    run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+           'analysis_id': analysis.id,
+           'wf_commit': nfwf.commit,
+           'nxf_wf_fn': nfwf.filename,
+           'repo': nfwf.nfworkflow.repo,
+           'name': analysis.name,
+           'outdir': analysis.user.username,
+           'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger'
+           }
+    profiles = ['standard', 'docker', 'lehtio']
+    inputs['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
+    res = tasks.run_nextflow_workflow.delay(run, inputs['params'], mzmls, stagefiles, ','.join(profiles))
+    analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
+    analysis.save()
+    create_db_task(res.id, job_id, run, inputs['params'], mzmls, stagefiles)
+
+
 def auto_run_qc_workflow(job_id, sf_id, analysis_id, wfv_id, dbfn_id):
     """Assumes one file, one analysis"""
     analysis = models.Analysis.objects.get(pk=analysis_id)

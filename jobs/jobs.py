@@ -78,6 +78,9 @@ jobmap = {'move_files_storage':
           'run_nf_search_workflow':
           {'type': Jobtypes.PROCESS, 'func': anjobs.run_nextflow,
            'getfns': anjobs.run_nextflow_getfiles, 'retry': True},
+          'run_nf_lc_nextflow':
+          {'type': Jobtypes.PROCESS, 'func': anjobs.run_labelcheck_nf,
+           'getfns': anjobs.run_lc_getfiles, 'retry': True},
           'refine_mzmls':
           {'type': Jobtypes.PROCESS, 'func': anjobs.refine_mzmls,
            'getfns': anjobs.refine_mzmls_getfiles, 'retry': True},

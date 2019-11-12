@@ -70,6 +70,10 @@ except TypeError:
     # Tasks have no notion of these IDs so they will error
     pass
 
+# Labelcheck experiment name
+LCEXPNAME = '__labelchecks'
+LC_DTYPE_ID = int(os.environ.get('LC_DTYPE_ID'))
+
 # local datasets
 LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID'))
 
