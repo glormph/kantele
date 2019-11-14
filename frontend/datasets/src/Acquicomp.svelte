@@ -23,7 +23,7 @@ let acqdata = {
 }
 
 let edited = false;
-$: stored = dataset_id && !edited;
+$: stored = $dataset_id && !edited;
 
 function editMade() { 
   errors = errors.length ? validate() : [];
@@ -47,10 +47,11 @@ export function validate() {
 }
 
 export async function save() {
+  acquierrors = [];
   errors = validate();
   if (errors.length === 0) { 
     let postdata = {
-      dataset_id: dataset_id,
+      dataset_id: $dataset_id,
       operator_id: dsinfo.operator_id,
       params: dsinfo.params,
       rp_length: dsinfo.dynamic_rp ? '' : dsinfo.rp_length,
@@ -70,7 +71,7 @@ export async function save() {
 
 async function fetchData() {
   let url = '/datasets/show/acquisition/';
-  url = dataset_id ? url + dataset_id : url;
+  url = $dataset_id ? url + $dataset_id : url;
 	const response = await getJSON(url);
   for (let [key, val] of Object.entries(response.acqdata)) { acqdata[key] = val; }
   for (let [key, val] of Object.entries(response.dsinfo)) { dsinfo[key] = val; }
@@ -93,7 +94,7 @@ onMount(async() => {
   <i class="icon fas fa-edit"></i>
   {/if}
   Acquisition
-  <button class="button is-small is-danger has-text-weight-bold" disabled={!edited || dataset_id} on:click={save}>Save</button>
+  <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
   <button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>
 </h5>
 

@@ -4,16 +4,11 @@ import { onMount } from 'svelte';
 import { getJSON, postJSON } from './funcJSON.js'
 import { dataset_id, datasetFiles } from './stores.js';
 
-// props, wait they are global??
-//export let dataset_id;
-
 let files = {
   newFiles: {},
   dsfn_order: [],
   newfn_order: [],
 };
-
-
 let addedFiles = {};
 let removed_files = {};
 let findQuery = '';

@@ -11,7 +11,7 @@ export let errors;
 let preperrors = [];
 let edited = false;
 
-$: stored = dataset_id && !edited;
+$: stored = $dataset_id && !edited;
 
 function editMade() { 
   errors = errors.length ? validate() : [];
@@ -130,7 +130,7 @@ function parseSampleNames() {
   if (isLabelfree && !prepdata.labelfree_multisample) {
     return 0;
   } else if (isLabelfree) {
-    for (let fn of Object.values(datasetFiles)) {
+    for (let fn of Object.values($datasetFiles)) {
       fnmap[fn.name] = fn;
     }
   } else {
@@ -167,7 +167,7 @@ function resetNewSampleName(chan_or_sample) {
 async function doSampleSave(ch_or_samfn, ix) { 
   /* Saves a new sample name to the project on backend */
   let postdata = {
-    dataset_id: dataset_id, 
+    dataset_id: $dataset_id, 
     samplename: ch_or_samfn.newprojsample
   };
   let url = '/datasets/save/projsample/';
@@ -222,13 +222,17 @@ export function validate() {
 	if (!prepdata.quanttype) {
 		comperrors.push('Quant type selection is required');
 	}
-  if (isLabelfree) {
-		for (let fn of Object.values(datasetFiles)) {
+  if (isLabelfree && prepdata.labelfree_multisample) {
+		for (let fn of Object.values($datasetFiles)) {
 			if (!prepdata.samples[fn.associd].model && !prepdata.samples[fn.associd].newprojsample) {
 				comperrors.push('Labelfree requires sample name for each file');
 				break;
 			}
 		}	
+  } else if (isLabelfree) {
+    if (prepdata.labelfree_singlesample.model === '') {
+      comperrors.push('Labelfree singlesample requires a sample name');
+    }
 	} else if (prepdata.quanttype in prepdata.quants) {
 		for (let ch of prepdata.quants[prepdata.quanttype].chans) {
 			if (ch.model === '') { 
@@ -255,15 +259,15 @@ export function validate() {
 
 export async function save() {
   errors = validate();
-  if (!datasetFiles.length && isLabelfree) {
+  if (!Object.keys($datasetFiles).length && isLabelfree) {
     preperrors = [...preperrors, 'Add files before saving data'];
   }
-  if (!dataset_id) {
+  if (!$dataset_id) {
     preperrors = [...preperrors, 'Save dataset before saving sample prep'];
   }
   if (errors.length === 0 && preperrors.length === 0) { 
     let postdata = {
-      dataset_id: dataset_id,
+      dataset_id: $dataset_id,
       enzymes: prepdata.no_enzyme ? [] : prepdata.enzymes,
       params: prepdata.params,
       quanttype: prepdata.quanttype,
@@ -273,10 +277,10 @@ export async function save() {
     if (!isLabelfree) {
       postdata.samples = prepdata.quants[prepdata.quanttype].chans;
     } else if (prepdata.labelfree_multisample) {
-      postdata.filenames = Object.values(datasetFiles);
+      postdata.filenames = Object.values($datasetFiles);
       postdata.samples = prepdata.samples;
     } else {
-      postdata.filenames = Object.values(datasetFiles);
+      postdata.filenames = Object.values($datasetFiles);
       postdata.samples = Object.fromEntries(postdata.filenames.map(fn => [fn.associd, prepdata.labelfree_singlesample]));
     }
     let url = '/datasets/save/sampleprep/';
@@ -287,7 +291,7 @@ export async function save() {
 
 async function fetchData() {
   let url = '/datasets/show/sampleprep/';
-  url = dataset_id ? url + dataset_id : url;
+  url = $dataset_id ? url + $dataset_id : url;
 	const response = await getJSON(url);
   for (let [key, val] of Object.entries(response)) { prepdata[key] = val; }
   labelfree_quant_id = Object.entries(prepdata.quants).filter(x => x[1].name === 'labelfree').map(x=>Number(x[0])).pop();
@@ -416,7 +420,7 @@ onMount(async() => {
     </tr>
     {/each}
     {:else if isLabelfree && prepdata.labelfree_multisample}
-    {#each Object.values(datasetFiles) as file}
+    {#each Object.values($datasetFiles) as file}
     <tr>
       <td>{file.name}</td>
       <td>
@@ -432,7 +436,7 @@ onMount(async() => {
       <td><input bind:value={prepdata.samples[file.associd].newprojsample} on:change={e => checkNewSampleLabelfree(file.associd)} placeholder="or define a new sample" class="input is-normal"></td> 
     </tr>
     {/each}
-    {:else if isLabelfree && Object.keys(datasetFiles).length}
+    {:else if isLabelfree && Object.keys($datasetFiles).length}
     <tr><td>
         <div class="select">
           <select bind:value={prepdata.labelfree_singlesample.model} on:change={e => resetNewSampleName(prepdata.labelfree_singlesample)}>
