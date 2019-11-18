@@ -209,7 +209,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
             mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3])
             if fn[4]:  # if a plate is speced, use plate and fraction if they are speced
                 mzstr = '{ms}\t{pl}'.format(ms=mzstr, pl=fn[4])
-                if fn[5]:
+                if len(fn) > 5 and fn[5]:
                     mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
             mzstr = '{}\n'.format(mzstr)
             fp.write(mzstr)

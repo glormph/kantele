@@ -315,10 +315,7 @@
 				for (sname of this.allsets) {
                     if (this.useDeqms) {
                         for (ch of this.sorted_channels(this.setdenoms[sname])) {
-                            if (!ch in this.samplegroupmodel[sname] || this.samplegroupmodel[sname][ch] === '') {
-                                this.errors.push(`Not all sample groups filled in for set ${sname}`);
-                                break;
-                            } else if (!re.test(this.samplegroupmodel[sname][ch])) {
+                            if (!re.test(this.samplegroupmodel[sname][ch])) {
                                 this.errors.push(`Incorrect sample group name for set ${sname}, channel ${ch}, only A-Z a-z 0-9 _ are allowed`);
                             }
                         }

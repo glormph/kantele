@@ -38,7 +38,7 @@ def revert_nf_job_kwargs_to_args(apps, schema_editor):
     Job = apps.get_model('jobs', 'Job')
     Analysis = apps.get_model('analysis', 'Analysis')
     wfmap = {x.id: x.nextflowsearch.workflow_id for x in Analysis.objects.select_related('nextflowsearch').all() if hasattr(x, 'nextflowsearch')}
-    for job in Job.objects.filter(funcname='run_ipaw_nextflow').exclude(state=Jobstates.CANCELED).exclude(kwargs='{}'):
+    for job in Job.objects.filter(funcname='run_nf_search_workflow').exclude(state=Jobstates.CANCELED).exclude(kwargs='{}'):
         args = json.loads(job.args)
         kwargs = json.loads(job.kwargs)
         #print(job.id, job.state, job.timestamp, job.args, job.kwargs)

@@ -112,13 +112,13 @@ def create_dataset_job(name, dset_ids, *args, **kwargs):
 
 
 def store_ds_job(name, jobargs, **kwargs):
-    kwargs['sf_ids'] = [x.id for x in jobmap[name]['getfns'](*prejob_args, **kwargs)]
+    kwargs['sf_ids'] = [x.id for x in jobmap[name]['getfns'](*jobargs, **kwargs)]
     job = Job(funcname=name, jobtype=jobmap[name]['type'],
               timestamp=timezone.now(),
               state=Jobstates.PENDING, args=json.dumps(jobargs),
               kwargs=json.dumps(kwargs))
     job.save()
-    FileJob.objects.bulk_create([FileJob(storedfile_id=sf_id, job_id=job.id) for sf_id in sf_ids])
+    FileJob.objects.bulk_create([FileJob(storedfile_id=sf_id, job_id=job.id) for sf_id in kwargs['sf_ids']])
     return job
 
 

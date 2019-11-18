@@ -63,10 +63,6 @@ def run_lc_getfiles(dset_ids, analysis_id, wfv_id, inputs):
         filetype_id=settings.MZML_SFGROUP_ID)
 
 def run_labelcheck_nf(job_id, dset_ids, analysis_id, wfv_id, inputs, sf_ids):
-    """Assumes one file, one analysis"""
-    # instrument type
-    # mzmldef
-    # tdb
     analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow__shortname').get(pk=analysis_id)
     nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
         pk=wfv_id)

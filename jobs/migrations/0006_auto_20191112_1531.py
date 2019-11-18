@@ -9,26 +9,35 @@ def migrate_job_sfids_to_kwargs(apps, schema_editor):
     Job = apps.get_model('jobs', 'Job')
     for job in Job.objects.filter(funcname__in=['rename_storage_loc', 'move_files_storage']):
         args = json.loads(job.args)
+        if type(args[1]) == list:
+            continue
+        kwargs = json.loads(job.kwargs)
         job.args = json.dumps(args[0:3])
         job.kwargs = json.dumps({'sf_ids': args[3:]})
         job.save()
     for job in Job.objects.filter(funcname__in=['move_stored_files_tmp']):
         args = json.loads(job.args)
+        kwargs = json.loads(job.kwargs)
+        if len(args) == 2:
+            continue
         job.args = json.dumps(args[0:2])
         job.kwargs = json.dumps({'sf_ids': args[2:]})
         job.save()
-    for job in Job.objects.filter(funcname__in=['convert_dataset_mzml', 'delete_empty_directory', 'purge_analysis']):
+    for job in Job.objects.filter(funcname__in=['convert_dataset_mzml', 'delete_analysis_directory', 'purge_analysis']):
         args = json.loads(job.args)
+        kwargs = json.loads(job.kwargs)
         job.args = json.dumps(args[0:1])
         job.kwargs = json.dumps({'sf_ids': args[1:]})
         job.save()
     for job in Job.objects.filter(funcname__in=['download_px_data']):
         args = json.loads(job.args)
+        kwargs = json.loads(job.kwargs)
         job.args = json.dumps(args[0:4])
         job.kwargs = json.dumps({'sf_ids': args[4:]})
         job.save()
     for job in Job.objects.filter(funcname__in=['refine_mzmls']):
         args = json.loads(job.args)
+        kwargs = json.loads(job.kwargs)
         job.args = json.dumps(args[0:5])
         job.kwargs = json.dumps({'sf_ids': args[5:]})
         job.save()
@@ -36,8 +45,30 @@ def migrate_job_sfids_to_kwargs(apps, schema_editor):
 
 def revert_job_sfids_to_args(apps, schema_editor):
     Job = apps.get_model('jobs', 'Job')
-    for job in Job.objects.filter(funcname__in=['rename_storage_loc', 'move_files_storage', 'move_stored_files_tmp',
-        'convert_dataset_mzml', 'delete_empty_directory', 'download_px_data', 'refine_mzmls', 'purge_analysis' ]):
+    for job in Job.objects.filter(funcname__in=['rename_storage_loc', 'move_files_storage']):
+        args = json.loads(job.args)
+        if type(args[1]) == list:
+            continue
+        args = json.loads(job.args)
+        kwargs = json.loads(job.kwargs)
+        job.args = json.dumps([*args, *kwargs['sf_ids']])
+        job.kwargs = json.dumps({})
+        job.save()
+    for job in Job.objects.filter(funcname__in=[
+        'move_stored_files_tmp',
+        ]):
+        args = json.loads(job.args)
+        kwargs = json.loads(job.kwargs)
+        if 'sf_ids' not in kwargs:
+            continue
+        job.args = json.dumps([*args, *kwargs['sf_ids']])
+        job.kwargs = json.dumps({})
+        job.save()
+    for job in Job.objects.filter(funcname__in=[
+        'convert_dataset_mzml', 'delete_analysis_directory', 'purge_analysis' 
+        'download_px_data', 
+        'refine_mzmls', 
+        ]):
         args = json.loads(job.args)
         kwargs = json.loads(job.kwargs)
         job.args = json.dumps([*args, *kwargs['sf_ids']])
