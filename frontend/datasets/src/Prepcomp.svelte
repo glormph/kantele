@@ -89,7 +89,7 @@ function checkNewSampleLabelfree(associd=false) {
     return 
   } else {
     let uppername = sample.trim().toUpperCase();
-    let found = Object.entries(projsamples).filter(x=>x[1].toUpperCase() == uppername).map(x=>x[0])[0]
+    let found = Object.entries(projsamples).filter(x=>x[1].name.toUpperCase() == uppername).map(x=>x[0])[0]
     if (found && !prepdata.labelfree_multisample) {
       prepdata.labelfree_singlesample.model = found;
       prepdata.labelfree_singlesample.newprojsample = '';
@@ -106,15 +106,15 @@ function checkNewSampleLabelfree(associd=false) {
   }
 }
 
-function checkNewSample(chanix) {
+function checkNewSampleIso(chanix) {
+  console.log('checknewsampleiso called');
   /* Checks if entered sample is found in project or if it is a new sample */
-  
   if (prepdata.quants[prepdata.quanttype].chans[chanix].newprojsample == '') { 
     /* at fetchdata, samples are assigned, on:change fires and this is called */
     return 
   } else {
     let uppername = prepdata.quants[prepdata.quanttype].chans[chanix].newprojsample.trim().toUpperCase();
-    let found = Object.entries(projsamples).filter(x=>x[1].toUpperCase() == uppername).map(x=>x[0])[0]
+    let found = Object.entries(projsamples).filter(x=>x[1].name.toUpperCase() == uppername).map(x=>x[0])[0]
     if (found) {
       prepdata.quants[prepdata.quanttype].chans[chanix].model = found;
       prepdata.quants[prepdata.quanttype].chans[chanix].newprojsample = '';
@@ -148,11 +148,17 @@ function parseSampleNames() {
     if (isLabelfree) {
       line[0] in fnmap ? (aid = fnmap[line[0]], nps = line[1]) : false;
       line[1] in fnmap ? (aid = fnmap[line[1]], nps = line[0]) : false;
-      aid ? prepdata.samples[aid.associd].newprojsample = nps : false;
+      if (aid) {
+        prepdata.samples[aid.associd].newprojsample = nps;
+        checkNewSampleLabelfree(aid.associd);
+      }
     } else {
       line[0] in ixmap ? (ix = ixmap[line[0]], nps = line[1]) : false;
       line[1] in ixmap ? (ix = ixmap[line[1]], nps = line[0]) : false;
-      ix ? prepdata.quants[prepdata.quanttype].chans[ix].newprojsample = nps : false;
+      if (ix > -1) {
+        prepdata.quants[prepdata.quanttype].chans[ix].newprojsample = nps;
+        checkNewSampleIso(ix);
+      }
     }
   }
   editMade();
@@ -409,7 +415,7 @@ onMount(async() => {
       </td>
       <td>
         <p class={channel.newprojsample && foundNewSamples ? 'control has-icons-left' : 'control'}>
-        <input bind:value={channel.newprojsample} class="input is-normal" on:change={e => checkNewSample(chix)} placeholder="or define a new sample">
+        <input bind:value={channel.newprojsample} class="input is-normal" on:change={e => checkNewSampleIso(chix)} placeholder="or define a new sample">
         {#if foundNewSamples && channel.newprojsample}
         <span class="icon is-left has-text-danger">
           <i class="fas fa-asterisk"></i>

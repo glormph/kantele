@@ -588,7 +588,7 @@ def save_dataset(request):
 
             elif 'experiment_id' in data:
                 experiment = models.Experiment.objects.get(pk=data['experiment_id'])
-                runname = models.RunName(name=data['runname'], experiment=experiment)
+            runname = models.RunName(name=data['runname'], experiment=experiment)
         runname.save()
         try:
             dset = save_new_dataset(data, project, experiment, runname, request.user.id)
