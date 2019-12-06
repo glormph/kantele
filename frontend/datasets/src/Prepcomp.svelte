@@ -13,6 +13,7 @@ let edited = false;
 
 $: stored = $dataset_id && !edited;
 
+
 function editMade() { 
   errors = errors.length ? validate() : [];
   edited = true; 
@@ -65,6 +66,15 @@ function addOrganism() {
 
 $: isLabelfree = prepdata.quanttype === labelfree_quant_id;
 
+function checkSamplesIfNewFiles() {
+  const assocs = Object.values($datasetFiles).map(x => x.associd);
+  prepdata.samples = Object.fromEntries(Object.entries(prepdata.samples).filter(x => assocs.indexOf(Number(x[0])) > -1));
+  for (let associd of assocs.filter(x => !(x in prepdata.samples))) {
+    prepdata.samples[associd] = {model: '', newprojsample: ''};
+  }
+}
+
+$: $datasetFiles ? checkSamplesIfNewFiles() : '';
 
 function checkIfNewSamples() {
   /* checks if ANY sample in current quanttype is a newprojectsample, enabling save button */
@@ -107,7 +117,6 @@ function checkNewSampleLabelfree(associd=false) {
 }
 
 function checkNewSampleIso(chanix) {
-  console.log('checknewsampleiso called');
   /* Checks if entered sample is found in project or if it is a new sample */
   if (prepdata.quants[prepdata.quanttype].chans[chanix].newprojsample == '') { 
     /* at fetchdata, samples are assigned, on:change fires and this is called */
@@ -197,7 +206,6 @@ async function saveNewSamples() {
     prepdata.quants[prepdata.quanttype].chans.map(function(ch, ix) { return [ix, ch]}).filter(ch => ch[1].newprojsample).forEach(function(ch) {
       saves.push(doSampleSave(ch[1], ch[0]));
     }); 
-    console.log(saves);
     for (let item of saves) {
       let [psid, ix] = await item;
       prepdata.quants[prepdata.quanttype].chans[ix].newprojsample = '';
@@ -427,6 +435,7 @@ onMount(async() => {
     {/each}
     {:else if isLabelfree && prepdata.labelfree_multisample}
     {#each Object.values($datasetFiles) as file}
+    {#if file.associd in prepdata.samples }
     <tr>
       <td>{file.name}</td>
       <td>
@@ -441,6 +450,7 @@ onMount(async() => {
       </td>
       <td><input bind:value={prepdata.samples[file.associd].newprojsample} on:change={e => checkNewSampleLabelfree(file.associd)} placeholder="or define a new sample" class="input is-normal"></td> 
     </tr>
+    {/if}
     {/each}
     {:else if isLabelfree && Object.keys($datasetFiles).length}
     <tr><td>
