@@ -220,7 +220,7 @@ def start_analysis(request):
                 # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients 
         data_args = {'platenames': strips, 'fractions': req['fractions'], 'setnames': req['setnames']}
     else:
-        fname = 'run_nf_lc_nextflow'
+        fname = 'run_nf_lc_workflow'
         data_args = {}
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': params}
     jobcheck = jj.check_existing_search_job(fname, req['wfid'], **{'dset_ids': arg_dsids, **data_args, **param_args})
