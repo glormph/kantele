@@ -234,7 +234,7 @@ def file_transferred(request):
         try:
             fn_id = request.POST['fn_id']
             client_id = request.POST['client_id']
-            ftype = request.POST['ftype']
+            ftype_id = request.POST['ftype_id']
             fname = request.POST['filename']
         except KeyError as error:
             print('POST request to file_transferred with missing parameter, '
@@ -251,15 +251,15 @@ def file_transferred(request):
             print('File has not been registered yet, cannot transfer')
             return JsonResponse({'fn_id': fn_id, 'state': 'error'})
         try:
-            ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[ftype]
-        except KeyError:
+            ftype_id = StoredFileType.objects.get(pk=ftype_id)
+        except StoredFileType.DoesNotExist:
             return HttpResponseForbidden('File type does not exist')
         try:
             file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
-                                                      filetype_id=ftypeid)
+                                                      filetype_id=ftype_id)
         except StoredFile.DoesNotExist:
             print('New transfer registered, fn_id {}'.format(fn_id))
-            file_transferred = StoredFile(rawfile_id=fn_id, filetype_id=ftypeid,
+            file_transferred = StoredFile(rawfile_id=fn_id, filetype_id=ftype_id,
                                           servershare=tmpshare, path='',
                                           filename=fname, md5='', checked=False)
             file_transferred.save()
@@ -312,7 +312,7 @@ def check_md5_success(request):
         return HttpResponseNotAllowed(permitted_methods=['GET'])
     try:
         fn_id = request.GET['fn_id']
-        ftype = request.GET['ftype']
+        ftype_id = request.GET['ftype_id']
         client_id = request.GET['client_id']
     except KeyError:
         return HttpResponseForbidden()
@@ -320,7 +320,7 @@ def check_md5_success(request):
         check_producer(client_id)
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
-    print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype))
+    print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype_id))
     try:
         ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[ftype]
     except KeyError:

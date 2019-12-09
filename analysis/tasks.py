@@ -66,7 +66,7 @@ def check_ensembl_uniprot_fasta_download(self):
         regresp = resp.json()
         # edgecase: if we already have this file due to parallel download, dont proceed.
         # otherwise, copy it to tmp
-        already_downloaded = check_md5(regresp['file_id'], 'database', settings.ADMIN_APIKEY) == 'ok'
+        already_downloaded = check_md5(regresp['file_id'], settings.DATABASE_FTID, settings.ADMIN_APIKEY) == 'ok'
         print('File already downloaded? {}'.format(already_downloaded))
         if not already_downloaded:
             shutil.copy(wfp.name, os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], dstfn))
@@ -356,11 +356,11 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     return run
 
 
-def check_md5(fn_id, ftype, apikey=False):
+def check_md5(fn_id, ftype_id, apikey=False):
     if not apikey:
         apikey = settings.APIKEY
     checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
-    params = {'client_id': apikey, 'fn_id': fn_id, 'ftype': ftype}
+    params = {'client_id': apikey, 'fn_id': fn_id, 'ftype_id': ftype_id}
     resp = requests.get(url=checkurl, params=params, verify=settings.CERTFILE)
     return resp.json()['md5_state']
 
@@ -392,7 +392,7 @@ def register_resultfiles(outfiles):
         resp.raise_for_status()
         rj = resp.json()
         # check md5 of file so we can skip already transferred files in reruns
-        if not check_md5(rj['file_id'], 'analysis_output') == 'ok':
+        if not check_md5(rj['file_id'], settings.ANALYSISOUT_FTID) == 'ok':
             outfiles_db[fn] = resp.json()
     return outfiles_db
 
@@ -433,7 +433,7 @@ def check_rawfile_resultfiles_match(fn_ids):
     while False in fn_ids.values():
         for fn_id, checked in fn_ids.items():
             if not checked:
-                fn_ids[fn_id] = check_md5(fn_id, 'analysis_output')
+                fn_ids[fn_id] = check_md5(fn_id, settings.ANALYSISOUT_FTID)
                 if fn_ids[fn_id] == 'error':
                     taskfail_update_db(task_id)
                     raise RuntimeError
