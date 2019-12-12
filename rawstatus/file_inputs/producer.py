@@ -13,6 +13,7 @@ import shutil
 
 LEDGERFN = 'ledger.json'
 UPLOAD_FILETYPE_ID = os.environ.get('FILETYPE_ID')
+KANTELEHOST = os.environ.get('KANTELEHOST')
 RAW_IS_FOLDER = int(os.environ.get('RAW_IS_FOLDER')) == 1
 OUTBOX = os.environ.get('OUTBOX')
 DONEBOX = os.environ.get('DONEBOX')
@@ -91,7 +92,7 @@ def collect_outbox(outbox, ledger, ledgerfn):
         prod_date = str(os.path.getctime(fn))
         if fn not in ledger:
             logging.info('Found new file: {} produced {}'.format(fn, prod_date))
-            ledger[fn] = {'fpath': fn, 'fname': os.path(basename(fn), 
+            ledger[fn] = {'fpath': fn, 'fname': os.path.basename(fn), 
                 'md5': False, 'ftype_id': UPLOAD_FILETYPE_ID,
                 'prod_date': str(os.path.getctime(fn)),
                 'is_dir': RAW_IS_FOLDER,
@@ -99,7 +100,7 @@ def collect_outbox(outbox, ledger, ledgerfn):
                 'remote_checking': False, 'remote_ok': False}
             save_ledger(ledger, ledgerfn)
     for produced_fn in ledger.values():
-        if producer_fn['is_dir']:
+        if produced_fn['is_dir']:
             zipname = '{}.zip'.format(produced_fn['fpath'])
             zipfolder(produced_fn['fpath'], zipname)
             produced_fn['fpath'] = zipname
@@ -211,7 +212,7 @@ def check_success_transferred_files(ledger, ledgerfn, kantelehost, url, client_i
             save_ledger(ledger, ledgerfn)
 
 
-def check_done(ledger, ledgerfn, kantelehost, client_id, donebox, globalloop):
+def check_done(ledger, ledgerfn, kantelehost, client_id, donebox):
     if not os.path.exists(donebox):
         os.makedirs(donebox)
     while True:
@@ -256,11 +257,11 @@ def main():
         collect_outbox(OUTBOX, ledger, LEDGERFN)
         register_outbox_files(ledger, LEDGERFN, KANTELEHOST, 'files/register/', 
                 CLIENT_ID)
-        transfer_outbox_files(ledger, LEDGERFN, SCP_FULL, KEYFILE
+        transfer_outbox_files(ledger, LEDGERFN, SCP_FULL, KEYFILE,
                               KANTELEHOST, CLIENT_ID)
         # registers are done after each transfer, this one is to wrap them up
         register_transferred_files(ledger, LEDGERFN, KANTELEHOST, CLIENT_ID)
-        check_done(ledger, LEDGERFN, KANTELEHOST, CLIENT_ID, DONEBOX, globalloop)
+        check_done(ledger, LEDGERFN, KANTELEHOST, CLIENT_ID, DONEBOX)
         if not KEEPRUNNING:
             break
         sleep(10)
