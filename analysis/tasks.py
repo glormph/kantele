@@ -1,3 +1,4 @@
+# FIXME changing url for md5check, files:transferred need to pass ftype_id instead of ftype
 import os
 import json
 import shutil
@@ -253,7 +254,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
 def create_runname_dir(run):
     runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
     run['runname'] = runname
-    rundir = settings.NF_RUNDIRS[run.get('rundirname', 'small')]
+    rundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
     return os.path.join(rundir, runname).replace(' ', '_')
 
 
