@@ -324,12 +324,8 @@ def check_md5_success(request):
         return HttpResponseForbidden()
     print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype_id))
     try:
-        ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[ftype]
-    except KeyError:
-        return HttpResponseForbidden('File type does not exist')
-    try:
         file_transferred = StoredFile.objects.select_related('rawfile').get(
-            rawfile_id=fn_id, filetype_id=ftypeid)
+            rawfile_id=fn_id, filetype_id=ftype_id)
     except StoredFile.DoesNotExist:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
     else:
