@@ -270,8 +270,7 @@ def file_transferred(request):
             print('File already registered as transfer, client asks for new '
                   'MD5 check after a possible retransfer. Running MD5 check.')
             jobutil.create_file_job('get_md5', file_transferred.id)
-        finally:
-            return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
+        return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
 
