@@ -148,6 +148,20 @@ def downloaded_px_file(request):
     return HttpResponse()
 
 
+def unzipped_folder(request):
+    """Changes file name in DB after having completed unzip (remove .zip)"""
+    data = request.POST
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
+    storedfile.filename = storedfile.filename.rstrip('.zip')
+    storedfile.save()
+    if 'task' in request.POST:
+        set_task_done(request.POST['task'])
+    return HttpResponse()
+
+
 def created_pdc_archive(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(

@@ -4,14 +4,29 @@ from django.contrib.auth.models import User
 from jobs.models import Job
 
 
+class StoredFileType(models.Model):
+    name = models.CharField(max_length=100, unique=True) 
+    filetype = models.CharField(max_length=20) # fasta, tabular, mzml, raw, analysisoutput
+
+    def __str__(self):
+        return self.name
+
+
 class Producer(models.Model):
     name = models.CharField(max_length=100)
     client_id = models.CharField(max_length=100)
     shortname = models.CharField(max_length=10)
-    heartbeat = models.DateTimeField('last seen', auto_now=True)
 
     def __str__(self):
         return self.name
+
+
+class ProducerFileType(models.Model):
+    producer = models.OneToOneField(Producer)
+    filetype = models.ForeignKey(StoredFileType)
+
+    def __str__(self):
+        return '{}/{}'.format(self.producer.name, self.filetype.name)
 
 
 class ServerShare(models.Model):
@@ -28,14 +43,6 @@ class RawFile(models.Model):
     size = models.BigIntegerField('size in bytes')
     date = models.DateTimeField('date/time created')
     claimed = models.BooleanField()
-
-    def __str__(self):
-        return self.name
-
-
-class StoredFileType(models.Model):
-    name = models.CharField(max_length=100, unique=True) 
-    filetype = models.CharField(max_length=20) # fasta, tabular, mzml, raw, analysisoutput
 
     def __str__(self):
         return self.name

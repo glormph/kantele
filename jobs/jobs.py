@@ -63,6 +63,9 @@ jobmap = {'move_files_storage':
           'create_pdc_archive':
           {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_pdc_archive,
            'retry': True},
+          'unzip_raw_datadir':
+          {'type': Jobtypes.MOVE, 'func': rsjobs.unzip_raw_folder,
+           'retry': True},
           'create_swestore_backup':
           {'type': Jobtypes.UPLOAD, 'func': rsjobs.create_swestore_backup,
            'retry': True},

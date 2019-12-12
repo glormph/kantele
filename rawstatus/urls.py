@@ -5,6 +5,8 @@ from rawstatus import views
 app_name = 'files'
 urlpatterns = [
     url(r'^$', views.show_files, name='latestfiles'),
+    url(r'^instruments/$', views.instrument_page),
+    url(r'^instruments/download/$', views.download_instrument_package),
     url(r'^register/$', views.register_file, name='register'),
     url(r'^register/userfile/$', views.register_userupload, name='registeruserupload'),
     url(r'^userfile/$', views.request_token_userupload, name='req_userupload'),

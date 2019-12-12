@@ -45,6 +45,12 @@ KANTELEHOST = '{}{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
 ANALYSISSHARENAME = 'analysis'
+
+TMP_STORAGE_KEYFILE = os.environ.get('STORAGE_KEYFILE')
+STORAGE_USER = os.environ.get('STORAGE_USER')
+STORAGE_HOST = os.environ.get('STORAGE_HOST')
+TMP_SCP_PATH = '{}@{}:/{}'.format(STORAGE_USER, STORAGE_HOST, TMPSHARE)
+
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
             STORAGESHARENAME: STORAGESHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
@@ -64,8 +70,10 @@ CELERY_RESULT_BACKEND = 'rpc'
 # datatypes
 try:
     RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID'))
+    BRUKER_SFGROUP_ID = int(os.environ.get('BRUKER_SF_GROUP_ID'))
     MZML_SFGROUP_ID = int(os.environ.get('MZML_SF_GROUP_ID'))
     REFINEDMZML_SFGROUP_ID = int(os.environ.get('REFINED_SF_GROUP_ID'))
+    FILE_ISDIR_SFGROUPS = [BRUKER_SFGROUP_ID]
 except TypeError:
     # Tasks have no notion of these IDs so they will error
     pass

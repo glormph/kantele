@@ -9,6 +9,7 @@ urlpatterns = [
     url(r'^set/storagepath/$', views.update_storagepath_file,
         name='updatestorage'),
     url(r'^set/md5/$', views.set_md5, name='setmd5'),
+    url(r'^unzipped/$', views.unzipped_folder, name='unzipped'),
     url(r'^delete/(?P<job_id>[0-9]+)$', views.delete_job,
         name='deletejob'),
     url(r'^deletefile/$', views.purge_storedfile,

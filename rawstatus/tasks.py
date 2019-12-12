@@ -2,6 +2,7 @@ import hashlib
 import os
 import requests
 import subprocess
+import zipfile
 from ftplib import FTP
 from urllib.parse import urljoin
 from time import sleep
@@ -136,6 +137,29 @@ def delete_empty_dir(self, servershare, directory):
     msg = ('Could not update database with deletion of dir {} :'
            '{}'.format(dirpath, '{}'))
     url = urljoin(config.KANTELEHOST, reverse('jobs:rmdir'))
+    postdata = {'task': self.request.id, 'client_id': config.APIKEY}
+    try:
+        update_db(url, postdata, msg)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            update_db(url, postdata, msg)
+            raise
+
+
+@shared_task(queue=config.QUEUE_STORAGE)
+def unzip_folder(self, servershare, fnpath, sf_id):
+    zipped_fn = os.path.join(config.SHAREMAP[servershare], fnpath)
+    try:
+        with zipfile.ZipFile(zipped_fn, 'r') as zipfp:
+            zipfp.extractall(path=os.path.split(zipped_fn)[0])
+    except zipfile.BadZipFile:
+        taskfail_update_db(self.request.id)
+        raise
+    else:
+        os.remove(zipped_fn)
+    url = urljoin(config.KANTELEHOST, reverse('jobs:unzipped'))
     postdata = {'task': self.request.id, 'client_id': config.APIKEY}
     try:
         update_db(url, postdata, msg)

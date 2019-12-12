@@ -1,6 +1,7 @@
-from django.http import (JsonResponse, HttpResponseForbidden,
+from django.http import (JsonResponse, HttpResponseForbidden, FileResponse,
                          HttpResponse, HttpResponseNotAllowed)
 from django.shortcuts import render
+from django.template import loader
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -9,7 +10,8 @@ import os
 import re
 import json
 import shutil
-from tempfile import NamedTemporaryFile
+import zipfile
+from tempfile import NamedTemporaryFile, mkstemp
 from uuid import uuid4
 import requests
 from hashlib import md5
@@ -371,6 +373,9 @@ def do_md5_check(file_transferred):
                 singlefile_qc(file_transferred.rawfile, file_transferred)
             jobutil.create_file_job('create_pdc_archive',
                                     file_transferred.id, file_transferred.md5)
+            if file_transferred.filetype_id in settings.FILE_ISDIR_SFGROUPS:
+                jobutil.create_file_job('unzip_raw_datadir', file_transferred.id)
+            # here unzip in a new job after backing up?
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
     else:
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'error'})
@@ -523,6 +528,45 @@ def check_libraryfile_ready(request):
         else:
             response = {'library': True, 'ready': False, 'state': 'ok'}
         return JsonResponse(response)
+
+
+@login_required
+def instrument_page(request):
+    producers = {x.pk: x.name for x in Producer.objects.filter(producerfiletype__isnull=False)}
+    return render(request, 'rawstatus/instruments.html', {'producers': producers})
+
+
+@login_required
+def download_instrument_package(request):
+    datadisk = '{}:'.format(request.POST['datadisk'][0])
+    try:
+        prod = Producer.objects.select_related('producerfiletype').get(pk=request.POST['prod_id'])
+    except Producer.DoesNotExist:
+        return HttpResponseForbidden()
+    runtransferfile = loader.render_to_string('rawstatus/producer.bat', {
+        'datadisk': datadisk,
+        'client_id': prod.client_id,
+        'filetype_id': prod.producerfiletype.filetype_id,
+        'is_folder': 1 if prod.producerfiletype.filetype_id in settings.FILE_ISDIR_SFGROUPS else 0,
+        'host': settings.KANTELEHOST,
+        'key': settings.TMP_STORAGE_KEYFILE,
+        'scp_full': settings.TMP_SCP_PATH,
+        })
+
+    if 'configonly' in request.POST and request.POST['configonly'] == 'true':
+        resp = HttpResponse(runtransferfile, content_type='application/bat')
+        resp['Content-Disposition'] = 'attachment; filename="transfer.bat"'
+        return resp
+    else:
+        # create zip file
+        tmpfp, zipfilename = mkstemp()
+        shutil.copy('rawstatus/templates/rawstatus/producer.zip', zipfilename)
+        with zipfile.ZipFile(zipfilename, 'a') as zipfp:
+            zipfp.write('rawstatus/file_inputs/producer.py', 'producer.py')
+            zipfp.writestr('transfer.bat', runtransferfile)
+        resp = FileResponse(open(zipfilename, 'rb'))
+        resp['Content-Disposition'] = 'attachment; filename="{}_filetransfer.zip"'.format(prod.name)
+    return resp
 
 
 @login_required
