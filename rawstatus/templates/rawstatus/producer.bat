@@ -8,7 +8,7 @@ set CLIENT_ID={{ client_id }}
 set KANTELEHOST={{ host }}
 set KEYFILE={{ key }}
 set SCP_FULL={{ scp_full }}
-set KEEPRUNNING='yes'
+set KEEPRUNNING=yes
 
 call venv\Scripts\activate
 python.exe producer.py
