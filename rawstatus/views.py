@@ -253,7 +253,7 @@ def file_transferred(request):
             print('File has not been registered yet, cannot transfer')
             return JsonResponse({'fn_id': fn_id, 'state': 'error'})
         try:
-            ftype_id = StoredFileType.objects.get(pk=ftype_id)
+            ftype_id = StoredFileType.objects.get(pk=ftype_id).id
         except StoredFileType.DoesNotExist:
             return HttpResponseForbidden('File type does not exist')
         try:
