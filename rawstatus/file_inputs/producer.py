@@ -23,9 +23,9 @@ SCP_FULL = os.environ.get('SCP_FULL')
 KEEPRUNNING = os.environ.get('KEEPRUNNING') == 'yes'
 
 
-def zipfolder(folder, archive):
+def zipfolder(folder, arcname):
     with zipfile.ZipFile(os.path.join(OUTBOX, arcname), 'w') as zipfp:
-        for fnpaths in os.walk(folder_to_zip):
+        for fnpaths in os.walk(folder):
             for fn in fnpaths[2]:
                 zipfp.write(os.path.join(fnpaths[0], fn))
 
@@ -130,7 +130,7 @@ def register_outbox_files(ledger, ledgerfn, kantelehost, url, client_id, claimed
                         js_resp['md5'] == produced_fn['md5']):
                     produced_fn['transferred'] = True
             elif js_resp['state'] == 'error':
-                logging.warning('Server reported an error', js_resp['msg'])
+                logging.warning('Server reported an error: {}'.format(js_resp['msg']))
                 if 'md5' in js_resp:
                     logging.warning('Registered and local file MD5 do {} match'
                                     ''.format('' if js_resp['md5'] ==
