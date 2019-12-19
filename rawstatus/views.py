@@ -5,6 +5,8 @@ from django.template import loader
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.contrib.admin.views.decorators import staff_member_required
+
 from datetime import timedelta
 import os
 import re
@@ -526,6 +528,7 @@ def check_libraryfile_ready(request):
 
 
 @login_required
+@staff_member_required
 def instrument_page(request):
     producers = {x.pk: x.name for x in Producer.objects.filter(producerfiletype__isnull=False)}
     return render(request, 'rawstatus/instruments.html', {'producers': producers})
