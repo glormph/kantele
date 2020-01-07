@@ -246,8 +246,10 @@ Vue.component('admin-box', {
 <input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to search datasets">
                         <a class="button" v-on:click="analyzeDatasets" v-show="selectedDsets.length">Analyze datasets</a>
                         <a class="button" v-on:click="deleteDataset" v-show="selectedDsets.length">Delete datasets</a>
+                        <a class="button" v-on:click="unDeleteDataset" v-show="selectedDsets.length">Undelete datasets</a>
                         <a class="button" disabled v-show="!selectedDsets.length">Analyze datasets</a>
                         <a class="button" disabled v-show="!selectedDsets.length">Delete datasets</a>
+                        <a class="button" disabled v-show="!selectedDsets.length">Undelete datasets</a>
 			<table class="table">
 				<thead>
 					<tr>
@@ -430,7 +432,20 @@ Vue.component('admin-box', {
 			},
 			deleteDataset: function() {
 				for (dset_id of this.selectedDsets) {
-					this.$http.post(`datasets/delete/`, {'dataset_id': dset_id})
+					this.$http.post('datasets/delete/dataset/', {'dataset_id': dset_id})
+					.then(response => {
+						return response
+					}, response => {
+						console.log(response);
+						// error code
+					}).then(result => {
+						this.datasets[dset_id].deleted = true;
+					})
+				}
+			},
+			unDeleteDataset: function() {
+				for (dset_id of this.selectedDsets) {
+					this.$http.post('datasets/undelete/dataset/', {'dataset_id': dset_id})
 					.then(response => {
 						return response
 					}, response => {
@@ -586,8 +601,14 @@ Vue.component('admin-box', {
 	Vue.component('project-box', {
 		template: `
         <div class="content is-small" >
-        <a href="#" v-on:click="fetchItems(showAllUrl, {})">Show all</a>
+					<input type="checkbox" v-model="searchinactive">Include inactive projects
+        <a href="#" v-on:click="fetchItems(showAllUrl, {})">Show all projects</a>
+    <a href="#" v-on:click="fetchItems(showAllUrl, {userproj: true})">Show projects including my datasets</a>
         <input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find projects">
+                        <a class="button" disabled v-show="!selectedItems.length">Deactivate project(s)</a>
+                        <a class="button" v-on:click="deactivateProjects" v-show="selectedItems.length">Deactivate project(s)</a>
+                        <a class="button" disabled v-show="!selectedItems.length">Reactivate project(s)</a>
+                        <a class="button" v-on:click="reactivateProjects" v-show="selectedItems.length">Reactivate project(s)</a>
 			<table class="table">
 				<thead>
 					<tr>
@@ -658,7 +679,12 @@ Vue.component('admin-box', {
 			this.fetchItems(this.showAllUrl, params);
 		},
 		methods: {
-			fetchItems: function(url, getparams) {
+			fetchItems: function(url, params) {
+        let getparams = {
+          showinactive: this.searchinactive,
+          userproj: false,
+        };
+        Object.assign(getparams, params);
 				this.$http.get(url,
 					{params: getparams})
 				.then(response => {
@@ -669,6 +695,32 @@ Vue.component('admin-box', {
 					this.order = result['order'];
 				})
 			},
+      deactivateProjects: function() {
+        for (proj_id of this.selectedItems) {
+          this.$http.post('datasets/delete/project/', {'proj_id': proj_id})
+            .then(response => {
+						return response
+					}, response => {
+						console.log(response);
+						// error code
+					}).then(result => {
+            this.refreshAll();
+					});
+				}
+      },
+      reactivateProjects: function() {
+        for (proj_id of this.selectedItems) {
+          this.$http.post('datasets/undelete/project/', {'proj_id': proj_id})
+            .then(response => {
+						return response
+					}, response => {
+						console.log(response);
+						// error code
+					}).then(result => {
+            this.refreshAll();
+					});
+				}
+      },
 			selectAll: function() {
 				this.selectedItems = [];
 				this.allSelector = this.allSelector === false;

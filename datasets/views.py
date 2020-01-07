@@ -546,17 +546,50 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     return dset
 
 
-@login_required
-def set_deleted_dataset(request):
-    data = json.loads(request.body.decode('utf-8'))
+def toggle_project(user, data, activestate):
+    if data['proj_id']:
+        if models.DatasetOwner.objects.filter(user=user, dataset__runname__experiment__project_id=data['proj_id']) or user.is_superuser:
+            models.Project.objects.filter(pk=data['proj_id']).update(active=activestate)
+            return HttpResponse()
+        else:
+            return HttpResponseForbidden()
+    else:
+        return HttpResponseNotFound()
+
+
+def toggle_dataset(user, data, deletestate):
     if data['dataset_id']:
-        user_denied = check_save_permission(data['dataset_id'], request.user)
+        user_denied = check_save_permission(data['dataset_id'], user)
         if user_denied:
             return user_denied
-        models.Dataset.objects.filter(pk=data['dataset_id']).update(deleted=True)
+        models.Dataset.objects.filter(pk=data['dataset_id']).update(deleted=deletestate)
         return HttpResponse()
     else:
         return HttpResponseNotFound()
+
+
+@login_required
+def set_inactive_project(request):
+    data = json.loads(request.body.decode('utf-8'))
+    return toggle_project(request.user, data, activestate=False)
+
+
+@login_required
+def set_active_project(request):
+    data = json.loads(request.body.decode('utf-8'))
+    return toggle_project(request.user, data, activestate=True)
+
+
+@login_required
+def set_deleted_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    return toggle_dataset(request.user, data, deletestate=True)
+
+
+@login_required
+def set_undeleted_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    return toggle_dataset(request.user, data, deletestate=False)
 
 
 @login_required

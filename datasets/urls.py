@@ -24,5 +24,8 @@ urlpatterns = [
     url(r'^save/labelcheck/$', views.save_labelcheck),
     url(r'^save/owner/$', views.change_owners, name="changeowner"),
     url(r'^save/projsample/$', views.save_projsample),
-    url(r'^delete/$', views.set_deleted_dataset),
+    url(r'^delete/dataset/$', views.set_deleted_dataset),
+    url(r'^delete/project/$', views.set_inactive_project),
+    url(r'^undelete/dataset/$', views.set_undeleted_dataset),
+    url(r'^undelete/project/$', views.set_active_project),
 ]

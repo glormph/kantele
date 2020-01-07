@@ -139,9 +139,15 @@ def show_projects(request):
     if 'pids' in request.GET:
         pids = request.GET['pids'].split(',')
         dbprojects = dsmodels.Project.objects.filter(pk__in=pids)
+    elif request.GET['userproj'] in ['true', 'True', True]:
+        # all active projects
+        dsos = dsmodels.DatasetOwner.objects.filter(user=request.user).select_related('dataset__runname__experiment')
+        dbprojects = dsmodels.Project.objects.filter(pk__in={x.dataset.runname.experiment.project_id for x in dsos})
     else:
-        # last month datasets of a user
-        dbprojects = dsmodels.Project.objects.filter(active=True) 
+        # all active projects
+        dbprojects = dsmodels.Project.objects.all()
+    if request.GET['showinactive'] not in ['true', 'True', True]:
+        dbprojects = dbprojects.filter(active=True)
     items, order = populate_proj(dbprojects, request.user)
     return JsonResponse({'items': items, 'order': order})
 
