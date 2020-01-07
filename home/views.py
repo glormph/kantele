@@ -317,6 +317,8 @@ def get_proj_info(request, proj_id):
         else:
             return getxbytes(bytes, op-10)
 
+    dsowners = dsmodels.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=proj_id).distinct()
+    info['owners'] = {x.user_id: x.user.username for x in dsowners}
     info['stored_total_xbytes'] = getxbytes(files.aggregate(Sum('rawfile__size'))['rawfile__size__sum'])
     info['stored_bytes'] = {ft: getxbytes(sum([fn.rawfile.size for fn in fns])) for ft, fns in sfiles.items()}
     info['nrstoredfiles'] = {ft: len([fn for fn in fns]) for ft, fns in sfiles.items()}
