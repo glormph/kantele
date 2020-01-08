@@ -3,116 +3,20 @@
 {% load static %}
 
 {% block head %}
-    <script src="{% static "datasets/vue.js" %}"></script>
-    <script src="{% static "datasets/vue-resource.js" %}"></script>
+  <link rel='stylesheet' href='{% static "dashboard/bundle.css" %}'>
+  <script defer src='{% static "dashboard/bundle.js" %}'></script>
+  <link href="https://cdn.pydata.org/bokeh/release/bokeh-0.12.13.min.css" rel="stylesheet" type="text/css">
+  <script src="https://cdn.pydata.org/bokeh/release/bokeh-0.12.13.min.js"></script>
+  <script>
+    const instruments = [
+      {% for instr, iid in instruments %}
+      ['{{ instr }}', {{ iid }}],
+      {% endfor %}
+      ];
+  </script>
 {% endblock head %}
 
 {% block content %}
-<link href="https://cdn.pydata.org/bokeh/release/bokeh-0.12.13.min.css" rel="stylesheet" type="text/css">
-<script src="https://cdn.pydata.org/bokeh/release/bokeh-0.12.13.min.js"></script>
 <section id="apps">
-{% verbatim %}
-<div class="tabs is-toggle is-centered is-small">
-	<ul>
-		<li v-for="(instr, instr_id) in instruments" v-bind:class="tabStatus['instr_'+instr_id]"> <a v-on:click="activateInstrTab(instr_id)">
-			<span>{{ instr }}</span>
-		</a></li>
-	</ul>
-</div>
-<div class="container">
-<a class="button is-info is-small" v-on:click="reload">Refresh</a>
-<hr>
-	<section>
-		<instrument-plot v-for="(instr, instr_id) in instruments" v-bind:key="instr_id" v-bind:instrument_id="instr_id" v-bind:active="tabStatus['instr_'+instr_id]" v-bind:loaded="qcdata[instr_id].loaded" v-bind:bokeh_code="qcdata[instr_id].bokeh_code"></instrument-plot>
-	</section>
-</div>
 </section>
-
-<script>
-	Vue.component('instrument-plot', {
-		template: `
-		<div class="bk-root" v-show="active" v-if="loaded" >
-			<h5 class="title is-5"># Identifications</h5>
-			<div class="bk-plotdiv" v-bind:id="bokeh_code.div.amount_peptides.elementid"></div>
-			<hr>
-                        <h5 class="title is-5"># PSMs</h5>
-                        <div class="bk-plotdiv" v-bind:id="bokeh_code.div.amount_psms.elementid"></div>
-                        <hr>
-                        <h5 class="title is-5">Peptide precursor areas</h5>
-                        <div class="bk-plotdiv" v-bind:id="bokeh_code.div.precursorarea.elementid"></div>
-                        <hr>
-                        <h5 class="title is-5">PSM MSGFScore</h5>
-                        <div class="bk-plotdiv" v-bind:id="bokeh_code.div.msgfscore.elementid"></div>
-                        <hr>
-                        <h5 class="title is-5">Precursor error (ppm)</h5>
-                        <div class="bk-plotdiv" v-bind:id="bokeh_code.div.prec_error.elementid"></div>
-                        <hr>
-                        <h5 class="title is-5">Retention time (min)</h5>
-                        <div class="bk-plotdiv" v-bind:id="bokeh_code.div.rt.elementid"></div>
-                        <hr>
-		</div> `,
-                props: ['instruments', 'instrument_id', 'active', 'loaded', 'bokeh_code'],
-		data: function() {
-			return {
-			}
-		},
-	})
-	{% endverbatim %}
-
-	var dashboard = new Vue({
-	el: '#apps',
-	data: function() {
-		return { 
-			instruments: { {% for inst, inst_id in instruments %} '{{ inst_id }}' : '{{ inst }}', {% endfor %} },
-			qcdata: { {% for inst_id in instrument_ids %} {{ inst_id}}: {'loaded': false, 'bokeh_code': {'div': {'amount_peptides': 1, 'amount_psms': 1, 'precursorarea': 1, 'prec_error': 1, 'msgfscore': 1, 'rt': 1 } }
-
- }, {% endfor %}
-},
-			tabStatus: {
-{% for inst_id in instrument_ids %}'instr_{{inst_id}}': false, {% endfor %} },
-			activeTab: false,
-			activeInstrument: false,
-		}
-	},
-	methods: {
-		getInstrumentQC: function(instr_id) {
-			this.$http.get('/dash/longqc/' + instr_id)
-			.then(response => {
-				return response.json()
-			}, response => { console.log('error');
-			}).then(result => {
-				this.qcdata[instr_id] = {};
-				for (key in result) {
-					this.qcdata[instr_id][key] = result[key];
-				}
-				eval(this.qcdata[instr_id].bokeh_code.script);
-				this.tabStatus['instr_'+instr_id] = 'is-active';
-				this.qcdata[instr_id].loaded = true;
-			})
-		},
-		reload: function() {
-			this.tabStatus['instr_'+this.activeInstrument] = false;
-			if (this.activeTab === 'instrument') {
-				this.qcdata[this.activeInstrument].loaded = false;
-				this.getInstrumentQC(this.activeInstrument);
-			}
-		},
-		deactivateTabs: function() {
-			for (tabId in this.tabStatus) {
-				this.tabStatus[tabId] = false;
-			}
-		},
-                activateInstrTab: function(instr_id) {
-			this.deactivateTabs();
-                        if (!this.qcdata[instr_id].loaded) {
-				this.getInstrumentQC(instr_id);
- 			} else {
-				this.tabStatus['instr_'+instr_id] = 'is-active';
-			}
-			this.activeTab = 'instrument';
-			this.activeInstrument = instr_id;
-                },
-	},
-})
-</script>
-{% endblock content %}
+{% endblock %}

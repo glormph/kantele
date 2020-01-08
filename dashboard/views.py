@@ -106,6 +106,6 @@ def show_qc(request, instrument_id):
         'prec_error': qcplots.boxplotrange(dateddata, 'perror'),
         'msgfscore': qcplots.boxplotrange(dateddata, 'msgfscore'),
         'rt': qcplots.boxplotrange(dateddata, 'rt'),
-            }
+        }
     script, div = components(plot, wrap_script=False, wrap_plot_info=False)
     return JsonResponse({'bokeh_code': {'script': script, 'div': div}})
