@@ -1071,7 +1071,7 @@ def save_labelcheck(request):
             models.QuantSampleFile(rawfile_id=fid, projsample_id=fn['sample'])
             for fid, fn in data['samples'].items()])
     else:
-        for datasam, isosam in zip(data['samples'].values(), iso['samples'].values()):
+        for datasam, isosam in zip(data['samples'].values(), iso['samples']):
             isosam['qcsid'] = datasam['qcsid']
         update_labelcheck(data, iso, qtype)
     set_component_state(dset_id, 'labelchecksamples', COMPSTATE_OK)
