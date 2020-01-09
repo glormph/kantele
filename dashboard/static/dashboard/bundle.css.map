@@ -1,0 +1,12 @@
+{
+  "version": 3,
+  "file": "bundle.css",
+  "sources": [
+    "../../../frontend/dashboard/src/App.svelte"
+  ],
+  "sourcesContent": [
+    "<script>\n\nimport { onMount } from 'svelte';\nimport Instrument from './Instrument.svelte'\n\nlet tabshow = 'dash';\nlet qcdata = Object.fromEntries(instruments.map(x => [x[1], {loaded: false}]));\n\nasync function showInst(iid) {\n  if (!qcdata[iid].loaded) {\n    await getInstrumentQC(iid);\n    eval(qcdata[iid].bokeh_code.script);\n  }\n  tabshow = `instr_${iid}`;\n}\n\nfunction showProd() {\n  tabshow = 'prod';\n}\n\nasync function reload() {\n  if (tabshow.slice(0, 6) === 'instr_') {\n    const iid = tabshow.substr(6);\n    qcdata[iid].loaded = false;\n    await getInstrumentQC(iid);\n    eval(qcdata[iid].bokeh_code.script);\n  }\n}\n\nasync function getInstrumentQC(instr_id) {\n  const response = await fetch('/dash/longqc/' + instr_id);\n  const result = await response.json();\n  qcdata[instr_id] = {};\n  for (let key in result) {\n    qcdata[instr_id][key] = result[key];\n  }\n  qcdata[instr_id].loaded = true;\n}\n\n</script>\n\n<style>\n.instrplot.inactive {\n  display: none;\n}\n</style>\n\n<div class=\"tabs is-toggle is-centered is-small\">\n\t<ul>\n    <!--\n    <li class={tabshow === `prod` ? 'is-active' : ''}>\n      <a on:click={showProd}><span>Production</span></a>\n    </li>\n    -->\n    {#each instruments as instr}\n    <li class={tabshow === `instr_${instr[1]}` ? 'is-active' : '' }>\n      <a on:click={e => showInst(instr[1])}><span>{instr[0]}</span></a>\n    </li>\n    {/each}\n\t</ul>\n</div>\n<div class=\"container\">\n  <a class=\"button is-info is-small\" on:click={reload}>Refresh</a>\n  <hr>\n  <section>\n    {#each instruments as instr}\n    {#if qcdata[instr[1]].loaded}\n    <div class={`instrplot ${tabshow === `instr_${instr[1]}` ? 'active' : 'inactive'}`} >\n    <Instrument bind:bokeh_code={qcdata[instr[1]].bokeh_code} />\n    </div>\n    {/if}\n    {/each}\n\t</section>\n</div>\n"
+  ],
+  "names": [],
+  "mappings": "AA0CA,UAAU,SAAS,cAAC;;AAEpB,CAAC"
+}
