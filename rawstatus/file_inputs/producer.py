@@ -3,7 +3,6 @@ import logging
 import os
 import json
 import hashlib
-import zipfile
 import requests
 import subprocess
 from urllib.parse import urljoin
@@ -24,10 +23,8 @@ KEEPRUNNING = os.environ.get('KEEPRUNNING') == 'yes'
 
 
 def zipfolder(folder, arcname):
-    with zipfile.ZipFile(os.path.join(OUTBOX, arcname), 'w') as zipfp:
-        for fnpaths in os.walk(folder):
-            for fn in fnpaths[2]:
-                zipfp.write(os.path.join(fnpaths[0], fn))
+    print('zipping {} to {}'.format(folder, arcname))
+    return shutil.make_archive(arcname, 'zip', folder)
 
 
 def md5(fnpath):
