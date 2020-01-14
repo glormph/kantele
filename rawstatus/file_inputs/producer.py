@@ -15,11 +15,11 @@ UPLOAD_FILETYPE_ID = os.environ.get('FILETYPE_ID')
 KANTELEHOST = os.environ.get('KANTELEHOST')
 RAW_IS_FOLDER = int(os.environ.get('RAW_IS_FOLDER')) == 1
 OUTBOX = os.environ.get('OUTBOX')
+ZIPBOX = os.environ.get('ZIPBOX')
 DONEBOX = os.environ.get('DONEBOX')
 CLIENT_ID = os.environ.get('CLIENT_ID')
 KEYFILE = os.environ.get('KEYFILE')
 SCP_FULL = os.environ.get('SCP_FULL')
-KEEPRUNNING = os.environ.get('KEEPRUNNING') == 'yes'
 
 
 def zipfolder(folder, arcname):
@@ -84,6 +84,8 @@ def transfer_file(fpath, transfer_location, keyfile):
 def collect_outbox(outbox, ledger, ledgerfn):
     if not os.path.exists(outbox):
         os.makedirs(outbox)
+    if ZIPBOX is not None and not os.path.exists(ZIPBOX):
+        os.makedirs(ZIPBOX)
     logging.info('Checking outbox')
     for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
         prod_date = str(os.path.getctime(fn))
@@ -97,11 +99,12 @@ def collect_outbox(outbox, ledger, ledgerfn):
                 'remote_checking': False, 'remote_ok': False}
             save_ledger(ledger, ledgerfn)
     for produced_fn in ledger.values():
-        if produced_fn['is_dir']:
-            zipname = '{}.zip'.format(produced_fn['fpath'])
-            zipfolder(produced_fn['fpath'], zipname)
-            produced_fn['fpath'] = zipname
+        if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
+            zipname = os.path.join(ZIPBOX, os.path.basename(produced_fn['fpath']))
+            produced_fn['nonzipped_path'] = produced_fn['fpath']
+            produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
             save_ledger(ledger, ledgerfn)
+        print(produced_fn['fpath'])
         if not produced_fn['md5']:
             try:
                 produced_fn['md5'] = md5(produced_fn['fpath'])
@@ -212,28 +215,25 @@ def check_success_transferred_files(ledger, ledgerfn, kantelehost, url, client_i
 def check_done(ledger, ledgerfn, kantelehost, client_id, donebox):
     if not os.path.exists(donebox):
         os.makedirs(donebox)
-    while True:
-        check_success_transferred_files(ledger, ledgerfn, kantelehost, 'files/md5/',
-                                        client_id)
-        for file_done in [k for k, x in ledger.items() if x['remote_ok']]:
-            if ledger[file_done]['is_dir']:
-                zipname = '{}.zip'.format(ledger[file_don]['fpath'])
-                if os.path.exists(zipname):
-                    os.remove(zipname)
+    check_success_transferred_files(ledger, ledgerfn, kantelehost, 'files/md5/',
+                                    client_id)
+    for file_done in [k for k, x in ledger.items() if x['remote_ok']]:
+        if ledger[file_done]['is_dir']:
+            if os.path.exists(ledger[file_done]['fpath']):
+                os.remove(ledger[file_done]['fpath'])
+            file_done = ledger[file_done]['nonzipped_path']
+        else:
             file_done = ledger[file_done]['fpath']
-            logging.info('Finished with file {}: '
-                         '{}'.format(file_done, ledger[file_done]))
-            try:
-                shutil.move(file_done,
-                            os.path.join(donebox, os.path.basename(file_done)))
-            except FileNotFoundError:
-                continue
-            finally:
-                del(ledger[file_done])
-        save_ledger(ledger, ledgerfn)
-        if KEEPRUNNING:
-            break
-        sleep(10)
+        logging.info('Finished with file {}: '
+                     '{}'.format(file_done, ledger[file_done]))
+        try:
+            shutil.move(file_done,
+                        os.path.join(donebox, os.path.basename(file_done)))
+        except FileNotFoundError:
+            continue
+        finally:
+            del(ledger[file_done])
+    save_ledger(ledger, ledgerfn)
 
 
 def set_logger():
@@ -259,8 +259,6 @@ def main():
         # registers are done after each transfer, this one is to wrap them up
         register_transferred_files(ledger, LEDGERFN, KANTELEHOST, CLIENT_ID)
         check_done(ledger, LEDGERFN, KANTELEHOST, CLIENT_ID, DONEBOX)
-        if not KEEPRUNNING:
-            break
         sleep(10)
 
 
