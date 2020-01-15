@@ -10,5 +10,8 @@ set KANTELEHOST={{ host }}
 set KEYFILE={{ key }}
 set SCP_FULL={{ scp_full }}
 
+REM change dir to script dir
+cd %~dp0
+
 call venv\Scripts\activate
 python.exe producer.py

@@ -81,6 +81,15 @@ def transfer_file(fpath, transfer_location, keyfile):
         subprocess.check_call(['scp', '-i', keyfile, fpath, remote_path])
 
 
+def get_new_file_entry(fn):
+    return {'fpath': fn, 'fname': os.path.basename(fn),
+            'md5': False, 'ftype_id': UPLOAD_FILETYPE_ID,
+            'prod_date': str(os.path.getctime(fn)),
+            'is_dir': RAW_IS_FOLDER,
+            'registered': False, 'transferred': False,
+            'remote_checking': False, 'remote_ok': False}
+
+
 def collect_outbox(outbox, ledger, ledgerfn):
     if not os.path.exists(outbox):
         os.makedirs(outbox)
@@ -91,12 +100,7 @@ def collect_outbox(outbox, ledger, ledgerfn):
         prod_date = str(os.path.getctime(fn))
         if fn not in ledger:
             logging.info('Found new file: {} produced {}'.format(fn, prod_date))
-            ledger[fn] = {'fpath': fn, 'fname': os.path.basename(fn), 
-                'md5': False, 'ftype_id': UPLOAD_FILETYPE_ID,
-                'prod_date': str(os.path.getctime(fn)),
-                'is_dir': RAW_IS_FOLDER,
-                'registered': False, 'transferred': False,
-                'remote_checking': False, 'remote_ok': False}
+            ledger[fn] = get_new_file_entry(fn)
             save_ledger(ledger, ledgerfn)
     for produced_fn in ledger.values():
         if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
