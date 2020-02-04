@@ -99,7 +99,9 @@ def get_datasets(request):
             response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
         else:
             dsfiles = files.filter(rawfile__datasetrawfile__dataset_id=dsid)
-            refineddsfiles = dsfiles.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID)
+            # FIXME TODO when making finished mzmls optional, also wait for refined files to be made, but watch out
+            # for deleted jobs!
+            refineddsfiles = dsfiles.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
             if refineddsfiles.count():
                 dsfiles = refineddsfiles
             else:
