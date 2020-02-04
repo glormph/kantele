@@ -345,6 +345,9 @@ function showFiles() {
         </div>
       </div>
 
+      {#if showMsdata}
+      <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} bind:isNewExperiment={isNewExperiment} experiments={experiments} prefracs={pdata.prefracs} hirief_ranges={pdata.hirief_ranges} />
+
       <div class="field">
         <label class="label">Run name</label>
         <div class="control">
@@ -352,9 +355,14 @@ function showFiles() {
         </div>
       </div>
 
-      {#if showMsdata}
-      <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} bind:isNewExperiment={isNewExperiment} experiments={experiments} prefracs={pdata.prefracs} hirief_ranges={pdata.hirief_ranges} />
       <Acquicomp bind:this={acquicomp} bind:errors={errors.acqui} />
+      {:else if dsinfo.datatype_id}
+      <div class="field">
+        <label class="label">Run name</label>
+        <div class="control">
+          <input class="input" bind:value={dsinfo.runname} on:change={editMade} type="text" placeholder="E.g set1, lc3, rerun5b, etc">
+        </div>
+      </div>
       {/if}
       {#if (components.indexOf('sampleprep')> -1)}
       <Prepcomp bind:this={prepcomp} bind:errors={errors.sprep} />

@@ -107,7 +107,7 @@ function save() {
 {/if}
 {#if dsinfo.prefrac_id}
 <div class="field">
-  <label class="label">Fraction amount</label>
+  <label class="label">Number of fractions</label>
   <div class="control">
     <input type="number" class="input" placeholder="How many fractions of prefractionation" on:change={editMade} bind:value={dsinfo.prefrac_amount}>
   </div>
