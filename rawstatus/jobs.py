@@ -127,11 +127,6 @@ def delete_empty_directory(job_id, analysis_id, sf_ids):
         fn = sfiles.select_related('servershare').last()
         tid = tasks.delete_empty_dir.delay(fn.servershare.name, fn.path).id
         create_db_task(tid, job_id, fn.servershare.name, fn.path)
-    elif not sfiles.count():
-        user = am.Analysis.objects.select_related('user').get(pk=analysis_id).user.username
-        raise RuntimeError('Cannot delete dir: there are no stored files according to DB, which indicates '
-            'the directory has never been made. To be sure check by hand for dir {}_* of user {}'
-            ''.format(analysis_id, user))
     else:
         raise RuntimeError('Cannot delete dir: according to the DB, there are still storedfiles which '
             'have not been purged yet in the directory')
