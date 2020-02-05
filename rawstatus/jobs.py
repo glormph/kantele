@@ -118,7 +118,7 @@ def move_single_file(job_id, fn_id, dst_path, oldname=False, dstshare=False, new
                    fn.path, dst_path, fn.id, dstshare=dstshare, newname=newname)
 
 
-def delete_empty_directory(job_id, analysis_id, sf_ids):
+def delete_empty_directory(job_id, sf_ids):
     """Check first if all the sfids are set to purged, indicating the dir is actually empty.
     Then queue a task. The sfids also make this job dependent on other jobs on those, as in
     the file-purging tasks before this directory deletion"""

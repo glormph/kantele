@@ -282,7 +282,7 @@ def purge_analysis(request):
     analysis.purged = True
     analysis.save()
     jj.create_dataset_job('purge_analysis', analysis.id)
-    jj.create_dataset_job('delete_analysis_directory', analysis.id)
+    jj.create_dataset_job('delete_analysis_directory')
     return HttpResponse()
 
 
