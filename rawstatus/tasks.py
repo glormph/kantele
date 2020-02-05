@@ -122,6 +122,8 @@ def delete_file(self, servershare, filepath, fn_id):
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def delete_empty_dir(self, servershare, directory):
+    """Deletes the (reportedly) empty directory, then proceeds to delete any
+    parent directory which is also empty"""
     dirpath = os.path.join(config.SHAREMAP[servershare], directory)
     print('Trying to delete empty directory {}'.format(dirpath))
     try:
@@ -133,6 +135,17 @@ def delete_empty_dir(self, servershare, directory):
     except FileNotFoundError:
         # Directory doesnt exist, no need to delete
         print('Directory did not exist, do not delete')
+    # Now delete parent directories if any empty
+    while os.path.split(directory)[0]:
+        directory = os.path.split(directory)[0]
+        dirpath = os.path.join(config.SHAREMAP[servershare], directory)
+        print('Trying to delete parent directory {}'.format(dirpath))
+        try:
+            os.rmdir(dirpath)
+        except OSError:
+            # OSError raised on dir not empty
+            print('Parent directory {} not empty, stop deletion'.format(dirpath))
+    # Report
     msg = ('Could not update database with deletion of dir {} :'
            '{}'.format(dirpath, '{}'))
     url = urljoin(config.KANTELEHOST, reverse('jobs:rmdir'))
