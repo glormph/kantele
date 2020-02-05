@@ -39,6 +39,17 @@ def create_pdc_archive(job_id, sf_id, md5):
     print('PDC archival task queued')
 
 
+def restore_from_pdc_archive(job_id, sf_id):
+    sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
+        'servershare').get()
+    backupfile = models.PDCBackedupFile.objects.get(storedfile_id=sfile_id)
+    fnpath = os.path.join(sfile.path, sfile.filename)
+    yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
+    res = tasks.pdc_archive.delay(sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
+    create_db_task(res.id, job_id, sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
+    print('PDC archival task queued')
+
+
 def unzip_raw_folder(job_id, sf_id):
     sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
         'servershare').get()

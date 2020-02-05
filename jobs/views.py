@@ -174,6 +174,18 @@ def created_pdc_archive(request):
     return HttpResponse()
 
 
+def restored_archive_file(request):
+    data = request.POST
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    sfile = StoredFile.objects.filter(pk=data['sfid'])
+    sfile.update(deleted=False, purged=False)
+    if 'task' in request.POST:
+        set_task_done(request.POST['task'])
+    return HttpResponse()
+
+
 def created_swestore_backup(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(

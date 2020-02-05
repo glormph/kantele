@@ -220,6 +220,54 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
         os.unlink(link)
 
 
+@shared_task(bind=True, queue=config.QUEUE_PDC)
+def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
+    print('Restoring file {} to PDC tape'.format(filepath))
+    basedir = config.SHAREMAP[servershare]
+    fileloc = os.path.join(basedir, filepath)
+    backupfile = os.path.join(basedir, yearmonth, md5)
+    # Create dir for backup file (/home/storage/2019_05/)
+    try:
+        os.makedirs(os.path.dirname(backupfile))
+    except FileExistsError:
+        pass
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    # restore to tmplocation /home/storage/2019_05/abcd12345ae (md5)
+    cmd = ['dsmc', 'restore', backupfile]
+    env = os.environ
+    env['DSM_DIR'] = config.DSM_DIR
+    try:
+        subprocess.check_call(cmd, env=env)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    # move file to proper location
+    if os.path.exists(fileloc) and os.path.isfile(fileloc):
+        print('Tried to move DSMC-restored tmpfile {} to target file {} but target already exists'.format(backupfile, fileloc))
+    else:
+        try:
+            shutil.move(backupfile, fileloc)
+        except Exception:
+            try:
+                self.retry(countdown=60)
+            except MaxRetriesExceededError:
+                taskfail_update_db(self.request.id)
+                raise
+    postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': config.APIKEY}
+    url = urljoin(config.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
+    msg = ('Restore from archive could not update database with for fn {} with PDC path {} :'
+           '{}'.format(filepath, link, '{}'))
+    try:
+        update_db(url, postdata, msg)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            raise
+
+
 @shared_task(bind=True, queue=config.QUEUE_SWESTORE)
 def swestore_upload(self, md5, servershare, filepath, fn_id):
     print('Uploading file {} to swestore'.format(filepath))
