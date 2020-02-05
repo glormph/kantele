@@ -785,6 +785,8 @@ Vue.component('admin-box', {
 			<input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find analyses">
                         <a class="button" v-on:click="deleteAnalyses" v-show="selectedItems.length">Delete analyses</a>
                         <a class="button" disabled v-show="!selectedItems.length">Delete analyses</a>
+                        <a class="button" v-on:click="unDeleteAnalyses" v-show="selectedItems.length">Undelete analyses</a>
+                        <a class="button" disabled v-show="!selectedItems.length">Undelete analyses</a>
 {% if user.is_staff %}
                         <a class="button" v-on:click="purgeAnalyses" v-show="selectedItems.length">Purge analyses</a>
                         <a class="button" disabled v-show="!selectedItems.length">Purge analyses</a>
@@ -881,6 +883,7 @@ Vue.component('admin-box', {
                     searchUrl: '/find/analyses/',
                     purgeUrl: '/analysis/purge/',
                     deleteUrl: '/analysis/delete/',
+                    unDeleteUrl: '/analysis/undelete/',
                     showAllUrl: '/show/analyses/',
                     showItemUrl: '/show/analysis/',
                     uploadUrl: '/files/upload/userfile/',
@@ -949,6 +952,19 @@ Vue.component('admin-box', {
                             this.order = result['order'];
                         }
                     })
+                },
+                unDeleteAnalyses: function() {
+                    for (ana_id of this.selectedItems) {
+                        this.$http.post(this.unDeleteUrl, {'analysis_id': ana_id})
+                        .then(response => {
+                            return response
+                        }, response => {
+                            console.log(response);
+                            // error code
+                        }).then(result => {
+                            this.items[ana_id].deleted = false;
+                        })
+                    }
                 },
                 deleteAnalyses: function() {
                     for (ana_id of this.selectedItems) {
