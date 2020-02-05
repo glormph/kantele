@@ -548,7 +548,7 @@ def save_new_dataset(data, project, experiment, runname, user_id):
 
 def toggle_project(user, data, activestate):
     if data['proj_id']:
-        if models.DatasetOwner.objects.filter(user=user, dataset__runname__experiment__project_id=data['proj_id']) or user.is_superuser:
+        if models.DatasetOwner.objects.filter(user=user, dataset__runname__experiment__project_id=data['proj_id']) or user.is_staff:
             models.Project.objects.filter(pk=data['proj_id']).update(active=activestate)
             return HttpResponse()
         else:
