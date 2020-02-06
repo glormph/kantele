@@ -257,6 +257,7 @@ Vue.component('admin-box', {
 						<th></th>
 						<th></th>
 						<th>Project type</th>
+						<th>Stored</th>
 		<th><span class="icon is-small"><i class="fa fa-hourglass-half"/></span></th>
 						<th>Project</th>
 						<th>Experiment</th>
@@ -287,6 +288,9 @@ Vue.component('admin-box', {
 								</a>
 						</td>
 						<td>{{ ds.ptype }}</td>
+            <td>
+               <span class="tag" title="v-bind:class="storecolors[ds.storestate]">{{ ds.storestate }}</span>
+           </td>
 		<td><span v-for="state in ds.jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span></td>
 						<td v-for="name in [ds.proj, ds.exp, ds.run, ds.usr]">
 							<del v-if="ds.deleted">{{ name }}</del>
@@ -363,6 +367,7 @@ Vue.component('admin-box', {
 				findDsQuery: '',
 				allSelector: false,
 				searchdeleted: false,
+ 				storecolors: {'cold': 'is-info', 'purged': 'is-danger', 'active': 'is-success', 'new': 'is-warning', 'incomplete': 'is-light'},
 				selectedDsets: [],
                                 allowners: {},
 		{% endverbatim %}

@@ -78,6 +78,8 @@ except TypeError:
     # Tasks have no notion of these IDs so they will error
     pass
 
+SECONDARY_FTYPES = [MZML_SFGROUP_ID, REFINEDMZML_SFGROUP_ID]
+
 ANALYSISOUT_FTID = int(os.environ.get('ANALYSISOUT_FTID'))
 DATABASE_FTID = int(os.environ.get('DATABASE_FTID'))
 

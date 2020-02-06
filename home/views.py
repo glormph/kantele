@@ -363,7 +363,21 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
         jobmap = get_ds_jobs(dbdsets)
     dsets = OrderedDict()
     for dataset in dbdsets.select_related('runname__experiment__project__projtype__ptype',
-                                          'prefractionationdataset'):
+            'prefractionationdataset'):
+        dsfiles = filemodels.StoredFile.objects.exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(rawfile__datasetrawfile__dataset=dataset)
+        dsfc = dsfiles.count()
+        if dsfiles.filter(deleted=False).count() == dsfc:
+            storestate = 'active'
+        elif dsfiles.filter(pdcbackedupfile__deleted=False, pdcbackedupfile__success=True).count() == dsfc:
+            storestate = 'cold'
+        elif dsfiles.filter(purged=True).count() == dsfc and dsfiles.filter(pdcbackedupfile__deleted=True) == dsfc:
+            storestate = 'purged'
+        elif dsfiles.filter(pdcbackedupfile__deleted=True).count() > 0:
+            storestate = 'incomplete'
+        elif dsfiles.filter(checked=False) or dsfiles.filter(servershare__name=settings.TMPSHARENAME):
+            storagestate = 'new'
+        else:
+            storagestate = 'unknown'
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': check_ownership(user, dataset),
@@ -373,6 +387,7 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
             'exp': dataset.runname.experiment.name,
             'run': dataset.runname.name,
             'dtype': dataset.datatype.name,
+            'storestate': storestate,
             'ptype': dataset.runname.experiment.project.projtype.ptype.name,
             'details': False,
             'selected': False,
