@@ -74,8 +74,8 @@ class Dataset(models.Model):
     runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
     storage_loc = models.TextField(max_length=200, unique=True)
-    deleted = models.BooleanField(default=False)
-    purged = models.BooleanField(default=False)
+    deleted = models.BooleanField(default=False) # for UI only
+    purged = models.BooleanField(default=False) # for UI only
 
 
 class DatasetOwner(models.Model):

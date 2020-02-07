@@ -546,50 +546,197 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     return dset
 
 
-def toggle_project(user, data, activestate):
-    if data['proj_id']:
-        if models.DatasetOwner.objects.filter(user=user, dataset__runname__experiment__project_id=data['proj_id']) or user.is_staff:
-            models.Project.objects.filter(pk=data['proj_id']).update(active=activestate)
-            return HttpResponse()
+@login_required
+def move_project_cold(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if 'proj_id' not in data or not data['proj_id']:
+        return JsonResponse({'state': 'error', 'msg': 'No project specified for retiring'})
+    projquery = models.Project.objects.filter(pk=data['proj_id'], active=True)
+    if not projquery:
+        return JsonResponse({'state': 'error', 'msg': 'Project is retired, purged or never existed'})
+    # Retiring a project is only allowed if user owns ALL datasets in project or is staff
+    dsetowners = models.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=data['proj_id'], dataset__purged=False).select_related('dataset')
+    if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not user.is_staff:
+        return JsonResponse({'state': 'error', 'msg': 'User has no permission to retire this project, does not own all datasets in project'})
+    # Cold store all datasets, delete them from active
+    result = {'errormsgs': []}
+    for dso in dsetowners.distinct('dataset'):
+        archived = archive_dataset(dso.dataset)
+        if archived['state'] == 'error':
+            result.update({'state': 'error', 'msg': 'Not all datasets could be updated.'})
+            result['errormsgs'].append(archived['msg'])
+    # if any dataset cannot be cold stored, report it, do not mark proj as retired
+    if result['errormsgs']:
+        projquery.update(active=True)
+        result['msg'] = '{} Errors: {}'.format('; '.join(result.pop('errormsgs')))
+    else:
+        result.update({'state': 'ok', 'msg': 'All datasets in project queued for archival'})
+        projquery.update(active=False)
+    return JsonResponse(result)
+
+
+@login_required
+def move_project_active(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if 'proj_id' not in data or not data['proj_id']:
+        return JsonResponse({'state': 'error', 'msg': 'No project specified for reactivating'})
+    projquery = models.Project.objects.filter(pk=data['proj_id'], active=False)
+    if not projquery:
+        return JsonResponse({'state': 'error', 'msg': 'Project is already active, or does not exist'})
+    # Reactivating a project is only allowed if user owns ALL datasets in project or is staff
+    dsetowners = models.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=data['proj_id'], dataset__purged=False).select_related('dataset')
+    if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not user.is_staff:
+        return JsonResponse({'state': 'error', 'msg': 'User has no permission to reactivate this project, does not own all datasets in project'})
+    # Reactivate all datasets
+    result = {'errormsgs': []}
+    for dso in dsetowners.distinct('dataset'):
+        reactivated = reactivate_dataset(dso.dataset)
+        if reactivated['state'] == 'error':
+            result.update({'state': 'error', 'msg': 'Not all project datasets could be reactivated.'})
+            result['errormsgs'].append(reactivated['msg'])
         else:
-            return HttpResponseForbidden()
+            # if ANY dataset gets reactivated, project is active
+            projquery.update(active=True)
+    if result['errormsgs']:
+        result['msg'] = '{} Errors: {}'.format('; '.join(result.pop('errormsgs')))
     else:
-        return HttpResponseNotFound()
+        result.update({'state': 'ok', 'msg': 'All datasets in project queued for archival'})
+    return JsonResponse(result)
 
 
-def toggle_dataset(user, data, deletestate):
-    if data['dataset_id']:
-        user_denied = check_save_permission(data['dataset_id'], user)
-        if user_denied:
-            return user_denied
-        models.Dataset.objects.filter(pk=data['dataset_id']).update(deleted=deletestate)
-        return HttpResponse()
+@login_required
+def purge_project(request):
+    """Deletes project datasets (not analyses) from disk, only leaving backup copies."""
+    data = json.loads(request.body.decode('utf-8'))
+    if 'proj_id' not in data or not data['proj_id']:
+        return JsonResponse({'state': 'error', 'msg': 'No project specified for reactivating'})
+    projquery = models.Project.objects.filter(pk=data['proj_id'], active=False)
+    if not projquery:
+        return JsonResponse({'state': 'error', 'msg': 'Project does not exist or is still active'})
+    dsetowners = models.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=data['proj_id'], dataset__purged=False).select_related('dataset')
+    #if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not user.is_staff:
+    if not user.is_staff:
+        return JsonResponse({'state': 'error', 'msg': 'User has no permission to purge this project, must be staff'})
+    result = {'errormsgs': []}
+    for dso in dsetowners.distinct('dataset'):
+        purged = delete_dataset_from_cold(dso.dataset)
+        if purged['state'] == 'error':
+            result.update({'state': 'error', 'msg': 'Not all project datasets could be purged'})
+            result['errormsgs'].append(reactivated['msg'])
+    # if any dataset cannot be purged, report it, do not mark proj as purged
+    if result['errormsgs']:
+        projquery.update(purged=False)
+        result['msg'] = '{} Errors: {}'.format('; '.join(result.pop('errormsgs')))
     else:
-        return HttpResponseNotFound()
+        projquery.update(purged=True)
+        result.update({'state': 'ok', 'msg': 'All datasets in project queued for permanent deletion'})
+    return JsonResponse(result)
+
+
+def get_dset_storestate(dset):
+    dsfiles = filemodels.StoredFile.objects.exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(rawfile__datasetrawfile__dataset=dset)
+    dsfc = dsfiles.count()
+    coldfiles = dsfiles.filter(pdcbackedupfile__isnull=False)
+    if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.filter(pdcbackedupfile__deleted==False, pdcbackedupfile__success=True).count():
+        storestate = 'complete'
+    elif dsfiles.filter(checked=True, deleted=False).count() == dsfc:
+        storestate = 'active-only'
+    elif coldcount == dsfc:
+        storestate = 'cold'
+    elif dsfiles.filter(purged=True).count() == dsfc and dsfiles.filter(pdcbackedupfile__deleted=True) == coldcount:
+        storestate = 'purged'
+    elif dsfiles.filter(pdcbackedupfile__deleted=True).count() > 0:
+        storestate = 'broken'
+    elif dsfiles.filter(checked=False) or dsfiles.filter(servershare__name=settings.TMPSHARENAME):
+        storestate = 'new'
+    else:
+        storestate = 'unknown'
+    return storestate
+
+
+def archive_dataset(dset):
+    storestate = get_dset_storestate(dset) 
+    if storestate == 'purged':
+        return {'state': 'error', 'msg': 'Cannot archive dataset, already purged'}
+    elif storestate == 'broken':
+        return {'state': 'error', 'msg': 'Cannot archive dataset, files missing on active storage'}
+    elif storestate == 'new':
+        return {'state': 'error', 'msg': 'Cannot archive new dataset'}
+    elif storestate == 'unknown':
+        return {'state': 'error', 'msg': 'Cannot archive dataset with unknown storage state'}
+    if storestate == 'active-only':
+        create_dataset_job('backup_dataset', dset.id)
+    create_dataset_job('delete_active_dataset', dset.id)
+    dset.deleted, dset.purge = True, False
+    dset.save()
+    return {'state': 'ok', 'msg': 'Dataset queued for archival'}
+
+
+def reactivate_dataset(dset):
+    storestate = get_dset_storestate(dset) 
+    if storestate == 'purged':
+        return {'state': 'error', 'msg': 'Cannot reactivate purged dataset'}
+    elif storestate == 'broken':
+        return {'state': 'error', 'msg': 'Cannot reactivate dataset, files missing on active storage'}
+    elif storestate == 'new':
+        return {'state': 'error', 'msg': 'Cannot reactivate new dataset'}
+    elif storestate == 'unknown':
+        return {'state': 'error', 'msg': 'Cannot reactivate dataset with unknown storage state'}
+    elif storestate in ['active-only', 'complete']:
+        return {'state': 'error', 'msg': 'Dataset already in active storage'}
+    elif storestate == 'cold':
+        dset.deleted, dset.purged, dset.runname.experiment.project.active = False, False, True
+        dset.save()
+        dset.runname.experiment.project.save()
+        create_dataset_job('reactivate_dataset', dset.id)
+        return {'state': 'ok', 'msg': 'Dataset queued for reactivation'}
 
 
 @login_required
-def set_inactive_project(request):
+def move_dataset_cold(request):
     data = json.loads(request.body.decode('utf-8'))
-    return toggle_project(request.user, data, activestate=False)
+    dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(data['dset_id'])
+    if not check_ownership(request.user, dset):
+        return JsonResponse({'state': 'error', 'msg': 'Cannot archive dataset, no permission for user'})
+    archived = archive_dataset(dset)
+    return JsonResponse(archived)
 
 
 @login_required
-def set_active_project(request):
+def move_dataset_active(request):
     data = json.loads(request.body.decode('utf-8'))
-    return toggle_project(request.user, data, activestate=True)
+    dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(data['dset_id'])
+    if not check_ownership(request.user, dset):
+        return JsonResponse({'state': 'error', 'msg': 'Cannot reactivate dataset, no permission for user'})
+    reactivated_msg = reactivate_dataset(dset)
+    return JsonResponse(reactivated_msg)
+
+
+# FIXME when adding/removing files in dataset app, think about archived datasets
+# FIXME do not allow analysis on archived datasets
+
+def delete_dataset_from_cold(dset):
+    # TODO Should we allow direct purging? the delete from active job is fired anyway
+    if not dset.deleted:
+        return {'state': 'error', 'msg': 'Dataset is not deleted, will not purge'}
+    dset.purged = True
+    dset.save()
+    # Also create delete active job just in case files are lying around
+    create_dataset_job('delete_active_dataset', dset.id)
+    create_dataset_job('delete_dataset_coldstorage', dset.id)
+    create_dataset_job('delete_dataset_directory', dset.id)
+    return {'state': 'ok', 'msg': 'Dataset queued for permanent deletion'}
 
 
 @login_required
-def set_deleted_dataset(request):
+def purge_dataset(request):
+    """Deletes dataset from disk, only leaving backup copies."""
     data = json.loads(request.body.decode('utf-8'))
-    return toggle_dataset(request.user, data, deletestate=True)
-
-
-@login_required
-def set_undeleted_dataset(request):
-    data = json.loads(request.body.decode('utf-8'))
-    return toggle_dataset(request.user, data, deletestate=False)
+    if not request.user.is_staff:
+        return HttpResponseForbidden()
+    dset = models.Dataset.objects.get(data['dset_id'])
+    purgemsg = delete_dataset_from_cold(dset)
+    return JsonResponse(purgemsg)
 
 
 @login_required
@@ -627,7 +774,7 @@ def save_dataset(request):
             dset = save_new_dataset(data, project, experiment, runname, request.user.id)
         except IntegrityError:
             print('Cannot save dataset with non-unique location')
-            return JsonResponse({'error': 'Cannot save dataset, storage location not unique'})
+            return JsonResponse({'state': 'error', 'msg': 'Cannot save dataset, storage location not unique'})
     return JsonResponse({'dataset_id': dset.id})
 
 

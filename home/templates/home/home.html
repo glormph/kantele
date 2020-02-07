@@ -244,12 +244,18 @@ Vue.component('admin-box', {
 			<div class="content is-small" >
 					<input type="checkbox" v-model="searchdeleted">Search deleted datasets
 <input class="input is-small" v-on:keyup.13="findDatasets" v-model="findDsQuery" type="text" placeholder="Type a query and press enter to search datasets">
-                        <a class="button" v-on:click="analyzeDatasets" v-show="selectedDsets.length">Analyze datasets</a>
-                        <a class="button" v-on:click="deleteDataset" v-show="selectedDsets.length">Delete datasets</a>
-                        <a class="button" v-on:click="unDeleteDataset" v-show="selectedDsets.length">Undelete datasets</a>
-                        <a class="button" disabled v-show="!selectedDsets.length">Analyze datasets</a>
-                        <a class="button" disabled v-show="!selectedDsets.length">Delete datasets</a>
-                        <a class="button" disabled v-show="!selectedDsets.length">Undelete datasets</a>
+                        <a class="button" title="Search MS data" v-on:click="analyzeDatasets" v-show="selectedDsets.length">Analyze datasets</a>
+                        <a class="button" title="Search MS data" disabled v-show="!selectedDsets.length">Analyze datasets</a>
+                        <a class="button" title="Move datasets to cold storage (delete)" v-on:click="archiveDataset" v-show="selectedDsets.length">Retire datasets</a>
+                        <a class="button" title="Move datasets to cold storage (delete)" disabled v-show="!selectedDsets.length">Retire datasets</a>
+                        <a class="button" title="Move datasets to active storage (undelete)" v-on:click="reactivateDataset" v-show="selectedDsets.length">Reactivate datasets</a>
+                        <a class="button" title="Move datasets to active storage (undelete)" disabled v-show="!selectedDsets.length">Reactivate datasets</a>
+    {% endverbatim %}
+{% if user.is_staff %}
+                        <a class="button" title="PERMANENTLY delete datasets from active and cold storage" v-on:click="purgeDatasets" v-show="selectedDsets.length">Purge datasets</a>
+                        <a class="button" title="PERMANENTLY delete datasets from active and cold storage" disabled v-show="!selectedDsets.length">Purge datasets</a>
+{% endif %}
+    {% verbatim %}
 			<table class="table">
 				<thead>
 					<tr>
@@ -289,7 +295,7 @@ Vue.component('admin-box', {
 						</td>
 						<td>{{ ds.ptype }}</td>
             <td>
-               <span class="tag" title="v-bind:class="storecolors[ds.storestate]">{{ ds.storestate }}</span>
+               <span class="tag" v-bind:class="storecolors[ds.storestate]">{{ ds.storestate }}</span>
            </td>
 		<td><span v-for="state in ds.jobstates" v-bind:class="jobTaskStateColor(state)" class="icon is-small"><i class="fa fa-square"/></span></td>
 						<td v-for="name in [ds.proj, ds.exp, ds.run, ds.usr]">
@@ -367,7 +373,7 @@ Vue.component('admin-box', {
 				findDsQuery: '',
 				allSelector: false,
 				searchdeleted: false,
- 				storecolors: {'cold': 'is-info', 'purged': 'is-danger', 'active': 'is-success', 'new': 'is-warning', 'incomplete': 'is-light'},
+ 				storecolors: {'cold': 'is-info', 'purged': 'is-danger', 'complete': 'is-success', 'active-only': 'is-warning', 'new': 'is-warning', 'broken': 'is-light'},
 				selectedDsets: [],
                                 allowners: {},
 		{% endverbatim %}
@@ -435,9 +441,9 @@ Vue.component('admin-box', {
 			analyzeDatasets: function() {
 					window.open(`/analysis/init?dsids=${this.selectedDsets.join(',')}`, '_blank');
 			},
-			deleteDataset: function() {
+			archiveDataset: function() {
 				for (dset_id of this.selectedDsets) {
-					this.$http.post('datasets/delete/dataset/', {'dataset_id': dset_id})
+					this.$http.post('/archive/dataset/', {'dataset_id': dset_id})
 					.then(response => {
 						return response
 					}, response => {
@@ -448,9 +454,9 @@ Vue.component('admin-box', {
 					})
 				}
 			},
-			unDeleteDataset: function() {
+			reactivateDataset: function() {
 				for (dset_id of this.selectedDsets) {
-					this.$http.post('datasets/undelete/dataset/', {'dataset_id': dset_id})
+					this.$http.post('/undelete/dataset/', {'dataset_id': dset_id})
 					.then(response => {
 						return response
 					}, response => {
@@ -461,7 +467,20 @@ Vue.component('admin-box', {
 					})
 				}
 			},
-                        retryJob: function(job_id) {
+			purgeDatasets: function() {
+				for (dset_id of this.selectedDsets) {
+					this.$http.post('/purge/dataset/', {'dataset_id': dset_id})
+					.then(response => {
+						return response
+					}, response => {
+						console.log(response);
+						// error code
+					}).then(result => {
+						this.datasets[dset_id].deleted = true;
+					})
+				}
+			},
+      retryJob: function(job_id) {
 				this.$http.post(`jobs/retry/${job_id}`)
 				.then(response => {
 					return response
@@ -471,7 +490,7 @@ Vue.component('admin-box', {
 				}).then(result => {
 					this.dsetInfo(ds_id);
 				})
-                        },
+      },
 			fetchDatasets: function(dsids) {
 				url = '/show/datasets/'
 				url = dsids.length ? url + `?dsids=${dsids.join(',')}` : url;
@@ -602,7 +621,6 @@ Vue.component('admin-box', {
 			},
 		},
 	})
-	{% verbatim %}
 	Vue.component('project-box', {
 		template: `
         <div class="content is-small" >
@@ -610,10 +628,15 @@ Vue.component('admin-box', {
         <a href="#" v-on:click="fetchItems(showAllUrl, {})">Show all projects</a>
     <a href="#" v-on:click="fetchItems(showAllUrl, {userproj: true})">Show projects including my datasets</a>
         <input class="input is-small" v-on:keyup.13="findItems" v-model="findQuery" type="text" placeholder="Type a query and press enter to find projects">
-                        <a class="button" disabled v-show="!selectedItems.length">Deactivate project(s)</a>
-                        <a class="button" v-on:click="deactivateProjects" v-show="selectedItems.length">Deactivate project(s)</a>
-                        <a class="button" disabled v-show="!selectedItems.length">Reactivate project(s)</a>
-                        <a class="button" v-on:click="reactivateProjects" v-show="selectedItems.length">Reactivate project(s)</a>
+                        <a class="button" title="Moves datasets to cold storage, deletes mzML" disabled v-show="!selectedItems.length">Retire projects</a>
+                        <a class="button" title="Moves datasets to cold storage, deletes mzML" v-on:click="retireProjects" v-show="selectedItems.length">Retire projects</a>
+                        <a class="button" title="Moves datasets to active storage" disabled v-show="!selectedItems.length">Reactivate projects</a>
+                        <a class="button" title="Moves datasets to active storage" v-on:click="reactivateProjects" v-show="selectedItems.length">Reactivate projects</a>
+{% if user.is_staff %}
+                        <a class="button" title="PERMANENTLY deletes datasets from active and cold storage" disabled v-show="!selectedItems.length">Purge projects</a>
+                        <a class="button" title="PERMANENTLY deletes datasets from active and cold storage" v-on:click="purgeProjects" v-show="selectedItems.length">Purge projects</a>
+{% endif %}
+	{% verbatim %}
 			<table class="table">
 				<thead>
 					<tr>
@@ -674,6 +697,7 @@ Vue.component('admin-box', {
 				searchUrl: '/find/projects/',
 				showAllUrl: '/show/projects/',
 				showItemUrl: '/show/project/',
+        purgeUrl: '/purge/project/',
 				itemdatafields: ['Name', 'Type', 'Registered', 'Last active'],
 				itemdatakeys: ['name', 'ptype', 'start', 'lastactive'],
 				items: {},
@@ -706,9 +730,9 @@ Vue.component('admin-box', {
 					this.order = result['order'];
 				})
 			},
-      deactivateProjects: function() {
+      retireProjects: function() {
         for (proj_id of this.selectedItems) {
-          this.$http.post('datasets/delete/project/', {'proj_id': proj_id})
+          this.$http.post('/archive/project/', {'proj_id': proj_id})
             .then(response => {
 						return response
 					}, response => {
@@ -721,7 +745,7 @@ Vue.component('admin-box', {
       },
       reactivateProjects: function() {
         for (proj_id of this.selectedItems) {
-          this.$http.post('datasets/undelete/project/', {'proj_id': proj_id})
+          this.$http.post('/undelete/project/', {'proj_id': proj_id})
             .then(response => {
 						return response
 					}, response => {
@@ -731,6 +755,21 @@ Vue.component('admin-box', {
             this.refreshAll();
 					});
 				}
+      },
+      purgeProjects: function() {
+          for (proj_id of this.selectedItems) {
+              if (this.items[proj_id].deleted) {
+                  this.$http.post(this.purgeUrl, {'proj_id': proj_id})
+                  .then(response => {
+                      return response
+                  }, response => {
+                      console.log(response);
+                      // error code
+                  }).then(result => {
+                      this.refreshAll();
+                  })
+              }
+          }
       },
 			selectAll: function() {
 				this.selectedItems = [];
