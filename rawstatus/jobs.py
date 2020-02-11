@@ -4,80 +4,75 @@ from urllib.parse import urlsplit
 from datetime import datetime
 
 from rawstatus import tasks, models
-from analysis import models as am
 from datasets import tasks as dstasks
-from jobs.post import create_db_task
 from kantele import settings
+from jobs.jobs import BaseJob, SingleFileJob
 
 
-def get_md5(job_id, sf_id):
-    print('Running MD5 job')
-    sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
-        'servershare', 'rawfile').get()
-    fnpath = os.path.join(sfile.path, sfile.filename)
-    res = tasks.get_md5.delay(sfile.rawfile.source_md5, sfile.id, fnpath,
-                              sfile.servershare.name)
-    create_db_task(res.id, job_id, sfile.rawfile.source_md5, sfile.id, fnpath,
-                   sfile.servershare.name)
-    print('MD5 task queued')
+
+class GetMD5(SingleFileJob):
+    refname = 'get_md5'
+    task = tasks.get_md5
+
+    def process(self, **kwargs):
+        sfile = self.getfiles_query(**kwargs)
+        fnpath = os.path.join(sfile.path, sfile.filename)
+        self.run_tasks.append(((sfile.rawfile.source_md5, sfile.id, fnpath, sfile.servershare.name), {}))
 
 
-def create_pdc_archive(job_id, sf_id, md5):
-    print('Running PDC archive job')
-    sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
-        'servershare').get()
-    yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
-    # only create entry when not already exists, no sideeffects
-    try:
-        models.PDCBackedupFile.objects.get(storedfile=sfile)
-    except models.PDCBackedupFile.DoesNotExist:
-        models.PDCBackedupFile.objects.create(storedfile=sfile, 
-                pdcpath='', success=False)
-    fnpath = os.path.join(sfile.path, sfile.filename)
-    res = tasks.pdc_archive.delay(md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
-    create_db_task(res.id, job_id, md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
-    print('PDC archival task queued')
+class CreatePDCArchive(SingleFileJob):
+    refname = 'create_pdc_archive'
+    task = tasks.pdc_archive
+
+    def process(self, **kwargs):
+        self.upload_file_pdc(self.getfiles_query(**kwargs))
+
+    def upload_file_pdc(self, sfile):
+        """Possibly resuse this"""
+        yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
+        try:
+            pdcfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
+        except models.PDCBackedupFile.DoesNotExist:
+            # only create entry when not already exists
+            models.PDCBackedupFile.objects.create(storedfile=sfile, 
+                    pdcpath='', success=False)
+        else:
+            # Dont do more work than necessary, although this is probably too defensive
+            if pdcfile.success and not pdcfile.deleted:
+                return
+        fnpath = os.path.join(sfile.path, sfile.filename)
+        self.run_tasks.append(((sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id), {}))
+        print('PDC archival task queued')
 
 
-def restore_from_pdc_archive(job_id, sf_id):
-    sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
-        'servershare').get()
-    backupfile = models.PDCBackedupFile.objects.get(storedfile_id=sfile_id)
-    fnpath = os.path.join(sfile.path, sfile.filename)
-    yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
-    res = tasks.pdc_archive.delay(sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
-    create_db_task(res.id, job_id, sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
-    print('PDC archival task queued')
+class RestoreFromPDC(SingleFileJob):
+    refname = 'restore_from_pdc_archive'
+    task = tasks.pdc_restore
+
+    def process(self, **kwargs):
+        backupfile = models.PDCBackedupFile.objects.get(storedfile_id=kwargs['sf_id'])
+        sfile = self.getfiles_query(**kwargs)
+        fnpath = os.path.join(sfile.path, sfile.filename)
+        yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
+        self.run_tasks.append(((sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id), {}))
+        print('PDC archival task queued')
 
 
-def unzip_raw_folder(job_id, sf_id):
-    sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
-        'servershare').get()
-    fnpath = os.path.join(sfile.path, sfile.filename)
-    res = tasks.unzip_folder.delay(sfile.servershare.name, fnpath, sfile.id)
-    create_db_task(res.id, job_id, md5, sfile.servershare.name, fnpath, sfile.id)
-    print('Unzip task queued')
+class UnzipRawFolder(SingleFileJob):
+    refname = 'unzip_raw_folder'
+    task = tasks.unzip_folder
+
+    def process(self, **kwargs):
+        sfile = self.getfiles_query(**kwargs)
+        fnpath = os.path.join(sfile.path, sfile.filename)
+        self.run_tasks.append(((sfile.servershare.name, fnpath, sfile.id), {}))
+        print('Unzip task queued')
 
 
-def create_swestore_backup(job_id, sf_id, md5):
-    print('Running swestore backup job')
-    sfile = models.StoredFile.objects.filter(pk=sf_id).select_related(
-        'servershare').get()
-    # only create entry when not already exists, no sideeffects
-    try:
-        models.SwestoreBackedupFile.objects.get(storedfile=sfile)
-    except models.SwestoreBackedupFile.DoesNotExist:
-        models.SwestoreBackedupFile.objects.create(storedfile=sfile,
-                                                   swestore_path='',
-                                                   success=False)
-    fnpath = os.path.join(sfile.path, sfile.filename)
-    res = tasks.swestore_upload.delay(md5, sfile.servershare.name, fnpath,
-                                      sfile.id)
-    create_db_task(res.id, job_id, md5, sfile.servershare.name, fnpath, sfile.id)
-    print('Swestore task queued')
-
-
-def rename_file(job_id, fn_id, newname):
+class RenameFile(SingleFileJob):
+    refname = 'rename_file'
+    task = dstasks.move_file_storage
+    retryable = False
     """Only renames file inside same path/server. Does not move cross directories.
     This job checks if there is a RawFile entry with the same name in the same folder
     to avoid possible renaming collisions. Updates RawFile in job instead of view 
@@ -86,80 +81,84 @@ def rename_file(job_id, fn_id, newname):
     files. newname should NOT contain the file extension, only name.
     FIXME: make impossible to overwrite using move jobs at all (also moving etc)
     """
-    fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
-        pk=fn_id)
-    # FIXME task checks if src == dst, but we could do that already here?
-    fn_ext = os.path.splitext(fn.filename)[1]
-    if models.StoredFile.objects.exclude(pk=fn_id).filter(
-            rawfile__name=newname + fn_ext, path=fn.path,
-            servershare_id=fn.servershare_id).count():
-        raise RuntimeError('A file in path {} with name {} already exists or will soon be created. Please choose another name'.format(fn.path, newname))
-    fn.rawfile.name = newname + fn_ext
-    fn.rawfile.save()
-    for changefn in fn.rawfile.storedfile_set.all():
-        oldname, ext = os.path.splitext(changefn.filename)
-        special_type = '_refined' if changefn.filetype_id == settings.REFINEDMZML_SFGROUP_ID else ''
-        print(newname, special_type)
-        tid = dstasks.move_file_storage.delay(changefn.filename, changefn.servershare.name,
-                                              changefn.path, changefn.path, changefn.id, 
-                                              newname='{}{}{}'.format(newname, special_type, ext)).id
-        create_db_task(tid, job_id, changefn.filename, changefn.servershare.name,
-                       changefn.path, changefn.path, changefn.id, newname=newname + ext)
+
+    def process(self, **kwargs):
+        sfile = self.getfiles_query(**kwargs)
+        newname = kwargs['newname']
+        fn_ext = os.path.splitext(sfile.filename)[1]
+        if models.StoredFile.objects.exclude(pk=sfile.id).filter(
+                rawfile__name=newname + fn_ext, path=sfile.path,
+                servershare_id=sfile.servershare_id).count():
+            raise RuntimeError('A file in path {} with name {} already exists or will soon be created. Please choose another name'.format(sfile.path, newname))
+        sfile.rawfile.name = newname + fn_ext
+        sfile.rawfile.save()
+        for changefn in sfile.rawfile.storedfile_set.all():
+            oldname, ext = os.path.splitext(changefn.filename)
+            special_type = '_refined' if changefn.filetype_id == settings.REFINEDMZML_SFGROUP_ID else ''
+            self.run_tasks.append(((
+                changefn.filename, changefn.servershare.name,
+                changefn.path, changefn.path, changefn.id),
+                {'newname': '{}{}{}'.format(newname, special_type, ext)}))
 
 
-def move_single_file(job_id, fn_id, dst_path, oldname=False, dstshare=False, newname=False):
-    fn = models.StoredFile.objects.select_related('rawfile', 'servershare').get(
-        pk=fn_id)
-    oldname = fn.filename if not oldname else oldname
-    tid = dstasks.move_file_storage.delay(oldname, fn.servershare.name,
-                                          fn.path, dst_path, fn.id, dstshare=dstshare,
-                                          newname=newname).id
-    create_db_task(tid, job_id, oldname, fn.servershare.name,
-                   fn.path, dst_path, fn.id, dstshare=dstshare, newname=newname)
+class MoveSingleFile(SingleFileJob):
+    refname = 'move_single_file'
+    task = dstasks.move_file_storage
+
+    def process(self, **kwargs):
+        sfile = self.getfiles_query(**kwargs)
+        oldname = sfile.filename if not kwargs['oldname'] else kwargs['oldname']
+        taskkwargs = {x: kwargs[x] for x in ['newname', 'dstshare']}
+        self.run_tasks.append(((
+            oldname, sfile.servershare.name,
+            sfile.path, kwargs['dst_path'], sfile.id), taskkwargs))
 
 
-def delete_empty_directory(job_id, sf_ids):
+class DeleteEmptyDirectory(BaseJob):
     """Check first if all the sfids are set to purged, indicating the dir is actually empty.
     Then queue a task. The sfids also make this job dependent on other jobs on those, as in
     the file-purging tasks before this directory deletion"""
-    sfiles = models.StoredFile.objects.filter(pk__in=sf_ids)
-    if sfiles.count() and sfiles.count() == sfiles.filter(purged=True).count():
-        fn = sfiles.select_related('servershare').last()
-        tid = tasks.delete_empty_dir.delay(fn.servershare.name, fn.path).id
-        create_db_task(tid, job_id, fn.servershare.name, fn.path)
-    else:
-        raise RuntimeError('Cannot delete dir: according to the DB, there are still storedfiles which '
-            'have not been purged yet in the directory')
-        
+    refname = 'delete_empty_directory'
+    task = tasks.delete_empty_dir
+
+    def getfiles_query(self, **kwargs):
+        return models.StoredFile.objects.filter(pk=kwargs['sf_ids']).select_related(
+                'servershare', 'rawfile')
+    
+    def process(self, **kwargs):
+        sfiles = self.getfiles_query(**kwargs)
+        if sfiles.count() and sfiles.count() == sfiles.filter(purged=True).count():
+            fn = sfiles.last()
+            self.run_tasks.append(((fn.servershare.name, fn.path), {}))
+        else:
+            raise RuntimeError('Cannot delete dir: according to the DB, there are still storedfiles which '
+                'have not been purged yet in the directory')
 
 
-def download_px_project_getfiles(dset_id, pxacc, rawfnids, sharename):
-    """get only files that are NOT downloaded yet
-    they will have: storedfile not checked, md5 == md5('fnstring')
-    but maybe dont check last one
+class DownloadPXProject(BaseJob):
+    refname = 'download_px_data'
+    task = tasks.download_px_file_raw
+    """gets sf_ids, of non-checked non-downloaded PX files.
+    checks pride, fires tasks for files not yet downloaded. 
     """
-    return models.StoredFile.objects.filter(rawfile_id__in=rawfnids, checked=False)
+
+    def getfiles_query(self, rawfnids):
+        return models.StoredFile.objects.filter(rawfile_id__in=rawfnids, 
+            checked=False).select_related('rawfile')
+    
+    def process(self, **kwargs):
+        px_stored = {x.filename: x for x in self.getfiles_query(kwargs['rawfnids'])}
+        for fn in call_proteomexchange(kwargs['pxacc']):
+            ftpurl = urlsplit(fn['downloadLink'])
+            filename = os.path.split(ftpurl.path)[1]
+            if filename in px_stored and fn['fileSize'] == px_stored[filename].rawfile.size:
+                pxsf = px_stored[filename]
+                self.run_tasks.append(((
+                    ftpurl.path, ftpurl.netloc, 
+                    pxsf.id, pxsf.rawfile_id, 
+                    fn['fileSize'], kwargs['sharename'], kwargs['dset_id']), {}))
 
 
 def call_proteomexchange(pxacc):
     prideurl = 'https://www.ebi.ac.uk/pride/ws/archive/file/list/project/{}'.format(pxacc)
     return [x for x in requests.get(prideurl).json()['list'] if x['fileType'] == 'RAW']
-
-
-def download_px_project(job_id, dset_id, pxacc, rawfnids, sharename, sf_ids):
-    """gets sf_ids, of non-checked non-downloaded PX files.
-    checks pride, fires tasks for files not yet downloaded. 
-    """
-    px_stored = {x.filename: x for x in models.StoredFile.objects.filter(
-                     pk__in=sf_ids, checked=False).select_related('rawfile')}
-    t_ids = []
-    for fn in call_proteomexchange(pxacc):
-        ftpurl = urlsplit(fn['downloadLink'])
-        filename = os.path.split(ftpurl.path)[1]
-        if filename in px_stored and fn['fileSize'] == px_stored[filename].rawfile.size:
-            pxsf = px_stored[filename]
-            t_ids.append(tasks.download_px_file_raw.delay(
-                ftpurl.path, ftpurl.netloc, pxsf.id, pxsf.rawfile_id, fn['fileSize'],
-                sharename, dset_id).id)
-        create_db_task(t_ids[-1], job_id, ftpurl.path, ftpurl.netloc, pxsf.id,
-                       pxsf.rawfile_id, fn['fileSize'], sharename, dset_id)

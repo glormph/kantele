@@ -228,7 +228,7 @@ def start_analysis(request):
     jobcheck = jj.check_existing_search_job(fname, req['wfid'], **{'dset_ids': arg_dsids, **data_args, **param_args})
     if jobcheck:
         return JsonResponse({'state': 'error', 'msg': 'This analysis already exists', 'link': '/?tab=searches&anids={}'.format(jobcheck.nextflowsearch.id)})
-    job = jj.create_dataset_job(fname, arg_dsids, **{'analysis_id': analysis.id, **data_args, **param_args})
+    job = jj.create_job(fname, **{'analysis_id': analysis.id, **data_args, **param_args})
     aj.create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
     return JsonResponse({'state': 'ok'})
 
@@ -281,8 +281,9 @@ def purge_analysis(request):
         return HttpResponseForbidden()
     analysis.purged = True
     analysis.save()
-    jj.create_dataset_job('purge_analysis', analysis.id)
-    jj.create_dataset_job('delete_analysis_directory')
+    jj.create_job('purge_analysis', analysis_id=analysis.id)
+    jj.create_job('delete_empty_directory',
+            sf_ids=[x.sfile_id for x in analysis.analysisresultfile_set.all()])
     return HttpResponse()
 
 

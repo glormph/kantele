@@ -1,6 +1,7 @@
 import hashlib
 import os
 import requests
+import shutil
 import subprocess
 import zipfile
 from ftplib import FTP

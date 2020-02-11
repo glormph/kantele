@@ -3,9 +3,7 @@ These tasks are to be run by the celery beat automatic task runner every 10 seco
 It contains a VERY SIMPLE job scheduler. The more advanced job scheduling is to be done by
 celery chains etc, Nextflow, or Galaxy or whatever one likes.
 
-The scheduling here includes:
-Jobs that are of type MOVE will wait for other jobs on those files
-Jobs that are of another type (PROCESS, UPLOAD), will wait for MOVE jobs on those files
+Scheduler runs sequential and waits for each job that contains files running in another job
 """
 
 import json
@@ -14,20 +12,51 @@ from celery import shared_task, states
 
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
-from jobs.jobs import Jobstates, Jobtypes, jobmap
+from jobs.jobs import Jobstates
 from jobs import jobs as jj
 from rawstatus.models import FileJob
+from datasets import jobs as dsjobs
+from rawstatus import jobs as rsjobs
+from analysis import jobs as anjobs
 
 
-@shared_task
+alljobs = [
+        dsjobs.RenameDatasetStorageLoc,
+        dsjobs.MoveFilesToStorage,
+        dsjobs.MoveFilesStorageTmp,
+        dsjobs.ConvertDatasetMzml,
+        dsjobs.ConvertFileMzml,
+        dsjobs.DeleteActiveDataset,
+        dsjobs.BackupPDCDataset,
+        dsjobs.ReactivateDeletedDataset,
+        dsjobs.DeleteDatasetPDCBackup,
+        rsjobs.GetMD5,
+        rsjobs.CreatePDCArchive,
+        rsjobs.RestoreFromPDC,
+        rsjobs.UnzipRawFolder,
+        rsjobs.RenameFile,
+        rsjobs.MoveSingleFile,
+        rsjobs.DeleteEmptyDirectory,
+        rsjobs.DownloadPXProject,
+        anjobs.RunLongitudinalQCWorkflow,
+        anjobs.RunNextflowWorkflow,
+        anjobs.RunLabelCheckNF,
+        anjobs.RefineMzmls,
+        anjobs.PurgeAnalysis,
+        ]
+jobmap = {job.refname: job for job in alljobs}
+
+
+@shared_task(queue=settings.QUEUE_MAIN)
 def run_ready_jobs():
+    # FIXME here create getfiles/etc
     print('Checking job queue')
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
         state__in=jj.JOBSTATES_DONE + [Jobstates.WAITING])
-    job_fn_map, active_files = collect_job_file_activity(list(jobs_not_finished))
+    #job_fn_map, active_files = collect_job_file_activity(list(jobs_not_finished))
+    job_fn_map, active_files = process_job_file_activity(jobs_not_finished)
     print('{} jobs in queue, including errored jobs'.format(jobs_not_finished.count()))
     for job in jobs_not_finished:
-        jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
         print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
         # Just print info about ERROR-jobs, but also process tasks
         if job.state == Jobstates.ERROR:
@@ -46,12 +75,14 @@ def run_ready_jobs():
         # is finished. Errored jobs thus block pending jobs if they are on same files.
         elif job.state == Jobstates.PENDING:
             print('Found new job {} - {}'.format(job.id, job.funcname))
+            jobfiles = job_fn_map[job.id] if job.id in job_fn_map else set()
             # do not start job if there is activity on files
             if active_files.intersection(jobfiles):
                 print('Deferring job since files {} are being used in '
                       'other job'.format(active_files.intersection(jobfiles)))
                 continue
             # Only add jobs with files (some jobs have none!) to "active_files"
+            # FIXME do some jobs really have no files?
             if job.id in job_fn_map:
                 [active_files.add(fn) for fn in job_fn_map[job.id]]
             run_job(job, jobmap)
@@ -60,11 +91,11 @@ def run_ready_jobs():
 def run_job(job, jobmap):
     print('Executing job {} of type {}'.format(job.id, job.jobtype))
     job.state = Jobstates.PROCESSING
-    jobfunc = jobmap[job.funcname]['func']
+    jwrapper = jobmap[job.funcname](job.id) 
     args = json.loads(job.args)
     kwargs = json.loads(job.kwargs)
     try:
-        jobfunc(job.id, *args, **kwargs)
+        jwrapper.run(job.id, *args, **kwargs)
     except RuntimeError as e:
         print('Error occurred, trying again automatically in next round')
         job.state = Jobstates.ERROR
@@ -78,19 +109,29 @@ def run_job(job, jobmap):
     job.save()
 
 
-def collect_job_file_activity(nonready_jobs):
+def process_job_file_activity(nonready_jobs):
     job_fn_map, active_files = {}, set()
-    for fj in FileJob.objects.select_related('job').filter(job__in=nonready_jobs):
-        try:
-            job_fn_map[fj.job_id].add(fj.storedfile_id)
-        except KeyError:
-            job_fn_map[fj.job_id] = set([fj.storedfile_id])
-        if fj.job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
-            active_files.add(fj.storedfile_id)
+    for job in nonready_jobs:
+        fjs = job.filejob_set
+        if not fjs.count():
+            fjs = []
+            jwrapper = jobmap[job.funcname](job.id) 
+            for sf_id in jwrapper.get_sf_ids(*job.args, **job.kwargs):
+                newfj = FileJob(storedfile_id=sf_id, job_id=job.id)
+                newfj.save()
+                fjs.append(newfj)
+        for fj in fjs:
+            try:
+                job_fn_map[job.id].add(fj.storedfile_id)
+            except KeyError:
+                job_fn_map[job.id] = set([fj.storedfile_id])
+            if job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
+                active_files.add(fj.storedfile_id)
+    #for fj in FileJob.objects.select_related('job').filter(job__in=nonready_jobs):
     return job_fn_map, active_files
 
 
-def check_task_chain(task):
+def set_task_chain_error(task):
     chaintask = TaskChain.objects.filter(task=task)
     if chaintask:
         Task.objects.filter(pk__in=[
@@ -111,7 +152,7 @@ def process_job_tasks(job, jobtasks):
         if task.state != states.SUCCESS:
             tasks_finished = False
         if task.state == states.FAILURE:
-            check_task_chain(task)
+            set_task_chain_error(task)
             tasks_failed = True
     if no_tasks_for_job and job.state == Jobstates.ERROR:
         # Jobs that error before task registration should not get set to done!

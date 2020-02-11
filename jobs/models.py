@@ -5,7 +5,6 @@ class Job(models.Model):
     funcname = models.CharField(max_length=100)
     args = models.CharField(max_length=100000)
     kwargs = models.CharField(max_length=100000)
-    jobtype = models.CharField(max_length=50)
     timestamp = models.DateTimeField()
     state = models.CharField(max_length=10)  # pending, processing, error, done
 

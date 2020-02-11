@@ -17,6 +17,7 @@ from datasets import jobs as dsjobs
 from datasets.views import check_ownership, get_dset_storestate
 from rawstatus import models as filemodels
 from jobs import jobs as jj
+from jobs import views as jv
 from jobs import models as jm
 
 
@@ -263,7 +264,7 @@ def show_jobs(request):
 
 def get_job_actions(job, ownership):
     actions = []
-    if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']) and jj.is_job_retryable_ready(job):
+    if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']) and jv.is_job_retryable_ready(job):
         actions.append('retry')
     elif job.state == jj.Jobstates.PROCESSING and ownership['is_staff']:
         actions.append('force retry')
@@ -435,7 +436,7 @@ def get_analysis_info(request, nfs_id):
     linkedfiles = [[x.sfile.filename, x.id] for x in 
                    av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
     resp = {'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
-                                'retry': jj.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
+                                'retry': jv.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
                                 'time': nfs.job.timestamp}},
              'wf': {'fn': nfs.nfworkflow.filename, 
                     'commit': nfs.nfworkflow.commit,
@@ -555,7 +556,7 @@ def fetch_dset_details(dset):
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).select_related('job')
     info = {'jobs': [unijob for unijob in
                     {x.job.id: {'name': x.job.funcname, 'state': x.job.state,
-                                'retry': jj.is_job_retryable_ready(x.job), 'id': x.job.id,
+                                'retry': jv.is_job_retryable_ready(x.job), 'id': x.job.id,
                                 'time': x.job.timestamp} for x in dsjobs}.values()]}
     # FIXME add more datatypes and microscopy is hardcoded
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
@@ -591,7 +592,7 @@ def fetch_dset_details(dset):
 @login_required
 def create_mzmls(request, dataset_id):
     if dsmodels.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
-        jj.create_dataset_job('convert_dataset_mzml', dataset_id)
+        jj.create_job('convert_dataset_mzml', dset_id=dataset_id)
     return HttpResponse()
 
 
@@ -609,8 +610,8 @@ def refine_mzmls(request, dataset_id):
     analysis = anmodels.Analysis(user_id=request.user.id, name='refine_dataset_{}'.format(dataset_id))
     analysis.save()
     if dsmodels.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
-        jj.create_dataset_job('refine_mzmls', dataset_id, analysis.id, settings.MZREFINER_NXFWFV_ID, 
-                              settings.MZREFINER_FADB_ID, dset.quantdataset.quanttype.shortname)
+        jj.create_job('refine_mzmls', dset_id=dataset_id, analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
+                dbfn_id=settings.MZREFINER_FADB_ID, qtype=dset.quantdataset.quanttype.shortname)
     return HttpResponse()
 
 

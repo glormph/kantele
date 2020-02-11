@@ -13,7 +13,7 @@ from django.utils import timezone
 from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
-from jobs.jobs import create_dataset_job
+from jobs.jobs import create_job
 
 
 INTERNAL_PI_PK = 1
@@ -360,8 +360,8 @@ def update_dataset(data):
                                            data)
     if (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
-        create_dataset_job('rename_storage_loc', dset.id, dset.storage_loc,
-                           new_storage_loc)
+        create_job('rename_storage_loc', dset_id=dset.id, srcpath=dset.storage_loc,
+                           dstpath=new_storage_loc)
         dset.storage_loc = new_storage_loc
     elif new_storage_loc != dset.storage_loc:
         dset.storage_loc = new_storage_loc
@@ -665,8 +665,8 @@ def archive_dataset(dset):
     elif storestate == 'unknown':
         return {'state': 'error', 'msg': 'Cannot archive dataset with unknown storage state'}
     if storestate == 'active-only':
-        create_dataset_job('backup_dataset', dset.id)
-    create_dataset_job('delete_active_dataset', dset.id)
+        create_job('backup_dataset', dset_id=dset.id)
+    create_job('delete_active_dataset', dset_id=dset.id)
     dset.deleted, dset.purge = True, False
     dset.save()
     return {'state': 'ok', 'msg': 'Dataset queued for archival'}
@@ -688,7 +688,7 @@ def reactivate_dataset(dset):
         dset.deleted, dset.purged, dset.runname.experiment.project.active = False, False, True
         dset.save()
         dset.runname.experiment.project.save()
-        create_dataset_job('reactivate_dataset', dset.id)
+        create_job('reactivate_dataset', dset_id=dset.id)
         return {'state': 'ok', 'msg': 'Dataset queued for reactivation'}
 
 
@@ -722,9 +722,10 @@ def delete_dataset_from_cold(dset):
     dset.purged = True
     dset.save()
     # Also create delete active job just in case files are lying around
-    create_dataset_job('delete_active_dataset', dset.id)
-    create_dataset_job('delete_dataset_coldstorage', dset.id)
-    create_dataset_job('delete_dataset_directory', dset.id)
+    create_job('delete_active_dataset', dset_id=dset.id)
+    create_job('delete_dataset_coldstorage', dset_id=dset.id)
+    sfids = [sf.id for dsrf in dset.datasetrawfile_set.select_related('rawfile') for sf in dsrf.rawfile.storedfile_set.all()]
+    create_job('delete_empty_directory', sf_ids=sfids)
     return {'state': 'ok', 'msg': 'Dataset queued for permanent deletion'}
 
 
@@ -1005,15 +1006,15 @@ def save_or_update_files(data):
             for fnid in added_fnids])
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
-        create_dataset_job('move_files_storage', dset_id, dset.storage_loc,
-                           added_fnids)
+        create_job('move_files_storage', dset_id=dset_id, dst_path=dset.storage_loc,
+                rawfn_ids=added_fnids)
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
-        create_dataset_job('move_stored_files_tmp', dset_id, removed_ids)
+        create_job('move_stored_files_tmp', dset_id=dset_id, fn_ids=removed_ids)
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)
     try:

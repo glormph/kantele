@@ -1,7 +1,6 @@
 import os
 from itertools import cycle
 
-from celery import states
 from django.db.models import F
 from django.urls import reverse
 from celery import chain
@@ -11,95 +10,94 @@ from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
 from datasets import tasks
 from rawstatus import tasks as filetasks
-from jobs.post import save_task_chain, create_db_task
+from jobs.models import TaskChain
+from jobs.jobs import BaseJob, DatasetJob
+# FIXME backup jobs need doing
+from rawstatus import jobs as rsjobs
 
 
-def move_dataset_storage_loc_getfiles(dset_id, src_path, dst_path):
-    # FIXME this must be moved to the actual job since it can be executed before
-    # there is a storedfile with a dataset_id? It seems like this can happen but I
-    # do not understand why yet.
-    return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id)
+class RenameDatasetStorageLoc(DatasetJob):
+    refname = 'rename_storage_loc'
+    task = tasks.rename_storage_location
+    retryable = False
+    #print('Renaming dataset storage location job')
+
+    def process(self, **kwargs):
+        """Just passthrough of arguments to task"""
+        kwargs['sf_ids'] = self.get_sf_ids(**kwargs)
+        self.run_tasks = [((), kwargs)]
 
 
-def move_dataset_storage_loc(job_id, dset_id, src_path, dst_path, sf_ids):
-    # within a server share
-    print('Renaming dataset storage location job')
-    t = tasks.rename_storage_location.delay(src_path, dst_path, sf_ids)
-    create_db_task(t.id, job_id, src_path, dst_path, sf_ids)
+class MoveFilesToStorage(DatasetJob):
+    refname = 'move_files_storage'
+    task = tasks.move_file_storage
+    #print('Moving dataset files to storage')
+
+    def getfiles_query(self, **kwargs):
+        return StoredFile.objects.filter(
+            rawfile__datasetrawfile__dataset_id=kwargs['dset_id'],
+            rawfile__source_md5=F('md5'),
+            rawfile_id__in=kwargs['rawfn_ids'],
+            checked=True)
+
+    def process(self, **kwargs):
+        dset_files = self.getfiles_query(**kwargs)
+        # if only half of the files have been SCP arrived yet? Try more later:
+        dset_registered_files = DatasetRawFile.objects.filter(
+            dataset_id=kwargs['dset_id'], rawfile_id__in=kwargs['rawfn_ids'])
+        if dset_files.count() != dset_registered_files.count():
+            raise RuntimeError(
+                'Not all files to move have been transferred or '
+                'registered as transferred yet, or have non-matching MD5 sums '
+                'between their registration and after transfer from input source. '
+                'Holding this job, you may retry it when files have arrived')
+        for fn in dset_files:
+            # TODO check for diff os.path.join(sevrershare, dst_path), not just
+            # path?
+            if fn.path != kwargs['dst_path']:
+                self.run_tasks.append(
+                        ((fn.rawfile.name, fn.servershare.name, fn.path, kwargs['dst_path'], fn.id), {})
+                        )
 
 
-def move_files_dataset_storage_getfiles(dset_id, dst_path, fn_ids):
-    # Use both md5=sourcemd5 to avoid getting mzmls, other derived files
-    # If files have not been transferred yet, then there is no storedfile..., or if it is not transferred correctly the MD5 is not done
-    # So either: make that impossible
-    # Or: reget the storedfiles on rerunning the job
-    return StoredFile.objects.filter(
-        rawfile__datasetrawfile__dataset_id=dset_id,
-        rawfile__source_md5=F('md5'),
-        rawfile_id__in=fn_ids)
+class MoveFilesStorageTmp(BaseJob):
+    """Moves file from a dataset back to a tmp/inbox-like share"""
+    #print('Moving files with ids {} from dataset storage to tmp, '
+    #      'if not already there. Deleting if mzml'.format(fn_ids))
+
+    def getfiles_query(self, **kwargs):
+        return StoredFile.objects.select_related('filetype').filter(
+            rawfile_id__in=kwargs['fn_ids']).exclude(servershare__name=settings.TMPSHARENAME)
+
+    def process(self, **kwargs):
+        for fn in self.getfiles_query(**kwargs):
+            if fn.filetype.filetype == 'mzml':
+                fullpath = os.path.join(fn.path, fn.filename)
+                self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}, filetasks.delete_file))
+            else:
+                self.run_tasks.append(((fn.filename, fn.path, fn.id), {}, tasks.move_stored_file_tmp))
+
+    def queue_tasks(self):
+        for task in self.run_tasks:
+            args, kwargs, taskfun = task[0], task[1], task[2]
+            tid = task.delay(*args, **kwargs)
+            self.create_db_task(tid, self.job_id, *args, **kwargs)
 
 
-def move_files_dataset_storage(job_id, dset_id, dst_path, rawfn_ids, sf_ids):
-    print('Moving dataset files to storage')
-    new_sf_ids = StoredFile.objects.filter(
-        rawfile__datasetrawfile__dataset_id=dset_id,
-        rawfile__source_md5=F('md5'),
-        rawfile_id__in=rawfn_ids)
-    if new_sf_ids.count() != len(sf_ids):
-        print('Original job submission had {} stored files, but now there are {}'
-              ' stored files'.format(len(sf_ids), new_sf_ids.count()))
-    dset_files = StoredFile.objects.filter(pk__in=new_sf_ids, checked=True)
-    # if only half of the files have been SCP arrived yet? Try more later:
-    dset_registered_files = DatasetRawFile.objects.filter(
-        dataset_id=dset_id, rawfile_id__in=rawfn_ids)
-    if dset_files.count() != dset_registered_files.count():
-        raise RuntimeError(
-            'Not all files to move have been transferred or '
-            'registered as transferred yet, or have non-matching MD5 sums '
-            'between their registration and after transfer from input source. '
-            'Holding this job, you may retry it when files have arrived')
-    for fn in dset_files:
-        # TODO check for diff os.path.join(sevrershare, dst_path), not just
-        # path?
-        if fn.path != dst_path:
-            tid = tasks.move_file_storage.delay(
-                    fn.rawfile.name, fn.servershare.name, fn.path,
-                    dst_path, fn.id).id
-            create_db_task(tid, job_id, fn.rawfile.name, fn.servershare.name, fn.path, dst_path, fn.id)
+class DeleteActiveDataset(BaseJob):
+    refname = 'delete_active_dataset'
 
 
-def remove_files_from_dataset_storagepath_getfiles(dset_id, fn_ids):
-    return StoredFile.objects.filter(rawfile_id__in=fn_ids)
-        
+class BackupPDCDataset(BaseJob):
+    refname = 'backup_dataset'
 
 
-def remove_files_from_dataset_storagepath(job_id, dset_id, fn_ids, sf_ids):
-    print('Moving files with ids {} from dataset storage to tmp, '
-          'if not already there. Deleting if mzml'.format(fn_ids))
-    for fn in StoredFile.objects.select_related('filetype').filter(
-            pk__in=sf_ids).exclude(servershare__name=settings.TMPSHARENAME):
-        if fn.filetype.filetype == 'mzml':
-            fullpath = os.path.join(fn.path, fn.filename)
-            tid = filetasks.delete_file.delay(fn.servershare.name, fullpath,
-                                              fn.id).id
-            create_db_task(tid, job_id, fn.servershare.name, fullpath, fn.id)
-        else:
-            tid = tasks.move_stored_file_tmp.delay(fn.filename, fn.path,
-                                                   fn.id).id
-            create_db_task(tid, job_id, fn.filename, fn.path, fn.id)
+class ReactivateDeletedDataset(BaseJob):
+    refname = 'reactivate_dataset'
 
 
-def get_mzmlconversion_taskchain(sfile, mzmlentry, storage_loc, queue, outqueue):
-    args = [[sfile.rawfile.name, sfile.path, mzmlentry.filename, mzmlentry.id,
-             sfile.servershare.name, reverse('jobs:createmzml'),
-             reverse('jobs:taskfail')],
-            [mzmlentry.id, storage_loc, sfile.servershare.name,
-             reverse('jobs:scpmzml'), reverse('jobs:taskfail')],
-            [mzmlentry.id, os.path.join(mzmlentry.path, mzmlentry.filename),
-             sfile.servershare.name]]
-    return args, [tasks.convert_to_mzml.s(*args[0]).set(queue=queue),
-            tasks.scp_storage.s(*args[1]).set(queue=outqueue),
-            filetasks.get_md5.s(*args[2])]
+class DeleteDatasetPDCBackup(BaseJob):
+    refname = 'delete_dataset_coldstorage'
 
 
 def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
@@ -118,56 +116,105 @@ def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
     return mzsf
 
 
-def convert_single_mzml(job_id, sf_id, queue=settings.QUEUES_PWIZ[0]):
-    # FIXME may be this method can be moved to another module like rawstatus
-    fn = StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=sf_id)
-    storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
-    mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
-    if mzsf.servershare_id != fn.servershare_id:
-        # change servershare, in case of bugs the raw sf is set to tmp servershare
-        # then after it wont be changed when rerunning the job
-        mzsf.servershare_id = fn.servershare_id
-        mzsf.save()
-    if mzsf.checked:
-        return
-    args, runchain = get_mzmlconversion_taskchain(fn, mzsf, storageloc, queue,
-                                                  settings.QUEUES_PWIZOUT[queue])
-    lastnode = chain(*runchain).delay()
-    save_task_chain(lastnode, args, job_id)
 
 
-def convert_dset_tomzml_getfiles(dset_id):
-    for fn in StoredFile.objects.select_related(
-            'servershare', 'rawfile__datasetrawfile__dataset').filter(
-            rawfile__datasetrawfile__dataset_id=dset_id, filetype_id=settings.RAW_SFGROUP_ID):
+class ConvertDatasetMzml(BaseJob):
+    refname = 'convert_dataset_mzml'
+
+    def getfiles_query(self, **kwargs):
+        return StoredFile.objects.filter(
+            rawfile__datasetrawfile__dataset_id=kwargs['dset_id'],
+            filetype_id=settings.RAW_SFGROUP_ID).select_related(
+            'servershare', 'rawfile__datasetrawfile__dataset')
+
+    def process(self, **kwargs):
+        dset = Dataset.objects.get(pk=kwargs['dset_id'])
+        queues = cycle(settings.QUEUES_PWIZ)
+        for fn in self.getfiles_query(*kwargs):
+            mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
+            if mzsf.checked and not mzsf.purged:
+                continue
+            # refresh file status for previously purged (deleted from disk)  mzmls 
+            if mzsf.purged:
+                mzsf.checked = False
+                mzsf.purged = False
+                mzsf.save()
+            queue = next(queues)
+            outqueue = settings.QUEUES_PWIZOUT[queue]
+            self.run_tasks.append(((fn, mzsf, dset.storage_loc, queue, outqueue), {}))
+    
+    def get_mzmlconversion_taskchain(self, sfile, mzmlentry, storage_loc, queue, outqueue):
+        args = [[sfile.rawfile.name, sfile.path, mzmlentry.filename, mzmlentry.id,
+                 sfile.servershare.name, reverse('jobs:createmzml'),
+                 reverse('jobs:taskfail')],
+                [mzmlentry.id, storage_loc, sfile.servershare.name,
+                 reverse('jobs:scpmzml'), reverse('jobs:taskfail')],
+                [mzmlentry.id, os.path.join(mzmlentry.path, mzmlentry.filename),
+                 sfile.servershare.name]]
+        return args, [tasks.convert_to_mzml.s(*args[0]).set(queue=queue),
+                tasks.scp_storage.s(*args[1]).set(queue=outqueue),
+                filetasks.get_md5.s(*args[2])]
+
+    def save_task_chain(self, taskchain, args):
+        chain_ids = []
+        while taskchain.parent:
+            chain_ids.append(taskchain.id)
+            taskchain = taskchain.parent
+        chain_ids.append(taskchain.id)
+        for chain_id, arglist in zip(chain_ids, args):
+            t = self.create_db_task(chain_id, self.job_id, *arglist)
+            TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])
+
+    def queue_tasks(self):
+        for task in self.run_tasks:
+            args, kwargs = task[0], task[1]
+            alltaskargs, runchain = self.get_mzmlconversion_taskchain(*args)
+            lastnode = chain(*runchain).delay()
+            self.save_task_chain(lastnode, alltaskargs)
+
+
+class ConvertFileMzml(ConvertDatasetMzml):
+    refname = 'convert_single_mzml'
+
+    def getfiles_query(self, **kwargs):
+        return StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=kwargs['sf_id'])
+
+    def process(self, **kwargs):
+        queue = kwargs.get('queue', queuesettings.QUEUES_PWIZ[0])
+        fn = self.getfiles_query(**kwargs)
+        storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
         mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
-        if mzsf.checked and not mzsf.purged:
-            continue
-        yield fn
+        if mzsf.servershare_id != fn.servershare_id:
+            # change servershare, in case of bugs the raw sf is set to tmp servershare
+            # then after it wont be changed when rerunning the job
+            mzsf.servershare_id = fn.servershare_id
+            mzsf.save()
+        if mzsf.checked:
+            pass
+        else:
+            self.run_tasks.append(((fn, mzsf, storageloc, queue, settings.QUEUES_PWIZOUT[queue]), {}))
 
 
-def convert_tomzml(job_id, dset_id, sf_ids):
-    """Multiple queues for this bc multiple boxes wo shared fs"""
-    dset = Dataset.objects.get(pk=dset_id)
-    queues = cycle(settings.QUEUES_PWIZ)
-    for fn in StoredFile.objects.filter(
-            pk__in=sf_ids, rawfile__datasetrawfile__dataset_id=dset_id).select_related(
-            'servershare', 'rawfile__datasetrawfile__dataset'):
-        mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
-        if mzsf.servershare != fn.servershare:
-            # change servershare, get_files sets servershare to whereever is the
-            # raw servershare, could be tmp if the user is fast.
-            mzsf.servershare = fn.servershare
-            mzsf.save()
-        if mzsf.checked and not mzsf.purged:
-            continue
-        # refresh file status for previously purged (deleted from disk)  mzmls 
-        if mzsf.purged:
-            mzsf.checked = False
-            mzsf.purged = False
-            mzsf.save()
-        queue = next(queues)
-        outqueue = settings.QUEUES_PWIZOUT[queue]
-        args, runchain = get_mzmlconversion_taskchain(fn, mzsf, dset.storage_loc, queue, outqueue)
-        lastnode = chain(*runchain).delay()
-        save_task_chain(lastnode, args, job_id)
+#def delete_active_dataset(job_id, dset_id):
+#    """Removes dataset from active storage"""
+#    for fn in StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id):
+#        fullpath = os.path.join(fn.path, fn.filename)
+#        print('Purging {} from dataset {}'.format(fullpath, dset_id))
+#        tid = filetasks.delete_file.delay(fn.servershare.name, fullpath,
+#                fn.id).id
+#        create_db_task(tid, job_id, fn.servershare.name, fullpath, fn.id)
+#
+#
+## FIXME 
+#def backup_dataset(job_id, dset_id):
+#    """Transfers all raw files in dataset to backup"""
+#    for sfile in StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, pdcbackedupfile__isnull=False).exclude(pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
+#        rsjobs.upload_file_pdc(sfile)
+#
+#
+#def reactivate_dataset(job_id, dset_id):
+#    pass
+#
+#
+#def delete_dataset_coldstorage(job_id, dset_id):
+#    pass

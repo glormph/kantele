@@ -267,11 +267,11 @@ def file_transferred(request):
                                           servershare=tmpshare, path='',
                                           filename=fname, md5='', checked=False)
             file_transferred.save()
-            jobutil.create_file_job('get_md5', file_transferred.id)
+            jobutil.create_job('get_md5', sf_id=file_transferred.id)
         else:
             print('File already registered as transfer, client asks for new '
                   'MD5 check after a possible retransfer. Running MD5 check.')
-            jobutil.create_file_job('get_md5', file_transferred.id)
+            jobutil.create_job('get_md5', sf_id=file_transferred.id)
         return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
@@ -291,7 +291,7 @@ def upload_userfile_token(request):
             print('expired', ufile.upload.expires)
             return HttpResponseForbidden()
     move_uploaded_file(ufile, request.FILES['file'])
-    jobutil.create_file_job('get_md5', ufile.sfile.id)
+    jobutil.create_job('get_md5', sf_id=ufile.sfile.id)
     return HttpResponse()
 
 
@@ -368,10 +368,9 @@ def do_md5_check(file_transferred):
             # FIXME hardcoded instruments are not dynamic!
             if 'QC' in fn and 'hela' in fn.lower() and any([x in fn for x in ['QE', 'HFLu', 'HFLe', 'Velos', 'HFTo', 'HFGi']]):
                 singlefile_qc(file_transferred.rawfile, file_transferred)
-            jobutil.create_file_job('create_pdc_archive',
-                                    file_transferred.id, file_transferred.md5)
+            jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id)
             if file_transferred.filetype_id in settings.FILE_ISDIR_SFGROUPS:
-                jobutil.create_file_job('unzip_raw_datadir', file_transferred.id)
+                jobutil.create_job('unzip_raw_datadir', sf_id=file_transferred.id)
             # here unzip in a new job after backing up?
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
     else:
@@ -381,7 +380,7 @@ def do_md5_check(file_transferred):
 def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
     add_to_qc(rawfile, storedfile)
-    jobutil.create_file_job('convert_single_mzml', storedfile.id,
+    jobutil.create_job('convert_single_mzml', sf_id=storedfile.id,
                             queue=settings.QUEUE_QCPWIZ)
     start_qc_analysis(rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
                       settings.LONGQC_FADB_ID)
@@ -419,7 +418,7 @@ def rename_file(request):
         # TODO Give proper errors to JSON if possible!
         print('Illegal characters in filename {}'.format(newfilename))
         return HttpResponseForbidden()
-    jobutil.create_file_job('rename_file', sfile.id, newfilename)
+    jobutil.create_job('rename_file', sf_id=sfile.id, newname=newfilename)
 
 
 
@@ -432,7 +431,7 @@ def manyfile_qc(rawfiles, storedfiles):
         except dsmodels.DatasetRawFile.DoesNotExist:
             dset = add_to_qc(rawfn, sfn)
             print('Added QC file {} to QC dataset {}'.format(rawfn.id, dset.id))
-        jobutil.create_file_job('convert_single_mzml', sfn.id)
+        jobutil.create_job('convert_single_mzml', sf_id=sfn.id)
     # Do not rerun with the same workflow as previously
     for rawfn, sfn in zip(rawfiles, storedfiles):
         if not dashmodels.QCData.objects.filter(
@@ -467,8 +466,8 @@ def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id):
     analysis = Analysis(user_id=settings.QC_USER_ID,
                         name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
     analysis.save()
-    jobutil.create_file_job('run_longit_qc_workflow', storedfile.id,
-                            analysis.id, wf_id, dbfn_id)
+    jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id,
+                            analysis_id=analysis.id, wfv_id=wf_id, dbfn_id=dbfn_id)
 
 
 def set_libraryfile(request):
@@ -499,8 +498,8 @@ def set_libraryfile(request):
             response = {'library': True, 'state': 'ok'}
         elif sfile.servershare.name == settings.TMPSHARENAME:
             libfn = LibraryFile.objects.create(sfile=sfile, description=desc)
-            jobutil.create_file_job(
-                'move_single_file', sfile.id, settings.LIBRARY_FILE_PATH,
+            jobutil.create_job(
+                'move_single_file', sf_id=sfile.id, dst_path=settings.LIBRARY_FILE_PATH,
                 newname='libfile_{}_{}'.format(libfn.id, sfile.filename))
             response = {'library': True, 'state': 'ok'}
         else:
@@ -593,7 +592,7 @@ def download_px_project(request):
                              servershare=tmpshare, path='',
                              filename=filename, md5='', checked=False)
             sfn.save()
-    rsjob = jobutil.create_dataset_job(
-        'download_px_data', dset.id, request.POST['px_acc'], raw_ids,
-        settings.TMPSHARENAME)
+    rsjob = jobutil.create_job(
+        'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], rawfnids=raw_ids,
+        sharename=settings.TMPSHARENAME)
     return HttpResponse()

@@ -6,15 +6,16 @@ from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from jobs import models
-from jobs.jobs import (Jobstates, is_job_ready, create_file_job,
-    get_job_ownership, is_job_retryable, is_job_retryable_ready)
+from jobs.jobs import Jobstates, create_job
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
                               SwestoreBackedupFile, PDCBackedupFile, Producer)
-from analysis.models import AnalysisResultFile
+from analysis.models import AnalysisResultFile, NextflowSearch
 from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
+from datasets.models import DatasetRawFile
 from kantele import settings
+from jobs.tasks import jobmap
 
 
 def set_task_done(task_id):
@@ -100,11 +101,7 @@ def purge_storedfile(request):
                                 settings.SWESTORECLIENT_APIKEY]):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').get()
-    # FIXME think about how to actually do this!
-    # delete, purge, etc. mzML, backup, refined files, etc etc etc
-    # user can set file record to deleted in DB
-    # admin can set purged=True in DB after deleting the underlying file
-    sfile.purged = True
+    sfile.purged, sfile.deleted = True, True
     sfile.save()
     if 'task' in data:
         set_task_done(data['task'])
@@ -251,8 +248,8 @@ def mzrefine_file_done(request):
     sfile.md5 = data['md5']
     sfile.checked = True
     sfile.save()
-    create_file_job('move_single_file', sfile.id, sfile.rawfile.datasetrawfile.dataset.storage_loc,
-                    newname=sfile.filename.split('___')[1])
+    create_job('move_single_file', sf_id=sfile.id, dst_path=sfile.rawfile.datasetrawfile.dataset.storage_loc,
+            newname=sfile.filename.split('___')[1])
     return HttpResponse()
 
 
@@ -303,9 +300,56 @@ def store_analysis_result(request):
     else:
         print('Analysis result already registered as transfer, client asks for new '
               'MD5 check after a possible rerun. Running MD5 check.')
-    create_file_job('get_md5', sfile.id)
+    create_job('get_md5', sf_id=sfile.id)
     return HttpResponse()
+
+
+def get_job_analysis(job):
+    try:
+        analysis = job.nextflowsearch.analysis
+    except NextflowSearch.DoesNotExist:
+        analysis = False 
+    return analysis
+
+
+def get_job_ownership(job, request):
+    """returns {'ownertype': user/admin, 'usernames': [], 'owner_loggedin': T/F}
+    """
+    owner_loggedin = False
+    ownertype = 'user'
+    ana = get_job_analysis(job)
+    if ana:
+        usernames = [ana.user.username]
+        owner_loggedin = request.user.id == ana.user.id
+    else:
+        fjs = job.filejob_set.select_related('storedfile__rawfile__datasetrawfile__dataset')
+        try:
+            users = list({y.user for x in fjs for y in x.storedfile.rawfile.datasetrawfile.dataset.datasetowner_set.all()})
+        except DatasetRawFile.DoesNotExist:
+            usernames = list({x.storedfile.rawfile.producer.name for x in fjs})
+            ownertype = 'admin'
+        else:
+            usernames = [x.username for x in users]
+            owner_loggedin = request.user.id in [x.id for x in users]
+    return {'usernames': usernames, 'owner_loggedin': owner_loggedin, 'type': ownertype,
+             'is_staff': request.user.is_staff}
     
+
+def is_job_retryable_ready(job, tasks=False):
+    return is_job_retryable(job) and is_job_ready(job)
+
+
+def is_job_retryable(job, tasks=False):
+    return job.funcname in jobmap and jobmap[job.funcname].retryable
+
+
+def is_job_ready(job=False, tasks=False):
+    if tasks is False:
+        tasks = models.Task.objects.filter(job_id=job.id)
+    if {t.state for t in tasks}.difference(states.READY_STATES):
+        return False
+    return True
+
 
 @login_required
 def retry_job(request, job_id):

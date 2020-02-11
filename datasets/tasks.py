@@ -29,7 +29,7 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
 
 
 @shared_task(bind=True, queue=config.QUEUE_STORAGE)
-def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
+def rename_storage_location(self, srcpath, dstpath, sf_ids):
     """This expects one dataset per dir, as it will rename the whole dir"""
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
     try:
@@ -48,7 +48,7 @@ def rename_storage_location(self, srcpath, dstpath, storedfn_ids):
             except:
                 taskfail_update_db(self.request.id)
                 raise
-    postdata = {'fn_ids': storedfn_ids, 'dst_path': dstpath,
+    postdata = {'fn_ids': sf_ids, 'dst_path': dstpath,
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
