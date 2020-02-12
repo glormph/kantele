@@ -25,23 +25,7 @@ class CreatePDCArchive(SingleFileJob):
     task = tasks.pdc_archive
 
     def process(self, **kwargs):
-        self.upload_file_pdc(self.getfiles_query(**kwargs))
-
-    def upload_file_pdc(self, sfile):
-        """Possibly resuse this"""
-        yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
-        try:
-            pdcfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
-        except models.PDCBackedupFile.DoesNotExist:
-            # only create entry when not already exists
-            models.PDCBackedupFile.objects.create(storedfile=sfile, 
-                    pdcpath='', success=False)
-        else:
-            # Dont do more work than necessary, although this is probably too defensive
-            if pdcfile.success and not pdcfile.deleted:
-                return
-        fnpath = os.path.join(sfile.path, sfile.filename)
-        self.run_tasks.append(((sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id), {}))
+        self.run_tasks.append((upload_file_pdc_runtask(self.getfiles_query(**kwargs)), {}))
         print('PDC archival task queued')
 
 
@@ -50,11 +34,8 @@ class RestoreFromPDC(SingleFileJob):
     task = tasks.pdc_restore
 
     def process(self, **kwargs):
-        backupfile = models.PDCBackedupFile.objects.get(storedfile_id=kwargs['sf_id'])
         sfile = self.getfiles_query(**kwargs)
-        fnpath = os.path.join(sfile.path, sfile.filename)
-        yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
-        self.run_tasks.append(((sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id), {}))
+        self.run_tasks.append((restore_file_pdc_runtask(sfile), {}))
         print('PDC archival task queued')
 
 
@@ -157,6 +138,30 @@ class DownloadPXProject(BaseJob):
                     ftpurl.path, ftpurl.netloc, 
                     pxsf.id, pxsf.rawfile_id, 
                     fn['fileSize'], kwargs['sharename'], kwargs['dset_id']), {}))
+
+
+def upload_file_pdc_runtask(self, sfile):
+    """Generates the arguments for task to upload file to PDC. Reused in dataset jobs"""
+    yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
+    try:
+        pdcfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
+    except models.PDCBackedupFile.DoesNotExist:
+        # only create entry when not already exists
+        models.PDCBackedupFile.objects.create(storedfile=sfile, 
+                pdcpath='', success=False)
+    else:
+        # Dont do more work than necessary, although this is probably too defensive
+        if pdcfile.success and not pdcfile.deleted:
+            return
+    fnpath = os.path.join(sfile.path, sfile.filename)
+    return (sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
+
+
+def restore_file_pdc_runtask(self, sfile):
+    backupfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
+    fnpath = os.path.join(sfile.path, sfile.filename)
+    yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
+    return (sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
 
 
 def call_proteomexchange(pxacc):

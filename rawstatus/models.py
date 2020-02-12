@@ -58,8 +58,8 @@ class StoredFile(models.Model):
     md5 = models.CharField(max_length=32)
     checked = models.BooleanField()
     filetype = models.ForeignKey(StoredFileType)
-    deleted = models.BooleanField(default=False)
-    purged = models.BooleanField(default=False)
+    deleted = models.BooleanField(default=False) # marked for deletion by user, only UI
+    purged = models.BooleanField(default=False) # deleted from active storage filesystem
 
     def __str__(self):
         return self.rawfile.name

@@ -84,40 +84,6 @@ class MoveFilesStorageTmp(BaseJob):
             self.create_db_task(tid, self.job_id, *args, **kwargs)
 
 
-class DeleteActiveDataset(BaseJob):
-    refname = 'delete_active_dataset'
-
-
-class BackupPDCDataset(BaseJob):
-    refname = 'backup_dataset'
-
-
-class ReactivateDeletedDataset(BaseJob):
-    refname = 'reactivate_dataset'
-
-
-class DeleteDatasetPDCBackup(BaseJob):
-    refname = 'delete_dataset_coldstorage'
-
-
-def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
-    if not servershare_id:
-        servershare_id = fn.servershare_id
-    try:
-        mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
-                                      filetype_id=group_id)
-    except StoredFile.DoesNotExist:
-        mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=group_id,
-                          path=fn.rawfile.datasetrawfile.dataset.storage_loc,
-                          servershare_id=servershare_id,
-                          filename=mzmlfilename, md5='', checked=False)
-        mzsf.save()
-    return mzsf
-
-
-
-
 class ConvertDatasetMzml(BaseJob):
     refname = 'convert_dataset_mzml'
 
@@ -195,26 +161,55 @@ class ConvertFileMzml(ConvertDatasetMzml):
             self.run_tasks.append(((fn, mzsf, storageloc, queue, settings.QUEUES_PWIZOUT[queue]), {}))
 
 
-#def delete_active_dataset(job_id, dset_id):
-#    """Removes dataset from active storage"""
-#    for fn in StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id):
-#        fullpath = os.path.join(fn.path, fn.filename)
-#        print('Purging {} from dataset {}'.format(fullpath, dset_id))
-#        tid = filetasks.delete_file.delay(fn.servershare.name, fullpath,
-#                fn.id).id
-#        create_db_task(tid, job_id, fn.servershare.name, fullpath, fn.id)
-#
-#
-## FIXME 
-#def backup_dataset(job_id, dset_id):
-#    """Transfers all raw files in dataset to backup"""
-#    for sfile in StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dset_id, pdcbackedupfile__isnull=False).exclude(pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
-#        rsjobs.upload_file_pdc(sfile)
-#
-#
-#def reactivate_dataset(job_id, dset_id):
-#    pass
-#
-#
-#def delete_dataset_coldstorage(job_id, dset_id):
-#    pass
+class DeleteActiveDataset(BaseJob):
+    """Removes dataset from active storage"""
+    refname = 'delete_active_dataset'
+    task = filetasks.delete_file
+
+    def process(self, **kwargs):
+        for fn in self.getfiles_query(**kwargs):
+            fullpath = os.path.join(fn.path, fn.filename)
+            print('Purging {} from dataset {}'.format(fullpath, dset_id))
+            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
+
+
+class BackupPDCDataset(DatasetJob):
+    """Transfers all raw files in dataset to backup"""
+    refname = 'backup_dataset'
+    task = filetasks.pdc_archive
+    
+    def process(self, **kwargs):
+        for sfile in self.getfiles_query(**kwargs).exclude(filetype_id__in=settings.SECONDARY_FTYPES, pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
+            self.run_tasks.append((rsjobs.upload_file_pdc_runtask(sfile), {}))
+
+
+class ReactivateDeletedDataset(DatasetJob):
+    refname = 'reactivate_dataset'
+    task = filetasks.pdc_restore
+
+    def process(self, **kwargs):
+        for sfile in self.getfiles_query(**kwargs).filter(purged=True, pdcbackedupfile__isnull=False):
+            self.run_tasks.append((restore_file_pdc_runtask(sfile), {}))
+        # Also set archived/archivable files which are already active (purged=False) to not deleted in UI
+        self.getfiles_query(**kwargs).filter(purged=False, deleted=True, pdcbackedupfile__isnull=False).update(deleted=False)
+
+
+class DeleteDatasetPDCBackup(BaseJob):
+    refname = 'delete_dataset_coldstorage'
+    # TODO
+
+
+def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
+    if not servershare_id:
+        servershare_id = fn.servershare_id
+    try:
+        mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
+                                      filetype_id=group_id)
+    except StoredFile.DoesNotExist:
+        mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
+        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=group_id,
+                          path=fn.rawfile.datasetrawfile.dataset.storage_loc,
+                          servershare_id=servershare_id,
+                          filename=mzmlfilename, md5='', checked=False)
+        mzsf.save()
+    return mzsf

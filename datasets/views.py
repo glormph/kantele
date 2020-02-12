@@ -667,7 +667,7 @@ def archive_dataset(dset):
     if storestate == 'active-only':
         create_job('backup_dataset', dset_id=dset.id)
     create_job('delete_active_dataset', dset_id=dset.id)
-    dset.deleted, dset.purge = True, False
+    dset.deleted, dset.purged = True, False
     dset.save()
     return {'state': 'ok', 'msg': 'Dataset queued for archival'}
 
