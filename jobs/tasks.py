@@ -47,7 +47,7 @@ alljobs = [
 jobmap = {job.refname: job for job in alljobs}
 
 
-@shared_task(queue=settings.QUEUE_MAIN)
+@shared_task
 def run_ready_jobs():
     # FIXME here create getfiles/etc
     print('Checking job queue')
