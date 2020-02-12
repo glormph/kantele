@@ -2,7 +2,7 @@ import re
 import os
 import json
 from datetime import datetime
-from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound)
+from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound, HttpResponseNotAllowed)
 from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render

@@ -556,7 +556,7 @@ def move_project_cold(request):
         return JsonResponse({'state': 'error', 'msg': 'Project is retired, purged or never existed'})
     # Retiring a project is only allowed if user owns ALL datasets in project or is staff
     dsetowners = models.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=data['proj_id'], dataset__purged=False).select_related('dataset')
-    if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not user.is_staff:
+    if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not request.user.is_staff:
         return JsonResponse({'state': 'error', 'msg': 'User has no permission to retire this project, does not own all datasets in project'})
     # Cold store all datasets, delete them from active
     result = {'errormsgs': []}
@@ -568,7 +568,7 @@ def move_project_cold(request):
     # if any dataset cannot be cold stored, report it, do not mark proj as retired
     if result['errormsgs']:
         projquery.update(active=True)
-        result['msg'] = '{} Errors: {}'.format('; '.join(result.pop('errormsgs')))
+        result['msg'] = '{} Errors: {}'.format(result['msg'], '; '.join(result.pop('errormsgs')))
     else:
         result.update({'state': 'ok', 'msg': 'All datasets in project queued for archival'})
         projquery.update(active=False)
@@ -585,7 +585,7 @@ def move_project_active(request):
         return JsonResponse({'state': 'error', 'msg': 'Project is already active, or does not exist'})
     # Reactivating a project is only allowed if user owns ALL datasets in project or is staff
     dsetowners = models.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=data['proj_id'], dataset__purged=False).select_related('dataset')
-    if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not user.is_staff:
+    if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not request.user.is_staff:
         return JsonResponse({'state': 'error', 'msg': 'User has no permission to reactivate this project, does not own all datasets in project'})
     # Reactivate all datasets
     result = {'errormsgs': []}
@@ -598,7 +598,7 @@ def move_project_active(request):
             # if ANY dataset gets reactivated, project is active
             projquery.update(active=True)
     if result['errormsgs']:
-        result['msg'] = '{} Errors: {}'.format('; '.join(result.pop('errormsgs')))
+        result['msg'] = '{} Errors: {}'.format(result['msg'], '; '.join(result.pop('errormsgs')))
     else:
         result.update({'state': 'ok', 'msg': 'All datasets in project queued for archival'})
     return JsonResponse(result)
@@ -615,18 +615,18 @@ def purge_project(request):
         return JsonResponse({'state': 'error', 'msg': 'Project does not exist or is still active'})
     dsetowners = models.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=data['proj_id'], dataset__purged=False).select_related('dataset')
     #if dsetowners.filter(user=request.user).count() != dsetowners.distinct('dataset').count() and not user.is_staff:
-    if not user.is_staff:
+    if not request.user.is_staff:
         return JsonResponse({'state': 'error', 'msg': 'User has no permission to purge this project, must be staff'})
     result = {'errormsgs': []}
     for dso in dsetowners.distinct('dataset'):
         purged = delete_dataset_from_cold(dso.dataset)
         if purged['state'] == 'error':
             result.update({'state': 'error', 'msg': 'Not all project datasets could be purged'})
-            result['errormsgs'].append(reactivated['msg'])
+            result['errormsgs'].append(purged['msg'])
     # if any dataset cannot be purged, report it, do not mark proj as purged
     if result['errormsgs']:
         projquery.update(purged=False)
-        result['msg'] = '{} Errors: {}'.format('; '.join(result.pop('errormsgs')))
+        result['msg'] = '{} Errors: {}'.format(result['msg'], '; '.join(result.pop('errormsgs')))
     else:
         projquery.update(purged=True)
         result.update({'state': 'ok', 'msg': 'All datasets in project queued for permanent deletion'})
@@ -637,13 +637,13 @@ def get_dset_storestate(dset):
     dsfiles = filemodels.StoredFile.objects.exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(rawfile__datasetrawfile__dataset=dset)
     dsfc = dsfiles.count()
     coldfiles = dsfiles.filter(pdcbackedupfile__isnull=False)
-    if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.filter(pdcbackedupfile__deleted==False, pdcbackedupfile__success=True).count():
+    if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.filter(pdcbackedupfile__deleted=False, pdcbackedupfile__success=True).count():
         storestate = 'complete'
     elif dsfiles.filter(checked=True, deleted=False).count() == dsfc:
         storestate = 'active-only'
-    elif coldcount == dsfc:
+    elif coldfiles.count() == dsfc:
         storestate = 'cold'
-    elif dsfiles.filter(purged=True).count() == dsfc and dsfiles.filter(pdcbackedupfile__deleted=True) == coldcount:
+    elif dsfiles.filter(purged=True).count() == dsfc and dsfiles.filter(pdcbackedupfile__deleted=True) == coldfiles.count():
         storestate = 'purged'
     elif dsfiles.filter(pdcbackedupfile__deleted=True).count() > 0:
         storestate = 'broken'

@@ -132,7 +132,7 @@ def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
         nfs.save()
 
 
-class RunNextflowWorkflow(MultiDatasetJob):
+class RunNextflowWorkflow(BaseJob):
     refname = 'run_nf_search_workflow'
     task = tasks.run_nextflow_workflow
 

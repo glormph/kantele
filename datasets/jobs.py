@@ -62,6 +62,7 @@ class MoveFilesToStorage(DatasetJob):
 
 class MoveFilesStorageTmp(BaseJob):
     """Moves file from a dataset back to a tmp/inbox-like share"""
+    refname = 'move_stored_files_tmp'
     #print('Moving files with ids {} from dataset storage to tmp, '
     #      'if not already there. Deleting if mzml'.format(fn_ids))
 
@@ -146,7 +147,7 @@ class ConvertFileMzml(ConvertDatasetMzml):
         return StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=kwargs['sf_id'])
 
     def process(self, **kwargs):
-        queue = kwargs.get('queue', queuesettings.QUEUES_PWIZ[0])
+        queue = kwargs.get('queue', settings.QUEUES_PWIZ[0])
         fn = self.getfiles_query(**kwargs)
         storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
         mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)

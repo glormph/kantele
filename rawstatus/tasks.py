@@ -129,13 +129,13 @@ def delete_empty_dir(self, servershare, directory):
     print('Trying to delete empty directory {}'.format(dirpath))
     try:
         os.rmdir(dirpath)
+    except FileNotFoundError:
+        # Directory doesnt exist, no need to delete
+        print('Directory did not exist, do not delete')
     except (OSError, Exception):
         # OSError raised on dir not empty
         taskfail_update_db(self.request.id)
         raise
-    except FileNotFoundError:
-        # Directory doesnt exist, no need to delete
-        print('Directory did not exist, do not delete')
     # Now delete parent directories if any empty
     while os.path.split(directory)[0]:
         directory = os.path.split(directory)[0]
@@ -174,6 +174,8 @@ def unzip_folder(self, servershare, fnpath, sf_id):
         os.remove(zipped_fn)
     url = urljoin(config.KANTELEHOST, reverse('jobs:unzipped'))
     postdata = {'task': self.request.id, 'client_id': config.APIKEY}
+    msg = ('Could not update database for unzipping fn {}. '
+           '{}'.format(fnpath, '{}'))
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
@@ -271,7 +273,7 @@ def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
     postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
     msg = ('Restore from archive could not update database with for fn {} with PDC path {} :'
-           '{}'.format(filepath, link, '{}'))
+           '{}'.format(filepath, backupfile, '{}'))
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
@@ -313,7 +315,7 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
         if not md5_upl == md5:
             print('Swestore upload failed with incorrect MD5, retrying')
             taskfail_update_db(self.request.id)
-            raise
+            raise RuntimeError('Swestore upload failed with incorrect MD5, retrying')
         else:
             print('Successfully uploaded {} '
                   'with MD5 {}'.format(mountpath_fn, md5_upl))

@@ -24,8 +24,7 @@ JOBSTATES_PREJOB = [Jobstates.WAITING, Jobstates.PENDING]
 
 def create_job(name, **kwargs):
     job = Job(funcname=name, timestamp=timezone.now(),
-              state=Jobstates.PENDING, args=json.dumps(args),
-              kwargs=json.dumps(kwargs))
+              state=Jobstates.PENDING, kwargs=json.dumps(kwargs))
     job.save()
     return job
 

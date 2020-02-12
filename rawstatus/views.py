@@ -389,7 +389,7 @@ def singlefile_qc(rawfile, storedfile):
 def get_file_owners(sfile):
     owners = {x.id for x in User.objects.filter(is_superuser=True)}
     if hasattr(sfile.rawfile, 'datasetrawfile'):
-        owners.update(get_dataset_owners_ids(sfile.rawfile.datasetrawfile.dataset))
+        owners.update(dsviews.get_dataset_owners_ids(sfile.rawfile.datasetrawfile.dataset))
     elif hasattr(sfile, 'analysisresultfile'):
         owners.add(sfile.analysisresultfile.analysis.user.id)
     return owners
@@ -516,7 +516,7 @@ def check_libraryfile_ready(request):
             sfile__rawfile_id=request.GET['fn_id'])
     except LibraryFile.DoesNotExist:
         print('request with incorrect fn id '
-              '{}'.format(fn_id))
+              '{}'.format(request.GET['fn_id']))
         return HttpResponseForbidden()
     else:
         if libfn.sfile.servershare.name == settings.STORAGESHARENAME and libfn.sfile.path == settings.LIBRARY_FILE_PATH:

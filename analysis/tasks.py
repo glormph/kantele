@@ -1,4 +1,3 @@
-# FIXME changing url for md5check, files:transferred need to pass ftype_id instead of ftype
 import os
 import json
 import shutil
@@ -221,7 +220,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     outfiles_db = register_resultfiles(outfiles)
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
     fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
-    check_rawfile_resultfiles_match(fn_ids)
+    check_rawfile_resultfiles_match(fn_ids, self.request.id)
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
@@ -235,7 +234,6 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
-        # FIXME does not write to mzmldef!
         for fn in mzmls:
             # FIXME not have set, etc, pass rawfnid here!
             mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, fn[2]), refined_sfid=fn[3])
@@ -339,8 +337,8 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                   'peptable': 'peptable.txt', 'prottable': 'prottable.txt'}
     if set(expect_out.values()).difference(outfiles):
         taskfail_update_db(self.request.id)
-        raise RuntimeError('Ran QC workflow but output file {} not '
-                           'found'.format(expfn))
+        raise RuntimeError('Ran QC workflow but output files {} not '
+                           'found'.format(set(expect_out.values()).different(outfiles)))
     qcfiles = {x: os.path.join(rundir, 'output', fn) for x, fn
                in expect_out.items()}
     qcreport = qc.calc_longitudinal_qc(qcfiles)
@@ -348,7 +346,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
     outfiles_db = register_resultfiles(qcfiles.values())
     fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
-    check_rawfile_resultfiles_match(fn_ids)
+    check_rawfile_resultfiles_match(fn_ids, self.request.id)
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
@@ -430,7 +428,7 @@ def transfer_resultfiles(userdir, rundir, outfiles_db, analysis_id, url, task_id
     return {x['file_id']: False for x in outfiles_db.values()}
 
 
-def check_rawfile_resultfiles_match(fn_ids):
+def check_rawfile_resultfiles_match(fn_ids, task_id):
     while False in fn_ids.values():
         for fn_id, checked in fn_ids.items():
             if not checked:
