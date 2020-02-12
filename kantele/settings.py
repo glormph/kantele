@@ -74,11 +74,11 @@ try:
     MZML_SFGROUP_ID = int(os.environ.get('MZML_SF_GROUP_ID'))
     REFINEDMZML_SFGROUP_ID = int(os.environ.get('REFINED_SF_GROUP_ID'))
     FILE_ISDIR_SFGROUPS = [BRUKER_SFGROUP_ID]
+    SECONDARY_FTYPES = [MZML_SFGROUP_ID, REFINEDMZML_SFGROUP_ID]
 except TypeError:
     # Tasks have no notion of these IDs so they will error
     pass
 
-SECONDARY_FTYPES = [MZML_SFGROUP_ID, REFINEDMZML_SFGROUP_ID]
 
 ANALYSISOUT_FTID = int(os.environ.get('ANALYSISOUT_FTID'))
 DATABASE_FTID = int(os.environ.get('DATABASE_FTID'))
