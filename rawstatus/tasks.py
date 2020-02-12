@@ -250,11 +250,16 @@ def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
         taskfail_update_db(self.request.id)
         raise
     # restore to tmplocation /home/storage/2019_05/abcd12345ae (md5)
-    cmd = ['dsmc', 'restore', backupfile]
+    cmd = ['dsmc', 'retrieve', '-replace=no', backupfile]
     env = os.environ
     env['DSM_DIR'] = config.DSM_DIR
     try:
         subprocess.check_call(cmd, env=env)
+    except subprocess.CalledProcessError as CPE:
+        # exit code 4 is output when file already exist (we have replace=no)
+        if CPE.returncode != 4:
+            taskfail_update_db(self.request.id)
+            raise
     except Exception:
         taskfail_update_db(self.request.id)
         raise
@@ -262,6 +267,10 @@ def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
     if os.path.exists(fileloc) and os.path.isfile(fileloc):
         print('Tried to move DSMC-restored tmpfile {} to target file {} but target already exists'.format(backupfile, fileloc))
     else:
+        try:
+            os.makedirs(os.path.dirname(fileloc))
+        except FileExistsError:
+            pass
         try:
             shutil.move(backupfile, fileloc)
         except Exception:

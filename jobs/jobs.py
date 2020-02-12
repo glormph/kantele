@@ -40,8 +40,10 @@ class BaseJob:
     def getfiles_query(self):
         pass
 
-    def get_sf_ids(self):
-        pass
+    def get_sf_ids(self, **kwargs):
+        """This is set before running job, and when discovering job by runner to estimate
+        if the job can be run yet (if files are in use by other job)"""
+        return [x.pk for x in self.getfiles_query(**kwargs)]
 
     def run(self, **kwargs):
         self.process(**kwargs)
@@ -53,7 +55,7 @@ class BaseJob:
     def queue_tasks(self):
         for task in self.run_tasks:
             args, kwargs = task[0], task[1]
-            tid = task.delay(**kwargs)
+            tid = self.task.delay(*args, **kwargs)
             self.create_db_task(tid, *args, **kwargs)
     
     def create_db_task(self, task_id, *args, **kwargs):
@@ -79,11 +81,6 @@ class DatasetJob(BaseJob):
 
     def getfiles_query(self, **kwargs):
         return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=kwargs['dset_id'])
-
-    def get_sf_ids(self, **kwargs):
-        """This is set before running job, and when discovering job by runner to estimate
-        if the job can be run yet (if files are in use by other job)"""
-        return [x.pk for x in self.getfiles_query(**kwargs)]
 
 
 class MultiDatasetJob(BaseJob):

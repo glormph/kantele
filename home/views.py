@@ -248,7 +248,7 @@ def show_jobs(request):
              'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]}}
     for job in jm.Job.objects.exclude(state__in=jj.JOBSTATES_DONE).select_related(
             'nextflowsearch__analysis__user').order_by('-timestamp'):
-        ownership = jj.get_job_ownership(job, request)
+        ownership = jv.get_job_ownership(job, request)
         order[ownership['type']][job.state].append(job.id)
         items[job.id] = {'id': job.id, 'name': job.funcname,
                          'state': job.state,
@@ -459,7 +459,7 @@ def get_analysis_info(request, nfs_id):
 @login_required
 def refresh_job(request, job_id):
     job = jm.Job.objects.get(pk=job_id)
-    ownership = jj.get_job_ownership(job, request)
+    ownership = jv.get_job_ownership(job, request)
     return JsonResponse({'state': job.state,
                          'actions': get_job_actions(job, ownership)})
 
@@ -469,7 +469,7 @@ def get_job_info(request, job_id):
     job = jm.Job.objects.select_related('joberror').get(pk=job_id)
     tasks = job.task_set.all()
     fj = job.filejob_set
-    analysis = jj.get_job_analysis(job)
+    analysis = jv.get_job_analysis(job)
     if analysis:
         analysis = analysis.name
     errors = []

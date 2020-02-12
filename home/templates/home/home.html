@@ -443,7 +443,7 @@ Vue.component('admin-box', {
 			},
 			archiveDataset: function() {
 				for (dset_id of this.selectedDsets) {
-					this.$http.post('/archive/dataset/', {'dataset_id': dset_id})
+					this.$http.post('datasets/archive/dataset/', {'dataset_id': dset_id})
 					.then(response => {
 						return response
 					}, response => {
@@ -456,7 +456,7 @@ Vue.component('admin-box', {
 			},
 			reactivateDataset: function() {
 				for (dset_id of this.selectedDsets) {
-					this.$http.post('/undelete/dataset/', {'dataset_id': dset_id})
+					this.$http.post('datasets/undelete/dataset/', {'dataset_id': dset_id})
 					.then(response => {
 						return response
 					}, response => {
@@ -469,7 +469,7 @@ Vue.component('admin-box', {
 			},
 			purgeDatasets: function() {
 				for (dset_id of this.selectedDsets) {
-					this.$http.post('/purge/dataset/', {'dataset_id': dset_id})
+					this.$http.post('datasets/purge/dataset/', {'dataset_id': dset_id})
 					.then(response => {
 						return response
 					}, response => {

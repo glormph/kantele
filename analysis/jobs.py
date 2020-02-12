@@ -56,7 +56,7 @@ class RefineMzmls(DatasetJob):
 
 
 class RunLabelCheckNF(MultiDatasetJob):
-    refname = 'run_labelcheck_nf'
+    refname = 'run_nf_lc_workflow'
     task = tasks.run_nextflow_workflow
 
     def process(self, **kwargs):
@@ -153,7 +153,7 @@ class RunNextflowWorkflow(BaseJob):
             pk=kwargs['wfv_id'])
         stagefiles = {}
         for flag, sf_id in kwargs['inputs']['singlefiles'].items():
-            sf = rm.StoredFile.objects.select_related('servershare').get(pk=kwargs['sf_id'])
+            sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
             stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
         mzmls = [(x.servershare.name, x.path, x.filename, kwargs['setnames'][str(x.id)],
                   kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)], kwargs['fractions'].get(str(x.id), False)) for x in

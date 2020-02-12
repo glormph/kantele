@@ -453,7 +453,7 @@ def get_dataset_owners_ids(dset):
 
 def check_ownership(user, dset):
     pt_id = dset.runname.experiment.project.projtype.ptype_id 
-    if dset.deleted:
+    if dset.deleted and not user.is_staff:
         return False
     elif user.id in get_dataset_owners_ids(dset) or user.is_staff:
         return True
@@ -667,6 +667,7 @@ def archive_dataset(dset):
     if storestate == 'active-only':
         create_job('backup_dataset', dset_id=dset.id)
     create_job('delete_active_dataset', dset_id=dset.id)
+    create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
     dset.deleted, dset.purged = True, False
     dset.save()
     return {'state': 'ok', 'msg': 'Dataset queued for archival'}
@@ -695,7 +696,7 @@ def reactivate_dataset(dset):
 @login_required
 def move_dataset_cold(request):
     data = json.loads(request.body.decode('utf-8'))
-    dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(data['dset_id'])
+    dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(pk=data['dataset_id'])
     if not check_ownership(request.user, dset):
         return JsonResponse({'state': 'error', 'msg': 'Cannot archive dataset, no permission for user'})
     archived = archive_dataset(dset)
@@ -705,7 +706,7 @@ def move_dataset_cold(request):
 @login_required
 def move_dataset_active(request):
     data = json.loads(request.body.decode('utf-8'))
-    dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(data['dset_id'])
+    dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(pk=data['dataset_id'])
     if not check_ownership(request.user, dset):
         return JsonResponse({'state': 'error', 'msg': 'Cannot reactivate dataset, no permission for user'})
     reactivated_msg = reactivate_dataset(dset)
@@ -723,6 +724,7 @@ def delete_dataset_from_cold(dset):
     dset.save()
     # Also create delete active job just in case files are lying around
     create_job('delete_active_dataset', dset_id=dset.id)
+    create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
     create_job('delete_dataset_coldstorage', dset_id=dset.id)
     sfids = [sf.id for dsrf in dset.datasetrawfile_set.select_related('rawfile') for sf in dsrf.rawfile.storedfile_set.all()]
     create_job('delete_empty_directory', sf_ids=sfids)

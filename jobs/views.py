@@ -368,8 +368,9 @@ def retry_job(request, job_id):
 
 def do_retry_job(job, force=False):
     tasks = models.Task.objects.filter(job=job)
-    if not is_job_retryable(job):
+    if not is_job_retryable(job) and not force:
         print('Cannot retry job which is not idempotent')
+        return
     if not is_job_ready(job=job, tasks=tasks) and not force:
         print('Tasks not all ready yet, will not retry, try again later')
         return

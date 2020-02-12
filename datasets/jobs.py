@@ -24,8 +24,7 @@ class RenameDatasetStorageLoc(DatasetJob):
 
     def process(self, **kwargs):
         """Just passthrough of arguments to task"""
-        kwargs['sf_ids'] = self.get_sf_ids(**kwargs)
-        self.run_tasks = [((), kwargs)]
+        self.run_tasks = [((kwargs['srcpath'], kwargs['dstpath'], self.get_sf_ids(**kwargs)), {})]
 
 
 class MoveFilesToStorage(DatasetJob):
@@ -63,6 +62,7 @@ class MoveFilesToStorage(DatasetJob):
 class MoveFilesStorageTmp(BaseJob):
     """Moves file from a dataset back to a tmp/inbox-like share"""
     refname = 'move_stored_files_tmp'
+    task = False
     #print('Moving files with ids {} from dataset storage to tmp, '
     #      'if not already there. Deleting if mzml'.format(fn_ids))
 
@@ -81,7 +81,7 @@ class MoveFilesStorageTmp(BaseJob):
     def queue_tasks(self):
         for task in self.run_tasks:
             args, kwargs, taskfun = task[0], task[1], task[2]
-            tid = task.delay(*args, **kwargs)
+            tid = taskfun.delay(*args, **kwargs)
             self.create_db_task(tid, self.job_id, *args, **kwargs)
 
 
@@ -97,7 +97,7 @@ class ConvertDatasetMzml(BaseJob):
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         queues = cycle(settings.QUEUES_PWIZ)
-        for fn in self.getfiles_query(*kwargs):
+        for fn in self.getfiles_query(**kwargs):
             mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
             if mzsf.checked and not mzsf.purged:
                 continue
@@ -162,7 +162,7 @@ class ConvertFileMzml(ConvertDatasetMzml):
             self.run_tasks.append(((fn, mzsf, storageloc, queue, settings.QUEUES_PWIZOUT[queue]), {}))
 
 
-class DeleteActiveDataset(BaseJob):
+class DeleteActiveDataset(DatasetJob):
     """Removes dataset from active storage"""
     refname = 'delete_active_dataset'
     task = filetasks.delete_file
@@ -170,7 +170,7 @@ class DeleteActiveDataset(BaseJob):
     def process(self, **kwargs):
         for fn in self.getfiles_query(**kwargs):
             fullpath = os.path.join(fn.path, fn.filename)
-            print('Purging {} from dataset {}'.format(fullpath, dset_id))
+            print('Purging {} from dataset {}'.format(fullpath, kwargs['dset_id']))
             self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
 
 
@@ -180,7 +180,7 @@ class BackupPDCDataset(DatasetJob):
     task = filetasks.pdc_archive
     
     def process(self, **kwargs):
-        for sfile in self.getfiles_query(**kwargs).exclude(filetype_id__in=settings.SECONDARY_FTYPES, pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
+        for sfile in self.getfiles_query(**kwargs).exclude(filetype_id__in=settings.SECONDARY_FTYPES).exclude(pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
             self.run_tasks.append((rsjobs.upload_file_pdc_runtask(sfile), {}))
 
 
@@ -189,8 +189,8 @@ class ReactivateDeletedDataset(DatasetJob):
     task = filetasks.pdc_restore
 
     def process(self, **kwargs):
-        for sfile in self.getfiles_query(**kwargs).filter(purged=True, pdcbackedupfile__isnull=False):
-            self.run_tasks.append((restore_file_pdc_runtask(sfile), {}))
+        for sfile in self.getfiles_query(**kwargs).exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(purged=True, pdcbackedupfile__isnull=False):
+            self.run_tasks.append((rsjobs.restore_file_pdc_runtask(sfile), {}))
         # Also set archived/archivable files which are already active (purged=False) to not deleted in UI
         self.getfiles_query(**kwargs).filter(purged=False, deleted=True, pdcbackedupfile__isnull=False).update(deleted=False)
 

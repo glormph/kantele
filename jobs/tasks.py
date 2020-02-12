@@ -49,15 +49,13 @@ jobmap = {job.refname: job for job in alljobs}
 
 @shared_task
 def run_ready_jobs():
-    # FIXME here create getfiles/etc
     print('Checking job queue')
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
         state__in=jj.JOBSTATES_DONE + [Jobstates.WAITING])
-    #job_fn_map, active_files = collect_job_file_activity(list(jobs_not_finished))
     job_fn_map, active_files = process_job_file_activity(jobs_not_finished)
     print('{} jobs in queue, including errored jobs'.format(jobs_not_finished.count()))
     for job in jobs_not_finished:
-        print('Job {}, state {}, type {}'.format(job.id, job.state, job.jobtype))
+        print('Job {}, state {}'.format(job.id, job.state))
         # Just print info about ERROR-jobs, but also process tasks
         if job.state == Jobstates.ERROR:
             print('ERROR MESSAGES:')
@@ -89,13 +87,12 @@ def run_ready_jobs():
 
 
 def run_job(job, jobmap):
-    print('Executing job {} of type {}'.format(job.id, job.jobtype))
+    print('Executing job {}'.format(job.id))
     job.state = Jobstates.PROCESSING
     jwrapper = jobmap[job.funcname](job.id) 
-    args = json.loads(job.args)
     kwargs = json.loads(job.kwargs)
     try:
-        jwrapper.run(job.id, *args, **kwargs)
+        jwrapper.run(**kwargs)
     except RuntimeError as e:
         print('Error occurred, trying again automatically in next round')
         job.state = Jobstates.ERROR
@@ -112,11 +109,11 @@ def run_job(job, jobmap):
 def process_job_file_activity(nonready_jobs):
     job_fn_map, active_files = {}, set()
     for job in nonready_jobs:
-        fjs = job.filejob_set
+        fjs = job.filejob_set.all()
         if not fjs.count():
             fjs = []
             jwrapper = jobmap[job.funcname](job.id) 
-            for sf_id in jwrapper.get_sf_ids(*job.args, **job.kwargs):
+            for sf_id in jwrapper.get_sf_ids(**json.loads(job.kwargs)):
                 newfj = FileJob(storedfile_id=sf_id, job_id=job.id)
                 newfj.save()
                 fjs.append(newfj)

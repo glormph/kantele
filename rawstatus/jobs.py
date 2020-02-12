@@ -88,8 +88,8 @@ class MoveSingleFile(SingleFileJob):
 
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
-        oldname = sfile.filename if not kwargs['oldname'] else kwargs['oldname']
-        taskkwargs = {x: kwargs[x] for x in ['newname', 'dstshare']}
+        oldname = sfile.filename if not 'oldname' in kwargs or not kwargs['oldname'] else kwargs['oldname']
+        taskkwargs = {x: kwargs[x] for x in ['newname'] if x in kwargs}
         self.run_tasks.append(((
             oldname, sfile.servershare.name,
             sfile.path, kwargs['dst_path'], sfile.id), taskkwargs))
@@ -103,7 +103,7 @@ class DeleteEmptyDirectory(BaseJob):
     task = tasks.delete_empty_dir
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(pk=kwargs['sf_ids']).select_related(
+        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related(
                 'servershare', 'rawfile')
     
     def process(self, **kwargs):
@@ -123,8 +123,8 @@ class DownloadPXProject(BaseJob):
     checks pride, fires tasks for files not yet downloaded. 
     """
 
-    def getfiles_query(self, rawfnids):
-        return models.StoredFile.objects.filter(rawfile_id__in=rawfnids, 
+    def getfiles_query(self, **kwargs):
+        return models.StoredFile.objects.filter(rawfile_id__in=kwargs['rawfnids'], 
             checked=False).select_related('rawfile')
     
     def process(self, **kwargs):
@@ -140,7 +140,7 @@ class DownloadPXProject(BaseJob):
                     fn['fileSize'], kwargs['sharename'], kwargs['dset_id']), {}))
 
 
-def upload_file_pdc_runtask(self, sfile):
+def upload_file_pdc_runtask(sfile):
     """Generates the arguments for task to upload file to PDC. Reused in dataset jobs"""
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
     try:
@@ -157,7 +157,7 @@ def upload_file_pdc_runtask(self, sfile):
     return (sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
 
 
-def restore_file_pdc_runtask(self, sfile):
+def restore_file_pdc_runtask(sfile):
     backupfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
     fnpath = os.path.join(sfile.path, sfile.filename)
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')

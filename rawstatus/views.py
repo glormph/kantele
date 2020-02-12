@@ -419,6 +419,7 @@ def rename_file(request):
         print('Illegal characters in filename {}'.format(newfilename))
         return HttpResponseForbidden()
     jobutil.create_job('rename_file', sf_id=sfile.id, newname=newfilename)
+    return HttpResponse()
 
 
 
