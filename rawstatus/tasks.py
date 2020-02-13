@@ -233,24 +233,20 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
             raise
     else:
         os.unlink(link)
+        try:
+            os.rmdir(os.path.dirname(link))
+        except OSError: # directory not empty
+            pass
 
 
 @shared_task(bind=True, queue=config.QUEUE_PDC)
 def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
-    print('Restoring file {} to PDC tape'.format(filepath))
+    print('Restoring file {} from PDC tape'.format(filepath))
     basedir = config.SHAREMAP[servershare]
     fileloc = os.path.join(basedir, filepath)
     backupfile = os.path.join(basedir, yearmonth, md5)
-    # Create dir for backup file (/home/storage/2019_05/)
-    try:
-        os.makedirs(os.path.dirname(backupfile))
-    except FileExistsError:
-        pass
-    except Exception:
-        taskfail_update_db(self.request.id)
-        raise
-    # restore to tmplocation /home/storage/2019_05/abcd12345ae (md5)
-    cmd = ['dsmc', 'retrieve', '-replace=no', backupfile]
+    # restore to fileloc
+    cmd = ['dsmc', 'retrieve', '-replace=no', backupfile, fileloc]
     env = os.environ
     env['DSM_DIR'] = config.DSM_DIR
     try:
@@ -263,22 +259,6 @@ def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
     except Exception:
         taskfail_update_db(self.request.id)
         raise
-    # move file to proper location
-    if os.path.exists(fileloc) and os.path.isfile(fileloc):
-        print('Tried to move DSMC-restored tmpfile {} to target file {} but target already exists'.format(backupfile, fileloc))
-    else:
-        try:
-            os.makedirs(os.path.dirname(fileloc))
-        except FileExistsError:
-            pass
-        try:
-            shutil.move(backupfile, fileloc)
-        except Exception:
-            try:
-                self.retry(countdown=60)
-            except MaxRetriesExceededError:
-                taskfail_update_db(self.request.id)
-                raise
     postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
     msg = ('Restore from archive could not update database with for fn {} with PDC path {} :'

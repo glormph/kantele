@@ -165,7 +165,7 @@ def created_pdc_archive(request):
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     backup = PDCBackedupFile.objects.filter(storedfile_id=data['sfid'])
-    backup.update(pdcpath=data['pdcpath'], success=True)
+    backup.update(pdcpath=data['pdcpath'], deleted=False, success=True)
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
     return HttpResponse()
