@@ -713,9 +713,6 @@ def move_dataset_active(request):
     return JsonResponse(reactivated_msg)
 
 
-# FIXME when adding/removing files in dataset app, think about archived datasets
-# FIXME do not allow analysis on archived datasets
-
 def delete_dataset_from_cold(dset):
     # TODO Should we allow direct purging? the delete from active job is fired anyway
     if not dset.deleted:
@@ -755,7 +752,11 @@ def save_dataset(request):
         if 'newprojectname' in data:
             project = newproject_save(data)
         else:
-            project = models.Project.objects.get(pk=data['project_id'])
+            try:
+                project = models.Project.objects.get(pk=data['project_id'], active=True)
+            except models.Project.DoesNotExist:
+                print('Project to save to is not active')
+                return HttpResponseForbidden()
         if data['datatype_id'] == settings.LC_DTYPE_ID:
             try:
                 experiment = models.Experiment.objects.get(project=project, name=settings.LCEXPNAME)
@@ -844,7 +845,7 @@ def empty_dataset_json():
     edpr = {'projects': [
         {'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
             'select': False, 'pi_id': x.pi_id} 
-        for x in models.Project.objects.select_related('projtype').all()],
+        for x in models.Project.objects.select_related('projtype').filter(active=True)],
             'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
             'external_pis': [{'name': x.name, 'id': x.id} for x in
                              models.PrincipalInvestigator.objects.all()],
