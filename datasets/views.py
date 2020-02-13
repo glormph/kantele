@@ -636,14 +636,14 @@ def purge_project(request):
 def get_dset_storestate(dset):
     dsfiles = filemodels.StoredFile.objects.exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(rawfile__datasetrawfile__dataset=dset)
     dsfc = dsfiles.count()
-    coldfiles = dsfiles.filter(pdcbackedupfile__isnull=False)
-    if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.filter(pdcbackedupfile__deleted=False, pdcbackedupfile__success=True).count():
+    coldfiles = dsfiles.filter(pdcbackedupfile__isnull=False, pdcbackedupfile__deleted=False, pdcbackedupfile__success=True)
+    if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.count():
         storestate = 'complete'
     elif dsfiles.filter(checked=True, deleted=False).count() == dsfc:
         storestate = 'active-only'
     elif coldfiles.count() == dsfc:
         storestate = 'cold'
-    elif dsfiles.filter(purged=True).count() == dsfc and dsfiles.filter(pdcbackedupfile__deleted=True) == coldfiles.count():
+    elif dsfiles.filter(purged=True).count() == dsfc and dsfiles.filter(pdcbackedupfile__deleted=True) == dsfiles.filter(pdcbackedupfile__isnull=False).count():
         storestate = 'purged'
     elif dsfiles.filter(pdcbackedupfile__deleted=True).count() > 0:
         storestate = 'broken'
