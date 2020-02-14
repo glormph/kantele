@@ -852,7 +852,7 @@ def empty_dataset_json():
             'internal_pi_id': INTERNAL_PI_PK,
             'local_ptype_id': settings.LOCAL_PTYPE_ID,
             'datasettypes': [{'name': x.name, 'id': x.id} for x in
-                             models.Datatype.objects.all()],
+                             models.Datatype.objects.filter(public=True)],
             'prefracs': [{'id': x.id, 'name': x.name}
                           for x in models.Prefractionation.objects.all()],
             'hirief_ranges': [{'name': str(x), 'id': x.id}
