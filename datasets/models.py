@@ -49,6 +49,7 @@ class Species(models.Model):
 
 class Datatype(models.Model):
     name = models.TextField(max_length=100)
+    public = models.BooleanField(default=True)
 
     def __str__(self):
         return self.name
@@ -74,8 +75,8 @@ class Dataset(models.Model):
     runname = models.OneToOneField(RunName)
     datatype = models.ForeignKey(Datatype)
     storage_loc = models.TextField(max_length=200, unique=True)
-    deleted = models.BooleanField(default=False) # for UI only
-    purged = models.BooleanField(default=False) # for UI only
+    deleted = models.BooleanField(default=False) # for UI only, indicate deleted from active storage
+    purged = models.BooleanField(default=False) # for UI only, indicate permanent deleted from cold storage too
 
 
 class DatasetOwner(models.Model):
