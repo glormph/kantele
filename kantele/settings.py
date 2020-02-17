@@ -88,7 +88,7 @@ DATABASE_FTID = int(os.environ.get('DATABASE_FTID'))
 # Lifespan for mzMLs and Instrument-QC RAW files, in days
 MAX_MZML_STORAGE_TIME_POST_ANALYSIS = int(os.environ.get('MAX_MZML_STORAGE_TIME_POST_ANALYSIS'))
 MAX_MZML_LC_STORAGE_TIME = int(os.environ.get('MAX_MZML_LC_STORAGE_TIME'))
-MAX_RAW_QC_STORAGE_TIME = int(os.environ.get('MAX_RAW_QC_STORAGE_TIME'))
+MAX_MZML_QC_STORAGE_TIME = int(os.environ.get('MAX_MZML_QC_STORAGE_TIME'))
 
 # Labelcheck experiment name
 LCEXPNAME = '__labelchecks'
