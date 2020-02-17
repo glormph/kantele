@@ -58,6 +58,9 @@ SHAREMAP = {TMPSHARENAME: TMPSHARE,
 NGINX_ANALYSIS_REDIRECT = '/analysisfiles'
 SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html']
 
+SLACK_BASE = 'https://hooks.slack.com/services/'
+SLACK_WORKSPACE = os.environ.get('SLACK_WORKSPACE')
+SLACK_HOOKS = {k.replace('SLACK_HOOK_', ''): v for k,v in os.environ.items() if k.startswith('SLACK_HOOK_')}
 # message queue
 RABBIT_HOST = os.environ.get('RABBITHOST')
 RABBIT_USER = 'kantele'

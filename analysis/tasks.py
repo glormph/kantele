@@ -179,9 +179,9 @@ def log_analysis(analysis_id, message):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     print('Got message to run nextflow workflow, preparing')
-    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
-                'analysis_id': run['analysis_id'], 'task': self.request.id}
+                'analysis_id': run['analysis_id'], 'task': self.request.id,
+                'name': run['name'], 'user': run['outdir']}
     rundir = create_runname_dir(run)
     # write sampletable if it is present
     sampletable = False
@@ -221,6 +221,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
     fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
     check_rawfile_resultfiles_match(fn_ids, self.request.id)
+    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
@@ -228,9 +229,9 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def refine_mzmls(self, run, params, mzmls, stagefiles):
     print('Got message to run mzRefine workflow, preparing')
-    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY,
-                'analysis_id': run['analysis_id'], 'task': self.request.id}
+                'analysis_id': run['analysis_id'], 'task': self.request.id,
+                'name': run['name'], 'user': run['outdir']}
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
@@ -245,6 +246,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
     postdata.update({'state': 'ok'})
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzrefinefile'))
     fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
+    reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 

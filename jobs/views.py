@@ -1,4 +1,6 @@
 import json
+import requests
+from urllib.parse import urljoin
 from datetime import datetime 
 
 from celery import states
@@ -218,6 +220,19 @@ def scp_mzml(request):
     return HttpResponse()
 
 
+def send_slack_message(text, channel):
+    try:
+        channelpath = settings.SLACK_HOOKS[channel.upper()]
+    except KeyError:
+        print('Kantele cant send slack message to channel {}, please check configuration'.format(channel))
+    url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, settings.SLACK_HOOKS] for x in y.split('/')])
+    req = requests.post(url, json={'text': text})
+    try:
+        req.raise_for_status()
+    except Exception as error:
+        print('Kantele cant send slack message to channel {}, please check configuration. Error was {}'.format(channel, error))
+
+
 def analysis_run_done(request):
     if request.method == 'POST':
         data = json.loads(request.body.decode('utf-8'))
@@ -228,6 +243,7 @@ def analysis_run_done(request):
             write_analysis_log(data['log'], data['analysis_id'])
         if 'task' in data:
             set_task_done(data['task'])
+        send_slack_message('{}: Analysis of {} is now finished'.format(data['user'], data['name']), 'general')
         return HttpResponse()
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
