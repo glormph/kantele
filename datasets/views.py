@@ -714,6 +714,7 @@ def move_dataset_active(request):
 
 
 def delete_dataset_from_cold(dset):
+    return {'state': 'error', 'msg': 'Cannot permanent delete yet, not implemented'}
     # TODO Should we allow direct purging? the delete from active job is fired anyway
     if not dset.deleted:
         return {'state': 'error', 'msg': 'Dataset is not deleted, will not purge'}

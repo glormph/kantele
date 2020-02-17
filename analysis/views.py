@@ -78,6 +78,7 @@ def get_datasets(request):
         rawfile__datasetrawfile__dataset_id__in=dsids)
     nrstoredfiles, sfinfo = hv.get_nr_raw_mzml_files(files, info)
     # FIXME default to refined mzmls if exist, now we enforce if exist for simplicity, make optional
+    # FIXME if refined have been deleted, state it, maybe old auto-deleted and need to remake
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
     deleted = dbdsets.filter(deleted=True)
     if deleted.count():

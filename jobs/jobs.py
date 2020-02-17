@@ -3,7 +3,7 @@ from celery import states
 from django.utils import timezone
 
 from jobs.models import Job, Task
-from rawstatus.models import FileJob, StoredFile
+from rawstatus.models import StoredFile
 from datasets import models as dm
 from analysis import models as am
 

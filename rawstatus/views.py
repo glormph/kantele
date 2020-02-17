@@ -602,7 +602,7 @@ def cleanup_old_files(request):
     # old QC mzml
     qcmzmls = mzmls.filter(rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE)
     old_qc_mzmls = qcmzmls.exclude(
-            rawfile__storedfile__filejob__job__nextflowsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_RAW_QC_STORAGE_TIME))
+            rawfile__storedfile__filejob__job__nextflowsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_QC_STORAGE_TIME))
     # orphan QC mzmls
     nonsearched_qc = qcmzmls.exclude(
             rawfile__storedfile__filejob__job__nextflowsearch__isnull=False).filter(
