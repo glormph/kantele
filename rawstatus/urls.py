@@ -18,4 +18,5 @@ urlpatterns = [
     url(r'^setlibrary/$', views.set_libraryfile, name='setlibfile'),
     url(r'^libfile/$', views.check_libraryfile_ready, name='checklibfile'),
     url(r'^rename/$', views.rename_file),
+    url(r'^cleanup/$', views.cleanup_old_files),
 ]

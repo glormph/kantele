@@ -567,6 +567,62 @@ def download_instrument_package(request):
     return resp
 
 
+def cleanup_old_files(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    try:
+        client_id = request.POST['client_id']
+    except KeyError as error:
+        return HttpResponseForbidden()
+    if client_id != settings.ADMIN_APIKEY:
+        print('POST request with incorrect client id '
+              '{}'.format(client_id))
+        return HttpResponseForbidden()
+    mzmls = StoredFile.objects.filter(filetype_id__in=settings.SECONDARY_FTYPES)
+    maxtime_nonint = timezone.now() - timedelta(settings.MAX_MZML_STORAGE_TIME_POST_ANALYSIS)
+    # Filtering gotchas here:
+    # filter multiple excludes so they get done in serie, and exclude date__gt rather than
+    # filter date__lt because then you get all rows where date is lt, but it does not check
+    # if there are ALSO joins where date is gt...
+    # old normal mzmls from searches
+    old_searched_mzmls = mzmls.exclude(
+            rawfile__datasetrawfile__dataset__datatype_id__in=[settings.QC_DATATYPE, settings.LC_DTYPE_ID]).exclude(
+            rawfile__datasetrawfile__dataset__datasetsearch__isnull=True).exclude(
+            rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=maxtime_nonint)
+    # old LC mzmls
+    lcmzmls = mzmls.filter(
+            rawfile__datasetrawfile__dataset__datatype_id=settings.LC_DTYPE_ID,
+            rawfile__datasetrawfile__dataset__datasetsearch__isnull=False).exclude(
+            rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_LC_STORAGE_TIME))
+    # old non-QC mzmls without searches
+    old_nonsearched_mzml = mzmls.exclude(
+            rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE).filter(
+            rawfile__datasetrawfile__dataset__datasetsearch__isnull=True,
+            regdate__lt=maxtime_nonint)
+    # old QC mzml
+    qcmzmls = mzmls.filter(rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE)
+    old_qc_mzmls = qcmzmls.exclude(
+            rawfile__storedfile__filejob__job__nextflowsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_RAW_QC_STORAGE_TIME))
+    # orphan QC mzmls
+    nonsearched_qc = qcmzmls.exclude(
+            rawfile__storedfile__filejob__job__nextflowsearch__isnull=False).filter(
+            regdate__lt=maxtime_nonint)
+    all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml, old_qc_mzmls, nonsearched_qc).filter(purged=False)
+    # FIXME django 3.0 has iterator(chunk_size=500)
+    def chunk_iter(qset, chunk_size):
+        chunk = []
+        for item in qset.iterator():
+            chunk.append(item)
+            if len(chunk) == chunk_size:
+                yield chunk
+                chunk = []
+        yield chunk
+    return all_old_mzmls
+    for chunk in chunk_iter(all_old_mzmls, 500):
+        jobutil.create_job('purge_files', sf_ids=[x.id for x in chunk])
+    return HttpResponse()
+
+
 @login_required
 def download_px_project(request):
     # FIXME check if pxacc exists on pride and here, before creating dset

@@ -95,6 +95,20 @@ class MoveSingleFile(SingleFileJob):
             sfile.path, kwargs['dst_path'], sfile.id), taskkwargs))
 
 
+class PurgeFiles(BaseJob):
+    """Removes a number of files from active storage"""
+    refname = 'purge_files'
+    task = tasks.delete_file
+
+    def getfiles_query(self, **kwargs):
+        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related('servershare')
+
+    def process(self, **kwargs):
+        for fn in self.getfiles_query(**kwargs):
+            fullpath = os.path.join(fn.path, fn.filename)
+            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
+
+
 class DeleteEmptyDirectory(BaseJob):
     """Check first if all the sfids are set to purged, indicating the dir is actually empty.
     Then queue a task. The sfids also make this job dependent on other jobs on those, as in
