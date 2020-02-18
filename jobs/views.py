@@ -279,6 +279,7 @@ def store_longitudinal_qc(request):
             dashviews.fail_longitudinal_qc(data)
         else:
             dashviews.store_longitudinal_qc(data)
+            send_slack_message('QC run for {} is now finished: {}'.format(data['instrument'], data['filename']), 'lab')
         if 'task' in data:
             set_task_done(data['task'])
         return HttpResponse()

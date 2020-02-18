@@ -115,6 +115,8 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'repo': nfwf.nfworkflow.repo,
                'name': 'longqc',
                'outdir': 'internal_results',
+               'filename': mzml.filename,
+               'instrument': mzml.rawfile.producer.name,
                }
         create_nf_search_entries(analysis, wf.id, nfwf.id, self.job_id)
         self.run_tasks.append(((run, params, stagefiles), {}))

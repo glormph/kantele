@@ -313,7 +313,8 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     print('Got message to run QC workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
-                'analysis_id': run['analysis_id'], 'task': self.request.id}
+                'analysis_id': run['analysis_id'], 'task': self.request.id,
+                'instrument': run['instrument'], 'filename': run['filename']}
     mzmls = {}
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
