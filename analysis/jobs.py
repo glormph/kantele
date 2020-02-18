@@ -100,8 +100,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
         nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
-        mzml = self.getfiles_pre_query(**kwargs). select_related('rawfile__producer',
-                'filetype').get(filetype__filetype='mzml')
+        mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(rawfile__storedfile__id=kwargs['sf_id'], filetype__filetype='mzml')
         wf = models.Workflow.objects.filter(shortname__name='QC').last()
         # FIXME hardcoded mods location
         params = ['--mods', 'data/labelfreemods.txt', '--instrument']

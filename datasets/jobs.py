@@ -24,7 +24,7 @@ class RenameDatasetStorageLoc(DatasetJob):
 
     def process(self, **kwargs):
         """Just passthrough of arguments to task"""
-        self.run_tasks = [((kwargs['srcpath'], kwargs['dstpath'], self.get_sf_ids(**kwargs)), {})]
+        self.run_tasks = [((kwargs['srcpath'], kwargs['dstpath'], [self.getfiles_query(**kwargs)]), {})]
 
 
 class MoveFilesToStorage(DatasetJob):
@@ -144,11 +144,11 @@ class ConvertFileMzml(ConvertDatasetMzml):
     refname = 'convert_single_mzml'
 
     def getfiles_query(self, **kwargs):
-        return StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=kwargs['sf_id'])
+        return StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').filter(pk=kwargs['sf_id'])
 
     def process(self, **kwargs):
         queue = kwargs.get('queue', settings.QUEUES_PWIZ[0])
-        fn = self.getfiles_query(**kwargs)
+        fn = self.getfiles_query(**kwargs).get()
         storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
         mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
         if mzsf.servershare_id != fn.servershare_id:

@@ -40,7 +40,7 @@ class BaseJob:
     def getfiles_query(self):
         pass
 
-    def get_sf_ids(self, **kwargs):
+    def get_sf_ids_jobrunner(self, **kwargs):
         """This is set before running job, and when discovering job by runner to estimate
         if the job can be run yet (if files are in use by other job)"""
         return [x.pk for x in self.getfiles_query(**kwargs)]
@@ -73,7 +73,7 @@ class SingleFileJob(BaseJob):
     def getfiles_query(self, **kwargs):
         return self.getfiles_pre_query(**kwargs).get()
 
-    def get_sf_ids(self, **kwargs):
+    def get_sf_ids_jobrunner(self, **kwargs):
         return [self.getfiles_query(**kwargs).id]
 
 
