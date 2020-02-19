@@ -561,7 +561,6 @@ def fetch_dset_details(dset):
     # FIXME add more datatypes and microscopy is hardcoded
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
     info['nrrawfiles'] = raws.count()
-    info['storage_loc'] = dset.storage_loc
     info['owners'] = {x.user_id: x.user.username for x in dset.datasetowner_set.select_related('user').all()}
     info['owner_to_add'] = ''
     try:
@@ -571,15 +570,17 @@ def fetch_dset_details(dset):
         info['qtype'] = False
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
-    files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(
+    files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'servershare', 'filetype').filter(
         rawfile__datasetrawfile__dataset_id=dset.id)
+    servers = [x[0] for x in files.distinct('servershare').values_list('servershare__uri')]
+    info['storage_loc'] = '{} - {}'.format(';'.join(servers), dset.storage_loc)
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles, info = get_nr_raw_mzml_files(files, info)
     else:
         nrstoredfiles = {nonms_dtypes[dset.datatype_id]: files.filter(filetype_id=settings.RAW_SFGROUP_ID).count()}
     info['instruments'] = list(set([x.rawfile.producer.shortname for x in files]))
     info['nrstoredfiles'] = nrstoredfiles
-    info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(
+    info['nrbackupfiles'] = filemodels.PDCBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
     info['storage_location'] = dset.storage_loc
     info['compstates'] = {x.dtcomp.component.name: x.state for x in
