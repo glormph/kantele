@@ -732,7 +732,7 @@ Vue.component('admin-box', {
 			},
       retireProjects: function() {
         for (proj_id of this.selectedItems) {
-          this.$http.post('/archive/project/', {'proj_id': proj_id})
+          this.$http.post('datasets/archive/project/', {'proj_id': proj_id})
             .then(response => {
 						return response
 					}, response => {
@@ -745,7 +745,7 @@ Vue.component('admin-box', {
       },
       reactivateProjects: function() {
         for (proj_id of this.selectedItems) {
-          this.$http.post('/undelete/project/', {'proj_id': proj_id})
+          this.$http.post('datasets/undelete/project/', {'proj_id': proj_id})
             .then(response => {
 						return response
 					}, response => {
