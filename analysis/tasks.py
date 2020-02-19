@@ -373,9 +373,9 @@ def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     postdata.update({'log': '[{}] - Analysis completed.'.format(
         datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')),
                      'analysis_id': analysis_id})
+    update_db(url, json=postdata)
     shutil.rmtree(rundir)
     shutil.rmtree(stagedir)
-    update_db(url, json=postdata)
 
 
 def register_resultfiles(outfiles):
