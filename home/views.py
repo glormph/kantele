@@ -204,7 +204,7 @@ def populate_files(dbfns):
     for fn in dbfns.select_related('rawfile__datasetrawfile__dataset', 'analysisresultfile__analysis', 'swestorebackedupfile', 'pdcbackedupfile', 'filetype'):
         it = {'id': fn.id,
               'name': fn.filename,
-              'date': fn.regdate if fn.filetype_id != int(settings.RAW_SFGROUP_ID) else fn.rawfile.date,
+              'date': datetime.strftime(fn.regdate if fn.filetype_id != int(settings.RAW_SFGROUP_ID) else fn.rawfile.date, '%Y-%m-%d %H:%M'),
               'stored': fn.servershare.name if fn.checked else False,
               'ftype': fn.filetype.name,
               'details': False,
