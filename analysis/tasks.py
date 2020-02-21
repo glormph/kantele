@@ -126,7 +126,7 @@ def check_ensembl_uniprot_fasta_download(self):
             # since tmp file will be deleted on close()
             regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
         register_transfer_libfile(regresp, dstfn, 'Biomart map for ENSEMBL release {}'.format(ens_version),
-                settings.MARTMAP_ID)
+                settings.MARTMAP_FTID)
         requests.post(done_url, data={'type': 'ensembl', 'version': ens_version, 'fn_id': regresp['file_id']})
         print('Finished downloading ENSEMBL database and mart map')
 
