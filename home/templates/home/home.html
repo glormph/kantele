@@ -373,7 +373,14 @@ Vue.component('admin-box', {
 				findDsQuery: '',
 				allSelector: false,
 				searchdeleted: false,
- 				storecolors: {'cold': 'is-info', 'purged': 'is-danger', 'complete': 'is-success', 'active-only': 'is-warning', 'new': 'is-warning', 'broken': 'is-light'},
+ 				storecolors: {
+                                  'cold': 'is-info',
+                                  'purged': 'is-danger', 
+                                  'complete': 'is-success', 
+                                  'active-only': 'is-warning', 
+                                  'new': 'is-warning', 
+                                  'empty': 'is-light',
+                                  'broken': 'is-light'},
 				selectedDsets: [],
                                 allowners: {},
 		{% endverbatim %}

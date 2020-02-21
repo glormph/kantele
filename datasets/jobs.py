@@ -198,6 +198,8 @@ class ReactivateDeletedDataset(DatasetJob):
 class DeleteDatasetPDCBackup(BaseJob):
     refname = 'delete_dataset_coldstorage'
     # TODO
+    # should be agnostic of files in PDC, eg if no files found, loop length is zero
+    # this for e.g empty or active-only dsets
 
 
 def get_or_create_mzmlentry(fn, group_id, servershare_id=False):

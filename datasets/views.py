@@ -636,6 +636,8 @@ def purge_project(request):
 def get_dset_storestate(dset):
     dsfiles = filemodels.StoredFile.objects.exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(rawfile__datasetrawfile__dataset=dset)
     dsfc = dsfiles.count()
+    if dsfc == 0:
+        return 'empty'
     coldfiles = dsfiles.filter(pdcbackedupfile__isnull=False, pdcbackedupfile__deleted=False, pdcbackedupfile__success=True)
     if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.count():
         storestate = 'complete'
@@ -666,8 +668,9 @@ def archive_dataset(dset):
         return {'state': 'error', 'msg': 'Cannot archive dataset with unknown storage state'}
     if storestate == 'active-only':
         create_job('backup_dataset', dset_id=dset.id)
-    create_job('delete_active_dataset', dset_id=dset.id)
-    create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
+    if storestate != 'empty':
+        create_job('delete_active_dataset', dset_id=dset.id)
+        create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
     dset.deleted, dset.purged = True, False
     dset.save()
     return {'state': 'ok', 'msg': 'Dataset queued for archival'}
@@ -685,6 +688,11 @@ def reactivate_dataset(dset):
         return {'state': 'error', 'msg': 'Cannot reactivate dataset with unknown storage state'}
     elif storestate in ['active-only', 'complete']:
         return {'state': 'error', 'msg': 'Dataset already in active storage'}
+    elif storestate == 'empty':
+        dset.deleted, dset.purged, dset.runname.experiment.project.active = False, False, True
+        dset.save()
+        dset.runname.experiment.project.save()
+        return {'state': 'ok', 'msg': 'Empty dataset (contains no files) re-activated'}
     elif storestate == 'cold':
         dset.deleted, dset.purged, dset.runname.experiment.project.active = False, False, True
         dset.save()
@@ -723,7 +731,9 @@ def delete_dataset_from_cold(dset):
     # Also create delete active job just in case files are lying around
     create_job('delete_active_dataset', dset_id=dset.id)
     create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
-    create_job('delete_dataset_coldstorage', dset_id=dset.id)
+    storestate = get_dset_storestate(dset) 
+    if storestate != 'empty':
+        create_job('delete_dataset_coldstorage', dset_id=dset.id)
     sfids = [sf.id for dsrf in dset.datasetrawfile_set.select_related('rawfile') for sf in dsrf.rawfile.storedfile_set.all()]
     create_job('delete_empty_directory', sf_ids=sfids)
     return {'state': 'ok', 'msg': 'Dataset queued for permanent deletion'}

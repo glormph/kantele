@@ -125,6 +125,8 @@ class DeleteEmptyDirectory(BaseJob):
         if sfiles.count() and sfiles.count() == sfiles.filter(purged=True).count():
             fn = sfiles.last()
             self.run_tasks.append(((fn.servershare.name, fn.path), {}))
+        elif not sfiles.count():
+            pass
         else:
             raise RuntimeError('Cannot delete dir: according to the DB, there are still storedfiles which '
                 'have not been purged yet in the directory')
