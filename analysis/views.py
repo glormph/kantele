@@ -55,8 +55,8 @@ def set_protein_database_lib(request):
         dbmod.objects.create(version=request.POST['version'], libfile_id=libfile.id)
     except IntegrityError:
         pass # FIXME
-    jj.send_slack_message('New automatic fasta release done: {}, version {}: {}'.format(
-        request.POST['type'], request.POST['version'], libfile.sfile.name), 'kantele')
+    jj.send_slack_message('New automatic fasta release done: {}, version {}'.format(
+        request.POST['type'], request.POST['version']), 'kantele')
     return HttpResponse()
 
 

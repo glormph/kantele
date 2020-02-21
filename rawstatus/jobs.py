@@ -25,8 +25,10 @@ class CreatePDCArchive(SingleFileJob):
     task = tasks.pdc_archive
 
     def process(self, **kwargs):
-        self.run_tasks.append((upload_file_pdc_runtask(self.getfiles_query(**kwargs)), {}))
-        print('PDC archival task queued')
+        taskargs = upload_file_pdc_runtask(self.getfiles_query(**kwargs))
+        if taskargs:
+            self.run_tasks.append((taskargs, {}))
+            print('PDC archival task queued')
 
 
 class RestoreFromPDC(SingleFileJob):
