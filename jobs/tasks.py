@@ -37,6 +37,7 @@ alljobs = [
         rsjobs.RenameFile,
         rsjobs.MoveSingleFile,
         rsjobs.DeleteEmptyDirectory,
+        rsjobs.PurgeFiles,
         rsjobs.DownloadPXProject,
         anjobs.RunLongitudinalQCWorkflow,
         anjobs.RunNextflowWorkflow,

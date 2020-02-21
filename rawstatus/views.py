@@ -617,7 +617,6 @@ def cleanup_old_files(request):
                 yield chunk
                 chunk = []
         yield chunk
-    return all_old_mzmls
     for chunk in chunk_iter(all_old_mzmls, 500):
         jobutil.create_job('purge_files', sf_ids=[x.id for x in chunk])
     return HttpResponse()
