@@ -2,6 +2,7 @@ import json
 import requests
 from celery import states
 from django.utils import timezone
+from urllib.parse import urljoin
 
 from kantele import settings
 from jobs.models import Job, Task

@@ -1,6 +1,5 @@
 import json
 import requests
-from urllib.parse import urljoin
 from datetime import datetime 
 
 from celery import states
