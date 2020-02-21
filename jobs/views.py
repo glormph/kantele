@@ -8,7 +8,7 @@ from django.http import (HttpResponseForbidden, HttpResponse,
                          HttpResponseNotAllowed, JsonResponse)
 from django.contrib.auth.decorators import login_required
 from jobs import models
-from jobs.jobs import Jobstates, create_job
+from jobs.jobs import Jobstates, create_job, send_slack_message
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
                               SwestoreBackedupFile, PDCBackedupFile, Producer)
 from analysis.models import AnalysisResultFile, NextflowSearch
@@ -218,19 +218,6 @@ def scp_mzml(request):
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
-
-
-def send_slack_message(text, channel):
-    try:
-        channelpath = settings.SLACK_HOOKS[channel.upper()]
-    except KeyError:
-        print('Kantele cant send slack message to channel {}, please check configuration'.format(channel))
-    url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, channelpath] for x in y.split('/')]))
-    req = requests.post(url, json={'text': text})
-    try:
-        req.raise_for_status()
-    except Exception as error:
-        print('Kantele cant send slack message to channel {}, please check configuration. Error was {}'.format(channel, error))
 
 
 def analysis_run_done(request):

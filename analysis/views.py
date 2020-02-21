@@ -49,12 +49,14 @@ def check_fasta_release(request):
 
 
 def set_protein_database_lib(request):
-    libfile = am.LibraryFile.objects.get(sfile__rawfile_id=request.POST['fn_id'])
+    libfile = am.LibraryFile.objects.select_related('sfile').get(sfile__rawfile_id=request.POST['fn_id'])
     dbmod = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[request.POST['type']]
     try:
         dbmod.objects.create(version=request.POST['version'], libfile_id=libfile.id)
     except IntegrityError:
         pass # FIXME
+    jj.send_slack_message('New automatic fasta release done: {}, version {}: {}'.format(
+        request.POST['type'], request.POST['version'], libfile.sfile.name))
     return HttpResponse()
 
 

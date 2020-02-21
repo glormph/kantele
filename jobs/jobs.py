@@ -1,7 +1,9 @@
 import json
+import requests
 from celery import states
 from django.utils import timezone
 
+from kantele import settings
 from jobs.models import Job, Task
 from rawstatus.models import StoredFile
 from datasets import models as dm
@@ -118,3 +120,18 @@ def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, platenames
         if job_is_duplicate:
             return job
     return False
+
+
+def send_slack_message(text, channel):
+    try:
+        channelpath = settings.SLACK_HOOKS[channel.upper()]
+    except KeyError:
+        print('Kantele cant send slack message to channel {}, please check configuration'.format(channel))
+    url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, channelpath] for x in y.split('/')]))
+    req = requests.post(url, json={'text': text})
+    try:
+        req.raise_for_status()
+    except Exception as error:
+        print('Kantele cant send slack message to channel {}, please check configuration. Error was {}'.format(channel, error))
+
+

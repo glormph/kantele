@@ -84,6 +84,7 @@ except TypeError:
 
 ANALYSISOUT_FTID = int(os.environ.get('ANALYSISOUT_FTID'))
 DATABASE_FTID = int(os.environ.get('DATABASE_FTID'))
+MARTMAP_FTID = int(os.environ.get('MARTMAP_FTID')) # Deprecate when no longer needed in msstitch
 
 # Lifespan for mzMLs and Instrument-QC RAW files, in days
 try:

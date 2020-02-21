@@ -12,7 +12,7 @@ from celery import shared_task, states
 
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
-from jobs.jobs import Jobstates
+from jobs.jobs import Jobstates, send_slack_message
 from jobs import jobs as jj
 from rawstatus.models import FileJob
 from datasets import jobs as dsjobs
@@ -103,6 +103,7 @@ def run_job(job, jobmap):
         job.state = Jobstates.ERROR
         JobError.objects.create(job_id=job.id, message=e)
         job.save()
+        send_slack_message('Job {} failed in job runner: {}'.format(job.id, job.funcname, 'kantele'))
     job.save()
 
 
@@ -162,6 +163,7 @@ def process_job_tasks(job, jobtasks):
         print('Failed tasks for job {}, setting to error'.format(job.id))
         job.state = Jobstates.ERROR
         job_updated = True
+        send_slack_message('Tasks for job {} failed: {}'.format(job.id, job.funcname, 'kantele'))
         # FIXME joberror msg needs to be set, in job or task?
     if job_updated:
         job.save()
