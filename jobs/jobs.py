@@ -128,6 +128,7 @@ def send_slack_message(text, channel):
         channelpath = settings.SLACK_HOOKS[channel.upper()]
     except KeyError:
         print('Kantele cant send slack message to channel {}, please check configuration'.format(channel))
+        return
     url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, channelpath] for x in y.split('/')]))
     req = requests.post(url, json={'text': text})
     try:

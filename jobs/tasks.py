@@ -161,9 +161,10 @@ def process_job_tasks(job, jobtasks):
         job_updated = True
     elif tasks_failed:
         print('Failed tasks for job {}, setting to error'.format(job.id))
+        if job.state != Jobstates.ERROR:
+            send_slack_message('Tasks for job {} failed: {}'.format(job.id, job.funcname), 'kantele')
         job.state = Jobstates.ERROR
         job_updated = True
-        send_slack_message('Tasks for job {} failed: {}'.format(job.id, job.funcname), 'kantele')
         # FIXME joberror msg needs to be set, in job or task?
     if job_updated:
         job.save()
