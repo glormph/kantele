@@ -144,7 +144,7 @@
                       <th v-show="mediansweep"><del>Denominator</del></th>
                       <th>Channel</th>
                       <th>Sample name</th>
-                      <th v-show="useDeqms">Sample group (LEAVE EMPTY FOR INTERNAL STANDARDS!)</th>
+                      <th v-if="deqmsPossible">Sample group (LEAVE EMPTY FOR INTERNAL STANDARDS!)</th>
         		    </tr>
                   </thead>
                   <tbody>
@@ -156,7 +156,7 @@
                       <td>{{ ch }} </td>
                       <td> {{ setdenoms[name][ch] }}</td>
                       <td>
-                        <input type="text" class="input" v-model="samplegroupmodel[name][ch]" placeholder="Sample group or empty (e.g. CTRL, TREAT)">
+                        <input type="text" class="input" v-if="deqmsPossible" v-model="samplegroupmodel[name][ch]" placeholder="Sample group or empty (e.g. CTRL, TREAT)">
                       </td>
         		    </tr>
                   </tbody>
@@ -385,7 +385,9 @@
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
                     for (ch of this.sorted_channels(this.setdenoms[sname])) {
-                        if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
+                        if (!deqmsPossible) {
+                            sampletable.push([ch, sname, this.setdenoms[sname][ch]]);
+                        } else if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
                             sampletable.push([ch, sname, this.setdenoms[sname][ch], this.samplegroupmodel[sname][ch]]);
                         } else {
                             sampletable.push([ch, sname, this.setdenoms[sname][ch], 'X__POOL']);
@@ -534,11 +536,9 @@
 				}
 				return plates;
 			},
-  /*
 			deqmsPossible: function() {
                 return 'invisible_flags' in this.workflow && 'deqmspossible' in this.workflow.invisible_flags;
 			},
-  */
 			analysis: function() {
 				data = {};
 				qtype = '';
