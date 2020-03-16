@@ -124,7 +124,7 @@
 <!-- labelfree, lfree hirief (plasma), tmt (LG, labelcheck), tmt hirief, FIX ALL OF THEM-->
 		<div class="box" v-if="analysiserrors.size === 0 && analysis.qtype !== 'labelfree' && analysis.dtype.toLowerCase() !== 'labelcheck'">
 		<div class="title is-5">Isobaric quantification</div>
-        <div class="field" v-if="deqmsPossible">
+        <div class="field">
         <input type="checkbox" v-model="useDeqms">
         <label class="checkbox">Use DEqMS on sample groups</label>
 		<div v-if="allsets.length===1"> 
@@ -156,7 +156,7 @@
                       <td>{{ ch }} </td>
                       <td> {{ setdenoms[name][ch] }}</td>
                       <td>
-                        <input v-show="useDeqms" type="text" class="input" v-model="samplegroupmodel[name][ch]" placeholder="Sample group or empty (e.g. CTRL, TREAT)">
+                        <input type="text" class="input" v-model="samplegroupmodel[name][ch]" placeholder="Sample group or empty (e.g. CTRL, TREAT)">
                       </td>
         		    </tr>
                   </tbody>
@@ -385,9 +385,7 @@
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
                     for (ch of this.sorted_channels(this.setdenoms[sname])) {
-                        if (!this.deqmsPossible) {
-                            sampletable.push([ch, sname, this.setdenoms[sname][ch]]);
-                        } else if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
+                        if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
                             sampletable.push([ch, sname, this.setdenoms[sname][ch], this.samplegroupmodel[sname][ch]]);
                         } else {
                             sampletable.push([ch, sname, this.setdenoms[sname][ch], 'X__POOL']);
@@ -536,9 +534,11 @@
 				}
 				return plates;
 			},
+  /*
 			deqmsPossible: function() {
                 return 'invisible_flags' in this.workflow && 'deqmspossible' in this.workflow.invisible_flags;
 			},
+  */
 			analysis: function() {
 				data = {};
 				qtype = '';
