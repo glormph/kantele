@@ -385,7 +385,7 @@
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
                     for (ch of this.sorted_channels(this.setdenoms[sname])) {
-                        if (!deqmsPossible) {
+                        if (!this.deqmsPossible) {
                             sampletable.push([ch, sname, this.setdenoms[sname][ch]]);
                         } else if (ch in this.samplegroupmodel[sname] && this.samplegroupmodel[sname][ch] !== '') {
                             sampletable.push([ch, sname, this.setdenoms[sname][ch], this.samplegroupmodel[sname][ch]]);
