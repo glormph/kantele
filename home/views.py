@@ -90,7 +90,8 @@ def find_datasets(request):
     dbdsets = dsmodels.Dataset.objects.filter(query)
     if request.GET['deleted'] == 'false':
         dbdsets = dbdsets.filter(deleted=False)
-    return JsonResponse({'dsets': populate_dset(dbdsets, request.user)})
+    dsets = populate_dset(dbdsets, request.user)
+    return JsonResponse({'items': dsets, 'order': list(dsets.keys())})
 
 
 @login_required
@@ -137,8 +138,8 @@ def show_analyses(request):
 
 @login_required
 def show_projects(request):
-    if 'pids' in request.GET:
-        pids = request.GET['pids'].split(',')
+    if 'ids' in request.GET:
+        pids = request.GET['ids'].split(',')
         dbprojects = dsmodels.Project.objects.filter(pk__in=pids)
     elif request.GET['userproj'] in ['true', 'True', True]:
         # all active projects
@@ -155,15 +156,16 @@ def show_projects(request):
 
 @login_required
 def show_datasets(request):
-    if 'dsids' in request.GET:
-        dsids = request.GET['dsids'].split(',')
+    if 'ids' in request.GET:
+        dsids = request.GET['ids'].split(',')
         dbdsets = dsmodels.Dataset.objects.filter(pk__in=dsids)
     else:
         # last month datasets of a user
         dbdsets = dsmodels.Dataset.objects.filter(deleted=False, datasetowner__user_id=request.user.id,
                                                   date__gt=datetime.today() - timedelta(30))
-    return JsonResponse({'dsets': populate_dset(dbdsets, request.user),
-                         'allowners': {x.id: '{} {}'.format(x.first_name, x.last_name) for x in User.objects.filter(is_active=True)}})
+    dsets = populate_dset(dbdsets, request.user)
+    return JsonResponse({'items': dsets, 'order': list(dsets.keys())})
+        #'allowners': {x.id: '{} {}'.format(x.first_name, x.last_name) for x in User.objects.filter(is_active=True)}})
 
 
 @login_required
@@ -189,8 +191,8 @@ def find_files(request):
 
 @login_required
 def show_files(request):
-    if 'fnids' in request.GET:
-        fnids = request.GET['fnids'].split(',')
+    if 'ids' in request.GET:
+        fnids = request.GET['ids'].split(',')
         dbfns = filemodels.StoredFile.objects.filter(pk__in=fnids)
     else:
         # last week files 
@@ -205,9 +207,13 @@ def populate_files(dbfns):
         it = {'id': fn.id,
               'name': fn.filename,
               'date': datetime.strftime(fn.regdate if fn.filetype_id != int(settings.RAW_SFGROUP_ID) else fn.rawfile.date, '%Y-%m-%d %H:%M'),
-              'stored': fn.servershare.name if fn.checked else False,
               'ftype': fn.filetype.name,
-              'details': False,
+              'analyses': [],
+              'dataset': [],
+              'jobs': [],
+              'job_ids': [],
+              'deleted': fn.deleted,
+              'purged': fn.purged,
              }
         # TODO make unified backup model?
         try:
@@ -221,42 +227,88 @@ def populate_files(dbfns):
             it['owner'] = fn.rawfile.producer.name
         elif hasattr(fn.rawfile, 'datasetrawfile'):
             it['owner'] = fn.rawfile.datasetrawfile.dataset.datasetowner_set.select_related('user').first().user.username
+            dsrf = fn.rawfile.datasetrawfile
+            it['dataset'] = dsrf.dataset_id
+            fjobs = filemodels.FileJob.objects.select_related('job').filter(storedfile_id=fn.id)
+            currentjobs = fjobs.exclude(job__state__in=jj.JOBSTATES_DONE)
+            it['job_ids'] = [x.job_id for x in currentjobs]
+            it['jobs'] = [x.job.state for x in currentjobs]
+            if fn.filetype.filetype == 'mzml':
+                anjobs = fjobs.filter(job__nextflowsearch__isnull=False)
+            elif fn.filetype_id == int(settings.RAW_SFGROUP_ID):
+                mzmls = fn.rawfile.storedfile_set.filter(filetype__filetype='mzml')
+                anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
+            it['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
         elif hasattr(fn, 'analysisresultfile'):
             it['owner'] = fn.analysisresultfile.analysis.user.username
+            if hasattr(fn.analysisresultfile.analysis, 'nextflowsearch'):
+                it['analyses'].append(fn.analysisresultfile.analysis.nextflowsearch.id)
         popfiles[fn.id] = it
     order = [x['id'] for x in sorted(popfiles.values(), key=lambda x: x['date'], reverse=True)]
-    return JsonResponse({'files': popfiles, 'order': order})
+    return JsonResponse({'items': popfiles, 'order': order})
 
 
 def get_ds_jobs(dbdsets):
+    # FIXME probably do this in DB operation instead? its slow!
     jobmap = {}
     for filejob in filemodels.FileJob.objects.select_related('job').exclude(
-            job__state=jj.Jobstates.DONE).filter(
+            job__state__in=jj.JOBSTATES_DONE).filter(
             storedfile__rawfile__datasetrawfile__dataset_id__in=dbdsets):
         job = filejob.job
         try:
-            jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id].add(job.state)
+            jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id][str(job.id)] = job.state
         except KeyError:
-            jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {job.state}
+            jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id] = {str(job.id): job.state}
     return jobmap
 
 
 @login_required
 def show_jobs(request):
     items = {}
-    order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]},
-             'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR]}}
-    for job in jm.Job.objects.exclude(state__in=jj.JOBSTATES_DONE).select_related(
-            'nextflowsearch__analysis__user').order_by('-timestamp'):
+    order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR] + jj.JOBSTATES_DONE},
+             'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR] + jj.JOBSTATES_DONE}}
+    if 'ids' in request.GET:
+        jobids = request.GET['ids'].split(',')
+        dbjobs = jm.Job.objects.filter(pk__in=jobids)
+    else:
+        dbjobs = jm.Job.objects.exclude(state__in=jj.JOBSTATES_DONE)
+    for job in dbjobs.select_related('nextflowsearch__analysis__user').order_by('-timestamp'):
         ownership = jv.get_job_ownership(job, request)
         order[ownership['type']][job.state].append(job.id)
+        analysis = jv.get_job_analysis(job)
         items[job.id] = {'id': job.id, 'name': job.funcname,
                          'state': job.state,
-                         'details': False,
                          'usr': ', '.join(ownership['usernames']),
                          'date': datetime.strftime(job.timestamp, '%Y-%m-%d'),
+                         'analysis': analysis.nextflowsearch.id if analysis else False,
                          'actions': get_job_actions(job, ownership)}
+        items[job.id]['fn_ids'] = [x.storedfile_id for x in job.filejob_set.all()]
+        kwargs = json.loads(job.kwargs)
+        dsets = kwargs.get('dset_id', kwargs.get('dset_ids', []))
+        if type(dsets) == int:
+            dsets = [dsets]
+        items[job.id]['dset_ids'] = dsets
     stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING, jj.Jobstates.WAITING]
+    #####/tasks
+    #analysis = jv.get_job_analysis(job)
+    #if analysis:
+    #    analysis = analysis.name
+    #errors = []
+    #try:
+    #    errormsg = job.joberror.message
+    #except jm.JobError.DoesNotExist:
+    #    errormsg = False
+    #return JsonResponse({'files': fj.count(), 'dsets': 0, 
+    #                     'analysis': analysis, 
+    #                     'time': datetime.strftime(job.timestamp, '%Y-%m-%d %H:%M'),
+    #                     'errmsg': errormsg,
+    #                     'tasks': {'error': tasks.filter(state=tstates.FAILURE).count(),
+    #                               'procpen': tasks.filter(state=tstates.PENDING).count(),
+    #                               'done': tasks.filter(state=tstates.SUCCESS).count()},
+    #                     'errors': errors,
+    #                    })
+#####
+
     return JsonResponse({'items': items, 'order': 
                          [x for u in ['user', 'admin'] for s in stateorder 
                           for x in order[u][s]]})
@@ -275,7 +327,11 @@ def get_job_actions(job, ownership):
 
 def populate_analysis(nfsearches, user):
     ana_out, order = {}, []
+    nfsearches = nfsearches.select_related('analysis', 'job', 'workflow', 'nfworkflow')
     for nfs in nfsearches:
+        fjobs = nfs.job.filejob_set.all().select_related(
+            'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
+        dsets =  {x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs}
         try:
             ana_out[nfs.id] = {
                 'id': nfs.id,
@@ -283,12 +339,14 @@ def populate_analysis(nfsearches, user):
                 'usr': nfs.analysis.user.username,
                 'name': nfs.analysis.name,
                 'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
-                'jobstates': [nfs.job.state],
+                'jobstate': nfs.job.state,
+                'jobid': nfs.job_id,
                 'wf': nfs.workflow.name,
+                'wflink': nfs.nfworkflow.nfworkflow.repo,
                 'deleted': nfs.analysis.deleted,
                 'purged': nfs.analysis.purged,
-                'details': False,
-                'selected': False,
+                'dset_ids': [x.id for x in dsets],
+                'fn_ids': [x.storedfile_id for x in fjobs],
             }
         except:
         # FIXME this dont work except anmodels.Analysis.RelatedObjectDoesNotExist:
@@ -360,11 +418,12 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
 
 
 def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
-    if showjobs:
-        jobmap = get_ds_jobs(dbdsets)
+
     dsets = OrderedDict()
     for dataset in dbdsets.select_related('runname__experiment__project__projtype__ptype',
             'prefractionationdataset'):
+        dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dataset)
+        storestate = get_dset_storestate(dataset, dsfiles)
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': check_ownership(user, dataset),
@@ -374,13 +433,14 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
             'exp': dataset.runname.experiment.name,
             'run': dataset.runname.name,
             'dtype': dataset.datatype.name,
-            'storestate': get_dset_storestate(dataset),
+            'storestate': storestate,
+            'fn_ids': [x.id for x in dsfiles],
             'ptype': dataset.runname.experiment.project.projtype.ptype.name,
-            'details': False,
-            'selected': False,
         }
         if showjobs:
-            dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id]) if dataset.id in jobmap else []
+            jobmap = get_ds_jobs(dbdsets)
+            dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
+            dsets[dataset.id]['jobids'] = ','.join(list(jobmap[dataset.id].keys())) if dataset.id in jobmap else []
         if hasattr(dataset, 'prefractionationdataset'):
             pf = dataset.prefractionationdataset
             dsets[dataset.id]['prefrac'] = str(pf.prefractionation.name)
@@ -423,36 +483,37 @@ def get_analysis_invocation(job):
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
         'analysis', 'job', 'workflow', 'nfworkflow').get()
-    storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
-                anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
+    #storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
+    #            anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
     fjobs = nfs.job.filejob_set.all().select_related(
         'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     dsets =  {x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs}
-    projs = {x.runname.experiment.project for x in dsets}
+    #projs = {x.runname.experiment.project for x in dsets}
     if nfs.analysis.log == '':
         logentry = ['Analysis without logging or not yet queued']
     else:
-        logentry = [x for y in json.loads(nfs.analysis.log) for x in y.split('\n')][-10:]
-    linkedfiles = [[x.sfile.filename, x.id] for x in 
-                   av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
-    resp = {'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
-                                'retry': jv.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
-                                'time': nfs.job.timestamp}},
+        logentry = [x for y in json.loads(nfs.analysis.log) for x in y.split('\n') if x][-3:]
+    linkedfiles = [(x.id, x.sfile.filename) for x in av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
+    resp = {#'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
+            #                    'retry': jv.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
+            #                    'time': nfs.job.timestamp}},
              'wf': {'fn': nfs.nfworkflow.filename, 
-                    'commit': nfs.nfworkflow.commit,
+                    'update': nfs.nfworkflow.update,
                     'repo': nfs.nfworkflow.nfworkflow.repo},
-             'proj': [{'name': x.name, 'id': x.id} for x in projs],
-             'dsets': [x.id for x in dsets],
+#             'proj': [{'name': x.name, 'id': x.id} for x in projs],
+             'nrdsets': len(dsets),
              'nrfiles': fjobs.count(),
-             'storage_locs': [{'server': x.servershare.name, 'path': x.path}
-                              for x in storeloc.values()],
-             'log': logentry, 'servedfiles': linkedfiles,
-             'invocation': get_analysis_invocation(nfs.job),
+#             'storage_locs': [{'server': x.servershare.name, 'path': x.path}
+#                              for x in storeloc.values()],
+             'log': logentry, 
+'servedfiles': linkedfiles,
+             #'invocation': get_analysis_invocation(nfs.job),
             }
+    # FIXME dsets, files are already counted in the non-detailed view, so maybe frontend can reuse those
     try:
         resp['quants'] = list({x.quantdataset.quanttype.name for x in dsets})
     except dsmodels.QuantDataset.DoesNotExist:
-        pass
+        resp['quants'] = []
     return JsonResponse(resp)
 
 
@@ -560,7 +621,6 @@ def fetch_dset_details(dset):
                                 'time': x.job.timestamp} for x in dsjobs}.values()]}
     # FIXME add more datatypes and microscopy is hardcoded
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
-    info['nrrawfiles'] = raws.count()
     info['owners'] = {x.user_id: x.user.username for x in dset.datasetowner_set.select_related('user').all()}
     info['owner_to_add'] = ''
     try:
@@ -647,4 +707,4 @@ def show_messages(request):
         out['old_purgable_analyses'] = purgable_ana_old
         return JsonResponse(out)
     else:
-        return HttpResponseForbidden()
+        return JsonResponse({'error': 'User is not admin'})

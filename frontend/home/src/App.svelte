@@ -16,11 +16,9 @@ async function fetchMessages() {
   const resp = await getJSON(url);
   if (!('error' in resp)) {
     messages = {};
-    console.log(resp);
     messages.olddef = resp.olddef;
     messages.purgable_analyses = resp.purgable_analyses;
     messages.old_purgable_analyses = resp.old_purgable_analyses;
-    console.log(messages);
   } else { console.log(resp); }
 }
 

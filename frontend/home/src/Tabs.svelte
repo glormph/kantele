@@ -1,10 +1,27 @@
 <script>
 
 export let tabshow; 
+export let errors;
 
 let tabs = ['Datasets', 'Projects', 'Analyses', 'Files', 'Jobs'];
 
 </script>
+
+<style>
+.errormsg {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 20px;
+}
+</style>
+
+{#if Object.values(errors).some(x => x === 1)}
+<div class="notification is-danger is-light errormsg"> 
+    {#each Object.keys(errors) as error}
+    <div>{error}</div>
+    {/each}
+</div>
+{/if}
 
 <div class="content">
   <div class="tabs is-toggle is-centered is-small">

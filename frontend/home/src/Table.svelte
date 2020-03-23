@@ -1,21 +1,52 @@
 <script>
 
+import {querystring, push} from 'svelte-spa-router';
+import { onMount } from 'svelte';
+import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+
 import TableItem from './TableItem.svelte'
+import { flashtime } from '../../util.js'
 
 export let fields;
-export let order;
-export let trs;
 export let statecolors;
 export let fixedbuttons = [];
 export let selected;
 export let getdetails;
-export let loading;
+export let inactive = [];
+export let fetchUrl;
+export let findUrl;
+export let errors;
+export let tab;
 
+let items = {};
+let order = [];
+let findQueryString = '';
 let showDetailBox = false;
 let detailsLoaded = false;
 let detailBoxContent = '';
+let searchdeleted = false;
+let loadingItems = false;
+let loadingNonce;
 
 function selectAll() {
+}
+
+function fetchItems(ids) {
+	const url = ids.length ? fetchUrl + `?ids=${ids.join(',')}` : fetchUrl;
+  loadItems(url);
+}
+
+function findItems() {
+  const url = `${findUrl}?q=${findQueryString}&deleted=${searchdeleted}`;
+  loadItems(url);
+}
+
+function findQuery(event) {
+  if (event.keyCode === 13) {
+    // Push doesnt reload the component
+    push(`#/${tab.toLowerCase()}?q=${findQueryString}&deleted=${searchdeleted}`);
+    findItems();
+  }
 }
 
 async function showDetails(itemId) {
@@ -25,13 +56,62 @@ async function showDetails(itemId) {
   detailsLoaded = true;
 }
 
+async function loadItems(url) {
+  loadingItems = true;
+  const localNonce = loadingNonce = new Object();
+  const result = await getJSON(url);
+  loadingItems = false;
+  if ('error' in result) {
+    const msg = `While fetching ${tab.toLowerCase()}: ${result.error}`;
+    errors[msg] = 1;
+    setTimeout(function(msg) { errors[msg] = 0 } , flashtime, msg);
+  } else if (localNonce !== loadingNonce) {
+    // Override the previous request so only the latest gets rendered on the page
+    return;
+  } else {
+    order = [];
+    items = {};
+    items = result.items;
+    order = result.order;
+  }
+}
+
+onMount(async() => {
+  let qs;
+  try {
+    qs = Object.fromEntries($querystring.split('&').map(x => x.split('=')));
+  } catch {
+    // FIXME 404 instead
+    fetchItems([]);
+    return;
+  } 
+  if ('ids' in qs) {
+    fetchItems(qs.ids.split(','));
+  } else if ('q' in qs) {
+    searchdeleted = ('deleted' in qs) ? true : false;
+    findQueryString = qs.q;
+    findItems();
+  } else {
+    fetchItems([]);
+  }
+})
 </script>
 
 <style>
 .box {
   position: absolute;
 }
+
+div.spinner {
+  position: absolute;
+  left: 50%;
+  padding-top: 20px;
+}
 </style>
+
+<div class="content is-small">
+  <input type="checkbox" checked={searchdeleted}>Search deleted {tab.toLowerCase()}
+  <input class="input is-small" on:keyup={findQuery} bind:value={findQueryString} type="text" placeholder="Type a query and press enter to search datasets">
 
 <table class="table">
   <thead>
@@ -52,8 +132,15 @@ async function showDetails(itemId) {
       {/each}
     </tr>
   </thead>
+
+{#if loadingItems}
+<div class="has-text-centered spinner">
+  <i class="fa fa-spinner fa-pulse fa-2x"></i>
+</div>
+{/if}
+
   <tbody>
-    {#each order.map(x => trs[x]) as row}
+    {#each order.map(x => items[x]) as row}
     <tr>
       <td>
         <input type="checkbox" bind:group={selected} value={row.id}>
@@ -79,13 +166,13 @@ async function showDetails(itemId) {
         <td>
           {#if field.links}
           {#if row[field.links].length || row[field.links] > 0}
-          <a href={`${field.linkroute}${row[field.links]}`}>
+          <a href={`${field.linkroute}?ids=${row[field.links]}`}>
             {#if field.multi}
             {#each row[field.id] as item}
-            <TableItem value={item} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+            <TableItem value={item} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
             {/each}
             {:else} 
-            <TableItem value={row[field.id]} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+            <TableItem value={row[field.id]} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
             {/if}
           </a>
           {/if}
@@ -93,10 +180,10 @@ async function showDetails(itemId) {
           {:else}
           {#if field.multi}
           {#each row[field.id] as item}
-          <TableItem value={item} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+          <TableItem value={item} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
           {/each}
           {:else} 
-          <TableItem value={row[field.id]} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+          <TableItem value={row[field.id]} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
           {/if}
           {/if}
 
@@ -106,9 +193,4 @@ async function showDetails(itemId) {
     {/each}
   </tbody>
 </table>
-
-{#if loading}
-<div class="has-text-centered">
-  <i class="fa fa-spinner fa-pulse fa-2x"></i>
 </div>
-{/if}

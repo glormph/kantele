@@ -1,23 +1,19 @@
 <script>
 
 import {querystring, push} from 'svelte-spa-router';
-import { onMount } from 'svelte';
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
+import { flashtime } from '../../util.js'
 
-let analyses = {};
-let order = [];
 let selectedAnalyses = [];
-let loadingAnalyses = false;
-let findQueryString = '';
-let searchdeleted = false;
+let errors = [];
 
 const tablefields = [
-  {id: 'jobstate', name: '__hourglass-half', type: 'state', multi: false, links: 'jobid', linkroute: '#/jobs?jobids='},
+  {id: 'jobstate', name: '__hourglass-half', type: 'state', multi: false, links: 'jobid', linkroute: '#/jobs'},
   {id: 'name', name: 'Analysis name', type: 'str', multi: false},
-  {id: 'files', name: '', help: 'Files', type: 'icon', icon: 'database', multi: false, links: 'fn_ids', linkroute: '#/files?fnids='},
-  {id: 'datasets', name: '', help: 'Datasets', type: 'icon', icon: 'clipboard-list', multi: false, links: 'dset_ids', linkroute: '#/datasets?dsids='},
+  {id: 'files', name: '', help: 'Input files', type: 'icon', icon: 'database', multi: false, links: 'fn_ids', linkroute: '#/files'},
+  {id: 'datasets', name: '', help: 'Datasets', type: 'icon', icon: 'clipboard-list', multi: false, links: 'dset_ids', linkroute: '#/datasets'},
   {id: 'wf', name: 'Workflow', type: 'str', multi: false, links: 'wflink'},
   {id: 'usr', name: 'Users', type: 'str', multi: false},
   {id: 'date', name: 'Date', type: 'str', multi: false},
@@ -33,73 +29,27 @@ const statecolors = {
   },
 }
 
-async function loadAnalyses(url) {
-  analyses = {};
-	order = [];
-  loadingAnalyses = true;
-  const result = await getJSON(url);
-  console.log(result);
-	analyses = result.items;
-	order = result.order;
-  loadingAnalyses = false;
-}
-
-async function fetchAnalyses(anids) {
-	let url = '/show/analyses'
-	url = anids.length ? url + `?anids=${anids.join(',')}` : url;
-  loadAnalyses(url);
-}
-
-function findAnalyses() {
-  const url = `/find/analyses?q=${findQueryString}&deleted=${searchdeleted}`;
-  loadAnalyses(url);
-}
-
-function findAnalysesQuery() {
-  if (event.keyCode === 13) {
-    push(`#/analyses?q=${findQueryString}&deleted=${searchdeleted}`);
-    findAnalyses();
-  }
-}
-
 async function getAnalysisDetails(anaId) {
 	const resp = await getJSON(`/show/analysis/${anaId}`);
+  const links = resp.servedfiles.map(([link, name]) => { return `<div><a href="analysis/showfile/${link}" target="_blank">${name}</a></div>`}).join('\n');
   return `
     <p><span class="has-text-weight-bold">Workflow version:</span> ${resp.wf.update}</p>
     <p>${resp.nrfiles} raw files from ${resp.nrdsets} dataset(s) analysed</p>
     <p><span class="has-text-weight-bold">Quant type:</span> ${resp.quants.join(', ')}</p>
+    <p>${links}</p>
     <p><span class="has-text-weight-bold">Last lines of log:</span></p>
     <p class="is-family-monospace">${resp.log.join('<br>')}</p>
   `;
 }
 
+function deleteAnalyses() {
+}
 
-onMount(async() => {
-  let qs;
-  try {
-    qs = Object.fromEntries($querystring.split('&').map(x => x.split('=')));
-  } catch {
-    // 404 FIXME
-    fetchAnalyses([]);
-  }
-  if ('anids' in qs) {
-    fetchAnalyses(qs.anids.split(','));
-  } else if ('q' in qs) {
-    searchdeleted = ('deleted' in qs) ? true : false;
-    findQueryString = qs.q;
-    findAnalyses();
-  } else {
-    fetchAnalyses([]);
-  }
-})
 </script>
 
-<Tabs tabshow="Analyses" />
+<Tabs tabshow="Analyses" errors={errors} />
 
-<div class="content is-small">
+{#if selectedAnalyses.length}
+{/if}
 
-  <input type="checkbox" checked={searchdeleted}>Search deleted analyses
-  <input class="input is-small" on:keyup={findAnalysesQuery} bind:value={findQueryString} type="text" placeholder="Type a query and press enter to search analyses">
-  
-  <Table bind:selected={selectedAnalyses} loading={loadingAnalyses} order={order} getdetails={getAnalysisDetails} fixedbuttons={[]} fields={tablefields} trs={analyses} statecolors={statecolors}/>
-</div>
+<Table tab="Analyses" bind:errors={errors} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" getdetails={getAnalysisDetails} fixedbuttons={[]} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} />
