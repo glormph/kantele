@@ -17,7 +17,7 @@ let tabs = ['Datasets', 'Projects', 'Analyses', 'Files', 'Jobs'];
 
 {#if Object.values(errors).some(x => x === 1)}
 <div class="notification is-danger is-light errormsg"> 
-    {#each Object.keys(errors) as error}
+    {#each Object.entries(errors).filter(x => x[1] == 1).map(x=>x[0]) as error}
     <div>{error}</div>
     {/each}
 </div>

@@ -117,8 +117,6 @@ def browser_userupload(request):
     hash = md5()
     producer = Producer.objects.get(shortname='admin')
     desc = data['desc'].strip()
-    print(desc, 'description')
-
     if desc == '':
         return JsonResponse({'success': False, 'error': 'A description for this file is required'})
     with NamedTemporaryFile(mode='w+') as fp:

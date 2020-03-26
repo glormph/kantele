@@ -432,7 +432,7 @@ def change_owners(request):
         dset = models.Dataset.objects.get(pk=data['dataset_id'])
     except models.Dataset.DoesNotExist:
         print('change_owners could not find dataset with that ID {}'.format(data['dataset_id']))
-        return HttpResponseNotFound()
+        return JsonResponse({'result': 'error', 'message': 'Something went wrong trying to change ownership for that dataset'})
     if not check_ownership(request.user, dset):
         return HttpResponseForbidden()
     is_already_owner = models.DatasetOwner.objects.filter(dataset_id=dset, user_id=data['owner'])
@@ -633,8 +633,10 @@ def purge_project(request):
     return JsonResponse(result)
 
 
-def get_dset_storestate(dset):
-    dsfiles = filemodels.StoredFile.objects.exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(rawfile__datasetrawfile__dataset=dset)
+def get_dset_storestate(dset, dsfiles=False):
+    if not dsfiles:
+        dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)
+    dsfiles = dsfiles.exclude(filetype_id__in=settings.SECONDARY_FTYPES)
     dsfc = dsfiles.count()
     if dsfc == 0:
         return 'empty'
@@ -657,7 +659,7 @@ def get_dset_storestate(dset):
 
 
 def archive_dataset(dset):
-    storestate = get_dset_storestate(dset) 
+    storestate = get_dset_storestate(dset)
     if storestate == 'purged':
         return {'state': 'error', 'msg': 'Cannot archive dataset, already purged'}
     elif storestate == 'broken':
@@ -677,7 +679,7 @@ def archive_dataset(dset):
 
 
 def reactivate_dataset(dset):
-    storestate = get_dset_storestate(dset) 
+    storestate = get_dset_storestate(dset)
     if storestate == 'purged':
         return {'state': 'error', 'msg': 'Cannot reactivate purged dataset'}
     elif storestate == 'broken':
@@ -731,7 +733,7 @@ def delete_dataset_from_cold(dset):
     # Also create delete active job just in case files are lying around
     create_job('delete_active_dataset', dset_id=dset.id)
     create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
-    storestate = get_dset_storestate(dset) 
+    storestate = get_dset_storestate(dset)
     if storestate != 'empty':
         create_job('delete_dataset_coldstorage', dset_id=dset.id)
     sfids = [sf.id for dsrf in dset.datasetrawfile_set.select_related('rawfile') for sf in dsrf.rawfile.storedfile_set.all()]

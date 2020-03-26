@@ -4,10 +4,12 @@ import {querystring, push} from 'svelte-spa-router';
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
+import Upload from './Upload.svelte'
 import { flashtime } from '../../util.js'
 
 let selectedAnalyses = [];
 let errors = [];
+let uploadVisible = false;
 
 const tablefields = [
   {id: 'jobstate', name: '__hourglass-half', type: 'state', multi: false, links: 'jobid', linkroute: '#/jobs'},
@@ -45,11 +47,28 @@ async function getAnalysisDetails(anaId) {
 function deleteAnalyses() {
 }
 
+function unDeleteAnalyses() {
+}
+
+function purgeAnalyses() {
+}
 </script>
 
 <Tabs tabshow="Analyses" errors={errors} />
 
 {#if selectedAnalyses.length}
+<a class="button" on:click={deleteAnalyses}>Delete analyses</a>
+<a class="button" on:click={unDeleteAnalyses}>Undelete analyses</a>
+<a class="button" on:click={purgeAnalyses}>Purge analyses</a>
+{:else}
+<a class="button" disabled>Delete analyses</a>
+<a class="button" disabled>Undelete analyses</a>
+<a class="button" disabled>Purge analyses</a>
 {/if}
+<a class="button" on:click={uploadVisible = uploadVisible === false}>Upload FASTA</a>
 
 <Table tab="Analyses" bind:errors={errors} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" getdetails={getAnalysisDetails} fixedbuttons={[]} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} />
+ 
+{#if uploadVisible}
+<Upload toggleWindow={toggleUploadWindow} />
+{/if}

@@ -131,9 +131,7 @@ def show_analyses(request):
             analysis__date__gt=datetime.today() - timedelta(183))
         dbanalyses = user_ana | run_ana
     items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
-    uploadable_filetypes = filemodels.StoredFileType.objects.filter(name__in=['database'])
-    return JsonResponse({'items': items, 'order': it_order, 
-        'upload_ftypes': {ft.id: ft.filetype for ft in uploadable_filetypes}})
+    return JsonResponse({'items': items, 'order': it_order})
 
 
 @login_required
@@ -165,7 +163,6 @@ def show_datasets(request):
                                                   date__gt=datetime.today() - timedelta(30))
     dsets = populate_dset(dbdsets, request.user)
     return JsonResponse({'items': dsets, 'order': list(dsets.keys())})
-        #'allowners': {x.id: '{} {}'.format(x.first_name, x.last_name) for x in User.objects.filter(is_active=True)}})
 
 
 @login_required
@@ -359,7 +356,6 @@ def populate_analysis(nfsearches, user):
 @login_required
 def get_proj_info(request, proj_id):
     raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset__runname__experiment__project_id=proj_id)
-    info = {'nrrawfiles': raws.count()}
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(
         rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id)
     sfiles = {}
@@ -594,35 +590,36 @@ def get_file_info(request, file_id):
 
 def get_nr_raw_mzml_files(files, info):
     storedfiles = {'raw': files.filter(filetype_id=settings.RAW_SFGROUP_ID).count(),
-                   'mzML': files.filter(filetype_id=settings.MZML_SFGROUP_ID, 
-                                        purged=False, checked=True).count(),
+                   'mzML': files.filter(filetype_id=settings.MZML_SFGROUP_ID,
+                       purged=False, checked=True).count(),
                    'refined_mzML': files.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID,
-                                                purged=False, checked=True).count()}
+                       purged=False, checked=True).count()}
     info.update({'refinable': False, 'mzmlable': 'ready'})
+    mzjobs = filemodels.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
+        storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
+                'job').values('job__funcname')
+    mzjobs = set([x['job__funcname'] for x in mzjobs])
     if storedfiles['mzML'] == storedfiles['raw']:
         info['mzmlable'] = False
-        if 'refine_mzmls' in [x['name'] for x in info['jobs']]:
+        if 'refine_mzmls' in mzjobs:
             info['refinable'] = 'blocked'
         elif not storedfiles['refined_mzML']:
             info['refinable'] = 'ready'
         elif storedfiles['refined_mzML'] != storedfiles['raw']:
             info['refinable'] = 'partly'
-    elif 'convert_dataset_mzml' in [x['name'] for x in info['jobs']]:
+    elif 'convert_dataset_mzml' in mzjobs:
         info['mzmlable'] = 'blocked'
     return storedfiles, info
 
 
 def fetch_dset_details(dset):
-    dsjobs = filemodels.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
-        storedfile__rawfile__datasetrawfile__dataset_id=dset.id).select_related('job')
-    info = {'jobs': [unijob for unijob in
-                    {x.job.id: {'name': x.job.funcname, 'state': x.job.state,
-                                'retry': jv.is_job_retryable_ready(x.job), 'id': x.job.id,
-                                'time': x.job.timestamp} for x in dsjobs}.values()]}
     # FIXME add more datatypes and microscopy is hardcoded
-    raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=dset.id)
-    info['owners'] = {x.user_id: x.user.username for x in dset.datasetowner_set.select_related('user').all()}
-    info['owner_to_add'] = ''
+    info = {'owners': {x.user_id: x.user.username for x in dset.datasetowner_set.select_related('user').all()},
+            'allowners': {x.id: '{} {}'.format(x.first_name, x.last_name) for x in User.objects.filter(is_active=True)}, 
+            'pwiz_versions': ['v3.0.19127'],
+            'refine_versions': ['v1.0'],
+            #[x.version for x in anmodels.Proteowizard.objects.all()]
+            }
     try:
         info['qtype'] = {'name': dset.quantdataset.quanttype.name, 
                          'short': dset.quantdataset.quanttype.shortname}
@@ -634,15 +631,19 @@ def fetch_dset_details(dset):
         rawfile__datasetrawfile__dataset_id=dset.id)
     servers = [x[0] for x in files.distinct('servershare').values_list('servershare__uri')]
     info['storage_loc'] = '{} - {}'.format(';'.join(servers), dset.storage_loc)
+    info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
+    rawfiles = files.filter(filetype_id=settings.RAW_SFGROUP_ID)
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles, info = get_nr_raw_mzml_files(files, info)
+        mzmlfiles = files.filter(filetype_id=settings.MZML_SFGROUP_ID, purged=False, checked=True)
+#        nrstoredfiles = {'raw': files.filter(filetype_id=settings.RAW_SFGROUP_ID).count(),
+#                         'mzML': mzmlfiles.filter(mzmlfile__refined=False).count(),
+#                         'refined_mzML': mzmlfiles.filter(mzmlfile__refined=True).count()}
     else:
-        nrstoredfiles = {nonms_dtypes[dset.datatype_id]: files.filter(filetype_id=settings.RAW_SFGROUP_ID).count()}
-    info['instruments'] = list(set([x.rawfile.producer.shortname for x in files]))
+        nrstoredfiles = {nonms_dtypes[dset.datatype_id]: rawfiles.count()}
     info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.PDCBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
-    info['storage_location'] = dset.storage_loc
     info['compstates'] = {x.dtcomp.component.name: x.state for x in
                           dsmodels.DatasetComponentState.objects.filter(
                               dataset_id=dset.id).select_related(
@@ -651,29 +652,35 @@ def fetch_dset_details(dset):
 
 
 @login_required
-def create_mzmls(request, dataset_id):
-    if dsmodels.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
-        jj.create_job('convert_dataset_mzml', dset_id=dataset_id)
-    return HttpResponse()
+def create_mzmls(request):
+    if not request.method == 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    data = json.loads(request.body.decode('utf-8'))
+    if dsmodels.Dataset.objects.filter(pk=data['dsid'], deleted=False).count():
+        jj.create_job('convert_dataset_mzml', dset_id=data['dsid'])
+    return JsonResponse({})
 
 
 @login_required
-def refine_mzmls(request, dataset_id):
+def refine_mzmls(request):
     """Creates a job that runs the workflow with the latest version of the mzRefine containing NXF repo.
     Jobs and analysis entries are not created for dsets with full set of refined mzmls (403)."""
+    if not request.method == 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    data = json.loads(request.body.decode('utf-8'))
     # FIXME get analysis if it does exist, in case someone reruns?
     # Check if files lack refined mzMLs
-    nr_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dataset_id, filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True).count()
-    nr_mzml = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dataset_id, filetype_id=settings.MZML_SFGROUP_ID)
+    nr_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True).count()
+    nr_mzml = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], filetype_id=settings.MZML_SFGROUP_ID)
     if nr_mzml == nr_refined:
-        return HttpResponseForbidden()
-    dset = dsmodels.Dataset.objects.select_related('quantdataset__quanttype').get(pk=dataset_id)
-    analysis = anmodels.Analysis(user_id=request.user.id, name='refine_dataset_{}'.format(dataset_id))
+        return JsonResponse({'error': 'Refined data already exists'}, status=403)
+    dset = dsmodels.Dataset.objects.select_related('quantdataset__quanttype').get(pk=data['dsid'])
+    analysis = anmodels.Analysis(user_id=request.user.id, name='refine_dataset_{}'.format(data['dsid']))
     analysis.save()
-    if dsmodels.Dataset.objects.filter(pk=dataset_id, deleted=False).count():
-        jj.create_job('refine_mzmls', dset_id=dataset_id, analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
+    if dsmodels.Dataset.objects.filter(pk=data['dsid'], deleted=False).count():
+        jj.create_job('refine_mzmls', dset_id=data['dsid'], analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
                 dbfn_id=settings.MZREFINER_FADB_ID, qtype=dset.quantdataset.quanttype.shortname)
-    return HttpResponse()
+    return JsonResponse({})
 
 
 @login_required

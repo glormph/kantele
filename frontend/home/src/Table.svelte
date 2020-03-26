@@ -1,8 +1,8 @@
 <script>
 
 import {querystring, push} from 'svelte-spa-router';
-import { onMount } from 'svelte';
-import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+import { onMount, createEventDispatcher } from 'svelte';
+import { getJSON } from '../../datasets/src/funcJSON.js'
 
 import TableItem from './TableItem.svelte'
 import { flashtime } from '../../util.js'
@@ -18,6 +18,7 @@ export let findUrl;
 export let errors;
 export let tab;
 
+const dispatch = createEventDispatcher();
 let items = {};
 let order = [];
 let findQueryString = '';
@@ -36,16 +37,17 @@ function fetchItems(ids) {
   loadItems(url);
 }
 
-function findItems() {
-  const url = `${findUrl}?q=${findQueryString}&deleted=${searchdeleted}`;
+function findItems(q) {
+  const url = `${findUrl}?q=${q}&deleted=${searchdeleted}`;
   loadItems(url);
 }
 
 function findQuery(event) {
   if (event.keyCode === 13) {
     // Push doesnt reload the component
-    push(`#/${tab.toLowerCase()}?q=${findQueryString}&deleted=${searchdeleted}`);
-    findItems();
+    const q = findQueryString.split(' ').join(',');
+    push(`#/${tab.toLowerCase()}?q=${q}&deleted=${searchdeleted}`);
+    findItems(q);
   }
 }
 
@@ -54,6 +56,11 @@ async function showDetails(itemId) {
   detailsLoaded = false;
   detailBoxContent = await getdetails(itemId);
   detailsLoaded = true;
+}
+
+function clickSingleDetails(rowid) {
+  console.log('hej');
+  dispatch('detailview', {ids: [rowid]});
 }
 
 async function loadItems(url) {
@@ -89,8 +96,8 @@ onMount(async() => {
     fetchItems(qs.ids.split(','));
   } else if ('q' in qs) {
     searchdeleted = ('deleted' in qs) ? true : false;
-    findQueryString = qs.q;
-    findItems();
+    findQueryString = qs.q.split(',').join(' ');
+    findItems(qs.q);
   } else {
     fetchItems([]);
   }
@@ -110,7 +117,7 @@ div.spinner {
 </style>
 
 <div class="content is-small">
-  <input type="checkbox" checked={searchdeleted}>Search deleted {tab.toLowerCase()}
+  <input type="checkbox" bind:checked={searchdeleted}>Search deleted {tab.toLowerCase()}
   <input class="input is-small" on:keyup={findQuery} bind:value={findQueryString} type="text" placeholder="Type a query and press enter to search datasets">
 
 <table class="table">
@@ -144,7 +151,7 @@ div.spinner {
     <tr>
       <td>
         <input type="checkbox" bind:group={selected} value={row.id}>
-        <a v-on:click="toggleDset(ds.id)" on:mouseenter={e => showDetails(row.id)} on:mouseleave={e => showDetailBox = false}>
+        <a on:click={e => clickSingleDetails(row.id)} on:mouseenter={e => showDetails(row.id)} on:mouseleave={e => showDetailBox = false}>
           <span class="has-text-info icon is-small"> <i class="fa fa-eye"></i> </span>
           {#if showDetailBox === row.id}
           <div class="box" >

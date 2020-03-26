@@ -4,11 +4,13 @@ import {querystring, push} from 'svelte-spa-router';
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
+import Details from './DatasetDetails.svelte'
 import { flashtime } from '../../util.js'
 
 const inactive = ['deleted'];
 let selectedDsets = []
 let errors = {};
+let detailsVisible = false;
 
 const tablefields = [
   {id: 'ptype', name: 'Project type', type: 'str', multi: false},
@@ -44,8 +46,11 @@ const fixedbuttons = [
   {name: '__edit', alt: 'Show metadata', action: showMeta},
 ]
 
-function showMeta(dsid) {
-  console.log(dsid);
+function showMeta() {
+} 
+
+function showDetails(event) {
+  detailsVisible = event.detail.ids;
 }
 
 
@@ -95,4 +100,8 @@ async function purgeDatasets() {
 <a class="button" title="PERMANENTLY delete datasets from active and cold storage" disabled>Purge datasets</a>
 {/if}
 
-<Table tab="Datasets" bind:errors={errors} bind:selected={selectedDsets} fetchUrl="/show/datasets" findUrl="/find/datasets" getdetails={getDsetDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors}/>
+<Table tab="Datasets" bind:errors={errors} bind:selected={selectedDsets} fetchUrl="/show/datasets" findUrl="/find/datasets" getdetails={getDsetDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview={showDetails} />
+
+{#if detailsVisible}
+<Details closeWindow={() => {detailsVisible = false}} dsetIds={detailsVisible} />
+{/if}
