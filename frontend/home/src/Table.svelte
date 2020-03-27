@@ -21,6 +21,7 @@ export let tab;
 const dispatch = createEventDispatcher();
 let items = {};
 let order = [];
+let selectedrow;
 let findQueryString = '';
 let showDetailBox = false;
 let detailsLoaded = false;
@@ -59,7 +60,6 @@ async function showDetails(itemId) {
 }
 
 function clickSingleDetails(rowid) {
-  console.log('hej');
   dispatch('detailview', {ids: [rowid]});
 }
 
@@ -147,13 +147,13 @@ div.spinner {
 {/if}
 
   <tbody>
-    {#each order.map(x => items[x]) as row}
-    <tr>
+    {#each order.map(x => [x, items[x]]) as [rowid, row]}
+    <tr class={selectedrow === rowid ? 'is-selected': ''}>
       <td>
         <input type="checkbox" bind:group={selected} value={row.id}>
-        <a on:click={e => clickSingleDetails(row.id)} on:mouseenter={e => showDetails(row.id)} on:mouseleave={e => showDetailBox = false}>
+        <a on:click={e => clickSingleDetails(rowid)} on:mouseenter={e => showDetails(rowid)} on:mouseleave={e => showDetailBox = false}>
           <span class="has-text-info icon is-small"> <i class="fa fa-eye"></i> </span>
-          {#if showDetailBox === row.id}
+          {#if showDetailBox === rowid}
           <div class="box" >
             {#if !detailsLoaded}
             <i class="fa fa-spinner fa-pulse fa-2x"></i>

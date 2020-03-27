@@ -4,10 +4,12 @@ import {querystring, push} from 'svelte-spa-router'
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
+import Details from './FileDetails.svelte'
 import { flashtime } from '../../util.js'
 
 let selectedFiles = []
 let errors = {};
+let detailsVisible = false;
 
 const tablefields = [
   {id: 'jobs', name: '__hourglass-half', type: 'state', multi: true, links: 'job_ids', linkroute: '#/jobs'},
@@ -31,6 +33,10 @@ const statecolors = {
   },
 }
 
+function showDetails(event) {
+  detailsVisible = event.detail.ids;
+}
+
 async function getFileDetails(fnId) {
 	const resp = await getJSON(`/show/file/${fnId}`);
   return `
@@ -47,4 +53,8 @@ async function getFileDetails(fnId) {
 {#if selectedFiles.length}
 {/if}
   
-<Table tab="Files" bind:errors={errors} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors}/>
+<Table tab="Files" bind:errors={errors} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:detailview={showDetails} />
+
+{#if detailsVisible}
+<Details closeWindow={() => {detailsVisible = false}} fnIds={detailsVisible} />
+{/if}

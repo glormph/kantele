@@ -564,7 +564,7 @@ def get_file_info(request, file_id):
         'filetype', 'rawfile__datasetrawfile', 'analysisresultfile__analysis', 'libraryfile', 'userfile').get()
     info = {'server': sfile.servershare.name, 'path': sfile.path, 'analyses': [],
             'producer': sfile.rawfile.producer.name,
-            'newname': sfile.filename,
+            'filename': sfile.filename,
             'renameable': True if sfile.filetype_id not in 
             [settings.MZML_SFGROUP_ID, settings.REFINEDMZML_SFGROUP_ID] else False}
     if hasattr(sfile, 'libraryfile'):
@@ -583,7 +583,7 @@ def get_file_info(request, file_id):
             mzmls = sfile.rawfile.storedfile_set.filter(filetype__filetype='mzml')
             anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
         info['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
-    if hasattr(sfile, 'analysisresultfile'):
+    if hasattr(sfile, 'analysisresultfile') and hasattr(sfile.analysisresultfile.analysis, 'nextflowsearch'):
         info['analyses'].append(sfile.analysisresultfile.analysis.nextflowsearch.id)
     return JsonResponse(info)
 

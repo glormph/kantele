@@ -17,7 +17,6 @@ let allNewSelector = false;
 
 async function findFiles(event) {
   if (event.keyCode === 13) {
-    console.log('finding');
     const response = await getJSON(`/datasets/find/files?q=${findQuery.split(' ').join(',')}`);
     for (let [key, val] of Object.entries(response)) { files[key] = val; }
   }

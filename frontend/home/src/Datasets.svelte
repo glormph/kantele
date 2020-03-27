@@ -72,7 +72,7 @@ async function analyzeDatasets() {
 
 async function archiveDataset() {
   for (dset_id of selectedDsets) {
-	  response = await postJSON('datasets/archive/dataset/', {'dataset_id': dset_id});
+	  const response = await postJSON('datasets/archive/dataset/', {'dataset_id': dset_id});
 		datasets[dset_id].deleted = true;
   }
 }

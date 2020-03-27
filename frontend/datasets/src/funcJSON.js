@@ -19,7 +19,7 @@ export async function getJSON(url) {
   } catch {
       return {ok: false, error: 'Kantele encountered a network error', status: false}
   }
-  return parseResponse(response);
+  return await parseResponse(response);
 }
 
 
@@ -34,5 +34,5 @@ export async function postJSON(url, postdata) {
   } catch {
     return {ok: false, error: 'Kantele encountered a network error', status: false}
   }
-  return parseResponse(response);
+  return await parseResponse(response);
 }
