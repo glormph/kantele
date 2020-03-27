@@ -103,7 +103,8 @@ def get_registration_postdetails(postdata):
 @login_required
 def browser_userupload(request):
     if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+        uploadable_filetypes = StoredFileType.objects.filter(name__in=['database'])
+        return JsonResponse({'upload_ftypes': {ft.id: ft.filetype for ft in uploadable_filetypes}})
     err_resp = {'error': 'File is not correct FASTA', 'success': False}
     data = request.POST
     # create userfileupload model (incl. fake token)
