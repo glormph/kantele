@@ -381,7 +381,7 @@
                 // we can push sampletables on ANY workflow as nextflow will ignore it.
                 sampletable = []
 				for (sname of this.allsets) {
-					if (Object.keys(this.setdenoms[sname]).length) {
+            if (Object.keys(this.setdenoms[sname]).length && this.setdenommodel[sname].length) {
 						denoms.push(`${sname}:${this.setdenommodel[sname].join(':')}`);
 					}
                     for (ch of this.sorted_channels(this.setdenoms[sname])) {
