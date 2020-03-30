@@ -32,6 +32,9 @@ async function convertDset(dsid) {
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
     dsets[dsid].mzmlable = 'blocked';
+    const msg = 'Queued dataset for mzML conversion';
+    notif.messages[msg] = 1;
+    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   }
 }
 
@@ -43,6 +46,9 @@ async function refineDset(dsid) {
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
     dsets[dsid].refinable = 'blocked';
+    const msg = 'Queued dataset for mzML precursor refining';
+    notif.messages[msg] = 1;
+    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   }
 }
 

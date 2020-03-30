@@ -1,7 +1,7 @@
 <script>
 
 export let tabshow; 
-export let errors;
+export let notif;
 
 let tabs = ['Datasets', 'Projects', 'Analyses', 'Files', 'Jobs'];
 
@@ -15,10 +15,18 @@ let tabs = ['Datasets', 'Projects', 'Analyses', 'Files', 'Jobs'];
 }
 </style>
 
-{#if Object.values(errors).some(x => x === 1)}
+{#if Object.values(notif.errors).some(x => x === 1)}
 <div class="notification is-danger is-light errormsg"> 
-    {#each Object.entries(errors).filter(x => x[1] == 1).map(x=>x[0]) as error}
+    {#each Object.entries(notif.errors).filter(x => x[1] == 1).map(x=>x[0]) as error}
     <div>{error}</div>
+    {/each}
+</div>
+{/if}
+
+{#if Object.values(notif.messages).some(x => x === 1)}
+<div class="notification is-success is-light errormsg"> 
+    {#each Object.entries(notif.messages).filter(x => x[1] == 1).map(x=>x[0]) as message}
+    <div>{message}</div>
     {/each}
 </div>
 {/if}

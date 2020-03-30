@@ -9,13 +9,16 @@ import { flashtime } from '../../util.js'
 
 const inactive = ['deleted'];
 let selectedDsets = []
-let errors = {};
+let notif = {errors: {}, messages: {}};
 let detailsVisible = false;
+let treatItems;
+let purgeConfirm = false;
 
 const tablefields = [
   {id: 'ptype', name: 'Project type', type: 'str', multi: false},
   {id: 'storestate', name: 'Stored', type: 'tag', multi: false, links: 'fn_ids', linkroute: '#/files/'},
   {id: 'jobstates', name: '__hourglass-half', type: 'state', multi: true, links: 'jobids', linkroute: '#/jobs'},
+  {id: 'analyses', name: '', type: 'icon', icon: 'cogs', links: 'ana_ids', linkroute: '#/analyses'},
   {id: 'proj', name: 'Project', type: 'str', multi: false},
   {id: 'exp', name: 'Experiment', type: 'str', multi: false},
   {id: 'run', name: 'Run', type: 'str', multi: false},
@@ -46,7 +49,8 @@ const fixedbuttons = [
   {name: '__edit', alt: 'Show metadata', action: showMeta},
 ]
 
-function showMeta() {
+function showMeta(dsid) {
+  window.open(`/datasets/show/${dsid}`, '_blank');
 } 
 
 function showDetails(event) {
@@ -70,29 +74,39 @@ async function analyzeDatasets() {
   window.open(`/analysis/init?dsids=${selectedDsets.join(',')}`, '_blank');
 }
 
-async function archiveDataset() {
-  for (dset_id of selectedDsets) {
-	  const response = await postJSON('datasets/archive/dataset/', {'dataset_id': dset_id});
-		datasets[dset_id].deleted = true;
-  }
+function archiveDataset() {
+  const callback = (dset) => {dset.deleted = true; }
+  treatItems('datasets/archive/dataset/', 'dataset', 'archiving', callback, selectedDsets);
 }
 
-async function reactivateDataset() {
+function reactivateDataset() {
+  const callback = (dset) => {dset.deleted = false; }
+  treatItems('datasets/undelete/dataset/', 'dataset','reactivating', callback, selectedDsets);
 }
 
-async function purgeDatasets() {
+function purgeDatasets() {
+  const callback = (dset) => {dset.deleted = true; }
+  treatItems('datasets/purge/dataset/', 'dataset', 'reactivating', callback, selectedDsets);
 }
 
+function setConfirm() {
+  purgeConfirm = true;
+  setTimeout(() => { purgeConfirm = false} , flashtime);
+}
 
 </script>
 
-<Tabs tabshow="Datasets" errors={errors} />
+<Tabs tabshow="Datasets" notif={notif} />
 
 {#if selectedDsets.length}
 <a class="button" title="Search MS data" on:click={analyzeDatasets}>Analyze datasets</a>
 <a class="button" title="Move datasets to cold storage (delete)" on:click={archiveDataset}>Retire datasets</a>
 <a class="button" title="Move datasets to active storage (undelete)" on:click={reactivateDataset}>Reactivate datasets</a>
-<a class="button" title="PERMANENTLY delete datasets from active and cold storage" on:click={purgeDatasets}>Purge datasets</a>
+  {#if purgeConfirm}
+  <a class="button is-danger is-light" title="PERMANENTLY delete datasets from active and cold storage" on:click={purgeDatasets}>Are you sure? Purge datasets</a>
+  {:else}
+  <a class="button" title="PERMANENTLY delete datasets from active and cold storage" on:click={setConfirm}>Purge datasets</a>
+  {/if}
 {:else}
 <a class="button" title="Search MS data" disabled>Analyze datasets</a>
 <a class="button" title="Move datasets to cold storage (delete)" disabled>Retire datasets</a>
@@ -100,7 +114,7 @@ async function purgeDatasets() {
 <a class="button" title="PERMANENTLY delete datasets from active and cold storage" disabled>Purge datasets</a>
 {/if}
 
-<Table tab="Datasets" bind:errors={errors} bind:selected={selectedDsets} fetchUrl="/show/datasets" findUrl="/find/datasets" getdetails={getDsetDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview={showDetails} />
+<Table tab="Datasets" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedDsets} fetchUrl="/show/datasets" findUrl="/find/datasets" getdetails={getDsetDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview={showDetails} />
 
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} dsetIds={detailsVisible} />

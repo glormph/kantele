@@ -50,7 +50,7 @@ def find_projects(request):
     dbdsets = dsmodels.Dataset.objects.filter(dsquery).select_related('runname__experiment__project').values('runname__experiment__project').distinct()
     query |= Q(pk__in=dbdsets)
     dbprojects = dsmodels.Project.objects.filter(query )
-    if request.GET['inactive'] == 'false':
+    if request.GET.get('inactive') == 'false':
         dbprojects = dbprojects.filter(active=True)
     items, order = populate_proj(dbprojects, request.user)
     return JsonResponse({'items': items, 'order': order})
@@ -139,14 +139,14 @@ def show_projects(request):
     if 'ids' in request.GET:
         pids = request.GET['ids'].split(',')
         dbprojects = dsmodels.Project.objects.filter(pk__in=pids)
-    elif request.GET['userproj'] in ['true', 'True', True]:
+    elif request.GET.get('userproj') in ['true', 'True', True]:
         # all active projects
         dsos = dsmodels.DatasetOwner.objects.filter(user=request.user).select_related('dataset__runname__experiment')
         dbprojects = dsmodels.Project.objects.filter(pk__in={x.dataset.runname.experiment.project_id for x in dsos})
     else:
         # all active projects
         dbprojects = dsmodels.Project.objects.all()
-    if request.GET['showinactive'] not in ['true', 'True', True]:
+    if request.GET.get('showinactive') not in ['true', 'True', True]:
         dbprojects = dbprojects.filter(active=True)
     items, order = populate_proj(dbprojects, request.user)
     return JsonResponse({'items': items, 'order': order})
@@ -275,6 +275,7 @@ def show_jobs(request):
         analysis = jv.get_job_analysis(job)
         items[job.id] = {'id': job.id, 'name': job.funcname,
                          'state': job.state,
+                         'canceled': job.state == jj.Jobstates.CANCELED,
                          'usr': ', '.join(ownership['usernames']),
                          'date': datetime.strftime(job.timestamp, '%Y-%m-%d'),
                          'analysis': analysis.nextflowsearch.id if analysis else False,
@@ -328,7 +329,7 @@ def populate_analysis(nfsearches, user):
     for nfs in nfsearches:
         fjobs = nfs.job.filejob_set.all().select_related(
             'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
-        dsets =  {x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs}
+        fjobdsets = fjobs.distinct('storedfile__rawfile__datasetrawfile__dataset')
         try:
             ana_out[nfs.id] = {
                 'id': nfs.id,
@@ -342,7 +343,7 @@ def populate_analysis(nfsearches, user):
                 'wflink': nfs.nfworkflow.nfworkflow.repo,
                 'deleted': nfs.analysis.deleted,
                 'purged': nfs.analysis.purged,
-                'dset_ids': [x.id for x in dsets],
+                'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets],
                 'fn_ids': [x.storedfile_id for x in fjobs],
             }
         except:
@@ -355,7 +356,6 @@ def populate_analysis(nfsearches, user):
 
 @login_required
 def get_proj_info(request, proj_id):
-    raws = filemodels.RawFile.objects.filter(datasetrawfile__dataset__runname__experiment__project_id=proj_id)
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(
         rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id)
     sfiles = {}
@@ -373,14 +373,15 @@ def get_proj_info(request, proj_id):
             return getxbytes(bytes, op-10)
 
     dsowners = dsmodels.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=proj_id).distinct()
-    info['owners'] = {x.user_id: x.user.username for x in dsowners}
-    info['stored_total_xbytes'] = getxbytes(files.aggregate(Sum('rawfile__size'))['rawfile__size__sum'])
-    info['stored_bytes'] = {ft: getxbytes(sum([fn.rawfile.size for fn in fns])) for ft, fns in sfiles.items()}
-    info['nrstoredfiles'] = {ft: len([fn for fn in fns]) for ft, fns in sfiles.items()}
-    info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
-    info['nrbackupfiles'] = filemodels.SwestoreBackedupFile.objects.filter(
-        storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count() + filemodels.PDCBackedupFile.objects.filter(
-        storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count()
+    info = {'owners': {x.user_id: x.user.username for x in dsowners},
+            'stored_total_xbytes': getxbytes(files.aggregate(Sum('rawfile__size'))['rawfile__size__sum']),
+            'stored_bytes': {ft: getxbytes(sum([fn.rawfile.size for fn in fns])) for ft, fns in sfiles.items()},
+            'nrstoredfiles': {ft: len([fn for fn in fns]) for ft, fns in sfiles.items()},
+            'instruments': list(set([x.rawfile.producer.name for x in files])),
+            'nrbackupfiles': filemodels.SwestoreBackedupFile.objects.filter(
+                storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count() + filemodels.PDCBackedupFile.objects.filter(
+                    storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count(),
+        }
     return JsonResponse(info)
 
 
@@ -393,7 +394,7 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
         projs[proj.id] = {
             'id': proj.id,
             'name': proj.name,
-            'active': proj.active,
+            'inactive': proj.active == False,
             'start': proj.registered,
             'ptype': proj.projtype.ptype.name,
             'details': False,
@@ -414,18 +415,19 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
 
 
 def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
-
     dsets = OrderedDict()
     for dataset in dbdsets.select_related('runname__experiment__project__projtype__ptype',
             'prefractionationdataset'):
         dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dataset)
         storestate = get_dset_storestate(dataset, dsfiles)
+        ana_ids = [x.id for x in anmodels.NextflowSearch.objects.filter(analysis__datasetsearch__dataset_id=dataset.id)]
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': check_ownership(user, dataset),
             'usr': dataset.datasetowner_set.select_related('user').first().user.username,
             'deleted': dataset.deleted,
             'proj': dataset.runname.experiment.project.name,
+            'ana_ids': ana_ids,
             'exp': dataset.runname.experiment.name,
             'run': dataset.runname.name,
             'dtype': dataset.datatype.name,
@@ -472,6 +474,8 @@ def get_analysis_invocation(job):
     invoc['params'] = params['params']
     if 'sampletable' in params:
         invoc['sampletable'] = [x for x in params['sampletable']]
+    else:
+        invoc['sampletable'] = False
     return invoc
 
     
@@ -493,17 +497,18 @@ def get_analysis_info(request, nfs_id):
     resp = {#'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
             #                    'retry': jv.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
             #                    'time': nfs.job.timestamp}},
-             'wf': {'fn': nfs.nfworkflow.filename, 
-                    'update': nfs.nfworkflow.update,
-                    'repo': nfs.nfworkflow.nfworkflow.repo},
+            'name': nfs.analysis.name,
+            'wf': {'fn': nfs.nfworkflow.filename, 
+                   'update': nfs.nfworkflow.update,
+                   'repo': nfs.nfworkflow.nfworkflow.repo},
 #             'proj': [{'name': x.name, 'id': x.id} for x in projs],
-             'nrdsets': len(dsets),
-             'nrfiles': fjobs.count(),
+            'nrdsets': len(dsets),
+            'nrfiles': fjobs.count(),
 #             'storage_locs': [{'server': x.servershare.name, 'path': x.path}
 #                              for x in storeloc.values()],
-             'log': logentry, 
-'servedfiles': linkedfiles,
-             #'invocation': get_analysis_invocation(nfs.job),
+            'log': logentry, 
+            'servedfiles': linkedfiles,
+            'invocation': get_analysis_invocation(nfs.job),
             }
     # FIXME dsets, files are already counted in the non-detailed view, so maybe frontend can reuse those
     try:
@@ -515,9 +520,11 @@ def get_analysis_info(request, nfs_id):
 
 @login_required
 def refresh_job(request, job_id):
+    # FIXME share with show_jobs
     job = jm.Job.objects.get(pk=job_id)
     ownership = jv.get_job_ownership(job, request)
     return JsonResponse({'state': job.state,
+                         'canceled': job.state == jj.Jobstates.CANCELED,
                          'actions': get_job_actions(job, ownership)})
 
 
@@ -714,4 +721,4 @@ def show_messages(request):
         out['old_purgable_analyses'] = purgable_ana_old
         return JsonResponse(out)
     else:
-        return JsonResponse({'error': 'User is not admin'})
+        return JsonResponse({'error': 'User is not admin'}, status=403)

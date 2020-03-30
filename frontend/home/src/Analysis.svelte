@@ -5,11 +5,14 @@ import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
 import Upload from './Upload.svelte'
+import Details from './AnalysisDetails.svelte'
 import { flashtime } from '../../util.js'
 
 let selectedAnalyses = [];
-let errors = [];
+let notif = {errors: {}, messages: {}}
 let uploadVisible = false;
+let treatItems;
+let detailsVisible = false;
 
 const tablefields = [
   {id: 'jobstate', name: '__hourglass-half', type: 'state', multi: false, links: 'jobid', linkroute: '#/jobs'},
@@ -31,6 +34,10 @@ const statecolors = {
   },
 }
 
+function showDetails(event) {
+  detailsVisible = event.detail.ids;
+}
+
 async function getAnalysisDetails(anaId) {
 	const resp = await getJSON(`/show/analysis/${anaId}`);
   const links = resp.servedfiles.map(([link, name]) => { return `<div><a href="analysis/showfile/${link}" target="_blank">${name}</a></div>`}).join('\n');
@@ -45,16 +52,23 @@ async function getAnalysisDetails(anaId) {
 }
 
 function deleteAnalyses() {
+  const callback = (analysis) => {analysis.deleted = true};
+  treatItems('/analysis/delete/', 'analysis', 'deleting', callback, selectedAnalyses);
 }
 
 function unDeleteAnalyses() {
+  const callback = (analysis) => {analysis.deleted = false};
+  treatItems('/analysis/undelete/', 'analysis', 'undeleting', callback, selectedAnalyses);
 }
 
+
 function purgeAnalyses() {
+  const callback = (analysis) => {analysis.deleted = true};
+  treatItems('/analysis/purge/', 'analysis', 'purging', callback, selectedAnalyses);
 }
 </script>
 
-<Tabs tabshow="Analyses" errors={errors} />
+<Tabs tabshow="Analyses" notif={notif} />
 
 {#if selectedAnalyses.length}
 <a class="button" on:click={deleteAnalyses}>Delete analyses</a>
@@ -65,10 +79,14 @@ function purgeAnalyses() {
 <a class="button" disabled>Undelete analyses</a>
 <a class="button" disabled>Purge analyses</a>
 {/if}
-<a class="button" on:click={uploadVisible = uploadVisible === false}>Upload FASTA</a>
+<a class="button" on:click={e => uploadVisible = uploadVisible === false}>Upload FASTA</a>
 
-<Table tab="Analyses" bind:errors={errors} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" getdetails={getAnalysisDetails} fixedbuttons={[]} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} />
+<Table tab="Analyses" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={[]} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} />
  
 {#if uploadVisible}
-<Upload toggleWindow={toggleUploadWindow} />
+<Upload toggleWindow={e => uploadVisible = uploadVisible === false} />
+{/if}
+
+{#if detailsVisible}
+<Details closeWindow={() => {detailsVisible = false}} anaIds={detailsVisible} />
 {/if}

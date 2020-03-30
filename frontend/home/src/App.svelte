@@ -22,9 +22,8 @@ async function fetchMessages() {
   } else { console.log(resp); }
 }
 
-// FIXME!
 function get_purgable_analyses_ids(analyses) {
-  return `?tab=searches&anids=${analyses.join(',')}`;
+  return `#/analyses/?ids=${analyses.join(',')}`;
 }
 
 

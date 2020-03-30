@@ -82,15 +82,20 @@ def set_md5(request):
 
 
 @login_required
-def delete_job(request, job_id):
+def delete_job(request):
     if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
-    job = models.Job.objects.get(pk=job_id)
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        job = models.Job.objects.get(pk=req['item_id'])
+    except models.Job.DoesNotExist:
+        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
     ownership = get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
-        return HttpResponseForbidden()
-    job.delete()
-    return HttpResponse()
+        return JsonResponse({'error': 'Only job owners and admin can delete this job'}, status=403)
+    job.state = Jobstates.CANCELED
+    job.save()
+    return JsonResponse({}) 
 
 
 def purge_storedfile(request):
@@ -355,18 +360,22 @@ def is_job_ready(job=False, tasks=False):
 
 
 @login_required
-def retry_job(request, job_id):
+def retry_job(request):
     if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
-    job = models.Job.objects.get(pk=job_id)
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        job = models.Job.objects.get(pk=req['item_id'])
+    except models.Job.DoesNotExist:
+        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
     ownership = get_job_ownership(job, request)
     if ownership['is_staff'] and is_job_retryable(job):
         do_retry_job(job, force=True)
     elif ownership['owner_loggedin'] and is_job_retryable_ready(job):
         do_retry_job(job)
     else:
-        return HttpResponseForbidden()
-    return HttpResponse()
+        return JsonResponse({'error': 'You are not allowed to retry this job'}, status=403)
+    return JsonResponse({})
 
 
 def do_retry_job(job, force=False):

@@ -27,7 +27,7 @@ urlpatterns = [
     url(r'^archive/dataset/$', views.move_dataset_cold),
     url(r'^archive/project/$', views.move_project_cold),
     url(r'^undelete/dataset/$', views.move_dataset_active),
-    url(r'^undelete/project/$', views.move_project_cold),
+    url(r'^undelete/project/$', views.move_project_active),
     url(r'^purge/project/$', views.purge_project),
     url(r'^purge/dataset/$', views.purge_dataset),
 ]

@@ -5,12 +5,12 @@ from jobs import views
 app_name = 'jobs'
 urlpatterns = [
     url(r'^taskfail/$', views.task_failed, name='taskfail'),
-    url(r'^retry/(?P<job_id>[0-9]+)$', views.retry_job, name='retry'),
+    url(r'^retry/$', views.retry_job, name='retry'),
     url(r'^set/storagepath/$', views.update_storagepath_file,
         name='updatestorage'),
     url(r'^set/md5/$', views.set_md5, name='setmd5'),
     url(r'^unzipped/$', views.unzipped_folder, name='unzipped'),
-    url(r'^delete/(?P<job_id>[0-9]+)$', views.delete_job,
+    url(r'^delete/$', views.delete_job,
         name='deletejob'),
     url(r'^deletefile/$', views.purge_storedfile,
         name='deletefile'),

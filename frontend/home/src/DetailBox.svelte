@@ -32,12 +32,20 @@ function handleKeypress(event) {
   top: 20px;
   right: 20px;
 }
+
+.notification {
+  position: sticky;
+  top: 20px;
+  left: 20px;
+  z-index: 50;
+}
 </style>
 
 <svelte:window on:keyup={handleKeypress} />
 
 <div class="detailbox">
   <div class="box modalbox">
+
     {#if Object.values(notif.errors).some(x => x === 1)}
     <div class="notification is-danger is-light errormsg"> 
         {#each Object.entries(notif.errors).filter(x => x[1] == 1).map(x=>x[0]) as error}
@@ -47,14 +55,13 @@ function handleKeypress(event) {
     {/if}
     {#if Object.values(notif.messages).some(x => x === 1)}
     <div class="notification is-success is-light errormsg"> 
-        {#each Object.entries(notif.messages).filter(x => x[1] == 1).map(x=>x[0]) as error}
-        <div>{error}</div>
+        {#each Object.entries(notif.messages).filter(x => x[1] == 1).map(x=>x[0]) as message}
+        <div>{message}</div>
         {/each}
     </div>
     {/if}
   
     <slot></slot>
-  
     <button on:click={closeWindow()} class="button closebutton" aria-label="close"><span class="icon"><i class="fa fa-times"></i></span></button>
   </div>
 </div>

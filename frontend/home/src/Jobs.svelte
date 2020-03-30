@@ -2,11 +2,14 @@
 
 import {querystring} from 'svelte-spa-router';
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+import { flashtime } from '../../util.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
 
 let selectedjobs = [];
-let errors = {};
+let notif = {errors: {}, messages: {}};
+let treatItems;
+let jobs;
 
 const tablefields = [
   {id: 'state', name: '__hourglass-half', type: 'state', multi: false},
@@ -16,7 +19,7 @@ const tablefields = [
   {id: 'datasets', name: '', help: 'Datasets', type: 'icon', icon: 'clipboard-list', multi: false, links: 'dset_ids', linkroute: '#/datasets'},
   {id: 'usr', name: 'Users', type: 'str', multi: false},
   {id: 'date', name: 'Date', type: 'str', multi: false},
-  {id: 'actions', name: 'Actions', type: 'button', multi: true},
+  {id: 'actions', name: 'Actions', type: 'button', multi: true, confirm: ['delete']},
 ];
 
 const statecolors = {
@@ -27,6 +30,41 @@ const statecolors = {
     processing: 'has-text-warning', 
     done: 'has-text-success',
   },
+}
+
+const fixedbuttons = [
+  {name: '__redo', alt: 'Refresh job', action: refreshJob},
+]
+
+
+function retryJob(jobid) {
+  const callback = (job) => {refreshJob(job.id)};
+  treatItems('/jobs/retry/', 'job', 'retrying', callback, [jobid]);
+}
+
+function deleteJob(jobid) {
+  const callback = (job) => {refreshJob(job.id)};
+  treatItems('/jobs/delete/', 'job', 'deleting', callback, [jobid]);
+}
+
+function jobAction(action, jobid) {
+  const actionmap = {
+    retry: retryJob,
+    'force retry': retryJob,
+    delete: deleteJob,
+  }
+  actionmap[action](jobid);
+}
+
+async function refreshJob(jobid) {
+  const resp = await getJSON(`/refresh/job/${jobid}`);
+  if (!resp.ok) {
+    const msg = `Something went wrong trying to refresh job ${jobid}: ${resp.error}`;
+    notif.errors[msg] = 1;
+     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+   } else {
+     jobs[jobid] = Object.assign(jobs[jobid], resp);
+   }
 }
 
 async function getJobDetails(jobId) {
@@ -43,5 +81,6 @@ async function getJobDetails(jobId) {
 }
 </script>
 
-<Tabs tabshow="Jobs" errors={errors} />
-<Table tab="Jobs" bind:errors={errors} bind:selected={selectedjobs} fetchUrl="/show/jobs" findUrl="find/jobs" getdetails={getJobDetails} fixedbuttons={[]} fields={tablefields} inactive={[]} statecolors={statecolors}/>
+<Tabs tabshow="Jobs" notif={notif} />
+
+<Table tab="Jobs" bind:items={jobs} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedjobs} fetchUrl="/show/jobs" findUrl="find/jobs" getdetails={getJobDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['canceled']} statecolors={statecolors} on:rowAction={e => jobAction(e.detail.action, e.detail.id)} />

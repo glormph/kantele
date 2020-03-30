@@ -238,24 +238,34 @@ def start_analysis(request):
 @login_required
 def undelete_analysis(request):
     if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+        return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
-    analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['analysis_id'])
+    try:
+        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['item_id'])
+    except am.Analysis.DoesNotExist:
+        return JsonResponse({'error': 'Analysis does not exist'}, status=403)
+    if not analysis.deleted:
+        return JsonResponse({'error': 'Analysis is not deleted, cant undelete it'}, status=403)
     if analysis.user == request.user or request.user.is_staff:
         analysis.deleted = False
         analysis.save()
         am.AnalysisDeleted.objects.filter(analysis=analysis).delete()
-        return HttpResponse()
+        return JsonResponse({})
     else:
-        return HttpResponseForbidden()
+        return JsonResponse({'error': 'User is not authorized to undelete this analysis'}, status=403)
 
 
 @login_required
 def delete_analysis(request):
     if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+        return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
-    analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['analysis_id'])
+    try:
+        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['item_id'])
+    except am.Analysis.DoesNotExist:
+        return JsonResponse({'error': 'Analysis does not exist'}, status=403)
+    if analysis.deleted:
+        return JsonResponse({'error': 'Analysis is already deleted'}, status=403)
     if analysis.user == request.user or request.user.is_staff:
         if not analysis.deleted:
             analysis.deleted = True
@@ -266,27 +276,30 @@ def delete_analysis(request):
             if ana_job.state not in jj.Jobstates.DONE:
                 ana_job.state = jj.Jobstates.CANCELED
                 ana_job.save()
-        return HttpResponse()
+        return JsonResponse({})
     else:
-        return HttpResponseForbidden()
+        return JsonResponse({'error': 'User is not authorized to delete this analysis'}, status=403)
 
 
 @login_required
 def purge_analysis(request):
     if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+        return JsonResponse({'error': 'Must use POST'}, status=405)
     elif not request.user.is_staff:
-        return HttpResponseForbidden()
+        return JsonResponse({'error': 'Only admin is authorized to purge analysis'}, status=403)
     req = json.loads(request.body.decode('utf-8'))
-    analysis = am.Analysis.objects.get(nextflowsearch__id=req['analysis_id'])
+    try:
+        analysis = am.Analysis.objects.get(nextflowsearch__id=req['item_id'])
+    except am.Analysis.DoesNotExist:
+        return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if not analysis.deleted:
-        return HttpResponseForbidden()
+        return JsonResponse({'error': 'Analysis is not deleted, cannot purge'}, status=403)
     analysis.purged = True
     analysis.save()
     jj.create_job('purge_analysis', analysis_id=analysis.id)
     jj.create_job('delete_empty_directory',
             sf_ids=[x.sfile_id for x in analysis.analysisresultfile_set.all()])
-    return HttpResponse()
+    return JsonResponse({})
 
 
 @login_required

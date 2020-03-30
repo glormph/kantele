@@ -8,7 +8,7 @@ import Details from './FileDetails.svelte'
 import { flashtime } from '../../util.js'
 
 let selectedFiles = []
-let errors = {};
+let notif = {errors: {}, messages: {}};
 let detailsVisible = false;
 
 const tablefields = [
@@ -48,12 +48,13 @@ async function getFileDetails(fnId) {
 
 </script>
 
-<Tabs tabshow="Files" errors={errors} />
+<Tabs tabshow="Files" notif={notif} />
 
 {#if selectedFiles.length}
+<!-- buttons -->
 {/if}
   
-<Table tab="Files" bind:errors={errors} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:detailview={showDetails} />
+<Table tab="Files" bind:notif={notif} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:detailview={showDetails} />
 
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} fnIds={detailsVisible} />

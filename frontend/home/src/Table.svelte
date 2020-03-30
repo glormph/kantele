@@ -2,11 +2,12 @@
 
 import {querystring, push} from 'svelte-spa-router';
 import { onMount, createEventDispatcher } from 'svelte';
-import { getJSON } from '../../datasets/src/funcJSON.js'
+import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 
 import TableItem from './TableItem.svelte'
 import { flashtime } from '../../util.js'
 
+export let items = {};
 export let fields;
 export let statecolors;
 export let fixedbuttons = [];
@@ -15,13 +16,33 @@ export let getdetails;
 export let inactive = [];
 export let fetchUrl;
 export let findUrl;
-export let errors;
+export let notif;
 export let tab;
 
+export let treatItems = async function(url, thing, operationmsg, callback, itemids) {
+  if (!itemids) {
+    const itemids = selected;
+  }
+  for (let itemid of itemids) {
+	  const resp = await postJSON(url, {item_id: itemid});
+    if (!resp.ok) {
+      const msg = `Something went wrong ${operationmsg} ${thing} with id ${itemid}: ${resp.error}`;
+      notif.errors[msg] = 1;
+      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+    } else {
+      const msg = `${thing} with id ${itemid} queued for ${operationmsg}`;
+      notif.messages[msg] = 1;
+      setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
+      if (callback) {
+        callback(items[itemid]);
+      }
+      items = items; //update items, callback doesnt actually do that since it assigns to variable
+    }
+  }
+}
+
 const dispatch = createEventDispatcher();
-let items = {};
 let order = [];
-let selectedrow;
 let findQueryString = '';
 let showDetailBox = false;
 let detailsLoaded = false;
@@ -30,7 +51,8 @@ let searchdeleted = false;
 let loadingItems = false;
 let loadingNonce;
 
-function selectAll() {
+function toggleSelectAll() {
+  selected.length < order.length ? selected = order : selected = [];
 }
 
 function fetchItems(ids) {
@@ -70,8 +92,8 @@ async function loadItems(url) {
   loadingItems = false;
   if ('error' in result) {
     const msg = `While fetching ${tab.toLowerCase()}: ${result.error}`;
-    errors[msg] = 1;
-    setTimeout(function(msg) { errors[msg] = 0 } , flashtime, msg);
+    notif.errors[msg] = 1;
+    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else if (localNonce !== loadingNonce) {
     // Override the previous request so only the latest gets rendered on the page
     return;
@@ -88,14 +110,14 @@ onMount(async() => {
   try {
     qs = Object.fromEntries($querystring.split('&').map(x => x.split('=')));
   } catch {
-    // FIXME 404 instead
+    // Default to just show if querystring is garbage
     fetchItems([]);
     return;
   } 
   if ('ids' in qs) {
     fetchItems(qs.ids.split(','));
   } else if ('q' in qs) {
-    searchdeleted = ('deleted' in qs) ? true : false;
+    searchdeleted = ('deleted' in qs && ['true', 1, 'True'].indexOf(qs.deleted) > -1) ? true : false;
     findQueryString = qs.q.split(',').join(' ');
     findItems(qs.q);
   } else {
@@ -118,13 +140,13 @@ div.spinner {
 
 <div class="content is-small">
   <input type="checkbox" bind:checked={searchdeleted}>Search deleted {tab.toLowerCase()}
-  <input class="input is-small" on:keyup={findQuery} bind:value={findQueryString} type="text" placeholder="Type a query and press enter to search datasets">
+  <input class="input is-small" on:keyup={findQuery} bind:value={findQueryString} type="text" placeholder={`Type a query and press enter to search ${tab.toLowerCase()}`}>
 
 <table class="table">
   <thead>
     <tr>
       <th>
-        <input type="checkbox" v-model="allSelector" v-on:click="selectAll">
+        <input type="checkbox" on:click={toggleSelectAll}>
       </th>
       {#each fields as field}
       <th>
@@ -148,7 +170,7 @@ div.spinner {
 
   <tbody>
     {#each order.map(x => [x, items[x]]) as [rowid, row]}
-    <tr class={selectedrow === rowid ? 'is-selected': ''}>
+    <tr>
       <td>
         <input type="checkbox" bind:group={selected} value={row.id}>
         <a on:click={e => clickSingleDetails(rowid)} on:mouseenter={e => showDetails(rowid)} on:mouseleave={e => showDetailBox = false}>
@@ -176,10 +198,10 @@ div.spinner {
           <a href={`${field.linkroute}?ids=${row[field.links]}`}>
             {#if field.multi}
             {#each row[field.id] as item}
-            <TableItem value={item} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+            <TableItem value={item} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
             {/each}
             {:else} 
-            <TableItem value={row[field.id]} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+            <TableItem value={row[field.id]} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
             {/if}
           </a>
           {/if}
@@ -187,10 +209,10 @@ div.spinner {
           {:else}
           {#if field.multi}
           {#each row[field.id] as item}
-          <TableItem value={item} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+          <TableItem value={item} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
           {/each}
           {:else} 
-          <TableItem value={row[field.id]} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} fieldtype={field.type} color={statecolors[field.id]} />
+          <TableItem value={row[field.id]} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
           {/if}
           {/if}
 
