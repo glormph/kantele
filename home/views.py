@@ -639,6 +639,7 @@ def fetch_dset_details(dset):
     servers = [x[0] for x in files.distinct('servershare').values_list('servershare__uri')]
     info['storage_loc'] = '{} - {}'.format(';'.join(servers), dset.storage_loc)
     info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
+    info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))
     rawfiles = files.filter(filetype_id=settings.RAW_SFGROUP_ID)
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles, info = get_nr_raw_mzml_files(files, info)

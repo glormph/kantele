@@ -548,7 +548,7 @@
 				for (dsid in this.dsets) {
 					dsq = this.dsets[dsid].details.qtype;
 					dsdt = this.dsets[dsid].dtype;
-					dsins = this.dsets[dsid].details.instruments;
+					dsins = this.dsets[dsid].details.instrument_types;
 					if (qtype && dsq !== qtype) {
 						this.analysiserrors.add('Mixed quantification types in selected datasets');
 					}
@@ -556,7 +556,7 @@
 						this.analysiserrors.add('Mixed dataset types in selected datasets');
 					}
 					if (!dsins.size > 1 || (inst && dsins[0] !== inst)) {
-						this.analysiserrors.add('Mixed instruments found in datasets');
+						this.analysiserrors.add('Mixed instrument types found in datasets');
 					}
 					qtype = dsq;
 					dtype = dsdt;
