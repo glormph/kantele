@@ -42,7 +42,7 @@ class RestoreFromPDC(SingleFileJob):
 
 
 class UnzipRawFolder(SingleFileJob):
-    refname = 'unzip_raw_folder'
+    refname = 'unzip_raw_datadir'
     task = tasks.unzip_folder
 
     def process(self, **kwargs):

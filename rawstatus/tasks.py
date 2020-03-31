@@ -161,19 +161,20 @@ def delete_empty_dir(self, servershare, directory):
             raise
 
 
-@shared_task(queue=config.QUEUE_STORAGE)
+@shared_task(bind=True, queue=config.QUEUE_STORAGE)
 def unzip_folder(self, servershare, fnpath, sf_id):
     zipped_fn = os.path.join(config.SHAREMAP[servershare], fnpath)
+    unzippath = os.path.join(os.path.split(zipped_fn)[0], os.path.splitext(zipped_fn)[0])
     try:
         with zipfile.ZipFile(zipped_fn, 'r') as zipfp:
-            zipfp.extractall(path=os.path.split(zipped_fn)[0])
+            zipfp.extractall(path=unzippath)
     except zipfile.BadZipFile:
         taskfail_update_db(self.request.id)
         raise
     else:
         os.remove(zipped_fn)
     url = urljoin(config.KANTELEHOST, reverse('jobs:unzipped'))
-    postdata = {'task': self.request.id, 'client_id': config.APIKEY}
+    postdata = {'task': self.request.id, 'client_id': config.APIKEY, 'sfid': sf_id}
     msg = ('Could not update database for unzipping fn {}. '
            '{}'.format(fnpath, '{}'))
     try:
