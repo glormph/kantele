@@ -97,6 +97,7 @@ class ConvertDatasetMzml(BaseJob):
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         queues = cycle(settings.QUEUES_PWIZ)
+        filtopts = kwargs.get('options', []) + [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
         for fn in self.getfiles_query(**kwargs):
             mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
             if mzsf.checked and not mzsf.purged:
@@ -108,11 +109,11 @@ class ConvertDatasetMzml(BaseJob):
                 mzsf.save()
             queue = next(queues)
             outqueue = settings.QUEUES_PWIZOUT[queue]
-            self.run_tasks.append(((fn, mzsf, dset.storage_loc, queue, outqueue), {}))
+            self.run_tasks.append(((fn, mzsf, dset.storage_loc, filtopts, queue, outqueue), {}))
     
-    def get_mzmlconversion_taskchain(self, sfile, mzmlentry, storage_loc, queue, outqueue):
+    def get_mzmlconversion_taskchain(self, sfile, mzmlentry, storage_loc, filtopts, queue, outqueue):
         args = [[sfile.rawfile.name, sfile.path, mzmlentry.filename, mzmlentry.id,
-                 sfile.servershare.name, reverse('jobs:createmzml'),
+                 sfile.servershare.name, filtopts, reverse('jobs:createmzml'),
                  reverse('jobs:taskfail')],
                 [mzmlentry.id, storage_loc, sfile.servershare.name,
                  reverse('jobs:scpmzml'), reverse('jobs:taskfail')],
@@ -151,6 +152,7 @@ class ConvertFileMzml(ConvertDatasetMzml):
         fn = self.getfiles_query(**kwargs).get()
         storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
         mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
+        filtopts = kwargs.get('options', []) + [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
         if mzsf.servershare_id != fn.servershare_id:
             # change servershare, in case of bugs the raw sf is set to tmp servershare
             # then after it wont be changed when rerunning the job
@@ -159,7 +161,7 @@ class ConvertFileMzml(ConvertDatasetMzml):
         if mzsf.checked:
             pass
         else:
-            self.run_tasks.append(((fn, mzsf, storageloc, queue, settings.QUEUES_PWIZOUT[queue]), {}))
+            self.run_tasks.append(((fn, mzsf, storageloc, filtopts, queue, settings.QUEUES_PWIZOUT[queue]), {}))
 
 
 class DeleteActiveDataset(DatasetJob):

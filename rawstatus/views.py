@@ -324,7 +324,7 @@ def check_md5_success(request):
         return HttpResponseForbidden()
     print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype_id))
     try:
-        file_transferred = StoredFile.objects.select_related('rawfile').get(
+        file_transferred = StoredFile.objects.select_related('rawfile__producer__msinstrument__instrumenttype').get(
             rawfile_id=fn_id, filetype_id=ftype_id)
     except StoredFile.DoesNotExist:
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
@@ -364,11 +364,10 @@ def do_md5_check(file_transferred):
                 SwestoreBackedupFile.objects.filter(
                 storedfile_id=file_transferred.id).count() == 0):
             fn = file_transferred.filename
-            # FIXME hardcoded instruments are not dynamic!
-            if 'QC' in fn and 'hela' in fn.lower() and any([x in fn for x in ['QE', 'HFLu', 'HFLe', 'Velos', 'HFTo', 'HFGi']]):
+            if 'QC' in fn and 'hela' in fn.lower() and hasattr(file_registered.producer, 'msinstrument'):
                 singlefile_qc(file_transferred.rawfile, file_transferred)
             jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id)
-            if file_transferred.filetype_id in settings.FILE_ISDIR_SFGROUPS:
+            if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
                 jobutil.create_job('unzip_raw_datadir', sf_id=file_transferred.id)
             # here unzip in a new job after backing up?
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
@@ -379,8 +378,13 @@ def do_md5_check(file_transferred):
 def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
     add_to_qc(rawfile, storedfile)
+    filters = ['"peakPicking true 2"', '"precursorRefine"']
+    options = []
+    if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
+        filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
+        options.append('--combineIonMobilitySpectra')
     jobutil.create_job('convert_single_mzml', sf_id=storedfile.id,
-                            queue=settings.QUEUE_QCPWIZ)
+            options=options, filters=filters, queue=settings.QUEUE_QCPWIZ)
     start_qc_analysis(rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
                       settings.LONGQC_FADB_ID)
 
@@ -430,7 +434,12 @@ def manyfile_qc(rawfiles, storedfiles):
         except dsmodels.DatasetRawFile.DoesNotExist:
             dset = add_to_qc(rawfn, sfn)
             print('Added QC file {} to QC dataset {}'.format(rawfn.id, dset.id))
-        jobutil.create_job('convert_single_mzml', sf_id=sfn.id)
+        filters = ['"peakPicking true 2"', '"precursorRefine"']
+        options = []
+        if rawfn.producer.msinstrument.instrumenttype.name == 'timstof':
+            filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
+            options.append('--combineIonMobilitySpectra')
+        jobutil.create_job('convert_single_mzml', options=options, filters=filters, sf_id=sfn.id)
     # Do not rerun with the same workflow as previously
     for rawfn, sfn in zip(rawfiles, storedfiles):
         if not dashmodels.QCData.objects.filter(
@@ -528,7 +537,7 @@ def check_libraryfile_ready(request):
 @login_required
 @staff_member_required
 def instrument_page(request):
-    producers = {x.pk: x.name for x in Producer.objects.filter(producerfiletype__isnull=False)}
+    producers = {x.pk: x.name for x in Producer.objects.filter(msinstrument__isnull=False)}
     return render(request, 'rawstatus/instruments.html', {'producers': producers})
 
 
@@ -536,14 +545,14 @@ def instrument_page(request):
 def download_instrument_package(request):
     datadisk = '{}:'.format(request.POST['datadisk'][0])
     try:
-        prod = Producer.objects.select_related('producerfiletype').get(pk=request.POST['prod_id'])
+        prod = Producer.objects.select_related('msinstrument').get(pk=request.POST['prod_id'])
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
     runtransferfile = loader.render_to_string('rawstatus/producer.bat', {
         'datadisk': datadisk,
         'client_id': prod.client_id,
-        'filetype_id': prod.producerfiletype.filetype_id,
-        'is_folder': 1 if prod.producerfiletype.filetype_id in settings.FILE_ISDIR_SFGROUPS else 0,
+        'filetype_id': prod.msinstrument.filetype_id,
+        'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
         'host': settings.KANTELEHOST,
         'key': settings.TMP_STORAGE_KEYFILE,
         'scp_full': settings.TMP_SCP_PATH,
