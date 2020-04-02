@@ -596,7 +596,7 @@ def get_file_info(request, file_id):
 
 
 def get_nr_raw_mzml_files(files, info):
-    storedfiles = {'raw': files.filter(filetype_id=settings.RAW_SFGROUP_ID).count(),
+    storedfiles = {'raw': files.filter(filetype_id__in=[settings.RAW_SFGROUP_ID, settings.BRUKER_SFGROUP_ID]).count(),
                    'mzML': files.filter(filetype_id=settings.MZML_SFGROUP_ID,
                        purged=False, checked=True).count(),
                    'refined_mzML': files.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID,
@@ -606,7 +606,10 @@ def get_nr_raw_mzml_files(files, info):
         storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
                 'job').values('job__funcname')
     mzjobs = set([x['job__funcname'] for x in mzjobs])
-    if storedfiles['mzML'] == storedfiles['raw']:
+    if storedfiles['raw'] == 0:
+        info['mzmlable'] = False
+        info['refinable'] = False
+    elif storedfiles['mzML'] == storedfiles['raw']:
         info['mzmlable'] = False
         if 'refine_mzmls' in mzjobs:
             info['refinable'] = 'blocked'
