@@ -7,6 +7,14 @@ from jobs.models import Job
 class StoredFileType(models.Model):
     name = models.CharField(max_length=100, unique=True) 
     filetype = models.CharField(max_length=20) # fasta, tabular, mzml, raw, analysisoutput
+    is_folder = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+
+class MSInstrumentType(models.Model):
+    name = models.TextField(unique=True) # timstof, qe, velos, tof, lcq, etc
 
     def __str__(self):
         return self.name
@@ -16,17 +24,19 @@ class Producer(models.Model):
     name = models.CharField(max_length=100)
     client_id = models.CharField(max_length=100)
     shortname = models.CharField(max_length=10)
+    #active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.name
 
 
-class ProducerFileType(models.Model):
+class MSInstrument(models.Model):
     producer = models.OneToOneField(Producer)
-    filetype = models.ForeignKey(StoredFileType)
+    instrumenttype = models.ForeignKey(MSInstrumentType)
+    filetype = models.ForeignKey(StoredFileType) # raw, .d
 
     def __str__(self):
-        return '{}/{}'.format(self.producer.name, self.filetype.name)
+        return 'MS - {}/{}'.format(self.producer.name, self.filetype.name)
 
 
 class ServerShare(models.Model):
