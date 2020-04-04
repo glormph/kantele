@@ -308,7 +308,7 @@ def store_analysis_result(request):
     else:
         print('Analysis result already registered as transfer, client asks for new '
               'MD5 check after a possible rerun. Running MD5 check.')
-    create_job('get_md5', sf_id=sfile.id)
+    create_job('get_md5', source_md5=sfile.rawfile.source_md5, sf_id=sfile.id)
     return HttpResponse()
 
 

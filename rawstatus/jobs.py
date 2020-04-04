@@ -17,7 +17,7 @@ class GetMD5(SingleFileJob):
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         fnpath = os.path.join(sfile.path, sfile.filename)
-        self.run_tasks.append(((sfile.rawfile.source_md5, sfile.id, fnpath, sfile.servershare.name), {}))
+        self.run_tasks.append(((kwargs['source_md5'], sfile.id, fnpath, sfile.servershare.name), {}))
 
 
 class CreatePDCArchive(SingleFileJob):

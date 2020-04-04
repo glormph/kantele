@@ -249,7 +249,7 @@ def file_transferred(request):
             return HttpResponseForbidden()
         tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
         try:
-            RawFile.objects.get(pk=fn_id)
+            rawfn = RawFile.objects.get(pk=fn_id)
         except RawFile.DoesNotExist:
             print('File has not been registered yet, cannot transfer')
             return JsonResponse({'fn_id': fn_id, 'state': 'error'})
@@ -266,11 +266,11 @@ def file_transferred(request):
                                           servershare=tmpshare, path='',
                                           filename=fname, md5='', checked=False)
             file_transferred.save()
-            jobutil.create_job('get_md5', sf_id=file_transferred.id)
+            jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
         else:
-            print('File already registered as transfer, client asks for new '
+            print('File already registered as transferred, client asks for new '
                   'MD5 check after a possible retransfer. Running MD5 check.')
-            jobutil.create_job('get_md5', sf_id=file_transferred.id)
+            jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
         return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
@@ -280,7 +280,7 @@ def upload_userfile_token(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     try:
-        ufile = UserFile.objects.select_related('sfile__servershare', 'upload').get(
+        ufile = UserFile.objects.select_related('sfile__servershare', 'sfile__rawfile', 'upload').get(
             upload__token=request.POST['token'])
     except (KeyError, UserFileUpload.DoesNotExist) as e:
         print(e)
@@ -290,7 +290,7 @@ def upload_userfile_token(request):
             print('expired', ufile.upload.expires)
             return HttpResponseForbidden()
     move_uploaded_file(ufile, request.FILES['file'])
-    jobutil.create_job('get_md5', sf_id=ufile.sfile.id)
+    jobutil.create_job('get_md5', source_md5=ufile.sfile.rawfile.source_md5, sf_id=ufile.sfile.id)
     return HttpResponse()
 
 
