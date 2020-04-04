@@ -132,6 +132,20 @@ class AnalysisResultFile(models.Model):
     sfile = models.OneToOneField(filemodels.StoredFile)
 
 
+class Proteowizard(models.Model):
+    version_description = models.TextField()
+    container_version = models.TextField() # chambm/i-agree-blabla:3.0.1234
+    date_added = models.DateTimeField(auto_now_add=True)
+    is_docker = models.BooleanField(default=False)
+    nf_version = models.ForeignKey(NextflowWfVersion)
+
+
+class MzmlFile(models.Model):
+    sfile = models.OneToOneField(filemodels.StoredFile)
+    pwiz = models.ForeignKey(Proteowizard)
+    refined = models.BooleanField(default=False)
+
+
 class EnsemblFasta(models.Model):
     libfile = models.ForeignKey(LibraryFile)
     version = models.IntegerField(unique=True)

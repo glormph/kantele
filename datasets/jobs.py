@@ -8,6 +8,7 @@ from celery import chain
 from kantele import settings
 from rawstatus.models import StoredFile
 from datasets.models import Dataset, DatasetRawFile
+from analysis.models import Proteowizard, MzmlFile
 from datasets import tasks
 from rawstatus import tasks as filetasks
 from jobs.models import TaskChain
@@ -87,6 +88,9 @@ class MoveFilesStorageTmp(BaseJob):
 
 class ConvertDatasetMzml(BaseJob):
     refname = 'convert_dataset_mzml'
+    task = tasks.run_convert_mzml_nf
+    """Note that this job also runs the windows tasks in case the older
+    pwiz version is run"""
 
     def getfiles_query(self, **kwargs):
         return StoredFile.objects.filter(
@@ -96,10 +100,10 @@ class ConvertDatasetMzml(BaseJob):
 
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
-        queues = cycle(settings.QUEUES_PWIZ)
-        filtopts = kwargs.get('options', []) + [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
+        pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
+        nf_mzmls = []
         for fn in self.getfiles_query(**kwargs):
-            mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
+            mzsf,  mzmlf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
             if mzsf.checked and not mzsf.purged:
                 continue
             # refresh file status for previously purged (deleted from disk)  mzmls 
@@ -107,9 +111,30 @@ class ConvertDatasetMzml(BaseJob):
                 mzsf.checked = False
                 mzsf.purged = False
                 mzsf.save()
-            queue = next(queues)
-            outqueue = settings.QUEUES_PWIZOUT[queue]
-            self.run_tasks.append(((fn, mzsf, dset.storage_loc, filtopts, queue, outqueue), {}))
+            nf_mzmls.append((mzsf.servershare.name, mzsf.path, mzsf.filename, mzmlf.id))
+        if pwiz.is_docker:
+            nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
+                    pk=kwargs['wfv_id'])
+            run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+                   'dset_id': dset.id,
+                   'wf_commit': nfwf.commit,
+                   'nxf_wf_fn': nfwf.filename,
+                   'repo': nfwf.nfworkflow.repo,
+                   }
+            params = []
+            for pname in ['options', 'filters']:
+                p2parse = kwargs.get(pname, [])
+                if len(p2parse):
+                    params.extend(['--{}'.format(pname)] + p2parse.join(';'))
+            self.run_tasks.append(((run, params, nf_mzmls), {'pwiz_version': pwiz.container_version}))
+        else:
+            options = ['--{}'.format(x) for x in kwargs.get('options', [])]
+            filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
+            queues = cycle(settings.QUEUES_PWIZ)
+            for fn in self.getfiles_query(**kwargs):
+                queue = next(queues)
+                outqueue = settings.QUEUES_PWIZOUT[queue]
+                self.run_tasks.append(((fn, mzsf, dset.storage_loc, options + filters, queue, outqueue), {}))
     
     def get_mzmlconversion_taskchain(self, sfile, mzmlentry, storage_loc, filtopts, queue, outqueue):
         args = [[sfile.rawfile.name, sfile.path, mzmlentry.filename, mzmlentry.id,
@@ -134,11 +159,17 @@ class ConvertDatasetMzml(BaseJob):
             TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])
 
     def queue_tasks(self):
-        for task in self.run_tasks:
-            args, kwargs = task[0], task[1]
-            alltaskargs, runchain = self.get_mzmlconversion_taskchain(*args)
-            lastnode = chain(*runchain).delay()
-            self.save_task_chain(lastnode, alltaskargs)
+        pwiz_v = self.run_tasks[0][1].get('pwiz_version', '-1')
+        if Proteowizard.objects.filter(pwiz_v=pwiz_v, is_docker=True).exists():
+            # checks if dockerized-NF workflow should be queued
+            super().queue_tasks()
+        else:
+            # if not docker/NF -- run on windows box
+            for task in self.run_tasks:
+                args, kwargs = task[0], task[1]
+                alltaskargs, runchain = self.get_mzmlconversion_taskchain(*args)
+                lastnode = chain(*runchain).delay()
+                self.save_task_chain(lastnode, alltaskargs)
 
 
 class ConvertFileMzml(ConvertDatasetMzml):
@@ -151,8 +182,8 @@ class ConvertFileMzml(ConvertDatasetMzml):
         queue = kwargs.get('queue', settings.QUEUES_PWIZ[0])
         fn = self.getfiles_query(**kwargs).get()
         storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
-        mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID)
-        filtopts = kwargs.get('options', []) + [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
+        pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
+        mzsf, mzmlf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
         if mzsf.servershare_id != fn.servershare_id:
             # change servershare, in case of bugs the raw sf is set to tmp servershare
             # then after it wont be changed when rerunning the job
@@ -161,7 +192,9 @@ class ConvertFileMzml(ConvertDatasetMzml):
         if mzsf.checked:
             pass
         else:
-            self.run_tasks.append(((fn, mzsf, storageloc, filtopts, queue, settings.QUEUES_PWIZOUT[queue]), {}))
+            options = ['--{}'.format(x) for x in kwargs.get('options', [])]
+            filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
+            self.run_tasks.append(((fn, mzsf, storageloc, options + filters, queue, settings.QUEUES_PWIZOUT[queue]), {}))
 
 
 class DeleteActiveDataset(DatasetJob):
@@ -204,17 +237,21 @@ class DeleteDatasetPDCBackup(BaseJob):
     # this for e.g empty or active-only dsets
 
 
-def get_or_create_mzmlentry(fn, group_id, servershare_id=False):
+def get_or_create_mzmlentry(fn, group_id, pwiz, refined=False, servershare_id=False):
+    # FIXME maybe delete mzml file group and make all those files raw, with mzml db entry
+    # then you dont need to keep track of its db id
     if not servershare_id:
         servershare_id = fn.servershare_id
     try:
-        mzsf = StoredFile.objects.get(rawfile_id=fn.rawfile_id,
-                                      filetype_id=group_id)
+        mzsf = StoredFile.objects.select_related('mzmlfile').get(rawfile_id=fn.rawfile_id, 
+                mzmlfile__isnull=False, mzmlfile__pwiz=pwiz)
     except StoredFile.DoesNotExist:
         mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-        mzsf = StoredFile(rawfile_id=fn.rawfile_id, filetype_id=group_id,
+        mzsf = StoredFile.objects.create(rawfile_id=fn.rawfile_id, filetype_id=group_id,
                           path=fn.rawfile.datasetrawfile.dataset.storage_loc,
                           servershare_id=servershare_id,
                           filename=mzmlfilename, md5='', checked=False)
-        mzsf.save()
-    return mzsf
+        mzml = MzmlFile.objects.create(sfile=mzsf, pwiz=pwiz, refined=refined)
+    else:
+        mzml = mzsf.mzmlfile
+    return mzsf, mzml

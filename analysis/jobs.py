@@ -27,13 +27,18 @@ class RefineMzmls(DatasetJob):
         nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         stagefiles = {'--tdb': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
+        pwiz = models.Proteowizard.objects.get(pk=2) # FIXME hardcode until in place with frontend
+        #pwiz = models.Proteowizard.objects.get(pk=kwargs['pwiz_id'])
         all_sfiles = self.getfiles_query(**kwargs)
-        existing_refined = all_sfiles.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
+        existing_refined = all_sfiles.filter(
+                mzmlfile__refined=True,
+                filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
         mzmlfiles = all_sfiles.filter(filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__in=existing_refined)
         analysisshare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
-        mzmls = [(x.servershare.name, x.path, x.filename, 
-                  get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, analysisshare).id, analysisshare)
-                 for x in mzmlfiles]
+        mzmls = []
+        for x in mzmlfiles:
+            ref_sf, ref_mzmlf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, pwiz, refined=True, servershare=analysisshare)
+            mzmls.append((x.servershare.name, x.path, x.filename, ref_sf.id, analysisshare))
         allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
         if len(allinstr) > 1:
             raise RuntimeError('Trying to run a refiner job on dataset containing more than one instrument is not possible')
