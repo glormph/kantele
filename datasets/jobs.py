@@ -94,8 +94,8 @@ class ConvertDatasetMzml(BaseJob):
 
     def getfiles_query(self, **kwargs):
         return StoredFile.objects.filter(
-            rawfile__datasetrawfile__dataset_id=kwargs['dset_id'],
-            filetype_id=settings.RAW_SFGROUP_ID).select_related(
+            rawfile__datasetrawfile__dataset_id=kwargs['dset_id']).exclude(
+            filetype_id__in=settings.SECONDARY_FTYPES).select_related(
             'servershare', 'rawfile__datasetrawfile__dataset')
 
     def process(self, **kwargs):

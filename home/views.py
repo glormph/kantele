@@ -667,13 +667,19 @@ def create_mzmls(request):
     if not request.method == 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     data = json.loads(request.body.decode('utf-8'))
-    filters = ['"peakPicking true 2"', '"precursorRefine"']
+    filters = ['"peakPicking true 2"', '"precursorRefine"'] # peakPick first to operate as vendor picking
     options = []
-    if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
-        filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
-        options.append('combineIonMobilitySpectra')
-    if dsmodels.Dataset.objects.filter(pk=data['dsid'], deleted=False).count():
-        jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=1)
+    dset = dsmodels.Dataset.objects.filter(pk=data['dsid'], deleted=False)
+    if not dset.exists():
+        return JsonResponse({'error': 'Dataset does not exist or is deleted'}, status=403)
+    ds_instype = dset.distinct('datasetrawfile__rawfile__producer__msinstrument__instrumenttype')
+    if ds_instype.count() > 1:
+        return JsonResponse({'error': 'Dataset contains data from multiple instrument types, cannot convert all in the same matter, separate them'}, status=403)
+    if ds_instype.filter(datasetrawfile__rawfile__producer__msinstrument__instrumenttype__name='timstof').exists():
+        return JsonResponse({'error': 'Not yet possible to mzML timstof/pasef data'}, status=403)
+        #filters.append('"scanSumming" precursorTol=0.05 scanTimeTol=10"')
+        #options.extend(['--combineIonMobilitySpectra'])
+    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz=1)
     return JsonResponse({})
 
 

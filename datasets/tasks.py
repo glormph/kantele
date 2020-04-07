@@ -13,7 +13,7 @@ from jobs.post import update_db, taskfail_update_db
 
 
 @shared_task(bind=True)
-def convert_to_mzml(self, fn, fnpath, outfile, sf_id, servershare, reporturl, failurl):
+def convert_to_mzml(self, fn, fnpath, outfile, sf_id, servershare, filtopts, reporturl, failurl):
     """This will run on remote in other repo (proteomics-tasks) so there is no
     need to be no code in here, the task is an empty shell with only the
     task name"""
