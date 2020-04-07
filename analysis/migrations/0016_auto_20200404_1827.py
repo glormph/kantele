@@ -5,6 +5,33 @@ from __future__ import unicode_literals
 from django.db import migrations, models
 import django.db.models.deletion
 
+from kantele import settings
+
+
+def init_mzmls(apps, sch_editor):
+    MzmlFile = apps.get_model('analysis', 'MzmlFile')
+    SFile = apps.get_model('rawstatus', 'StoredFile')
+    PWiz = apps.get_model('analysis', 'Proteowizard')
+    NfWfV = apps.get_model('analysis', 'NextflowWfVersion')
+    NfWf = apps.get_model('analysis', 'NextflowWorkflow')
+    nfwf = NfWf.objects.create(description='Proteowizard msconvert WF', repo='https://github.com/lehtiolab/nf-msconvert')
+    nfwfver = NfWfV.objects.create(update='Windows pwiz/old refiner', commit='fake', filename='tasks', nfworkflow=nfwf)
+    convpwiz = PWiz.objects.create(id=1, version_description='v0.0 - 3.0.19127.a8f2dc212', container_version='none', is_docker=False, nf_version=nfwfver)
+    refinepwiz = PWiz.objects.create(id=2, version_description='v0.0 - 3_0_9992--h2d50403_2', container_version='none', is_docker=True, nf_version=nfwfver)
+    MzmlFile.objects.bulk_create(
+            MzmlFile(refined=False, pwiz=convpwiz, sfile=x) for x in SFile.objects.filter(filetype=settings.MZML_SFGROUP_ID)
+            )
+    MzmlFile.objects.bulk_create(
+            MzmlFile(refined=False, pwiz=refinepwiz, sfile=x) for x in SFile.objects.filter(filetype=settings.REFINEDMZML_SFGROUP_ID)
+            )
+
+
+def revert_mzml(apps, sch_editor):
+    MzmlFile = apps.get_model('analysis', 'MzmlFile')
+    PWiz = apps.get_model('analysis', 'Proteowizard')
+    MzmlFile.objects.all().delete()
+    PWiz.objects.all().delete()
+
 
 class Migration(migrations.Migration):
 
@@ -42,4 +69,6 @@ class Migration(migrations.Migration):
             name='sfile',
             field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='rawstatus.StoredFile'),
         ),
+
+        migrations.RunPython(init_mzmls, revert_mzml),
     ]
