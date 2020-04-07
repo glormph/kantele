@@ -28,7 +28,12 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
     return True
 
 
-@shared_task(bind=True, queue=config.QUEUE_STORAGE)
+@shared_task(bind=True, queue=settings.QUEUE_NXF)
+def run_convert_mzml_nf(self, run, params, mzmls, **kwargs):
+    pass
+
+
+@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def rename_storage_location(self, srcpath, dstpath, sf_ids):
     """This expects one dataset per dir, as it will rename the whole dir"""
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
