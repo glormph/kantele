@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 from django.urls import reverse
 from celery import shared_task
 
-from kantele import settings as config
+from kantele import settings
 from jobs.post import update_db, taskfail_update_db
 
 # Updating stuff in tasks happens over the API, assume no DB is touched. This
@@ -28,7 +28,7 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
     return True
 
 
-@shared_task(bind=True, queue=config.QUEUE_NXF)
+@shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_convert_mzml_nf(self, run, params, mzmls, **kwargs):
     pass
 
@@ -38,7 +38,7 @@ def rename_storage_location(self, srcpath, dstpath, sf_ids):
     """This expects one dataset per dir, as it will rename the whole dir"""
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
     try:
-        shutil.move(os.path.join(config.STORAGESHARE, srcpath), os.path.join(config.STORAGESHARE, dstpath))
+        shutil.move(os.path.join(settings.STORAGESHARE, srcpath), os.path.join(settings.STORAGESHARE, dstpath))
     except:
         taskfail_update_db(self.request.id)
         raise
@@ -46,7 +46,7 @@ def rename_storage_location(self, srcpath, dstpath, sf_ids):
     splitpath = srcpath.split(os.sep)
     for pathlen in range(0, len(splitpath))[::-1]:
         # no rmdir on the leaf dir (would be pathlen+1) since that's been moved
-        checkpath = os.path.join(config.STORAGESHARE, os.sep.join(splitpath[:pathlen]))
+        checkpath = os.path.join(settings.STORAGESHARE, os.sep.join(splitpath[:pathlen]))
         if not os.listdir(checkpath):
             try:
                 os.rmdir(checkpath)
@@ -54,8 +54,8 @@ def rename_storage_location(self, srcpath, dstpath, sf_ids):
                 taskfail_update_db(self.request.id)
                 raise
     postdata = {'fn_ids': sf_ids, 'dst_path': dstpath,
-                'task': self.request.id, 'client_id': config.APIKEY}
-    url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
+                'task': self.request.id, 'client_id': settings.APIKEY}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
         update_db(url, json=postdata)
     except RuntimeError:
@@ -63,18 +63,18 @@ def rename_storage_location(self, srcpath, dstpath, sf_ids):
         raise
 
 
-@shared_task(bind=True, queue=config.QUEUE_STORAGE)
+@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=False, newname=False):
-    src = os.path.join(config.SHAREMAP[srcshare], srcpath, fn)
+    src = os.path.join(settings.SHAREMAP[srcshare], srcpath, fn)
     if not dstshare:
-        dstshare = config.STORAGESHARENAME
+        dstshare = settings.STORAGESHARENAME
     if not newname:
         newname = fn
-    dst = os.path.join(config.SHAREMAP[dstshare], dstpath, newname)
-    url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
+    dst = os.path.join(settings.SHAREMAP[dstshare], dstpath, newname)
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     if src == dst:
         print('Source and destination are identical, not moving file')
-        update_db(url, json={'client_id': config.APIKEY, 'task': self.request.id})
+        update_db(url, json={'client_id': settings.APIKEY, 'task': self.request.id})
     print('Moving file {} to {}'.format(src, dst))
     dstdir = os.path.split(dst)[0]
     if not os.path.exists(dstdir):
@@ -97,7 +97,7 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=Fals
         raise RuntimeError('Could not move file tot storage:', e)
     postdata = {'fn_id': fn_id, 'servershare': dstshare,
                 'dst_path': dstpath, 'newname': os.path.basename(dst),
-                'client_id': config.APIKEY, 'task': self.request.id}
+                'client_id': settings.APIKEY, 'task': self.request.id}
     try:
         update_db(url, json=postdata)
     except RuntimeError:
@@ -106,20 +106,20 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=Fals
     print('File {} moved to {}'.format(fn_id, dst))
 
 
-@shared_task(bind=True, queue=config.QUEUE_STORAGE)
+@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def move_stored_file_tmp(self, fn, path, fn_id):
-    src = os.path.join(config.STORAGESHARE, path, fn)
-    dst = os.path.join(config.TMPSHARE, fn)
+    src = os.path.join(settings.STORAGESHARE, path, fn)
+    dst = os.path.join(settings.TMPSHARE, fn)
     print('Moving stored file {} to tmp'.format(fn_id))
     try:
         shutil.move(src, dst)
     except Exception:
         taskfail_update_db(self.request.id)
         raise
-    postdata = {'fn_id': fn_id, 'servershare': config.TMPSHARENAME,
-                'dst_path': '', 'client_id': config.APIKEY,
+    postdata = {'fn_id': fn_id, 'servershare': settings.TMPSHARENAME,
+                'dst_path': '', 'client_id': settings.APIKEY,
                 'task': self.request.id}
-    url = urljoin(config.KANTELEHOST, reverse('jobs:updatestorage'))
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     try:
         update_db(url, json=postdata)
     except RuntimeError:
