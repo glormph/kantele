@@ -28,7 +28,7 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
     return True
 
 
-@shared_task(bind=True, queue=settings.QUEUE_NXF)
+@shared_task(bind=True, queue=config.QUEUE_NXF)
 def run_convert_mzml_nf(self, run, params, mzmls, **kwargs):
     pass
 
