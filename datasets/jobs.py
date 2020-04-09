@@ -25,7 +25,7 @@ class RenameDatasetStorageLoc(DatasetJob):
 
     def process(self, **kwargs):
         """Just passthrough of arguments to task"""
-        self.run_tasks = [((kwargs['srcpath'], kwargs['dstpath'], [self.getfiles_query(**kwargs)]), {})]
+        self.run_tasks = [((kwargs['srcpath'], kwargs['dstpath'], [x.id for x in self.getfiles_query(**kwargs)]), {})]
 
 
 class MoveFilesToStorage(DatasetJob):
