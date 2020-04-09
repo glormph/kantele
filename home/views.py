@@ -602,7 +602,7 @@ def get_nr_raw_mzml_files(files, info):
                    'refined_mzML': files.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID,
                        purged=False, checked=True).count()}
     info.update({'refinable': False, 'mzmlable': 'ready'})
-    mzjobs = filemodels.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
+    mzjobs = filemodels.FileJob.objects.exclude(job__state__in=jj.JOBSTATES_DONE).filter(
         storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
                 'job').values('job__funcname')
     mzjobs = set([x['job__funcname'] for x in mzjobs])
@@ -679,7 +679,7 @@ def create_mzmls(request):
         return JsonResponse({'error': 'Not yet possible to mzML timstof/pasef data'}, status=403)
         #filters.append('"scanSumming" precursorTol=0.05 scanTimeTol=10"')
         #options.extend(['--combineIonMobilitySpectra'])
-    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz=1)
+    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=1)
     return JsonResponse({})
 
 

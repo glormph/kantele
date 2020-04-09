@@ -101,7 +101,7 @@ class ConvertDatasetMzml(BaseJob):
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
-        nf_mzmls = []
+        nf_mzmls, win_mzmls = [], []
         for fn in self.getfiles_query(**kwargs):
             mzsf,  mzmlf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
             if mzsf.checked and not mzsf.purged:
@@ -112,6 +112,7 @@ class ConvertDatasetMzml(BaseJob):
                 mzsf.purged = False
                 mzsf.save()
             nf_mzmls.append((mzsf.servershare.name, mzsf.path, mzsf.filename, mzmlf.id))
+            win_mzmls.append((fn, mzsf))
         if pwiz.is_docker:
             nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
                     pk=kwargs['wfv_id'])
@@ -121,17 +122,17 @@ class ConvertDatasetMzml(BaseJob):
                    'nxf_wf_fn': nfwf.filename,
                    'repo': nfwf.nfworkflow.repo,
                    }
-            params = []
+            params = ['--container', pwiz.container_version]
             for pname in ['options', 'filters']:
                 p2parse = kwargs.get(pname, [])
                 if len(p2parse):
                     params.extend(['--{}'.format(pname)] + p2parse.join(';'))
-            self.run_tasks.append(((run, params, nf_mzmls), {'pwiz_version': pwiz.container_version}))
+            self.run_tasks.append(((run, params, nf_mzmls), {'pwiz_id': pwiz.id}))
         else:
             options = ['--{}'.format(x) for x in kwargs.get('options', [])]
             filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
             queues = cycle(settings.QUEUES_PWIZ)
-            for fn in self.getfiles_query(**kwargs):
+            for fn, mzsf in win_mzmls:
                 queue = next(queues)
                 outqueue = settings.QUEUES_PWIZOUT[queue]
                 self.run_tasks.append(((fn, mzsf, dset.storage_loc, options + filters, queue, outqueue), {}))
@@ -159,8 +160,8 @@ class ConvertDatasetMzml(BaseJob):
             TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])
 
     def queue_tasks(self):
-        pwiz_v = self.run_tasks[0][1].get('pwiz_version', '-1')
-        if Proteowizard.objects.filter(pwiz_v=pwiz_v, is_docker=True).exists():
+        pwiz_v = self.run_tasks[0][1].get('pwiz_id', '-1')
+        if Proteowizard.objects.filter(pk=pwiz_v, is_docker=True).exists():
             # checks if dockerized-NF workflow should be queued
             super().queue_tasks()
         else:

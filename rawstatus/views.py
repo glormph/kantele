@@ -384,7 +384,7 @@ def singlefile_qc(rawfile, storedfile):
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('--combineIonMobilitySpectra')
     jobutil.create_job('convert_single_mzml', sf_id=storedfile.id,
-            options=options, filters=filters, queue=settings.QUEUE_QCPWIZ)
+            options=options, filters=filters, pwiz_id=1, queue=settings.QUEUE_QCPWIZ)
     start_qc_analysis(rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
                       settings.LONGQC_FADB_ID)
 
