@@ -364,7 +364,8 @@ def do_md5_check(file_transferred):
                 SwestoreBackedupFile.objects.filter(
                 storedfile_id=file_transferred.id).count() == 0):
             fn = file_transferred.filename
-            if 'QC' in fn and 'hela' in fn.lower() and hasattr(file_registered.producer, 'msinstrument'):
+            # FIXME temp solution to keep timstof from QC
+            if 'QC' in fn and 'hela' in fn.lower() and hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.instrumenttype.name != 'timstof':
                 singlefile_qc(file_transferred.rawfile, file_transferred)
             jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id)
             if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:

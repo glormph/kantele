@@ -532,17 +532,21 @@ def save_new_dataset(data, project, experiment, runname, user_id):
         dset_mail = models.ExternalDatasetContact(dataset=dset,
                                                  email=data['externalcontact'])
         dset_mail.save()
-    dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
-                                                  component__name='definition')
-    models.DatasetComponentState.objects.create(dtcomp=dtcomp,
-                                                dataset_id=dset.id,
-                                                state=COMPSTATE_OK)
-    models.DatasetComponentState.objects.bulk_create([
-        models.DatasetComponentState(
-            dtcomp=x, dataset_id=dset.id, state=COMPSTATE_NEW) for x in
-        models.DatatypeComponent.objects.filter(
-            datatype_id=dset.datatype_id).exclude(
-            component__name='definition')])
+    try:
+        dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
+                                                      component__name='definition')
+    except models.DatatypeComponent.DoesNotExist:
+        pass # Instrument QC datasets dont have datatype components
+    else:
+        models.DatasetComponentState.objects.create(dtcomp=dtcomp,
+                                                    dataset_id=dset.id,
+                                                    state=COMPSTATE_OK)
+        models.DatasetComponentState.objects.bulk_create([
+            models.DatasetComponentState(
+                dtcomp=x, dataset_id=dset.id, state=COMPSTATE_NEW) for x in
+            models.DatatypeComponent.objects.filter(
+                datatype_id=dset.datatype_id).exclude(
+                component__name='definition')])
     return dset
 
 

@@ -232,7 +232,7 @@ def populate_files(dbfns):
             it['jobs'] = [x.job.state for x in currentjobs]
             if fn.filetype.filetype == 'mzml':
                 anjobs = fjobs.filter(job__nextflowsearch__isnull=False)
-            elif fn.filetype_id == int(settings.RAW_SFGROUP_ID):
+            elif fn.filetype_id in [int(settings.RAW_SFGROUP_ID), int(settings.BRUKER_SFGROUP_ID)]:
                 mzmls = fn.rawfile.storedfile_set.filter(filetype__filetype='mzml')
                 anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
             it['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
