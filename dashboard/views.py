@@ -107,5 +107,7 @@ def show_qc(request, instrument_id):
         'msgfscore': qcplots.boxplotrange(dateddata, 'msgfscore'),
         'rt': qcplots.boxplotrange(dateddata, 'rt'),
         }
+    if 'ionmob' in dateddata:
+        plot['ionmob'] = qcplots.boxplotrange(dateddata, 'ionmob')
     script, div = components(plot, wrap_script=False, wrap_plot_info=False)
     return JsonResponse({'bokeh_code': {'script': script, 'div': div}})

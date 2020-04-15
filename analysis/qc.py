@@ -25,8 +25,12 @@ def calc_longitudinal_qc(infiles):
     msgfix = header.index('MSGFScore')
     rtix = header.index('Retention time(min)')
     misclix = header.index('missed_cleavage')
+    ionmobix = header.index('Ion mobility(Vs/cm2)')
+    use_ionmob = False
     for line in psms:
         # FIXME filtering in galaxy? will be incorrect num of peptides
+        if line[ionmobix] != 'NA':
+            use_ionmob = True
         if float(line[qvalix]) > 0.01:
             continue
         qcpsms.append(line)
@@ -39,6 +43,8 @@ def calc_longitudinal_qc(infiles):
     qcmap['perror'] = calc_boxplot([psm[perrorix] for psm in qcpsms])
     qcmap['msgfscore'] = calc_boxplot([psm[msgfix] for psm in qcpsms])
     qcmap['rt'] = calc_boxplot([psm[rtix] for psm in qcpsms])
+    if use_ionmob:
+        qcmap['ionmob'] = calc_boxplot([psm[ionmobix] for psm in qcpsms])
     con = Connection(infiles['sqltable'])
     qcmap.update({'psms': len(qcpsms), 
                   'scans': con.execute('SELECT COUNT(*) FROM mzml').fetchone()[0]})
@@ -65,9 +71,9 @@ def calc_longitudinal_qc(infiles):
 
 
 def parse_header(oldheader):
-    header = ['Biological set', 'Retention time(min)', 'PrecursorError(ppm)',
-              'Peptide', 'MSGFScore', 'QValue', 'percolator svm-score',
-              'MS1 area', 'Fractions', 'Delta pI',
+    header = ['Biological set', 'Retention time(min)', 'Ion mobility(Vs/cm2)',
+            'PrecursorError(ppm)', 'Peptide', 'MSGFScore', 'QValue', 
+            'percolator svm-score', 'MS1 area', 'Fractions', 'Delta pI', 'missed_cleavage',
               'tmt6plex_126',
               'tmt6plex_127',
               'tmt6plex_128',
@@ -114,7 +120,7 @@ def parse_header(oldheader):
             pass
         else:
             newheader.append(field)
-    return newheader + ['Plate_ID', 'missed_cleavage'], colnrs
+    return newheader + ['Plate_ID'], colnrs
 
 
 def parse_psms(infile, is_instrument_qc=False, platepatterns=False):
@@ -132,8 +138,7 @@ def parse_psms(infile, is_instrument_qc=False, platepatterns=False):
             if not is_instrument_qc:
                 plate_id = get_plate_id(line[biosetcol], line[fncol],
                                         platepatterns)
-            yield [line[x] for x in colnrs] + [
-                plate_id, str(count_missed_cleavage(line[pepseqcol]))]
+            yield [line[x] for x in colnrs] + [plate_id]
 
 
 def get_plate_id(bioset, fn, patterns):
@@ -143,18 +148,6 @@ def get_plate_id(bioset, fn, patterns):
     print('Could not match patterns {} to filename {} to detect '
           'name of plate, substitute with NA'.format(patterns, fn))
     return '{}_{}'.format(bioset, 'NA')
-
-
-def count_missed_cleavage(full_pepseq, count=0):
-    '''Regex .*[KR][^P] matches until the end and checks if there is a final
-    charachter so this will not match the tryptic residue'''
-    pepseq = re.sub('[\+\-]\d*.\d*', '', full_pepseq)
-    match = re.match('.*[KR][^P]', pepseq)
-    if match:
-        count += 1
-        return count_missed_cleavage(match.group()[:-1], count)
-    else:
-        return count
 
 
 def table_reader(fp):
