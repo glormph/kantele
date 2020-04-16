@@ -113,7 +113,7 @@ UPLOADDIR = 'uploadfiles'
 
 # qc datasets
 QC_USER_ID = os.environ.get('QC_USER_ID')
-QC_DATATYPE = os.environ.get('QC_DATATYPE')
+QC_DATATYPE = int(os.environ.get('QC_DATATYPE'))
 QC_ORGANISM = os.environ.get('QC_ORGANISM')
 INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
 INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
@@ -127,7 +127,6 @@ LARGER_NFRUNDIR = os.environ.get('LARGER_NFRUNDIR')
 NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
               'larger': LARGER_NFRUNDIR,
             }
-LONGQC_NXF_WF_ID = os.environ.get('LONGQC_WFID')
 LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')

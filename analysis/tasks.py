@@ -163,10 +163,14 @@ def stage_files(stagedir, stagefiles, params=False):
     for flag, fdata in stagefiles.items():
         fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
         dst = os.path.join(stagedir, fdata[2])
-        if not os.path.exists(dst):
-            shutil.copy(fpath, dst)
         if params:
             params.extend([flag, dst])
+        if os.path.exists(dst):
+            continue
+        if os.path.isdir(fpath):
+            shutil.copytree(fpath, dst)
+        else:
+            shutil.copy(fpath, dst)
     return params
 
 
@@ -315,11 +319,16 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'instrument': run['instrument'], 'filename': run['filename']}
-    mzmls = {}
     rundir = create_runname_dir(run)
-    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
+    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
+    if '--raw' in stagefiles:
+        nf_version = '19.10.0' 
+        profiles = 'qc,docker'
+    else:
+        nf_version = False
+        profiles = 'qc'
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profiles='qc')
+        run_nextflow(run, params, rundir, gitwfdir, profiles=profiles, nf_version=nf_version)
     except subprocess.CalledProcessError:
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')

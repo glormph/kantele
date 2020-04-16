@@ -23,9 +23,9 @@ from Bio import SeqIO
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile, StoredFileType, UserFile,
-                              UserFileUpload)
+                              PDCBackedupFile, UserFileUpload)
 from rawstatus import jobs as rsjobs
-from analysis.models import (Analysis, LibraryFile, AnalysisResultFile)
+from analysis.models import (Analysis, LibraryFile, AnalysisResultFile, NextflowWfVersion)
 from datasets import views as dsviews
 from datasets import models as dsmodels
 from dashboard import models as dashmodels
@@ -360,17 +360,14 @@ def do_md5_check(file_transferred):
         if not file_transferred.checked:
             file_transferred.checked = True
             file_transferred.save()
-        if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and
-                SwestoreBackedupFile.objects.filter(
-                storedfile_id=file_transferred.id).count() == 0):
+        if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and not
+                PDCBackedupFile.objects.filter(storedfile_id=file_transferred.id):
             fn = file_transferred.filename
-            # FIXME temp solution to keep timstof from QC
-            if 'QC' in fn and 'hela' in fn.lower() and hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.instrumenttype.name != 'timstof':
-                singlefile_qc(file_transferred.rawfile, file_transferred)
             jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id)
             if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
                 jobutil.create_job('unzip_raw_datadir', sf_id=file_transferred.id)
-            # here unzip in a new job after backing up?
+            if 'QC' in fn and 'hela' in fn.lower() and hasattr(file_registered.producer, 'msinstrument'): 
+                singlefile_qc(file_transferred.rawfile, file_transferred)
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
     else:
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'error'})
@@ -384,10 +381,9 @@ def singlefile_qc(rawfile, storedfile):
     if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('--combineIonMobilitySpectra')
-    jobutil.create_job('convert_single_mzml', sf_id=storedfile.id,
-            options=options, filters=filters, pwiz_id=1, queue=settings.QUEUE_QCPWIZ)
-    start_qc_analysis(rawfile, storedfile, settings.LONGQC_NXF_WF_ID,
-                      settings.LONGQC_FADB_ID)
+    params = ['--filters', ';'.join(filters), '--options', ';'.join([x[2:] for x in options])]
+    wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk')
+    start_qc_analysis(rawfile, storedfile, wf_id, settings.LONGQC_FADB_ID, params)
 
 
 def get_file_owners(sfile):
@@ -423,7 +419,6 @@ def rename_file(request):
         return JsonResponse({'error': 'Illegal characteres in new file name'}, status=403)
     jobutil.create_job('rename_file', sf_id=sfile.id, newname=newfilename)
     return JsonResponse({})
-
 
 
 def manyfile_qc(rawfiles, storedfiles):
@@ -471,12 +466,13 @@ def add_to_qc(rawfile, storedfile):
     return dset
 
 
-def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id):
+def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id, params):
     analysis = Analysis(user_id=settings.QC_USER_ID,
                         name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
     analysis.save()
     jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id,
-                            analysis_id=analysis.id, wfv_id=wf_id, dbfn_id=dbfn_id)
+                            analysis_id=analysis.id, wfv_id=wf_id, dbfn_id=dbfn_id,
+                            params=params)
 
 
 def set_libraryfile(request):
