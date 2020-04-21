@@ -17,12 +17,11 @@ def init_mzmls(apps, sch_editor):
     nfwf = NfWf.objects.create(description='Proteowizard msconvert WF', repo='https://github.com/lehtiolab/nf-msconvert')
     nfwfver = NfWfV.objects.create(update='Windows pwiz/old refiner', commit='fake', filename='tasks', nfworkflow=nfwf)
     convpwiz = PWiz.objects.create(id=1, version_description='v0.0 - 3.0.19127.a8f2dc212', container_version='none', is_docker=False, nf_version=nfwfver)
-    refinepwiz = PWiz.objects.create(id=2, version_description='v0.0 - 3_0_9992--h2d50403_2', container_version='none', is_docker=True, nf_version=nfwfver)
     MzmlFile.objects.bulk_create(
             MzmlFile(refined=False, pwiz=convpwiz, sfile=x) for x in SFile.objects.filter(filetype=settings.MZML_SFGROUP_ID)
             )
     MzmlFile.objects.bulk_create(
-            MzmlFile(refined=False, pwiz=refinepwiz, sfile=x) for x in SFile.objects.filter(filetype=settings.REFINEDMZML_SFGROUP_ID)
+            MzmlFile(refined=True, pwiz=convpwiz, sfile=x) for x in SFile.objects.filter(filetype=settings.REFINEDMZML_SFGROUP_ID)
             )
 
 
