@@ -90,24 +90,24 @@ def get_datasets(request):
         dset = dsdetails.pop('dbentry')
         dsdetails['filesaresets'] = False
         dsdetails.update({'details': hv.fetch_dset_details(dset)})
-        if dsdetails['details']['mzmlable'] or dsdetails['details']['refinable'] in ['blocked', 'partly']:
-            response['error'] = True
-            response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
-        dsdetails['model'] = {'set': False}
         try:
             dsdetails['details']['qtype'] = dset.quantdataset.quanttype.name
         except dm.QuantDataset.DoesNotExist:
             response['error'] = True
             response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
         else:
-            dsfiles = files.filter(rawfile__datasetrawfile__dataset_id=dsid)
-            # FIXME TODO when making finished mzmls optional, also wait for refined files to be made, but watch out
-            # for deleted jobs!
-            refineddsfiles = dsfiles.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
-            if refineddsfiles.count():
+            # FIXME TODO Pick live files from pwiz sets? Or mandate?
+            dsfiles = files.filter(rawfile__datasetrawfile__dataset_id=dsid, checked=True, deleted=False, purged=False)
+            nrneededfiles = dsdetails['details']['nrstoredfiles']['raw']
+            refineddsfiles = dsfiles.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID)
+            if refineddsfiles.count() == nrneededfiles:
                 dsfiles = refineddsfiles
             else:
                 dsfiles = dsfiles.filter(filetype_id=settings.MZML_SFGROUP_ID)
+            if dsfiles.count() != nrneededfiles:
+                response['error'] = True
+                response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
+            dsdetails['model'] = {'set': False}
             if 'lex' in dset.quantdataset.quanttype.name:
                 dsdetails['details']['channels'] = {
                     ch.channel.channel.name: ch.projsample.sample for ch in

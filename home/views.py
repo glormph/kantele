@@ -6,7 +6,8 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
-from django.db.models import Q, Sum, Max
+from django.db.models import Q, Sum, Max, Count
+from django.db.models.functions import Trunc
 from collections import OrderedDict
 
 from kantele import settings
@@ -595,40 +596,32 @@ def get_file_info(request, file_id):
     return JsonResponse(info)
 
 
-def get_nr_raw_mzml_files(files, info):
-    storedfiles = {'raw': files.filter(filetype_id__in=[settings.RAW_SFGROUP_ID, settings.BRUKER_SFGROUP_ID]).count(),
-                   'mzML': files.filter(filetype_id=settings.MZML_SFGROUP_ID,
-                       purged=False, checked=True).count(),
-                   'refined_mzML': files.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID,
-                       purged=False, checked=True).count()}
-    info.update({'refinable': False, 'mzmlable': 'ready'})
-    mzjobs = filemodels.FileJob.objects.exclude(job__state__in=jj.JOBSTATES_DONE).filter(
-        storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
-                'job').values('job__funcname')
-    mzjobs = set([x['job__funcname'] for x in mzjobs])
-    if storedfiles['raw'] == 0:
-        info['mzmlable'] = False
-        info['refinable'] = False
-    elif storedfiles['mzML'] == storedfiles['raw']:
-        info['mzmlable'] = False
-        if 'refine_mzmls' in mzjobs:
-            info['refinable'] = 'blocked'
-        elif not storedfiles['refined_mzML']:
-            info['refinable'] = 'ready'
-        elif storedfiles['refined_mzML'] != storedfiles['raw']:
-            info['refinable'] = 'partly'
-    elif 'convert_dataset_mzml' in mzjobs:
-        info['mzmlable'] = 'blocked'
-    return storedfiles, info
+def parse_mzml_pwiz(pwiz_sets, qset, numname):
+    for pw in qset.annotate(nummz=Count('mzmlfile'), date=Trunc('mzmlfile__sfile__regdate', 'day')
+            ).values('pk', 'mzmlfile__refined', 'version_description', 'nummz', 'date'):
+        pwset_id = '{}_{}'.format(pw['pk'], pw['mzmlfile__refined'])
+        try:
+            pwset = pwiz_sets[pwset_id]
+        except KeyError:
+            pwset = {'pws_id': pwset_id, 
+                    'notcreated': 0,
+                    'deleted': 0,
+                    'existing': 0,
+                    'refined': pw['mzmlfile__refined'], 
+                    'refineready': False,
+                    'id': pw['pk'], 
+                    'version': pw['version_description']}
+        pwset[numname] += pw['nummz']
+        if 'created' not in pwset:
+            pwset['created'] = pw['date'].date()
+        pwiz_sets[pwset['pws_id']] = pwset
+    return pwiz_sets
 
 
 def fetch_dset_details(dset):
     # FIXME add more datatypes and microscopy is hardcoded
     info = {'owners': {x.user_id: x.user.username for x in dset.datasetowner_set.select_related('user').all()},
             'allowners': {x.id: '{} {}'.format(x.first_name, x.last_name) for x in User.objects.filter(is_active=True)}, 
-            'pwiz_versions': ['v3.0.19127'],
-            'refine_versions': ['v1.0'],
-            #[x.version for x in anmodels.Proteowizard.objects.all()]
             }
     try:
         info['qtype'] = {'name': dset.quantdataset.quanttype.name, 
@@ -645,11 +638,43 @@ def fetch_dset_details(dset):
     info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))
     rawfiles = files.filter(filetype_id=settings.RAW_SFGROUP_ID)
     if dset.datatype_id not in nonms_dtypes:
-        nrstoredfiles, info = get_nr_raw_mzml_files(files, info)
-        mzmlfiles = files.filter(filetype_id=settings.MZML_SFGROUP_ID, purged=False, checked=True)
-#        nrstoredfiles = {'raw': files.filter(filetype_id=settings.RAW_SFGROUP_ID).count(),
-#                         'mzML': mzmlfiles.filter(mzmlfile__refined=False).count(),
-#                         'refined_mzML': mzmlfiles.filter(mzmlfile__refined=True).count()}
+        nrstoredfiles = {'raw': files.filter(filetype_id__in=[settings.RAW_SFGROUP_ID, settings.BRUKER_SFGROUP_ID]).count()}
+        info.update({'refine_mzmls': [], 'convert_dataset_mzml': []})
+        info['refine_versions'] = [{'id': 15, 'name': 'v1.0'}]
+        for mzj in filemodels.FileJob.objects.exclude(job__state__in=jj.JOBSTATES_DONE).filter(
+                storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
+                        'job').values('job__funcname', 'job__kwargs'):
+            try:
+                job_pwid = json.loads(mzj['job__kwargs'])['pwiz_id']
+            except KeyError:
+                pass
+            else:
+                info[mzj['job__funcname']].append(job_pwid)
+        pw_sets = parse_mzml_pwiz({}, anmodels.Proteowizard.objects.filter(
+            mzmlfile__sfile__rawfile__datasetrawfile__dataset=dset, mzmlfile__sfile__deleted=True),
+            'deleted')
+        pw_sets = parse_mzml_pwiz(pw_sets, anmodels.Proteowizard.objects.filter(
+            mzmlfile__sfile__rawfile__datasetrawfile__dataset=dset, 
+            mzmlfile__sfile__deleted=False, mzmlfile__sfile__checked=False), 'notcreated')
+        pw_sets = parse_mzml_pwiz(pw_sets, anmodels.Proteowizard.objects.filter(
+            mzmlfile__sfile__rawfile__datasetrawfile__dataset=dset,
+            mzmlfile__sfile__deleted=False, mzmlfile__sfile__checked=True), 'existing')
+        for pwsid, pws in pw_sets.items():
+            pwpk, refined = pwsid.split('_')
+            refined = refined == 'True'
+            if (not refined and pws['id'] in info['convert_dataset_mzml']) or (refined and pws['id'] in info['refine_mzmls']):
+                state = 'Processing'
+            elif pws['existing'] == nrstoredfiles['raw']:
+                state = 'Ready'
+                if not refined and '{}_True' not in pw_sets:
+                    pws['refineready'] = True
+            elif not refined or pw_sets['{}_False'.format(pwsid)]['existing'] == nrstoredfiles['raw']:
+                state = 'Incomplete'
+            elif refined:
+                state = 'No mzmls'
+            pws['state'] = state
+        info['pwiz_sets'] = [x for x in pw_sets.values()]
+        info['pwiz_versions'] =  {x.id: x.version_description for x in anmodels.Proteowizard.objects.exclude(pk__in=[x['id'] for x in info['pwiz_sets']])}
     else:
         nrstoredfiles = {nonms_dtypes[dset.datatype_id]: rawfiles.count()}
     info['nrstoredfiles'] = nrstoredfiles

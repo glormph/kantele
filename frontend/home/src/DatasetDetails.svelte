@@ -10,6 +10,13 @@ export let dsetIds;
 let notif = {errors: {}, messages: {}};
 let dsets = {};
 let owner_to_add = Object.fromEntries(dsetIds.map(x => [x, false]));
+let replace_pwiz_id = Object.fromEntries(dsetIds.map(x => [x, false]));
+let refine_v_touse = Object.fromEntries(dsetIds.map(x => [x, false]));
+let pwstateColors = {
+  Ready: 'is-success',
+  Incomplete: 'is-warning',
+  Processing: 'is-danger is-light',
+}
 
 // If user clicks new dataset, show that instead, run when dsetIds is updated:
 $: {
@@ -24,28 +31,28 @@ function new_owners(allowners, oldowners) {
   return Array.from(difference);
 }
 
-async function convertDset(dsid) {
-  const resp = await postJSON('createmzml/', {dsid: dsid});
+async function convertDset(dsid, pwiz_id) {
+  const resp = await postJSON('createmzml/', {dsid: dsid, pwiz_id: pwiz_id});
   if (!resp.ok) {
     const msg = `Something went wrong trying to queue dataset mzML conversion: ${resp.error}`;
     notif.errors[msg] = 1;
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
-    dsets[dsid].mzmlable = 'blocked';
+    cleanFetchDetails(dsetIds);
     const msg = 'Queued dataset for mzML conversion';
     notif.messages[msg] = 1;
     setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   }
 }
 
-async function refineDset(dsid) {
-  const resp = await postJSON('refinemzml/', {'dsid': dsid});
+async function refineDset(dsid, refine_id) {
+  const resp = await postJSON('refinemzml/', {dsid: dsid, refine_id: refine_id});
   if (!resp.ok) {
     const msg = `Something went wrong trying to queue precursor refining: ${resp.error}`;
     notif.errors[msg] = 1;
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
-    dsets[dsid].refinable = 'blocked';
+    cleanFetchDetails(dsetIds);
     const msg = 'Queued dataset for mzML precursor refining';
     notif.messages[msg] = 1;
     setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
@@ -107,49 +114,6 @@ onMount(async() => {
         {/each}
       </div>
 
-      {#if dset.mzmlable}
-      <div class="field">
-        <label class="label">
-          Convert to mzml using version: 
-        </label>
-        <div class="control">
-          {#if dset.mzmlable == 'ready'}
-          <div class="select">
-            <select bind:value={dset.previous_or_latest_pwiz}>
-              {#each dset.pwiz_versions as pwiz_v}
-              <option >{pwiz_v}</option>
-              {/each}
-            </select>
-          </div>
-          <button on:click={e => convertDset(dsid)} class="button">Convert!</button>
-          {:else if dset.mzmlable == 'blocked'}
-          <button disabled class="button">Convert job queued</button>
-          {/if}
-        </div>
-      </div>
-      {/if}
-
-      {#if dset.refinable}
-      <div class="field">
-        <label class="label">Refine precursor data</label>
-        <label class="label is-small">Adjust prec.mass in case of MS drift (visible in QC)</label>
-        <div class="control">
-          <div class="select">
-            <select bind:value={dset.previous_or_latest_pwiz}>
-              {#each dset.refine_versions as refine_v}
-              <option >{refine_v}</option>
-              {/each}
-            </select>
-          </div>
-          {#if ['ready', 'partly'].indexOf(dset.refinable) > -1}
-          <button on:click={e => refineDset(dsid)} class="button">Start refinery</button>
-          {:else if dset.refinable == 'blocked'}
-          <button disabled class="button">Refinery job queued</button>
-          {/if}
-        </div>
-      </div>
-      {/if}
-
     </div>
 
     <div class="column">
@@ -198,6 +162,67 @@ onMount(async() => {
 
     </div>
   </div>
+
+  {#if 'pwiz_versions' in dset}
+  <div class="field">
+    <label class="label">Conversion mzML pipeline(s)</label>
+    <table class="table">
+      <tbody>
+        {#each dset.pwiz_sets as pw}
+        <tr>
+          <td>
+            {#if pw.state === 'Incomplete' && pw.refined}
+            <button class="button is-small" on:click={e => convertDset(dsid, pw.id)}>Re-convert</button>
+            {:else if pw.state === 'Incomplete'}
+            <button class="button is-small" on:click={e => refineDset(dsid, pw.id)}>Re-refine</button>
+            {:else if pw.refineready}
+            <div class="select is-small">
+              <select bind:value={refine_v_touse[dset.id]}>
+                <option value="">Pick a refine version</option>
+                {#each dset.refine_versions as {id, name}}
+                <option value={id}>Refine {name}</option>
+                {/each}
+              </select>
+            </div>
+            <button class="button is-small" on:click={e => refineDset(dsid, refine_v_touse[dset.id])}>Refine mzML</button>
+            {/if}
+          </td>
+          <td>
+            <span class={`tag ${pwstateColors[pw.state]}`}>
+              {pw.state}
+            </span>
+          </td>
+          <td><span class="has-text-weight-bold">{pw.version}</span><span>, created {pw.created}</span></td>
+          <td>
+            {#if pw.refined}
+            <span class="tag is-light is-warning">Refined</span>
+            {/if}
+          </td>
+        </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
+    
+  <div class="field">
+    {#if dset.pwiz_sets.length}
+    <div>Or replace with mzMLs of another version</div>
+    {/if}
+    <div class="select">
+      <select bind:value={replace_pwiz_id[dset.id]}>
+        <option value="">Pick a proteowizard version</option>
+        {#each Object.entries(dset.pwiz_versions) as pwiz_v}
+        <option value={pwiz_v[0]}>{pwiz_v[1]}</option>
+        {/each}
+      </select>
+    </div>
+    {#if replace_pwiz_id[dset.id]}
+    <button on:click={e => convertDset(dsid, replace_pwiz_id[dset.id])} class="button">Convert!</button>
+    {:else}
+    <button disabled class="button">Convert!</button>
+    {/if}
+  </div>
+  {/if}
 
   {/each}
 </DetailBox>
