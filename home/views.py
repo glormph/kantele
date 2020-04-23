@@ -699,12 +699,26 @@ def create_mzmls(request):
         return JsonResponse({'error': 'Dataset does not exist or is deleted'}, status=403)
     ds_instype = dset.distinct('datasetrawfile__rawfile__producer__msinstrument__instrumenttype')
     if ds_instype.count() > 1:
-        return JsonResponse({'error': 'Dataset contains data from multiple instrument types, cannot convert all in the same matter, separate them'}, status=403)
+        return JsonResponse({'error': 'Dataset contains data from multiple instrument types, cannot convert all in the same way, separate them'}, status=403)
+    pwiz = anmodels.Proteowizard.objects.get(pk=data['pwiz_id'])
     if ds_instype.filter(datasetrawfile__rawfile__producer__msinstrument__instrumenttype__name='timstof').exists():
-        return JsonResponse({'error': 'Not yet possible to mzML timstof/pasef data'}, status=403)
-        #filters.append('"scanSumming" precursorTol=0.05 scanTimeTol=10"')
-        #options.extend(['--combineIonMobilitySpectra'])
-    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=1)
+        filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
+        options.append('combineIonMobilitySpectra')
+        if not pwiz.is_docker:
+            return JsonResponse({'error': 'Cannot process mzML timstof/pasef data with that version'}, status=403)
+    num_rawfns = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=data['dsid']).count()
+    mzmls_exist = filemodels.StoredFile.objects.filter(
+            rawfile__datasetrawfile__dataset_id=data['dsid'],
+            deleted=False, purged=False, checked=True, 
+            mzmlfile__isnull=False)
+    # set delete for UI, set purge status after job
+    mzmls_exist.update(deleted=True)
+    if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
+        return JsonResponse({'error': 'This dataset already has existing mzML files of that proteowizard version'}, status=403)
+    # Jobs queued are ok with rerunning, so even if this view is clickec twice quickly, 4 jobs are run,
+    # but they wait and both below jobs filter relevant files. Waste of resources nonetheless.
+    jj.create_job('delete_mzmls_dataset', dset_id=data['dsid'])
+    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=data['pwiz_id'])
     return JsonResponse({})
 
 

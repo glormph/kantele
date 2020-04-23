@@ -7,6 +7,8 @@ from celery import shared_task
 
 from kantele import settings
 from jobs.post import update_db, taskfail_update_db
+from analysis.tasks import prepare_nextflow_run, run_nextflow, transfer_resultfiles
+from rawstatus.tasks import calc_md5
 
 # Updating stuff in tasks happens over the API, assume no DB is touched. This
 # avoids setting up auth for DB
@@ -29,8 +31,31 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def run_convert_mzml_nf(self, run, params, mzmls, **kwargs):
-    pass
+def run_convert_mzml_nf(self, run, params, raws, **kwargs):
+    postdata = {'client_id': settings.APIKEY, 'task': self.request.id}
+    runname = '{}_convert_mzml_{}'.format(run['dset_id'], run['timestamp'])
+    run['runname'] = runname
+    baserundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
+    rundir = os.path.join(rundir, runname).replace(' ', '_')
+    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, {}, raws, params)
+    profiles = ['docker', 'lehtio'] # TODO put in deploy/settings
+    try:
+        run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
+    except subprocess.CalledProcessError as e:
+        # FIXME report stderr with e
+        errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
+        taskfail_update_db(self.request.id, errmsg)
+        raise RuntimeError('Error occurred converting mzML files: '
+                           '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
+    transfer_url = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
+    resultfiles = {}
+    for raw in raws:
+        fname = os.path.splitext(x[2])[0] + '.mzML'
+        fpath = os.path.join(rundir, 'output', fname)
+        resultfiles[fpath] = {'md5': calc_md5(fpath), 'file_id': raw[3], 'newname': fname}
+    transfer_resultfiles((settings.ANALYSISSHARENAME, 'mzmls_in'), runname, resultfiles_db, transfer_url, self.request.id)
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
+    update_db(url, json=postdata)
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)

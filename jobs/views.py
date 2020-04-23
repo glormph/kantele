@@ -74,10 +74,9 @@ def set_md5(request):
     storedfile.md5 = request.POST['md5']
     storedfile.checked = request.POST['source_md5'] == request.POST['md5']
     storedfile.save()
-    print('stored file saved')
+    print('Stored file MD5 checked and saved')
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
-        print('MD5 saved')
     return HttpResponse()
 
 
@@ -240,12 +239,13 @@ def analysis_run_done(request):
         return HttpResponseNotAllowed(permitted_methods=['POST'])
 
 
-def mzrefine_file_done(request):
-    """Refined mzML files must get MD5, fn, path and moved to their dataset directory from the
-    analysis output dir (they result from a nextflow analysis run"""
+def mzml_convert_or_refine_file_done(request):
+    """Converted/Refined mzML file already copied to analysis result storage 
+    server with MD5, fn, path. This function then queues a job to move it to 
+    dataset directory from the analysis dir"""
     # FIXME need to remove the empty dir after moving all the files, how?
+    # create cleaning task queue on ana server
     data = request.POST
-    # create analysis file
     if ('client_id' not in data or
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
@@ -255,8 +255,7 @@ def mzrefine_file_done(request):
     sfile.md5 = data['md5']
     sfile.checked = True
     sfile.save()
-    create_job('move_single_file', sf_id=sfile.id, dst_path=sfile.rawfile.datasetrawfile.dataset.storage_loc,
-            newname=sfile.filename.split('___')[1])
+    create_job('move_single_file', sf_id=sfile.id, dst_path=sfile.rawfile.datasetrawfile.dataset.storage_loc)
     return HttpResponse()
 
 
@@ -297,7 +296,7 @@ def store_analysis_result(request):
     except KeyError:
         return HttpResponseForbidden('File type does not exist')
     try:
-        sfile = StoredFile.objects.get(rawfile_id=data['fn_id'], filetype_id=ftypeid)
+        sfile = StoredFile.objects.select_related('rawfile').get(rawfile_id=data['fn_id'], filetype_id=ftypeid)
     except StoredFile.DoesNotExist:
         print('New transfer registered, fn_id {}'.format(data['fn_id']))
         sfile = StoredFile(rawfile_id=data['fn_id'], filetype_id=ftypeid,

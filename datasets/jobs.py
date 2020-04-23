@@ -101,9 +101,9 @@ class ConvertDatasetMzml(BaseJob):
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
-        nf_mzmls, win_mzmls = [], []
+        nf_raws, win_mzmls = [], []
         for fn in self.getfiles_query(**kwargs):
-            mzsf,  mzmlf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
+            mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
             if mzsf.checked and not mzsf.purged:
                 continue
             # refresh file status for previously purged (deleted from disk)  mzmls 
@@ -111,7 +111,7 @@ class ConvertDatasetMzml(BaseJob):
                 mzsf.checked = False
                 mzsf.purged = False
                 mzsf.save()
-            nf_mzmls.append((mzsf.servershare.name, mzsf.path, mzsf.filename, mzmlf.id))
+            nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
             win_mzmls.append((fn, mzsf))
         if pwiz.is_docker:
             nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
@@ -127,7 +127,7 @@ class ConvertDatasetMzml(BaseJob):
                 p2parse = kwargs.get(pname, [])
                 if len(p2parse):
                     params.extend(['--{}'.format(pname)] + p2parse.join(';'))
-            self.run_tasks.append(((run, params, nf_mzmls), {'pwiz_id': pwiz.id}))
+            self.run_tasks.append(((run, params, nf_raws), {'pwiz_id': pwiz.id}))
         else:
             options = ['--{}'.format(x) for x in kwargs.get('options', [])]
             filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
@@ -184,7 +184,7 @@ class ConvertFileMzml(ConvertDatasetMzml):
         fn = self.getfiles_query(**kwargs).get()
         storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
-        mzsf, mzmlf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
+        mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
         if mzsf.servershare_id != fn.servershare_id:
             # change servershare, in case of bugs the raw sf is set to tmp servershare
             # then after it wont be changed when rerunning the job
@@ -196,6 +196,18 @@ class ConvertFileMzml(ConvertDatasetMzml):
             options = ['--{}'.format(x) for x in kwargs.get('options', [])]
             filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
             self.run_tasks.append(((fn, mzsf, storageloc, options + filters, queue, settings.QUEUES_PWIZOUT[queue]), {}))
+
+
+class DeleteDatasetMzml(DatasetJob):
+    """Removes dataset from active storage"""
+    refname = 'delete_mzmls_dataset'
+    task = filetasks.delete_file
+
+    def process(self, **kwargs):
+        for fn in self.getfiles_query(**kwargs).filter(deleted=False, purged=False, checked=True, mzmlfile__isnull=False):
+            fullpath = os.path.join(fn.path, fn.filename)
+            print('Queueing deletion of mzML file {} from dataset {}'.format(fullpath, kwargs['dset_id']))
+            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
 
 
 class DeleteActiveDataset(DatasetJob):
@@ -255,4 +267,4 @@ def get_or_create_mzmlentry(fn, group_id, pwiz, refined=False, servershare_id=Fa
         mzml = MzmlFile.objects.create(sfile=mzsf, pwiz=pwiz, refined=refined)
     else:
         mzml = mzsf.mzmlfile
-    return mzsf, mzml
+    return mzsf

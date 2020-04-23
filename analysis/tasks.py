@@ -131,8 +131,6 @@ def check_ensembl_uniprot_fasta_download(self):
         print('Finished downloading ENSEMBL database and mart map')
 
 
-
-
 def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     print('Starting nextflow workflow {}'.format(run['nxf_wf_fn']))
@@ -152,7 +150,8 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
     env = os.environ
     if nf_version:
         env['NXF_VER'] = nf_version
-    log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
+    if 'analysis_id' in run:
+        log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
     return rundir
 
@@ -219,7 +218,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     postdata.update({'state': 'ok'})
     outfiles_db = register_resultfiles(outfiles)
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
-    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
+    fn_ids = transfer_resultfiles((settings.ANALYSISSHARENAME, run['outdir']), rundir, outfiles_db, fileurl, self.request.id, run['analysis_id'])
     check_rawfile_resultfiles_match(fn_ids, self.request.id)
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
@@ -229,9 +228,6 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def refine_mzmls(self, run, params, mzmls, stagefiles):
     print('Got message to run mzRefine workflow, preparing')
-    postdata = {'client_id': settings.APIKEY,
-                'analysis_id': run['analysis_id'], 'task': self.request.id,
-                'name': run['name'], 'user': run['outdir']}
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
@@ -241,12 +237,18 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id)
-    outfiles_db = {fn: {'file_id': os.path.basename(fn).split('___')[0], 'md5': calc_md5(fn)}
-                   for fn in outfiles}
-    postdata.update({'state': 'ok'})
-    fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzrefinefile'))
-    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
+    # TODO ideally do this:
+    # stage mzML with {dbid}___{filename}.mzML
+    # This keeps dbid / ___ split out of the NF workflow 
+    outfiles_db = {}
+    for fn in outfiles:
+        sf_id, newname = os.path.basename(fn).split('___')
+        outfiles_db[fn] = {'file_id': sf_id, 'newname': newname, 'md5': calc_md5(fn)}
+    fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
+    fn_ids = transfer_resultfiles((settings.ANALYSISSHARENAME, run['outdir']), rundir, outfiles_db, fileurl, self.request.id, run['analysis_id'])
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
+    postdata = {'client_id': settings.APIKEY, 'analysis_id': run['analysis_id'],
+            'task': self.request.id, 'name': run['name'], 'user': run['outdir'], 'state': 'ok'}
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
@@ -259,7 +261,8 @@ def create_runname_dir(run):
 
 
 def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
-    log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
+    if 'analysis_id' in run:
+        log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
     # runname is set in task so timestamp corresponds to execution start and not job queue
     gitwfdir = os.path.join(rundir, 'gitwfs')
     if not os.path.exists(rundir):
@@ -269,12 +272,13 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
             taskfail_update_db(taskid, 'Could not create workdir on analysis server')
             raise
     stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, run['runname'])
-    log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
+    if 'analysis_id' in run:
+        log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
     print('Staging files to {}'.format(stagedir))
     try:
         params = stage_files(stagedir, stagefiles, params)
         stage_files(stagedir, {x[2]: x for x in mzmls})
-    except:
+    except Exception:
         taskfail_update_db(taskid, 'Could not stage files for analysis')
         raise
     return params, gitwfdir, stagedir
@@ -348,7 +352,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     postdata.update({'state': 'ok', 'plots': qcreport})
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
     outfiles_db = register_resultfiles(qcfiles.values())
-    fn_ids = transfer_resultfiles(run['outdir'], rundir, outfiles_db, run['analysis_id'], fileurl, self.request.id)
+    fn_ids = transfer_resultfiles((settings.ANALYSISSHARENAME, run['outdir']), rundir, outfiles_db, fileurl, self.request.id, run['analysis_id'])
     check_rawfile_resultfiles_match(fn_ids, self.request.id)
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
@@ -383,7 +387,8 @@ def register_resultfiles(outfiles):
     reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
     outfiles_db = {}
     for fn in outfiles:
-        postdata = {'fn': os.path.basename(fn),
+        fname = os.path.basename(fn)
+        postdata = {'fn': fname,
                     'client_id': settings.APIKEY,
                     'md5': calc_md5(fn),
                     'size': os.path.getsize(fn),
@@ -396,14 +401,16 @@ def register_resultfiles(outfiles):
         # check md5 of file so we can skip already transferred files in reruns
         if not check_md5(rj['file_id'], settings.ANALYSISOUT_FTID) == 'ok':
             outfiles_db[fn] = resp.json()
+            outfiles_db[fn]['newname'] = fname
     return outfiles_db
 
 
-def transfer_resultfiles(userdir, rundir, outfiles_db, analysis_id, url, task_id):
-    """Copies analysis results to data server"""
-    outpath = os.path.join(userdir, os.path.split(rundir)[-1])
-    outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME],
-                          outpath)
+def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analysis_id=False):
+    """Copies analysis results to data server, calculates MD5 on destination. After that
+    URL is called which"""
+    outpath = os.path.join(baselocation[1], os.path.split(rundir)[-1])
+    outdir = os.path.join(settings.SHAREMAP[baselocation[0]], outpath)
+    print(3)
     try:
         if not os.path.exists(outdir):
             os.makedirs(outdir)
@@ -411,8 +418,7 @@ def transfer_resultfiles(userdir, rundir, outfiles_db, analysis_id, url, task_id
         taskfail_update_db(task_id)
         raise
     for fn in outfiles_db:
-        filename = os.path.basename(fn)
-        dst = os.path.join(outdir, filename)
+        dst = os.path.join(outdir, outfiles_dn[fn]['newname'])
         try:
             shutil.copy(fn, dst)
         except:
@@ -422,8 +428,9 @@ def transfer_resultfiles(userdir, rundir, outfiles_db, analysis_id, url, task_id
             taskfail_update_db(task_id)
             raise RuntimeError('Copying error, MD5 of src and dst are different')
         postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
-                    'outdir': outpath, 'filename': filename,
-                    'ftype': 'analysis_output', 'analysis_id': analysis_id}
+                    'outdir': outpath, 'filename': filename}
+        if analysis_id:
+            postdata.update({'ftype': 'analysis_output', 'analysis_id': analysis_id})
         if 'md5' in outfiles_db[fn]:
             postdata['md5'] = outfiles_db[fn]['md5']
         response = update_db(url, form=postdata)

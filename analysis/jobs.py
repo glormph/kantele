@@ -37,7 +37,7 @@ class RefineMzmls(DatasetJob):
         analysisshare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
         mzmls = []
         for x in mzmlfiles:
-            ref_sf, ref_mzmlf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, pwiz, refined=True, servershare=analysisshare)
+            ref_sf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, pwiz, refined=True, servershare=analysisshare)
             mzmls.append((x.servershare.name, x.path, x.filename, ref_sf.id, analysisshare))
         allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
         if len(allinstr) > 1:
