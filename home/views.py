@@ -666,7 +666,7 @@ def fetch_dset_details(dset):
                 state = 'Processing'
             elif pws['existing'] == nrstoredfiles['raw']:
                 state = 'Ready'
-                if not refined and '{}_True' not in pw_sets:
+                if not refined and '{}_True'.format(pwpk) not in pw_sets:
                     pws['refineready'] = True
             elif not refined or pw_sets['{}_False'.format(pwsid)]['existing'] == nrstoredfiles['raw']:
                 state = 'Incomplete'
