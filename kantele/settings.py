@@ -113,7 +113,7 @@ UPLOADDIR = 'uploadfiles'
 
 # qc datasets
 QC_USER_ID = os.environ.get('QC_USER_ID')
-QC_DATATYPE = int(os.environ.get('QC_DATATYPE'), 0)
+QC_DATATYPE = int(os.environ.get('QC_DATATYPE', 0))
 QC_ORGANISM = os.environ.get('QC_ORGANISM')
 INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
 INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')

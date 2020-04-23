@@ -362,7 +362,7 @@ def do_md5_check(file_transferred):
             file_transferred.checked = True
             file_transferred.save()
         if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and not
-                PDCBackedupFile.objects.filter(storedfile_id=file_transferred.id):
+                PDCBackedupFile.objects.filter(storedfile_id=file_transferred.id)):
             fn = file_transferred.filename
             jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id)
             if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
