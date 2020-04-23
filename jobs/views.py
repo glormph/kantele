@@ -207,6 +207,7 @@ def created_mzml(request):
         return HttpResponseForbidden()
     storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
     storedfile.filename = request.POST['filename']
+    storedfile.deleted = False
     storedfile.save()
     if 'task' in data:
         set_task_done(data['task'])
