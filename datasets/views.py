@@ -532,17 +532,19 @@ def save_new_dataset(data, project, experiment, runname, user_id):
         dset_mail = models.ExternalDatasetContact(dataset=dset,
                                                  email=data['externalcontact'])
         dset_mail.save()
-    dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
-                                                  component__name='definition')
-    models.DatasetComponentState.objects.create(dtcomp=dtcomp,
-                                                dataset_id=dset.id,
-                                                state=COMPSTATE_OK)
-    models.DatasetComponentState.objects.bulk_create([
-        models.DatasetComponentState(
-            dtcomp=x, dataset_id=dset.id, state=COMPSTATE_NEW) for x in
-        models.DatatypeComponent.objects.filter(
-            datatype_id=dset.datatype_id).exclude(
-            component__name='definition')])
+    if dset.datatype_id != settings.QC_DATATYPE:
+        dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
+                                                      component__name='definition')
+    else:
+        models.DatasetComponentState.objects.create(dtcomp=dtcomp,
+                                                    dataset_id=dset.id,
+                                                    state=COMPSTATE_OK)
+        models.DatasetComponentState.objects.bulk_create([
+            models.DatasetComponentState(
+                dtcomp=x, dataset_id=dset.id, state=COMPSTATE_NEW) for x in
+            models.DatatypeComponent.objects.filter(
+                datatype_id=dset.datatype_id).exclude(
+                component__name='definition')])
     return dset
 
 
@@ -1032,8 +1034,8 @@ def empty_files_json():
 def save_or_update_files(data):
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
+    dset = models.Dataset.objects.get(pk=dset_id)
     if added_fnids:
-        dset = models.Dataset.objects.get(pk=dset_id)
         models.DatasetRawFile.objects.bulk_create([
             models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
             for fnid in added_fnids])
@@ -1058,7 +1060,8 @@ def save_or_update_files(data):
     else:
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
             set_component_state(dset_id, 'sampleprep', COMPSTATE_INCOMPLETE)
-    set_component_state(dset_id, 'files', COMPSTATE_OK)
+    if dset.datatype_id != settings.QC_DATATYPE:
+        set_component_state(dset_id, 'files', COMPSTATE_OK)
 
 
 @login_required
