@@ -587,7 +587,7 @@ def get_file_info(request, file_id):
         info['dataset'] = dsrf.dataset_id
         if sfile.filetype.filetype == 'mzml':
             anjobs = filemodels.FileJob.objects.filter(storedfile_id=file_id, job__nextflowsearch__isnull=False)
-        elif sfile.filetype_id == int(settings.RAW_SFGROUP_ID):
+        elif sfile.filetype_id in [int(settings.RAW_SFGROUP_ID), int(settings.BRUKER_SFGROUP_ID)]:
             mzmls = sfile.rawfile.storedfile_set.filter(filetype__filetype='mzml')
             anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
         info['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])

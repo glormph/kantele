@@ -535,7 +535,6 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     if dset.datatype_id != settings.QC_DATATYPE:
         dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
                                                       component__name='definition')
-    else:
         models.DatasetComponentState.objects.create(dtcomp=dtcomp,
                                                     dataset_id=dset.id,
                                                     state=COMPSTATE_OK)
