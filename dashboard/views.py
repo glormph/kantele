@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from bokeh.embed import components
 
-from analysis.models import AnalysisError
+from analysis.models import AnalysisError, NextflowWfVersion
 from rawstatus.models import Producer
 from dashboard import qcplots, models
 from kantele import settings
@@ -98,7 +98,8 @@ def show_qc(request, instrument_id):
         Date, Instrument, RawFile, AnalysisResult
     """
     instrument = Producer.objects.get(pk=instrument_id)
-    dateddata = get_longitud_qcdata(instrument, settings.LONGQC_NXF_WF_ID)
+    wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk').id
+    dateddata = get_longitud_qcdata(instrument, wf_id)
     plot = {
         'amount_peptides': qcplots.timeseries_line(dateddata, ['peptides', 'proteins', 'unique_peptides']),
         'amount_psms': qcplots.timeseries_line(dateddata, ['scans', 'psms', 'miscleav1', 'miscleav2']),

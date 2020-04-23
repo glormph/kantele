@@ -115,7 +115,7 @@ def browser_userupload(request):
     token, expiry, upload = store_userfileupload(data['ftype_id'], request.user)
     # tmp write file 
     upfile = request.FILES['file']
-    hash = md5()
+    dighash = md5()
     producer = Producer.objects.get(shortname='admin')
     desc = data['desc'].strip()
     if desc == '':
@@ -128,16 +128,17 @@ def browser_userupload(request):
                 return JsonResponse(err_resp)
             else:
                 fp.write(text)
-            hash.update(chunk)
+            dighash.update(chunk)
         # check if it is correct FASTA (maybe add more parsing later)
         fp.seek(0)
         if not any(SeqIO.parse(fp, 'fasta')):
             return JsonResponse(err_resp)
-        hash = hash.hexdigest() 
-        raw = get_or_create_rawfile(hash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
+        dighash = dighash.hexdigest() 
+        raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
+        # never check browser-userfiles, MD5 is checked on delivery so, just assume checked = True
         sfile = StoredFile(rawfile_id=raw['file_id'], 
-                       filename='userfile_{}_{}'.format(raw['file_id'], upfile.name), md5=hash,
-                       checked=False, filetype=upload.filetype,
+                       filename='userfile_{}_{}'.format(raw['file_id'], upfile.name), md5=dighash,
+                       checked=True, filetype=upload.filetype,
                        path=settings.UPLOADDIR,
                        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
         sfile.save()
@@ -377,12 +378,15 @@ def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
     add_to_qc(rawfile, storedfile)
     filters = ['"peakPicking true 2"', '"precursorRefine"']
-    options = []
+    params, options = [], []
     if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('--combineIonMobilitySpectra')
-    params = ['--filters', ';'.join(filters), '--options', ';'.join([x[2:] for x in options])]
-    wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk')
+    if len(filters):
+        params.extend(['--filters', ';'.join(filters)])
+    if len(options):
+        params.extend(['--options', ';'.join([x[2:] for x in options])])
+    wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk').id
     start_qc_analysis(rawfile, storedfile, wf_id, settings.LONGQC_FADB_ID, params)
 
 

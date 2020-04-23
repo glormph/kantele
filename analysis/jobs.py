@@ -15,7 +15,6 @@ from jobs.jobs import DatasetJob, MultiDatasetJob, SingleFileJob, BaseJob
 
 # TODO
 # rerun qc data and displaying qcdata for a given qc file, how? 
-# run should check if already ran with same commit/analysis
 
 class RefineMzmls(DatasetJob):
     refname = 'refine_mzmls'
@@ -27,17 +26,13 @@ class RefineMzmls(DatasetJob):
         nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         stagefiles = {'--tdb': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
-        pwiz = models.Proteowizard.objects.get(pk=2) # FIXME hardcode until in place with frontend
-        #pwiz = models.Proteowizard.objects.get(pk=kwargs['pwiz_id'])
-        all_sfiles = self.getfiles_query(**kwargs)
-        existing_refined = all_sfiles.filter(
-                mzmlfile__refined=True,
-                filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True)
-        mzmlfiles = all_sfiles.filter(filetype_id=settings.MZML_SFGROUP_ID).exclude(rawfile__storedfile__in=existing_refined)
+        all_sfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False, mzmlfile__isnull=False)
+        existing_refined = all_sfiles.filter(mzmlfile__refined=True)
+        mzmlfiles = all_sfiles.exclude(rawfile__storedfile__in=existing_refined).select_related('mzmlfile__pwiz')
         analysisshare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
         mzmls = []
         for x in mzmlfiles:
-            ref_sf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, pwiz, refined=True, servershare=analysisshare)
+            ref_sf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, x.mzmlfile.pwiz, refined=True, servershare=analysisshare)
             mzmls.append((x.servershare.name, x.path, x.filename, ref_sf.id, analysisshare))
         allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
         if len(allinstr) > 1:
@@ -109,14 +104,14 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         if nfwf.id > 14:
             mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
         else:
-            mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(rawfile__storedfile__id=kwargs['sf_id'], filetype__filetype='mzml')
+            mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(rawfile__storedfile__id=kwargs['sf_id'], mzmlfile__isnull=False)
         wf = models.Workflow.objects.filter(shortname__name='QC').last()
         # FIXME hardcoded mods location
         params = kwargs.get('params', [])
         params.extend(['--mods', 'data/labelfreemods.txt', '--instrument'])
         params.append('velos' if 'elos' in mzml.rawfile.producer.name else 'qe')
         stagefiles = {'--mzml': (mzml.servershare.name, mzml.path, mzml.filename),
-# FIXME temp keep --mzml and --raw
+                    # FIXME temp keep both --mzml and --raw, until no longer using old QC
         	      '--raw': (mzml.servershare.name, mzml.path, mzml.filename),
                       '--db': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
