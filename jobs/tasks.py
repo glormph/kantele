@@ -27,6 +27,7 @@ alljobs = [
         dsjobs.ConvertDatasetMzml,
         dsjobs.ConvertFileMzml,
         dsjobs.DeleteActiveDataset,
+        dsjobs.DeleteDatasetMzml,
         dsjobs.BackupPDCDataset,
         dsjobs.ReactivateDeletedDataset,
         dsjobs.DeleteDatasetPDCBackup,

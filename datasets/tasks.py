@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 from urllib.parse import urljoin
 
 from django.urls import reverse
@@ -36,11 +37,12 @@ def run_convert_mzml_nf(self, run, params, raws, **kwargs):
     runname = '{}_convert_mzml_{}'.format(run['dset_id'], run['timestamp'])
     run['runname'] = runname
     baserundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
-    rundir = os.path.join(rundir, runname).replace(' ', '_')
+    rundir = os.path.join(baserundir, runname).replace(' ', '_')
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, {}, raws, params)
-    profiles = ['docker', 'lehtio'] # TODO put in deploy/settings
+    params.extend(['--raws', os.path.join(stagedir, '*.raw')])
+    profiles = 'docker,lehtio' # TODO put in deploy/settings
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
+        run_nextflow(run, params, rundir, gitwfdir, profiles, '20.01.0')
     except subprocess.CalledProcessError as e:
         # FIXME report stderr with e
         errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
@@ -50,12 +52,14 @@ def run_convert_mzml_nf(self, run, params, raws, **kwargs):
     transfer_url = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
     resultfiles = {}
     for raw in raws:
-        fname = os.path.splitext(x[2])[0] + '.mzML'
+        fname = os.path.splitext(raw[2])[0] + '.mzML'
         fpath = os.path.join(rundir, 'output', fname)
         resultfiles[fpath] = {'md5': calc_md5(fpath), 'file_id': raw[3], 'newname': fname}
-    transfer_resultfiles((settings.ANALYSISSHARENAME, 'mzmls_in'), runname, resultfiles_db, transfer_url, self.request.id)
+    transfer_resultfiles((settings.ANALYSISSHARENAME, 'mzmls_in'), runname, resultfiles, transfer_url, self.request.id)
     url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     update_db(url, json=postdata)
+    shutil.rmtree(rundir)
+    shutil.rmtree(stagedir)
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)

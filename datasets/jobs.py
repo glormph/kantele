@@ -6,9 +6,9 @@ from django.urls import reverse
 from celery import chain
 
 from kantele import settings
-from rawstatus.models import StoredFile
+from rawstatus.models import StoredFile, ServerShare
 from datasets.models import Dataset, DatasetRawFile
-from analysis.models import Proteowizard, MzmlFile
+from analysis.models import Proteowizard, MzmlFile, NextflowWfVersion
 from datasets import tasks
 from rawstatus import tasks as filetasks
 from jobs.models import TaskChain
@@ -101,9 +101,10 @@ class ConvertDatasetMzml(BaseJob):
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
+        res_share = ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id if pwiz.is_docker else False
         nf_raws, win_mzmls = [], []
         for fn in self.getfiles_query(**kwargs):
-            mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
+            mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz, servershare_id=res_share)
             if mzsf.checked and not mzsf.purged:
                 continue
             # refresh file status for previously purged (deleted from disk)  mzmls 
@@ -115,8 +116,8 @@ class ConvertDatasetMzml(BaseJob):
             win_mzmls.append((fn, mzsf))
         if pwiz.is_docker:
             nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
-                    pk=kwargs['wfv_id'])
-            run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+                    pk=pwiz.nf_version_id)
+            run = {'timestamp': kwargs['timestamp'],
                    'dset_id': dset.id,
                    'wf_commit': nfwf.commit,
                    'nxf_wf_fn': nfwf.filename,
@@ -126,7 +127,7 @@ class ConvertDatasetMzml(BaseJob):
             for pname in ['options', 'filters']:
                 p2parse = kwargs.get(pname, [])
                 if len(p2parse):
-                    params.extend(['--{}'.format(pname)] + p2parse.join(';'))
+                    params.extend(['--{}'.format(pname), ';'.join(p2parse)])
             self.run_tasks.append(((run, params, nf_raws), {'pwiz_id': pwiz.id}))
         else:
             options = ['--{}'.format(x) for x in kwargs.get('options', [])]

@@ -668,7 +668,7 @@ def fetch_dset_details(dset):
                 state = 'Ready'
                 if not refined and '{}_True'.format(pwpk) not in pw_sets:
                     pws['refineready'] = True
-            elif not refined or pw_sets['{}_False'.format(pwsid)]['existing'] == nrstoredfiles['raw']:
+            elif not refined or pw_sets['{}_False'.format(pwpk)]['existing'] == nrstoredfiles['raw']:
                 state = 'Incomplete'
             elif refined:
                 state = 'No mzmls'
@@ -718,7 +718,7 @@ def create_mzmls(request):
     # Jobs queued are ok with rerunning, so even if this view is clickec twice quickly, 4 jobs are run,
     # but they wait and both below jobs filter relevant files. Waste of resources nonetheless.
     jj.create_job('delete_mzmls_dataset', dset_id=data['dsid'])
-    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=data['pwiz_id'])
+    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=data['pwiz_id'], timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'),
     return JsonResponse({})
 
 

@@ -165,16 +165,16 @@ onMount(async() => {
 
   {#if 'pwiz_versions' in dset}
   <div class="field">
-    <label class="label">Conversion mzML pipeline(s)</label>
+    <label class="label">Conversion mzML results / pipeline version(s)</label>
     <table class="table">
       <tbody>
         {#each dset.pwiz_sets as pw}
         <tr>
           <td>
             {#if pw.state === 'Incomplete' && pw.refined}
-            <button class="button is-small" on:click={e => convertDset(dsid, pw.id)}>Re-convert</button>
-            {:else if pw.state === 'Incomplete'}
             <button class="button is-small" on:click={e => refineDset(dsid, pw.id)}>Re-refine</button>
+            {:else if pw.state === 'Incomplete'}
+            <button class="button is-small" on:click={e => convertDset(dsid, pw.id)}>Re-convert</button>
             {:else if pw.refineready}
             <div class="select is-small">
               <select bind:value={refine_v_touse[dset.id]}>
@@ -205,7 +205,7 @@ onMount(async() => {
   </div>
     
   <div class="field">
-    {#if dset.pwiz_sets.length}
+    {#if Object.keys(dset.pwiz_versions).length}
     <div>Or replace with mzMLs of another version</div>
     {/if}
     <div class="select">

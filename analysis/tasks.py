@@ -419,7 +419,6 @@ def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analys
     URL is called which"""
     outpath = os.path.join(baselocation[1], os.path.split(rundir)[-1])
     outdir = os.path.join(settings.SHAREMAP[baselocation[0]], outpath)
-    print(3)
     try:
         if not os.path.exists(outdir):
             os.makedirs(outdir)
@@ -437,7 +436,7 @@ def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analys
             taskfail_update_db(task_id)
             raise RuntimeError('Copying error, MD5 of src and dst are different')
         postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
-                    'outdir': outpath, 'filename': filename}
+                    'outdir': outpath, 'filename': outfiles_db[fn]['newname']}
         if analysis_id:
             postdata.update({'ftype': 'analysis_output', 'analysis_id': analysis_id})
         if 'md5' in outfiles_db[fn]:

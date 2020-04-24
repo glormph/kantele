@@ -49,7 +49,7 @@ def update_storagepath_file(request):
     data = json.loads(request.body.decode('utf-8'))
     print('Updating storage task finished')
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
+            data['client_id'], [settings.STORAGECLIENT_APIKEY, settings.ANALYSISCLIENT_APIKEY]):
         return HttpResponseForbidden()
     if 'fn_id' in data:
         sfile = StoredFile.objects.get(pk=data['fn_id'])

@@ -29,11 +29,11 @@ class RefineMzmls(DatasetJob):
         all_sfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False, mzmlfile__isnull=False)
         existing_refined = all_sfiles.filter(mzmlfile__refined=True)
         mzmlfiles = all_sfiles.exclude(rawfile__storedfile__in=existing_refined).select_related('mzmlfile__pwiz')
-        analysisshare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
+        anashare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
         mzmls = []
         for x in mzmlfiles:
-            ref_sf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, x.mzmlfile.pwiz, refined=True, servershare=analysisshare)
-            mzmls.append((x.servershare.name, x.path, x.filename, ref_sf.id, analysisshare))
+            ref_sf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, x.mzmlfile.pwiz, refined=True, servershare_id=anashare)
+            mzmls.append((x.servershare.name, x.path, x.filename, ref_sf.id, anashare))
         allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
         if len(allinstr) > 1:
             raise RuntimeError('Trying to run a refiner job on dataset containing more than one instrument is not possible')
