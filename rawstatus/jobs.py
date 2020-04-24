@@ -146,7 +146,7 @@ class DownloadPXProject(BaseJob):
             checked=False).select_related('rawfile')
     
     def process(self, **kwargs):
-        px_stored = {x.filename: x for x in self.getfiles_query(kwargs['rawfnids'])}
+        px_stored = {x.filename: x for x in self.getfiles_query(**kwargs)}
         for fn in call_proteomexchange(kwargs['pxacc']):
             ftpurl = urlsplit(fn['downloadLink'])
             filename = os.path.split(ftpurl.path)[1]

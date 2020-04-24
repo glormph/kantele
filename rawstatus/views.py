@@ -651,8 +651,9 @@ def download_px_project(request):
         rawfn = get_or_create_rawfile(fakemd5, filename, extprod,
                                       fn['fileSize'], date, {'claimed': True})
         raw_ids.append(rawfn['file_id'])
+        ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw')
         if not rawfn['stored']:
-            sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=settings.RAW_SFGROUP_ID,
+            sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=ftid,
                              servershare=tmpshare, path='',
                              filename=filename, md5='', checked=False)
             sfn.save()

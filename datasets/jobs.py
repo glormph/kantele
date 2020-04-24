@@ -115,7 +115,7 @@ class ConvertDatasetMzml(BaseJob):
             nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
             win_mzmls.append((fn, mzsf))
         if pwiz.is_docker:
-            nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
+            nfwf = NextflowWfVersion.objects.select_related('nfworkflow').get(
                     pk=pwiz.nf_version_id)
             run = {'timestamp': kwargs['timestamp'],
                    'dset_id': dset.id,
@@ -252,17 +252,14 @@ class DeleteDatasetPDCBackup(BaseJob):
 
 
 def get_or_create_mzmlentry(fn, pwiz, refined=False, servershare_id=False):
-    # FIXME delete mzml file group and make all those files raw, with mzml db entry
-    # then you dont need to keep track of its db id
-    group_id = StoredFileType.objects.get(filetype='mzml', name='raw_mzml')
     if not servershare_id:
         servershare_id = fn.servershare_id
     try:
         mzsf = StoredFile.objects.select_related('mzmlfile').get(rawfile_id=fn.rawfile_id, 
-                mzmlfile__isnull=False, mzmlfile__pwiz=pwiz)
+                mzmlfile__isnull=False, mzmlfile__pwiz=pwiz, mzmlfile__refined=refined)
     except StoredFile.DoesNotExist:
         mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-        mzsf = StoredFile.objects.create(rawfile_id=fn.rawfile_id, filetype_id=group_id,
+        mzsf = StoredFile.objects.create(rawfile_id=fn.rawfile_id, filetype_id=fn.filetype_id,
                           path=fn.rawfile.datasetrawfile.dataset.storage_loc,
                           servershare_id=servershare_id,
                           filename=mzmlfilename, md5='', checked=False)

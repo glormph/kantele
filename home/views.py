@@ -201,10 +201,22 @@ def show_files(request):
 
 def populate_files(dbfns):
     popfiles = {}
-    for fn in dbfns.select_related('rawfile__datasetrawfile__dataset', 'analysisresultfile__analysis', 'swestorebackedupfile', 'pdcbackedupfile', 'filetype'):
+    for fn in dbfns.select_related(
+            'rawfile__datasetrawfile__dataset', 
+            'rawfile__producer__msinstrument',
+            'mzmlfile',
+            'analysisresultfile__analysis', 
+            'swestorebackedupfile', 
+            'pdcbackedupfile', 
+            'filetype').filter(checked=True):
+        is_mzml = hasattr(fn, 'mzmlfile')
+        if hasattr(fn.producer, 'msinstrument') and not is_mzml:
+            filedate = fn.rawfile.date
+        else:
+            filedate = fn.regdate 
         it = {'id': fn.id,
               'name': fn.filename,
-              'date': datetime.strftime(fn.regdate if fn.filetype_id != int(settings.RAW_SFGROUP_ID) else fn.rawfile.date, '%Y-%m-%d %H:%M'),
+              'date': datetime.strftime(fn.rawfile.date, '%Y-%m-%d %H:%M'),
               'ftype': fn.filetype.name,
               'analyses': [],
               'dataset': [],
@@ -231,9 +243,9 @@ def populate_files(dbfns):
             currentjobs = fjobs.exclude(job__state__in=jj.JOBSTATES_DONE)
             it['job_ids'] = [x.job_id for x in currentjobs]
             it['jobs'] = [x.job.state for x in currentjobs]
-            if hasattr(fn, 'mzmlfile'):
+            if is_mzml:
                 anjobs = fjobs.filter(job__nextflowsearch__isnull=False)
-            elif fn.filetype_id in [int(settings.RAW_SFGROUP_ID), int(settings.BRUKER_SFGROUP_ID)]:
+            elif hasattr(fn.rawfile.producer, 'msinstrument'):
                 mzmls = fn.rawfile.storedfile_set.filter(mzmlfile__isnull=False)
                 anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
             it['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
@@ -569,7 +581,9 @@ def get_dset_info(request, dataset_id):
 @login_required
 def get_file_info(request, file_id):
     sfile = filemodels.StoredFile.objects.filter(pk=file_id).select_related(
-        'rawfile__datasetrawfile', 'analysisresultfile__analysis', 'libraryfile', 'userfile').get()
+        'rawfile__datasetrawfile', 'mzmlfile', 
+        'rawfile__producer__msinstrument', 'analysisresultfile__analysis', 
+        'libraryfile', 'userfile').get()
     is_mzml = hasattr(sfile, 'mzmlfile')
     info = {'server': sfile.servershare.name, 'path': sfile.path, 'analyses': [],
             'producer': sfile.rawfile.producer.name,
@@ -588,7 +602,7 @@ def get_file_info(request, file_id):
         info['dataset'] = dsrf.dataset_id
         if is_mzml:
             anjobs = filemodels.FileJob.objects.filter(storedfile_id=file_id, job__nextflowsearch__isnull=False)
-        elif sfile.filetype_id in [int(settings.RAW_SFGROUP_ID), int(settings.BRUKER_SFGROUP_ID)]:
+        elif hasattr(sfile.rawfile.producer, 'msinstrument') and not is_mzml:
             mzmls = sfile.rawfile.storedfile_set.filter(mzmlfile__isnull=False)
             anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
         info['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
@@ -637,9 +651,9 @@ def fetch_dset_details(dset):
     info['storage_loc'] = '{} - {}'.format(';'.join(servers), dset.storage_loc)
     info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
     info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))
-    rawfiles = files.filter(filetype_id=settings.RAW_SFGROUP_ID)
+    rawfiles = files.filter(mzmlfile__isnull=True)
     if dset.datatype_id not in nonms_dtypes:
-        nrstoredfiles = {'raw': files.filter(filetype_id__in=[settings.RAW_SFGROUP_ID, settings.BRUKER_SFGROUP_ID]).count()}
+        nrstoredfiles = {'raw': rawfiles.count()}
         info.update({'refine_mzmls': [], 'convert_dataset_mzml': []})
         info['refine_versions'] = [{'id': 15, 'name': 'v1.0'}]
         for mzj in filemodels.FileJob.objects.exclude(job__state__in=jj.JOBSTATES_DONE).filter(
