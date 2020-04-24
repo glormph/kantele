@@ -32,7 +32,7 @@ class RefineMzmls(DatasetJob):
         anashare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
         mzmls = []
         for x in mzmlfiles:
-            ref_sf = get_or_create_mzmlentry(x, settings.REFINEDMZML_SFGROUP_ID, x.mzmlfile.pwiz, refined=True, servershare_id=anashare)
+            ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=anashare)
             mzmls.append((x.servershare.name, x.path, x.filename, ref_sf.id, anashare))
         allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
         if len(allinstr) > 1:
@@ -68,7 +68,7 @@ class RunLabelCheckNF(MultiDatasetJob):
             sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
             stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
         all_sfiles = self.getfiles_query(**kwargs)
-        sfiles = all_sfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample').filter(filetype_id=settings.MZML_SFGROUP_ID)
+        sfiles = all_sfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample').filter(mzmlfile__refined=False)
         dsrfs = {sf.id: sf.rawfile.datasetrawfile.quantsamplefile for sf in sfiles}
         samples = {sfid: dsrf.projsample.sample for sfid, dsrf in dsrfs.items()}
         psf_to_sfile = {dsrf.projsample_id: sfid for sfid, dsrf in dsrfs.items()}

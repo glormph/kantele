@@ -231,10 +231,10 @@ def populate_files(dbfns):
             currentjobs = fjobs.exclude(job__state__in=jj.JOBSTATES_DONE)
             it['job_ids'] = [x.job_id for x in currentjobs]
             it['jobs'] = [x.job.state for x in currentjobs]
-            if fn.filetype.filetype == 'mzml':
+            if hasattr(fn, 'mzmlfile'):
                 anjobs = fjobs.filter(job__nextflowsearch__isnull=False)
             elif fn.filetype_id in [int(settings.RAW_SFGROUP_ID), int(settings.BRUKER_SFGROUP_ID)]:
-                mzmls = fn.rawfile.storedfile_set.filter(filetype__filetype='mzml')
+                mzmls = fn.rawfile.storedfile_set.filter(mzmlfile__isnull=False)
                 anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
             it['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
         elif hasattr(fn, 'analysisresultfile'):
@@ -569,12 +569,13 @@ def get_dset_info(request, dataset_id):
 @login_required
 def get_file_info(request, file_id):
     sfile = filemodels.StoredFile.objects.filter(pk=file_id).select_related(
-        'filetype', 'rawfile__datasetrawfile', 'analysisresultfile__analysis', 'libraryfile', 'userfile').get()
+        'rawfile__datasetrawfile', 'analysisresultfile__analysis', 'libraryfile', 'userfile').get()
+    is_mzml = hasattr(sfile, 'mzmlfile')
     info = {'server': sfile.servershare.name, 'path': sfile.path, 'analyses': [],
             'producer': sfile.rawfile.producer.name,
             'filename': sfile.filename,
-            'renameable': True if sfile.filetype_id not in 
-            [settings.MZML_SFGROUP_ID, settings.REFINEDMZML_SFGROUP_ID] else False}
+            'renameable': False if is_mzml else True,
+            }
     if hasattr(sfile, 'libraryfile'):
         desc = sfile.libraryfile.description
     elif hasattr(sfile, 'userfile'):
@@ -585,10 +586,10 @@ def get_file_info(request, file_id):
     if hasattr(sfile.rawfile, 'datasetrawfile'):
         dsrf = sfile.rawfile.datasetrawfile
         info['dataset'] = dsrf.dataset_id
-        if sfile.filetype.filetype == 'mzml':
+        if is_mzml:
             anjobs = filemodels.FileJob.objects.filter(storedfile_id=file_id, job__nextflowsearch__isnull=False)
         elif sfile.filetype_id in [int(settings.RAW_SFGROUP_ID), int(settings.BRUKER_SFGROUP_ID)]:
-            mzmls = sfile.rawfile.storedfile_set.filter(filetype__filetype='mzml')
+            mzmls = sfile.rawfile.storedfile_set.filter(mzmlfile__isnull=False)
             anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
         info['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
     if hasattr(sfile, 'analysisresultfile') and hasattr(sfile.analysisresultfile.analysis, 'nextflowsearch'):
@@ -731,8 +732,8 @@ def refine_mzmls(request):
     data = json.loads(request.body.decode('utf-8'))
     # FIXME get analysis if it does exist, in case someone reruns?
     # Check if files lack refined mzMLs
-    nr_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], filetype_id=settings.REFINEDMZML_SFGROUP_ID, checked=True).count()
-    nr_mzml = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], filetype_id=settings.MZML_SFGROUP_ID)
+    nr_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], mzmlfile__refined=True, deleted=False, checked=True).count()
+    nr_mzml = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], mzmlfile__refined=False, deleted=False, checked=True)
     if nr_mzml == nr_refined:
         return JsonResponse({'error': 'Refined data already exists'}, status=403)
     dset = dsmodels.Dataset.objects.select_related('quantdataset__quanttype').get(pk=data['dsid'])

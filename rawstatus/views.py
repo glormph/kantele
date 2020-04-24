@@ -409,7 +409,7 @@ def rename_file(request):
     data =  json.loads(request.body.decode('utf-8'))
     try:
         sfile = StoredFile.objects.filter(pk=data['sf_id']).select_related(
-            'rawfile').get()
+            'rawfile', 'mzmlfile').get()
         newfilename = os.path.splitext(data['newname'])[0]
         #mv_mzml = data['mvmzml']  # TODO optional mzml renaming too? Now it is default
     except (StoredFile.DoesNotExist, KeyError):
@@ -417,7 +417,7 @@ def rename_file(request):
         return JsonResponse({'error': 'File does not exist'}, status=403)
     if request.user.id not in get_file_owners(sfile):
         return JsonResponse({'error': 'Not authorized to rename this file'}, status=403)
-    elif sfile.filetype_id in [settings.MZML_SFGROUP_ID, settings.REFINEDMZML_SFGROUP_ID]:
+    elif hasattr(sfile, 'mzmlfile'):
         return JsonResponse({'error': 'Files of this type cannot be renamed'}, status=403)
     elif re.match('^[a-zA-Z_0-9\-]*$', newfilename) is None:
         return JsonResponse({'error': 'Illegal characteres in new file name'}, status=403)
@@ -586,7 +586,7 @@ def cleanup_old_files(request):
         print('POST request with incorrect client id '
               '{}'.format(client_id))
         return HttpResponseForbidden()
-    mzmls = StoredFile.objects.filter(filetype_id__in=settings.SECONDARY_FTYPES)
+    mzmls = StoredFile.objects.filter(mzmlfile__isnull=False)
     maxtime_nonint = timezone.now() - timedelta(settings.MAX_MZML_STORAGE_TIME_POST_ANALYSIS)
     # Filtering gotchas here:
     # filter multiple excludes so they get done in serie, and exclude date__gt rather than

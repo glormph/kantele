@@ -99,11 +99,11 @@ def get_datasets(request):
             # FIXME TODO Pick live files from pwiz sets? Or mandate?
             dsfiles = files.filter(rawfile__datasetrawfile__dataset_id=dsid, checked=True, deleted=False, purged=False)
             nrneededfiles = dsdetails['details']['nrstoredfiles']['raw']
-            refineddsfiles = dsfiles.filter(filetype_id=settings.REFINEDMZML_SFGROUP_ID)
+            refineddsfiles = dsfiles.filter(mzmlfile__refined=True)
             if refineddsfiles.count() == nrneededfiles:
                 dsfiles = refineddsfiles
             else:
-                dsfiles = dsfiles.filter(filetype_id=settings.MZML_SFGROUP_ID)
+                dsfiles = dsfiles.filter(mzmlfile__refined=False)
             if dsfiles.count() != nrneededfiles:
                 response['error'] = True
                 response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))

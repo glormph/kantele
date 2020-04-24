@@ -66,18 +66,18 @@ class RenameFile(SingleFileJob):
     """
 
     def process(self, **kwargs):
-        sfile = self.getfiles_query(**kwargs)
+        sfile = self.getfiles_query(**kwargs).select_related('rawfile')
         newname = kwargs['newname']
         fn_ext = os.path.splitext(sfile.filename)[1]
         if models.StoredFile.objects.exclude(pk=sfile.id).filter(
                 rawfile__name=newname + fn_ext, path=sfile.path,
-                servershare_id=sfile.servershare_id).count():
+                servershare_id=sfile.servershare_id).exists():
             raise RuntimeError('A file in path {} with name {} already exists or will soon be created. Please choose another name'.format(sfile.path, newname))
         sfile.rawfile.name = newname + fn_ext
         sfile.rawfile.save()
-        for changefn in sfile.rawfile.storedfile_set.all():
+        for changefn in sfile.rawfile.storedfile_set.select_related('mzmlfile'):
             oldname, ext = os.path.splitext(changefn.filename)
-            special_type = '_refined' if changefn.filetype_id == settings.REFINEDMZML_SFGROUP_ID else ''
+            special_type = '_refined' if hasattr(changefn, 'mzmlfile') and changefn.mzmlfile.refined else ''
             self.run_tasks.append(((
                 changefn.filename, changefn.servershare.name,
                 changefn.path, changefn.path, changefn.id),

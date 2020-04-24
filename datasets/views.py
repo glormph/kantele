@@ -635,7 +635,7 @@ def purge_project(request):
 def get_dset_storestate(dset, dsfiles=False):
     if not dsfiles:
         dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)
-    dsfiles = dsfiles.exclude(filetype_id__in=settings.SECONDARY_FTYPES)
+    dsfiles = dsfiles.exclude(mzmlfile__isnull=False)
     dsfc = dsfiles.count()
     if dsfc == 0:
         return 'empty'

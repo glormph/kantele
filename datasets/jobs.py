@@ -6,7 +6,7 @@ from django.urls import reverse
 from celery import chain
 
 from kantele import settings
-from rawstatus.models import StoredFile, ServerShare
+from rawstatus.models import StoredFile, ServerShare, StoredFileType
 from datasets.models import Dataset, DatasetRawFile
 from analysis.models import Proteowizard, MzmlFile, NextflowWfVersion
 from datasets import tasks
@@ -72,8 +72,8 @@ class MoveFilesStorageTmp(BaseJob):
             rawfile_id__in=kwargs['fn_ids']).exclude(servershare__name=settings.TMPSHARENAME)
 
     def process(self, **kwargs):
-        for fn in self.getfiles_query(**kwargs):
-            if fn.filetype.filetype == 'mzml':
+        for fn in self.getfiles_query(**kwargs).select_related('mzmlfile'):
+            if hasattr(fn, 'mzmlfile'):
                 fullpath = os.path.join(fn.path, fn.filename)
                 self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}, filetasks.delete_file))
             else:
@@ -95,7 +95,7 @@ class ConvertDatasetMzml(BaseJob):
     def getfiles_query(self, **kwargs):
         return StoredFile.objects.filter(
             rawfile__datasetrawfile__dataset_id=kwargs['dset_id']).exclude(
-            filetype_id__in=settings.SECONDARY_FTYPES).select_related(
+            mzmlfile__isnull=False).select_related(
             'servershare', 'rawfile__datasetrawfile__dataset')
 
     def process(self, **kwargs):
@@ -104,7 +104,7 @@ class ConvertDatasetMzml(BaseJob):
         res_share = ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id if pwiz.is_docker else False
         nf_raws, win_mzmls = [], []
         for fn in self.getfiles_query(**kwargs):
-            mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz, servershare_id=res_share)
+            mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz, servershare_id=res_share)
             if mzsf.checked and not mzsf.purged:
                 continue
             # refresh file status for previously purged (deleted from disk)  mzmls 
@@ -185,7 +185,7 @@ class ConvertFileMzml(ConvertDatasetMzml):
         fn = self.getfiles_query(**kwargs).get()
         storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
-        mzsf = get_or_create_mzmlentry(fn, settings.MZML_SFGROUP_ID, pwiz=pwiz)
+        mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz)
         if mzsf.servershare_id != fn.servershare_id:
             # change servershare, in case of bugs the raw sf is set to tmp servershare
             # then after it wont be changed when rerunning the job
@@ -229,7 +229,7 @@ class BackupPDCDataset(DatasetJob):
     task = filetasks.pdc_archive
     
     def process(self, **kwargs):
-        for sfile in self.getfiles_query(**kwargs).exclude(filetype_id__in=settings.SECONDARY_FTYPES).exclude(pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
+        for sfile in self.getfiles_query(**kwargs).exclude(mzmlfile__isnull=False).exclude(pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
             self.run_tasks.append((rsjobs.upload_file_pdc_runtask(sfile), {}))
 
 
@@ -238,7 +238,7 @@ class ReactivateDeletedDataset(DatasetJob):
     task = filetasks.pdc_restore
 
     def process(self, **kwargs):
-        for sfile in self.getfiles_query(**kwargs).exclude(filetype_id__in=settings.SECONDARY_FTYPES).filter(purged=True, pdcbackedupfile__isnull=False):
+        for sfile in self.getfiles_query(**kwargs).exclude(mzmlfile__isnull=False).filter(purged=True, pdcbackedupfile__isnull=False):
             self.run_tasks.append((rsjobs.restore_file_pdc_runtask(sfile), {}))
         # Also set archived/archivable files which are already active (purged=False) to not deleted in UI
         self.getfiles_query(**kwargs).filter(purged=False, deleted=True, pdcbackedupfile__isnull=False).update(deleted=False)
@@ -251,9 +251,10 @@ class DeleteDatasetPDCBackup(BaseJob):
     # this for e.g empty or active-only dsets
 
 
-def get_or_create_mzmlentry(fn, group_id, pwiz, refined=False, servershare_id=False):
-    # FIXME maybe delete mzml file group and make all those files raw, with mzml db entry
+def get_or_create_mzmlentry(fn, pwiz, refined=False, servershare_id=False):
+    # FIXME delete mzml file group and make all those files raw, with mzml db entry
     # then you dont need to keep track of its db id
+    group_id = StoredFileType.objects.get(filetype='mzml', name='raw_mzml')
     if not servershare_id:
         servershare_id = fn.servershare_id
     try:
