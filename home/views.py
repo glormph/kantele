@@ -646,7 +646,7 @@ def fetch_dset_details(dset):
                 storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
                         'job').values('job__funcname', 'job__kwargs'):
             try:
-                job_pwid = json.loads(mzj['job__kwargs'])['pwiz_id']
+                job_pwid = int(json.loads(mzj['job__kwargs'])['pwiz_id'])
             except KeyError:
                 pass
             else:
@@ -670,7 +670,10 @@ def fetch_dset_details(dset):
                 if not refined and '{}_True'.format(pwpk) not in pw_sets:
                     pws['refineready'] = True
             elif not refined or pw_sets['{}_False'.format(pwpk)]['existing'] == nrstoredfiles['raw']:
-                state = 'Incomplete'
+                if pws['existing'] == 0:
+                    state = 'No mzmls'
+                else:
+                    state = 'Incomplete'
             elif refined:
                 state = 'No mzmls'
             pws['state'] = state
