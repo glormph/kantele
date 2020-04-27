@@ -215,21 +215,14 @@ def labelcheck_samples(request, dataset_id):
             return JsonResponse(response_json)
         else:
             response_json['quanttype'] = qtype.quanttype_id
-        # FIXME this makes no sense, I want the data as follows:
-        qcs = {qcs.projsample_id: qcs for qcs in models.QuantChannelSample.objects.filter(dataset_id=dataset_id)}
-        response_json['samples'] = {qsf.rawfile_id: {
-            'channel': qcs[qsf.projsample_id].channel_id,
-
-            'channelname': qcs[qsf.projsample_id].channel.channel.name,
-            'qcsid': qcs[qsf.projsample_id].id,
-            'sample': qsf.projsample_id,
-            'samplename': qsf.projsample.sample,
+        response_json['samples'] = {qfcs.dsrawfile_id: {
+            'qfcsid': qfcs.id,
+            'channel': qfcs.channel_id,
+            'channelname': qfcs.channel.channel.name,
+            'sample': qfcs.projsample_id,
+            'samplename': qfcs.projsample.sample,
             'newprojsample': '',
-            } for qsf in models.QuantSampleFile.objects.select_related('projsample').filter(rawfile__dataset_id=dataset_id)}
-        #response_json['samples'] = {qsf.rawfile_id: {
-        #    'channel': {'id': qcs[qsf.projsample_id].id, 'name': qcs[qsf.projsample_id].channel.name, },#'name', 'newprojsample'},
-        #    'model': {'id': qsf.projsample_id, 'name': qsf.projsample.sample},
-        #    } for qsf in models.QuantSampleFile.objects.select_related('projsample').filter(rawfile__dataset_id=dataset_id)}
+            } for qfcs in models.QuantFileChannelSample.objects.select_related('channel__channel', 'projsample').filter(dsrawfile__dataset_id=dataset_id)}
     return JsonResponse(response_json)
 
 
@@ -1153,32 +1146,30 @@ def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
                     exis_qcs[1].save()
 
 
-def update_labelcheck(data, iso, qtype):
+def update_labelcheck(data, qtype):
     dset_id = data['dataset_id']
     oldqtype = qtype.quanttype.name
-    updated_qtype = False
     if data['quanttype'] != qtype.quanttype_id:
         qtype.quanttype_id = data['quanttype']
         qtype.save()
-        updated_qtype = True
-    quanttype_switch_isobaric_update(oldqtype, updated_qtype, iso, dset_id)
-    oldqsf = {x.rawfile_id: x for x in models.QuantSampleFile.objects.filter(
-        rawfile__dataset_id=dset_id)}
-    # iterate filenames because that is correct object, 'samples'
-    # can contain models that are not active
+    # Add any possible new channels 
+    oldqfcs = {x.dsrawfile_id: x for x in models.QuantFileChannelSample.objects.filter(dsrawfile__dataset_id=dset_id)}
     for fn in data['filenames']:
+        sam = data['samples'][str(fn['associd'])]
         try:
-            samplefile = oldqsf.pop(fn['associd'])
+            exis_q = oldqfcs.pop(fn['associd'])
         except KeyError:
-            models.QuantSampleFile.objects.create(
-                rawfile_id=fn['associd'],
-                projsample_id=data['samples'][str(fn['associd'])]['sample'])
+            models.QuantFileChannelSample.objects.create(dsrawfile_id=fn, 
+                    projsample_id=sam['sample'], channel=sam['channel'])
         else:
-            if data['samples'][str(fn['associd'])]['sample'] != samplefile.projsample_id:
-                samplefile.projsample_id = data['samples'][str(fn['associd'])]['sample']
-                samplefile.save()
-    # delete non-existing qsf (files have been popped)
-    [qsf.delete() for qsf in oldqsf.values()]
+            if sam['sample'] != exis_q.projsample_id:
+                exis_q.projsample_id = sam['sample']
+                exis_q.save()
+            if sam['channel'] != exis_q.channel_id:
+                exis_q.channel_id = sam['channel']
+                exis_q.save()
+    # delete non-existing qcfs (files have been popped)
+    [qcfs.delete() for qcfs in oldqfcs.values()]
 
 
 def update_sampleprep(data, qtype):
@@ -1240,23 +1231,17 @@ def save_labelcheck(request):
     if user_denied:
         return user_denied
     dset_id = data['dataset_id']
-    iso = {'labelfree': False, 'dataset_id': dset_id, 
-            'samples': [{'model': sam['sample'], 'id': sam['channel']}
-                for sam in data['samples'].values()], }
     try:
         qtype = models.QuantDataset.objects.select_related(
             'quanttype').get(dataset_id=dset_id)
     except models.QuantDataset.DoesNotExist:
         # new data, insert, not updating
         models.QuantDataset.objects.create(dataset_id=dset_id, quanttype_id=data['quanttype'])
-        store_new_channelsamples(iso)
-        models.QuantSampleFile.objects.bulk_create([
-            models.QuantSampleFile(rawfile_id=fid, projsample_id=fn['sample'])
-            for fid, fn in data['samples'].items()])
+        models.QuantFileChannelSample.objects.bulk_create([
+            models.QuantFileChannelSample(rawfile_id=fid, projsample_id=sam['sample'],
+                channel=sam['channel']) for fid, sam in data['samples'].items()])
     else:
-        for datasam, isosam in zip(data['samples'].values(), iso['samples']):
-            isosam['qcsid'] = datasam['qcsid']
-        update_labelcheck(data, iso, qtype)
+        update_labelcheck(data, qtype)
     set_component_state(dset_id, 'labelchecksamples', COMPSTATE_OK)
     return JsonResponse({})
 
