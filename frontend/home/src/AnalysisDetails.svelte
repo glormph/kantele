@@ -16,49 +16,6 @@ $: {
 }
 
 
-//async function convertDset(dsid) {
-//  const resp = await postJSON('createmzml/', {dsid: dsid});
-//  if (!resp.ok) {
-//    const msg = `Something went wrong trying to queue dataset mzML conversion: ${resp.error}`;
-//    notif.errors[msg] = 1;
-//    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
-//  } else {
-//    dsets[dsid].mzmlable = 'blocked';
-//    const msg = 'Queued dataset for mzML conversion';
-//    notif.messages[msg] = 1;
-//    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
-//  }
-//}
-//
-//async function refineDset(dsid) {
-//  const resp = await postJSON('refinemzml/', {'dsid': dsid});
-//  if (!resp.ok) {
-//    const msg = `Something went wrong trying to queue precursor refining: ${resp.error}`;
-//    notif.errors[msg] = 1;
-//    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
-//  } else {
-//    dsets[dsid].refinable = 'blocked';
-//    const msg = 'Queued dataset for mzML precursor refining';
-//    notif.messages[msg] = 1;
-//    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
-//  }
-//}
-//
-//async function changeOwner(dsid, owner, op) {
-//  const resp = await postJSON('datasets/save/owner/', {
-//    'dataset_id': dsid, 
-//    'op': op,
-//    'owner': owner});
-//  if (!resp.ok) {
-//    const msg = `Something went wrong trying to change owner of the dataset: ${resp.error}`;
-//    notif.errors[msg] = 1;
-//    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
-//  } else {
-//    fetchDetails([dsid]);
-//  }
-//  owner_to_add[dsid] = false;
-//}
-
 async function fetchDetails(anaids) {
   let fetchedAna = {}
   const tasks = anaids.map(async anaId => {
@@ -89,34 +46,34 @@ onMount(async() => {
 <DetailBox notif={notif} closeWindow={closeWindow}>
   {#each Object.entries(analyses) as [anaid, analysis]}
 
-    <h5 class="title is-6">{analysis.name}</h5>
+    <h4 class="title is-4">{analysis.name}</h4>
+    <p><span class="has-text-weight-bold">Workflow version:</span> {analysis.wf.name} - {analysis.wf.update}</p>
+    <p>{analysis.nrfiles} raw files from {analysis.nrdsets} dataset(s) analysed</p>
+    <p><span class="has-text-weight-bold">Quant type:</span> {analysis.quants.join(', ')}</p>
+
     <p><span class="has-text-weight-bold">Last lines of log  
       {#if analysis.log[0].slice(0, 16) !== 'Analysis without'}
       <a href={`analysis/log/${anaid}`} class="is-size-7" target="_blank">(full log)</a>
       {/if}
       :</span>
     </p>
-    <p class="is-family-monospace">
+    <p class="is-size-7 is-family-monospace">
     {#each analysis.log as logline}
     {logline}<br>
     {/each}
     </p>
 
-    <section class="section">
-    <div class="columns">
-      <div class="column">
-        <h6 class="title is-6">Output</h6>
-        {#each analysis.servedfiles as linkname}
-        <div><a href="analysis/showfile/{linkname[0]}" target="_blank">{linkname[1]}</a></div>
-        {/each}
-      </div>
-      <div class="column">
-        <h6 class="title is-6">Input data</h6>
-        <p><span class="has-text-weight-bold">Workflow version:</span> {analysis.wf.update}</p>
-        <p>{analysis.nrfiles} raw files from {analysis.nrdsets} dataset(s) analysed</p>
-        <p><span class="has-text-weight-bold">Quant type:</span> {analysis.quants.join(', ')}</p>
-      </div>
+    <h6 class="title is-6">Output</h6>
+    {#each analysis.servedfiles as linkname}
+    <div><a href="analysis/showfile/{linkname[0]}" target="_blank">{linkname[1]}</a></div>
+    {/each}
+    {#each analysis.storage_locs as {server, path, share}}
+    <div class="tags has-addons">
+      <span class="tag">{server}</span>
+      <span class="tag is-primary">{share} </span>
+      &nbsp;{path}
     </div>
+    {/each}
 
     <h6 class="title is-6">Pipeline parameters</h6>
     {#each analysis.invocation.files as param}
@@ -146,7 +103,6 @@ onMount(async() => {
       </tbody>
     </table>
     {/if}
-    </section >
 
   {/each}
 </DetailBox>

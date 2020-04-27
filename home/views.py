@@ -496,8 +496,8 @@ def get_analysis_invocation(job):
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
         'analysis', 'job', 'workflow', 'nfworkflow').get()
-    #storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
-    #            anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
+    storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
+                anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
     fjobs = nfs.job.filejob_set.all().select_related(
         'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     dsets =  {x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs}
@@ -512,13 +512,14 @@ def get_analysis_info(request, nfs_id):
             #                    'time': nfs.job.timestamp}},
             'name': nfs.analysis.name,
             'wf': {'fn': nfs.nfworkflow.filename, 
+                   'name': nfs.nfworkflow.nfworkflow.description,
                    'update': nfs.nfworkflow.update,
                    'repo': nfs.nfworkflow.nfworkflow.repo},
 #             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
             'nrfiles': fjobs.count(),
-#             'storage_locs': [{'server': x.servershare.name, 'path': x.path}
-#                              for x in storeloc.values()],
+            'storage_locs': [{'server': x.servershare.uri, 'share': x.servershare.name, 'path': x.path}
+                for x in storeloc.values()],
             'log': logentry, 
             'servedfiles': linkedfiles,
             'invocation': get_analysis_invocation(nfs.job),
