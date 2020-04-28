@@ -12,7 +12,7 @@ from analysis.models import Proteowizard, MzmlFile, NextflowWfVersion
 from datasets import tasks
 from rawstatus import tasks as filetasks
 from jobs.models import TaskChain
-from jobs.jobs import BaseJob, DatasetJob
+from jobs.jobs import BaseJob, DatasetJob, create_job
 # FIXME backup jobs need doing
 from rawstatus import jobs as rsjobs
 
@@ -102,6 +102,19 @@ class ConvertDatasetMzml(BaseJob):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
         res_share = ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id if pwiz.is_docker else False
+        # First create jobs to delete old files
+        # TODO problem may arise if eg storage worker is down and hasnt finished processing the
+        # and old batch of files. Then the new files will come in before the worker is restarted.
+        # The old files, which will at that point be lying around in their inbox: 
+        # analysis/mzml_in folder, will then be 1.moved, 2.deleted, 3. new file move job will error
+        delete_sfids = []
+        for fn in StoredFile.objects.filter(deleted=False, purged=False, checked=True, 
+                mzmlfile__isnull=False).exclude(mzmlfile__pwiz=pwiz).values('id'):
+            delete_sfids.append(fn['id'])
+        if len(delete_sfids):
+            print('Queueing {} old mzML files for deletion before creating '
+            'new files'.format(len(delete_sfids)))
+            create_job('purge_files', sf_ids=delete_sfids)
         nf_raws, win_mzmls = [], []
         for fn in self.getfiles_query(**kwargs):
             mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz, servershare_id=res_share)

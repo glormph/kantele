@@ -734,9 +734,6 @@ def create_mzmls(request):
     mzmls_exist.update(deleted=True)
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
         return JsonResponse({'error': 'This dataset already has existing mzML files of that proteowizard version'}, status=403)
-    # Jobs queued are ok with rerunning, so even if this view is clickec twice quickly, 4 jobs are run,
-    # but they wait and both below jobs filter relevant files. Waste of resources nonetheless.
-    jj.create_job('delete_mzmls_dataset', dset_id=data['dsid'])
     jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=data['pwiz_id'], timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
     return JsonResponse({})
 
