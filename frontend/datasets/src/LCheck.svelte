@@ -17,6 +17,8 @@ let lcdata = {
 }
 let edited = false;
 
+$: Object.keys($datasetFiles).length ? fetchData() : false;
+
 $: foundNewSamples = Object.values(lcdata.samples).some(x => x.newprojsample !== '');
 $: stored = $dataset_id && !edited;
 
@@ -166,6 +168,7 @@ onMount(async() => {
   {#if Object.keys(lcdata.samples).length}
   <tbody>
     {#each Object.values($datasetFiles) as file}
+    {#if file.associd in lcdata.samples}
     <tr>
       <td>
         <label class="label">
@@ -196,6 +199,7 @@ onMount(async() => {
         </div>
       </td>
     </tr>
+    {/if}
     {/each}
   </tbody>
   {/if}

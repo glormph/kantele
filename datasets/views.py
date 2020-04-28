@@ -199,9 +199,9 @@ def labelcheck_samples(request, dataset_id):
         dset = models.Dataset.objects.select_related('runname__experiment').get(pk=dataset_id)
         response_json = {
                 'quants': get_empty_isoquant(),
+                'samples': {fn.id: {'model': '', 'channel': '', 'newprojsample': '', 'channelname': '', 'samplename': ''} 
     #            'projsamples': {x.id: {'name': x.sample, 'id': x.id} for x in 
     #                models.ProjectSample.objects.filter(project_id=dset.runname.experiment.project_id)},
-                'samples': {fn.id: {'model': '', 'channel': '', 'newprojsample': ''} 
                     for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
                 }
         for qt, q in response_json['quants'].items():
@@ -215,14 +215,14 @@ def labelcheck_samples(request, dataset_id):
             return JsonResponse(response_json)
         else:
             response_json['quanttype'] = qtype.quanttype_id
-        response_json['samples'] = {qfcs.dsrawfile_id: {
-            'qfcsid': qfcs.id,
-            'channel': qfcs.channel_id,
-            'channelname': qfcs.channel.channel.name,
-            'sample': qfcs.projsample_id,
-            'samplename': qfcs.projsample.sample,
-            'newprojsample': '',
-            } for qfcs in models.QuantFileChannelSample.objects.select_related('channel__channel', 'projsample').filter(dsrawfile__dataset_id=dataset_id)}
+        for qfcs in models.QuantFileChannelSample.objects.select_related(
+                'channel__channel', 'projsample').filter(dsrawfile__dataset_id=dataset_id):
+            response_json['samples'][qfcs.dsrawfile_id] = {
+                    'qfcsid': qfcs.id, 'channel': qfcs.channel_id, 
+                    'channelname': qfcs.channel.channel.name, 
+                    'sample': qfcs.projsample_id,
+                    'samplename': qfcs.projsample.sample,
+                    'newprojsample': ''}
     return JsonResponse(response_json)
 
 
