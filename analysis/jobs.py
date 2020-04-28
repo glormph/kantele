@@ -70,12 +70,12 @@ class RunLabelCheckNF(MultiDatasetJob):
             stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
         sfiles = self.getfiles_query(**kwargs).filter(mzmlfile__refined=False).values(
                 'servershare__name', 'path', 'filename',
-                'rawfile__datasetrawfile__quantfilechannelsample__channel',
-                'rawfile__datasetrawfile__quantfilechannelsample__projsample'
+                'rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name',
+                'rawfile__datasetrawfile__quantfilechannelsample__projsample__sample'
                 )
         mzmls = [(x['servershare__name'], x['path'], x['filename'],
-            x['rawfile__datasetrawfile__quantfilechannelsample__channel'],
-            x['rawfile__datasetrawfile__quantfilechannelsample__projsample']) for x in sfiles]
+            x['rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name'],
+            x['rawfile__datasetrawfile__quantfilechannelsample__projsample__sample']) for x in sfiles]
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,

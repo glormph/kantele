@@ -124,7 +124,8 @@ class ConvertDatasetMzml(BaseJob):
             if mzsf.purged:
                 mzsf.checked = False
                 mzsf.purged = False
-                mzsf.save()
+            mzsf.servershare_id = res_share if pwiz.is_docker else mzsf.servershare_id
+            mzsf.save()
             nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
             win_mzmls.append((fn, mzsf))
         if pwiz.is_docker:
