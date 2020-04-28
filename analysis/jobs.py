@@ -60,21 +60,22 @@ class RunLabelCheckNF(MultiDatasetJob):
     task = tasks.run_nextflow_workflow
 
     def process(self, **kwargs):
-        analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow__shortname').get(pk=kwargs['analysis_id'])
+        analysis = models.Analysis.objects.select_related('user',
+                'nextflowsearch__workflow__shortname').get(pk=kwargs['analysis_id'])
         nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
             pk=kwargs['wfv_id'])
         stagefiles = {}
         for flag, sf_id in kwargs['inputs']['singlefiles'].items():
             sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
             stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
-        all_sfiles = self.getfiles_query(**kwargs)
-        sfiles = all_sfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample').filter(mzmlfile__refined=False)
-        dsrfs = {sf.id: sf.rawfile.datasetrawfile.quantsamplefile for sf in sfiles}
-        samples = {sfid: dsrf.projsample.sample for sfid, dsrf in dsrfs.items()}
-        psf_to_sfile = {dsrf.projsample_id: sfid for sfid, dsrf in dsrfs.items()}
-        channels = {psf_to_sfile[qcs.projsample_id]: qcs.channel.channel.name for qcs in dsmodels.QuantChannelSample.objects.filter(dataset_id__in=kwargs['dset_ids']).select_related('channel__channel')}
-        mzmls = [(x.servershare.name, x.path, x.filename, channels[x.id], samples[x.id]) 
-                for x in sfiles]
+        sfiles = self.getfiles_query(**kwargs).filter(mzmlfile__refined=False).values(
+                'servershare__name', 'path', 'filename',
+                'rawfile__datasetrawfile__quantfilechannelsample__channel',
+                'rawfile__datasetrawfile__quantfilechannelsample__projsample'
+                )
+        mzmls = [(x['servershare__name'], x['path'], x['filename'],
+            x['rawfile__datasetrawfile__quantfilechannelsample__channel'],
+            x['rawfile__datasetrawfile__quantfilechannelsample__projsample']) for x in sfiles]
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,
