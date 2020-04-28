@@ -238,6 +238,12 @@ class QuantChannelSample(models.Model):
     projsample = models.ForeignKey(ProjectSample)
 
 
+class QuantFileChannelSample(models.Model):  # used for labelcheck
+    channel = models.ForeignKey(QuantTypeChannel)
+    projsample = models.ForeignKey(ProjectSample)
+    dsrawfile = models.OneToOneField(DatasetRawFile)
+    
+
 class HiriefRange(models.Model):
     # adminable
     start = models.DecimalField(max_digits=5, decimal_places=2)
