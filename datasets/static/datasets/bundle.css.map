@@ -1,0 +1,12 @@
+{
+  "version": 3,
+  "file": "bundle.css",
+  "sources": [
+    "../../../frontend/datasets/src/ErrorNotif.svelte"
+  ],
+  "sourcesContent": [
+    "<script>\n\nexport let errors;\nexport let cssclass = '';\n</script>\n\n<style>\n  .sticky {\n    position: sticky;\n    position: -webkit-sticky;\n    top: 20px;\n    z-index: 1000;\n  }\n</style>\n\n{#if errors.length}\n<div class={`notification is-danger ${cssclass}`}>\n  <ul>\n    {#each errors as error}\n    <li>&bull; {error}</li>\n    {/each}\n  </ul>\n</div>\n{/if}\n"
+  ],
+  "names": [],
+  "mappings": "AAOE,OAAO,eAAC,CAAC,AACP,QAAQ,CAAE,MAAM,CAChB,QAAQ,CAAE,cAAc,CACxB,GAAG,CAAE,IAAI,CACT,OAAO,CAAE,IAAI,AACf,CAAC"
+}
