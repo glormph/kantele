@@ -192,7 +192,14 @@ onMount(async() => {
               {pw.state}
             </span>
           </td>
-          <td><span class="has-text-weight-bold">{pw.version}</span><span>, created {pw.created}</span></td>
+          <td>
+            <span class="has-text-weight-bold">{pw.version}</span>
+            <span>, created {pw.created}</span>
+            {#if pw.state === 'Incomplete'}
+            <span>, {pw.existing} files</span>
+            {/if}
+          </td>
+
           <td>
             {#if pw.refined}
             <span class="tag is-light is-warning">Refined</span>
