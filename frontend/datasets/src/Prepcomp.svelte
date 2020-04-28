@@ -186,8 +186,9 @@ async function doSampleSave(ch_or_samfn, ix) {
     samplename: ch_or_samfn.newprojsample
   };
   let url = '/datasets/save/projsample/';
+  let response;
   try {
-    const response = await postJSON(url, postdata);
+    response = await postJSON(url, postdata);
   } catch(error) {
     if (error.message === '404') {
       preperrors = [preperrors, 'Save dataset before saving new samples'];
@@ -195,7 +196,7 @@ async function doSampleSave(ch_or_samfn, ix) {
     return;
   }
   // just add the latest projsample, do not just assign the whole projsamples dict, async problems!
-  projsamples[response.psid] = response.psname;
+  projsamples[response.psid] = {name: response.psname, id: response.psid};
   return [response.psid, ix];
 }
 
