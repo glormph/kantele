@@ -426,7 +426,7 @@ def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analys
         taskfail_update_db(task_id)
         raise
     for fn in outfiles_db:
-        dst = os.path.join(outdir, outfiles_dn[fn]['newname'])
+        dst = os.path.join(outdir, outfiles_db[fn]['newname'])
         try:
             shutil.copy(fn, dst)
         except:
