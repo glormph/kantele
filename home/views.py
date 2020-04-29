@@ -210,7 +210,7 @@ def populate_files(dbfns):
             'pdcbackedupfile', 
             'filetype').filter(checked=True):
         is_mzml = hasattr(fn, 'mzmlfile')
-        if hasattr(fn.producer, 'msinstrument') and not is_mzml:
+        if hasattr(fn.rawfile.producer, 'msinstrument') and not is_mzml:
             filedate = fn.rawfile.date
         else:
             filedate = fn.regdate 
