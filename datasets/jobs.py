@@ -108,7 +108,8 @@ class ConvertDatasetMzml(BaseJob):
         # The old files, which will at that point be lying around in their inbox: 
         # analysis/mzml_in folder, will then be 1.moved, 2.deleted, 3. new file move job will error
         delete_sfids = []
-        for fn in StoredFile.objects.filter(deleted=False, purged=False, checked=True, 
+        for fn in StoredFile.objects.filter(rawfile__datasetrawfile__dataset=kwargs['dset_id'],
+                deleted=False, purged=False, checked=True, 
                 mzmlfile__isnull=False).exclude(mzmlfile__pwiz=pwiz).values('id'):
             delete_sfids.append(fn['id'])
         if len(delete_sfids):
