@@ -66,7 +66,7 @@ class RenameFile(SingleFileJob):
     """
 
     def process(self, **kwargs):
-        sfile = self.getfiles_query(**kwargs).select_related('rawfile')
+        sfile = self.getfiles_query(**kwargs)
         newname = kwargs['newname']
         fn_ext = os.path.splitext(sfile.filename)[1]
         if models.StoredFile.objects.exclude(pk=sfile.id).filter(
