@@ -729,8 +729,8 @@ def create_mzmls(request):
     mzmls_exist = filemodels.StoredFile.objects.filter(
             rawfile__datasetrawfile__dataset_id=data['dsid'],
             deleted=False, purged=False, checked=True, 
-            mzmlfile__isnull=False)
-    # set delete for UI, set purge status after job
+            mzmlfile__isnull=False).exclude(mzmlfile__pwiz=pwiz)
+    # set delete for UI, purging is done in job
     mzmls_exist.update(deleted=True)
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
         return JsonResponse({'error': 'This dataset already has existing mzML files of that proteowizard version'}, status=403)
