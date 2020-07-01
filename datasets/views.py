@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
                          HttpResponseForbidden)
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.utils import timezone
 
 from kantele import settings
@@ -178,9 +178,10 @@ def dataset_sampleprep(request, dataset_id):
         # species for dset and mostused ones TODO make sample specific
         response_json['species'] = [{'id': x.species.id, 'linnean': x.species.linnean, 'name': x.species.popname} 
                 for x in models.DatasetSpecies.objects.select_related('species').filter(dataset_id=dataset_id)]
-        response_json['allspecies'] = ({str(x.species.id): {'id': x.species.id, 'linnean': x.species.linnean, 
-            'name': x.species.popname} for x in 
-            models.DatasetSpecies.objects.all().distinct('species').select_related('species')})
+        response_json['allspecies'] = {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
+            'name': x['species__popname'], 'total': x['total']} for x in 
+            models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+                ).annotate(total=Count('species__linnean')).order_by('-total')[:5]}
 
         #########
 

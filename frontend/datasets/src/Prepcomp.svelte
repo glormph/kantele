@@ -40,7 +40,9 @@ let foundNewSamples = false;
 
 function niceSpecies(species) { 
   let nice;
-  if (species.name) {
+  if (species === undefined) {
+    nice = '';
+  } else if (species.name) {
     nice = `${species.name}, ${species.linnean}`;
   } else {
     nice = `${species.linnean}`;
@@ -335,7 +337,7 @@ onMount(async() => {
 
 <div class="field">
   <label class="label">Organism</label>
-  <DynamicSelect intext="Type to get more organisms" bind:options={prepdata.allspecies} optorder={Object.keys(prepdata.allspecies)} bind:selectval={selectedspecies} fetchUrl="/datasets/show/species/" niceName={niceSpecies} on:selectedvalue={addOrganism} />
+  <DynamicSelect intext="Type to get more organisms" bind:options={prepdata.allspecies} optorder={Object.values(prepdata.allspecies).sort((a,b) => b.total - a.total).map(x => x.id)} bind:selectval={selectedspecies} fetchUrl="/datasets/show/species/" niceName={niceSpecies} on:selectedvalue={addOrganism} />
 </div>
 <div class="tags">
   {#each prepdata.species as spec}
