@@ -39,7 +39,7 @@ export function validate() {
 		comperrors.push('Reverse phase is required');
 	}
 	for (let key in dsinfo.params) {
-    if (!dsinfo.params[key].model) {
+    if (dsinfo.params[key].model === undefined || dsinfo.params[key].model === '') {
 			comperrors.push(dsinfo.params[key].title + ' is required');
 		}
 	}

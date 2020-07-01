@@ -257,7 +257,7 @@ export function validate() {
 		}
 	}
   for (let param of Object.values(prepdata.params).filter(p => p.inputtype !== 'checkbox')) {
-    if (!param.model) {
+    if (param.model === undefined || param.model === '') {
 			comperrors.push(param.title + ' is required');
 		}
 	}
