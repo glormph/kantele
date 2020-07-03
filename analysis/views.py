@@ -20,12 +20,9 @@ from jobs import models as jm
 
 @login_required
 def get_analysis_init(request):
-    wfid = request.GET['wfid'] if 'wfid' in request.GET else 0
     dsids = request.GET['dsids'].split(',')
     try:
-        context = {'dsids': dsids,
-                   'wfid': wfid,
-                   }
+        context = {'dsids': dsids}
     except:
         return HttpResponseForbidden()
     return render(request, 'analysis/analysis.html', context)
@@ -62,15 +59,26 @@ def set_protein_database_lib(request):
 
 @login_required
 def get_allwfs(request):
-    allwfs = [{'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name} for x in
-            am.Workflow.objects.filter(public=True).order_by('pk')[::-1]]
-    return JsonResponse({'allwfs': allwfs})
+    #dsids = request.GET['dsids'].split(',')
+    allwfs = [{
+        'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name, 
+        'wftype': x.shortname.name,
+        'versions': [{'name': wfv.update, 'id': wfv.id, 'latest': False,
+                 'date': datetime.strftime(wfv.date, '%Y-%m-%d'), }
+                 for wfv in am.NextflowWfVersion.objects.filter(nfworkflow_id=x.nfworkflow_id).order_by('pk')][::-1]
+    }
+#        'wf': get_workflow(request, x.id, dsids)} for x in
+            for x in am.Workflow.objects.filter(public=True).order_by('pk')[::-1]]
+    #versions[0]['latest'] = True
+    order = [x['id'] for x in allwfs]
+    allwfs = {x['id']: x for x in allwfs}
+    return JsonResponse({'allwfs': allwfs, 'order': order})
 
 
 @login_required
 def get_datasets(request):
     dsids = request.GET['dsids'].split(',')
-    response = {'isoquants': [], 'error': False, 'errmsg': []}
+    response = {'error': False, 'errmsg': []}
     dsjobs = rm.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
         storedfile__rawfile__datasetrawfile__dataset_id__in=dsids).select_related('job')
     info = {'jobs': [unijob for unijob in
@@ -88,7 +96,6 @@ def get_datasets(request):
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
     for dsid, dsdetails in dsetinfo.items():
         dset = dsdetails.pop('dbentry')
-        dsdetails['filesaresets'] = False
         dsdetails.update({'details': hv.fetch_dset_details(dset)})
         try:
             dsdetails['details']['qtype'] = dset.quantdataset.quanttype.name
@@ -118,7 +125,7 @@ def get_datasets(request):
                 dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''} for x in dsfiles]
             else:
                 dsdetails['details']['channels'] = {}
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'matchedFr': '', 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.projsample.sample} for x in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample')]
+                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '', 'sample': x.rawfile.datasetrawfile.quantsamplefile.projsample.sample} for x in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample')]
                 [x.update({'setname': x['sample']}) for x in dsdetails['files']]
     # FIXME labelfree quantsamplefile without sample prep error msg
     response['dsets'] = dsetinfo
@@ -126,14 +133,14 @@ def get_datasets(request):
 
 
 @login_required
-def get_workflow(request):
+def get_workflow_versioned(request):
     try:
-        wf = am.Workflow.objects.filter(public=True).get(pk=request.GET['wfid'])
-    except am.Workflow.DoesNotExist:
+        wf = am.NextflowWfVersion.objects.get(pk=request.GET['wfvid'])
+    except am.NextflowWfVersion.DoesNotExist:
         return HttpResponseNotFound()
-    params = wf.workflowparam_set.all().select_related('param')
-    files = wf.workflowfileparam_set.select_related('param')
-    fixedfiles = wf.workflowpredeffileparam_set.select_related('libfile__sfile')
+    params = wf.paramset.psetparam_set.select_related('param')
+    files = wf.paramset.psetfileparam_set.select_related('param')
+    fixedfiles = wf.paramset.psetpredeffileparam_set.select_related('libfile__sfile')
     flags = params.filter(param__ptype='flag')
     ftypes = files.values('param__filetype__name').distinct()
     selectable_files = [x for x in am.LibraryFile.objects.select_related('sfile__filetype').filter(
@@ -141,26 +148,24 @@ def get_workflow(request):
     userfiles = [x for x in rm.UserFile.objects.select_related('sfile__filetype').filter(
         sfile__filetype__in=Subquery(files.values('param__filetype')))]
     selectable_files.extend(userfiles)
-    versions = [{'name': wfv.update, 'id': wfv.id, 'latest': False,
-                 'date': datetime.strftime(wfv.date, '%Y-%m-%d')} for wfv in
-                am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id).order_by('pk')][::-1]
-    versions[0]['latest'] = True
+#    versions = [{'name': wfv.update, 'id': wfv.id, 'latest': False,
+#                 'date': datetime.strftime(wfv.date, '%Y-%m-%d'),
+#                 'analysisapi': wfv.kanteleanalysis_version} for wfv in
+#                am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id).order_by('pk')][::-1]
+#    versions[0]['latest'] = True
     resp = {
-        'wf': {
-            'invisible_flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=False)}, 
-            'flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=True)},
-            'files': [{'name': f.param.name, 'nf': f.param.nfparam,
-                'ftype': f.param.filetype.name, 
-                'allow_resultfile': f.allow_resultfiles} for f in files],
-            'fixedfiles': [{'name': f.param.name, 'nf': f.param.nfparam,
-                            'fn': f.libfile.sfile.filename,
-                            'id': f.libfile.sfile.id,
-                            'desc': f.libfile.description}
-                           for f in fixedfiles],
-             'wftype': wf.shortname.name,
-        },
-        'versions': versions,
-        'files': {ft['param__filetype__name']: [{'id': x.sfile.id, 'desc': x.description,
+       'invisible_flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=False)}, 
+       'flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=True)},
+       'fileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
+           'ftype': f.param.filetype.name, 
+           'allow_resultfile': f.allow_resultfiles} for f in files],
+       'fixedfileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
+                       'fn': f.libfile.sfile.filename,
+                       'id': f.libfile.sfile.id,
+                       'desc': f.libfile.description}
+                      for f in fixedfiles],
+        'analysisapi': wf.kanteleanalysis_version,
+        'libfiles': {ft['param__filetype__name']: [{'id': x.sfile.id, 'desc': x.description,
                                            'name': x.sfile.filename}
                                           for x in selectable_files 
                                           if x.sfile.filetype.name == ft['param__filetype__name']]
@@ -181,7 +186,7 @@ def get_workflow(request):
         'analysisdate': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
         for x in am.AnalysisResultFile.objects.filter(
             analysis__in=qset_analysis.distinct()).select_related('analysis')]
-    return JsonResponse(resp)
+    return JsonResponse({'wf': resp})
 
 
 @login_required
@@ -200,7 +205,7 @@ def start_analysis(request):
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     req = json.loads(request.body.decode('utf-8'))
     if dm.Dataset.objects.filter(pk__in=req['dsids'], deleted=True):
-    	return JsonResponse({'state': 'error', 'msg': 'Deleted datasets cannot be analyzed'})
+        return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
     analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
     analysis.save()
     am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
@@ -209,7 +214,8 @@ def start_analysis(request):
     if 'sampletable' in req and len(req['sampletable']):
         params['sampletable'] = req['sampletable']
     arg_dsids = [int(x) for x in req['dsids']]
-    if req['dtype'].lower() != 'labelcheck':
+    wf = am.Workflow.objects.select_related('workflowtype').get(pk=req['wfid'])
+    if wf.shortname.name != 'LC':
         fname = 'run_nf_search_workflow'
         strips = {}
         for dsid in req['dsids']:
@@ -229,10 +235,10 @@ def start_analysis(request):
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': params}
     jobcheck = jj.check_existing_search_job(fname, req['wfid'], **{'dset_ids': arg_dsids, **data_args, **param_args})
     if jobcheck:
-        return JsonResponse({'state': 'error', 'msg': 'This analysis already exists', 'link': '/?tab=searches&anids={}'.format(jobcheck.nextflowsearch.id)})
+        return JsonResponse({'error': 'This analysis already exists', 'link': '/?tab=searches&anids={}'.format(jobcheck.nextflowsearch.id)})
     job = jj.create_job(fname, **{'analysis_id': analysis.id, **data_args, **param_args})
     aj.create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
-    return JsonResponse({'state': 'ok'})
+    return JsonResponse({'error': False})
 
 
 @login_required

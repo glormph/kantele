@@ -179,6 +179,8 @@ def log_analysis(analysis_id, message):
     update_db(logurl, json={'analysis_id': analysis_id, 'message': entry})
 
 
+
+
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
     print('Got message to run nextflow workflow, preparing')
@@ -325,6 +327,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
                 'instrument': run['instrument'], 'filename': run['filename']}
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
+    # FIXME temp code tmp to remove when all QC is run in new QC WF (almost)
     if '--raw' in stagefiles:
         nf_version = '19.10.0' 
         profiles = 'qc,docker'

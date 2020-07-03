@@ -6,37 +6,8 @@ from datasets import models as dsmodels
 from jobs import models as jmodels
 
 
-class NextflowWorkflow(models.Model):
-    description = models.CharField(max_length=200, help_text='Description of workflow')
-    repo = models.CharField(max_length=100)
-    
-    def __str__(self):
-        return self.description
-
-
-class NextflowWfVersion(models.Model):
-    update = models.CharField(max_length=200, help_text='Description of workflow update')
-    commit = models.CharField(max_length=50)
-    filename = models.CharField(max_length=50)
-    nfworkflow = models.ForeignKey(NextflowWorkflow)
-    date = models.DateTimeField(auto_now=True)
-    
-    def __str__(self):
-        return '{} - {}'.format(self.nfworkflow.description, self.update)
-
-
 class WorkflowType(models.Model):
     name = models.CharField(max_length=20)
-
-    def __str__(self):
-        return self.name
-
-
-class Workflow(models.Model):
-    name = models.CharField(max_length=50)
-    shortname = models.ForeignKey(WorkflowType)
-    nfworkflow = models.ForeignKey(NextflowWorkflow)
-    public = models.BooleanField()
 
     def __str__(self):
         return self.name
@@ -69,30 +40,70 @@ class Param(models.Model):
         return self.name
 
 
-class WorkflowFileParam(models.Model):
-    wf = models.ForeignKey(Workflow)
+class ParameterSet(models.Model):
+    name = models.TextField()
+
+    def __str__(self):
+        return self.name
+
+
+class NextflowWorkflow(models.Model):
+    description = models.CharField(max_length=200, help_text='Description of workflow')
+    repo = models.CharField(max_length=100)
+    
+    def __str__(self):
+        return self.description
+
+
+class Workflow(models.Model):
+    name = models.CharField(max_length=50)
+    shortname = models.ForeignKey(WorkflowType)
+    nfworkflow = models.ForeignKey(NextflowWorkflow)
+    public = models.BooleanField()
+
+    def __str__(self):
+        return self.name
+
+
+class NextflowWfVersion(models.Model):
+    update = models.CharField(max_length=200, help_text='Description of workflow update')
+    commit = models.CharField(max_length=50)
+    filename = models.CharField(max_length=50)
+    nfworkflow = models.ForeignKey(NextflowWorkflow)
+    paramset = models.ForeignKey(ParameterSet)
+    date = models.DateTimeField(auto_now=True)
+    kanteleanalysis_version = models.IntegerField() # TODO remove this when noone uses v1 anymore
+    nfversion = models.TextField()
+    
+    def __str__(self):
+        return '{} - {}'.format(self.nfworkflow.description, self.update)
+
+
+class PsetFileParam(models.Model):
     param = models.ForeignKey(FileParam)
     allow_resultfiles = models.BooleanField(default=False)
+    pset = models.ForeignKey(ParameterSet)
 
     def __str__(self):
-        return '{} -- {}'.format(self.wf.name, self.param.name)
+        return '{} -- {}'.format(self.pset.name, self.param.name)
 
 
-class WorkflowPredefFileParam(models.Model):
-    wf = models.ForeignKey(Workflow)
+# TODO get rid of predefined files, put them in some workflow config file instead
+class PsetPredefFileParam(models.Model):
     param = models.ForeignKey(FileParam)
     libfile = models.ForeignKey(LibraryFile)
+    pset = models.ForeignKey(ParameterSet)
 
     def __str__(self):
-        return '{} -- {} -- {}'.format(self.wf.name, self.param.name, self.libfile.description)
+        return '{} -- {} -- {}'.format(self.pset.name, self.param.name, self.libfile.description)
 
 
-class WorkflowParam(models.Model):
-    wf = models.ForeignKey(Workflow)
+class PsetParam(models.Model):
     param = models.ForeignKey(Param)
+    pset = models.ForeignKey(ParameterSet)
 
     def __str__(self):
-        return '{} -- {}'.format(self.wf.name, self.param.name)
+        return '{} -- {}'.format(self.pset.name, self.param.name)
 
 
 class Analysis(models.Model):
