@@ -74,13 +74,12 @@ function validate() {
   Object.values(dsets).forEach(ds => {
     if (config.v1 && config.version_dep.v1.dtype.toLowerCase() !== 'labelcheck' && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
-
-    } else if (!charRe.test(ds.setname)) {
-			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have another set name: only a-z 0-9 _ are allowed`] = 1;
     } else if (ds.filesaresets) {
       if (ds.files.filter(fn => !fn.setname).length) {
 			  notif.errors[`File ${fn.name} needs to have a setname`] = 1;
 			}
+    } else if (ds.setname && !charRe.test(ds.setname)) {
+			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have another set name: only a-z 0-9 _ are allowed`] = 1;
 		}
 	});
   Object.entries(isoquants).forEach(([sname, isoq]) => {
@@ -101,7 +100,7 @@ async function runAnalysis() {
   runButtonActive = false;
   postingAnalysis = true;
   notif.messages['Validated data'] = 1;
-  let fns = Object.assign({}, config.fileparams)
+  let fns = Object.fromEntries(Object.entries(config.fileparams).filter(([k,v]) => v))
   wf.fixedfileparams.forEach(fn => {
     fns[fn.nf] = fn.id
   })
@@ -187,6 +186,7 @@ async function fetchWorkflow() {
     config.v1 = wf.analysisapi === 1;
     config.v2 = wf.analysisapi === 2;
   }
+  fetchDatasetDetails();
 }
 
 async function fetchAllWorkflows() {
@@ -220,19 +220,19 @@ async function fetchDatasetDetails() {
       ds.setname = '';
     })
     // API v1 stuff
-    const dtypes = Object.values(dsets).map(ds => ds.dtype.toLowerCase());
-    config.version_dep.v1.dtype = dtypes.length > 1 ? 'mixed' : dtypes[0];
-    const qtypes = Object.values(dsets).map(ds => ds.details.qtype.toLowerCase());
-    if (config.v1 && qtypes.length > 1) {
+    const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
+    config.version_dep.v1.dtype = dtypes.size > 1 ? 'mixed' : dtypes.keys().next().value;
+    const qtypes = new Set(Object.values(dsets).map(ds => ds.details.qtypeshort));
+    if (config.v1 && qtypes.size > 1) {
       notif.errors['Mixed quant types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
     } else {
-      config.version_dep.v1.qtype = qtypes[0];
+      config.version_dep.v1.qtype = qtypes.keys().next().value;
     }
-    const instypes = Object.values(dsets).flatMap(ds => ds.details.instrument_types).map(x => x.toLowerCase());
-    if (config.v1 && instypes.length > 1) {
+    const instypes = new Set(Object.values(dsets).flatMap(ds => ds.details.instrument_types).map(x => x.toLowerCase()));
+    if (config.v1 && instypes.size> 1) {
       notif.errors['Mixed instrument types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
     } else {
-      config.version_dep.v1.instype = instypes[0];
+      config.version_dep.v1.instype = instypes.keys().next().value;
     }
   }
 }
@@ -279,7 +279,6 @@ function updateIsoquant() {
 onMount(async() => {
   frregex = Object.fromEntries(dsids.map(dsid => [dsid, '.*fr([0-9]+).*mzML$']));
   fetchAllWorkflows();
-  fetchDatasetDetails();
 })
 </script>
 
@@ -373,8 +372,8 @@ onMount(async() => {
 	<div class="title is-5">Datasets</div>
   {#each Object.values(dsets) as ds}
   <div class="box">
-    {#if ds.dtype === 'labelcheck'}
-		<span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run}</span>
+    {#if ds.dtype.toLowerCase() === 'labelcheck'}
+    <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.details.qtype} // {ds.details.instruments.join(',')}</span>
     {:else}
 		<div class="columns">
 		  <div class="column">

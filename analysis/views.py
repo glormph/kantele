@@ -99,6 +99,7 @@ def get_datasets(request):
         dsdetails.update({'details': hv.fetch_dset_details(dset)})
         try:
             dsdetails['details']['qtype'] = dset.quantdataset.quanttype.name
+            dsdetails['details']['qtypeshort'] = dset.quantdataset.quanttype.shortname
         except dm.QuantDataset.DoesNotExist:
             response['error'] = True
             response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
@@ -214,7 +215,7 @@ def start_analysis(request):
     if 'sampletable' in req and len(req['sampletable']):
         params['sampletable'] = req['sampletable']
     arg_dsids = [int(x) for x in req['dsids']]
-    wf = am.Workflow.objects.select_related('workflowtype').get(pk=req['wfid'])
+    wf = am.Workflow.objects.select_related('shortname').get(pk=req['wfid'])
     if wf.shortname.name != 'LC':
         fname = 'run_nf_search_workflow'
         strips = {}
