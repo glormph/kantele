@@ -49,7 +49,7 @@ class RefineMzmls(DatasetJob):
                'name': analysis.name,
                'outdir': analysis.user.username,
                }
-        self.run_tasks.append(((run, params, mzmls, stagefiles), {}))
+        self.run_tasks.append(((run, params, mzmls, stagefiles, nfwf.nfversion), {}))
         # TODO replace this for general logging anyway, not necessary to keep queueing in analysis log
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
         analysis.save()
@@ -87,7 +87,7 @@ class RunLabelCheckNF(MultiDatasetJob):
                }
         profiles = ['standard', 'docker', 'lehtio']
         kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles)), {}))
+        self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
         analysis.save()
 
@@ -127,7 +127,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'instrument': mzml.rawfile.producer.name,
                }
         create_nf_search_entries(analysis, wf.id, nfwf.id, self.job_id)
-        self.run_tasks.append(((run, params, stagefiles), {}))
+        self.run_tasks.append(((run, params, stagefiles, nfwf.nfversion), {}))
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
         analysis.save()
 
@@ -149,7 +149,7 @@ class RunNextflowWorkflow(BaseJob):
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
     or shoudl inputs be DB things fields flag,sf_id (how for mzmls though?)
-{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--nfcore', '--hirief', 'SAMPLETABLE', "126::set1::treat1::treat::::127::set1::treat2::treat..."
+{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--hirief', 'SAMPLETABLE', "126::set1::treat1::treat::::127::set1::treat2::treat..."
 ], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
     """
 
@@ -176,16 +176,11 @@ class RunNextflowWorkflow(BaseJob):
                'outdir': analysis.user.username,
                'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger'
                }
-        profiles = ['standard']
-        if '--nfcore' in kwargs['inputs']['params']:
-            kwargs['inputs']['params'] = [x for x in kwargs['inputs']['params'] if x != '--nfcore']
-            profiles.extend(['docker', 'lehtio'])
-            kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        else:
-            kwargs['inputs']['params'].extend(['--searchname', 'RUNNAME__PLACEHOLDER'])
+        profiles = ['standard', 'docker', 'lehtio']
+        kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
         if 'sampletable' in kwargs['inputs']:
             kwargs['inputs']['params'].extend(['SAMPLETABLE', kwargs['inputs']['sampletable']])
-        self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles)), {}))
+        self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         # TODO remove this logging
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
         analysis.save()

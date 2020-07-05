@@ -131,7 +131,7 @@ def check_ensembl_uniprot_fasta_download(self):
         print('Finished downloading ENSEMBL database and mart map')
 
 
-def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
+def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
     """Fairly generalized code for kantele celery task to run a WF in NXF"""
     print('Starting nextflow workflow {}'.format(run['nxf_wf_fn']))
     outdir = os.path.join(rundir, 'output')
@@ -148,8 +148,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version=False):
     cmd = ['nextflow', 'run', run['nxf_wf_fn'], *params, '--outdir', outdir, '-profile', profiles, '-with-trace', '-resume']
     print(cmd)
     env = os.environ
-    if nf_version:
-        env['NXF_VER'] = nf_version
+    env['NXF_VER'] = nf_version
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
@@ -182,7 +181,7 @@ def log_analysis(analysis_id, message):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
+def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_version):
     print('Got message to run nextflow workflow, preparing')
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
@@ -220,7 +219,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     params = [x if x != 'RUNNAME__PLACEHOLDER' else run['runname'] for x in params]
-    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, profiles=profiles)
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles=profiles)
     postdata.update({'state': 'ok'})
     outfiles_db = register_resultfiles(outfiles)
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
@@ -232,7 +231,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def refine_mzmls(self, run, params, mzmls, stagefiles):
+def refine_mzmls(self, run, params, mzmls, stagefiles, nf_version):
     print('Got message to run mzRefine workflow, preparing')
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
@@ -242,7 +241,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles):
             mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, fn[2]), refined_sfid=fn[3])
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
-    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id)
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version)
     # TODO ideally do this:
     # stage mzML with {dbid}___{filename}.mzML
     # This keeps dbid / ___ split out of the NF workflow 
@@ -290,14 +289,10 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
     return params, gitwfdir, stagedir
 
 
-def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
+def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profiles=False):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     if not profiles:
         profiles = 'standard'
-    nf_version = settings.NXF_VER
-    if '--nf1901' in params:
-        params.pop(params.index('--nf1901'))
-        nf_version = '19.01.0'
     try:
         run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError as e:
@@ -319,7 +314,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, profiles=False):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_QC_NXF)
-def run_nextflow_longitude_qc(self, run, params, stagefiles):
+def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
     print('Got message to run QC workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
@@ -328,6 +323,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
     # FIXME temp code tmp to remove when all QC is run in new QC WF (almost)
+    # dont forget to update the nf_version in teh DB before deleting this!
     if '--raw' in stagefiles:
         nf_version = '19.10.0' 
         profiles = 'qc,docker'
@@ -335,7 +331,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles):
         nf_version = False
         profiles = 'qc'
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profiles=profiles, nf_version=nf_version)
+        run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError:
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')
