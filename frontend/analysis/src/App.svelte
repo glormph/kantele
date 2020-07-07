@@ -105,6 +105,7 @@ async function runAnalysis() {
   wf.fixedfileparams.forEach(fn => {
     fns[fn.nf] = fn.id
   })
+  let multifns = Object.fromEntries(Object.entries(config.multifileparams).map(([k, v]) => [k, Object.values(v).filter(x => x)]).filter(([k, v]) => v.length));
   let setnames = {};
   Object.values(dsets).filter(ds => ds.filesaresets).forEach(ds => {
     Object.assign(setnames, Object.fromEntries(ds.files.map(fn => [fn.id, fn.setname])));
@@ -122,7 +123,8 @@ async function runAnalysis() {
     setnames: setnames,
     dsids: Object.keys(dsets),
     fractions: fractions,
-    files: fns,
+    singlefiles: fns,
+    multifiles: multifns,
     wfid: config.wfid,
     nfwfvid: config.wfversion.id,
     analysisname: `${allwfs[config.wfid].wftype}_${config.analysisname}`,

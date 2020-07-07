@@ -156,19 +156,26 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
 
 
 def stage_files(stagedir, stagefiles, params=False):
-    if not os.path.exists(stagedir):
-        os.makedirs(stagedir)
-    for flag, fdata in stagefiles.items():
-        fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
-        dst = os.path.join(stagedir, fdata[2])
+    for flag, files in stagefiles.items():
+        stagefiledir = os.path.join(stagedir, flag.replace('--', ''))
+        if not os.path.exists(stagefiledir):
+            os.makedirs(stagefiledir)
+        if len(files) > 1:
+            dst = os.path.join(stagefiledir, '*')
+        else:
+            dst = os.path.join(stagefiledir, files[0][2])
         if params:
             params.extend([flag, dst])
-        if os.path.exists(dst):
-            continue
-        if os.path.isdir(fpath):
-            shutil.copytree(fpath, dst)
-        else:
-            shutil.copy(fpath, dst)
+        # now actually copy
+        for fdata in files:
+            fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
+            fdst = os.path.join(stagefiledir, fdata[2])
+            if os.path.exists(fdst):
+                continue
+            if os.path.isdir(fpath):
+                shutil.copytree(fpath, fdst)
+            else:
+                shutil.copy(fpath, fdst)
     return params
 
 
@@ -282,7 +289,7 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
     print('Staging files to {}'.format(stagedir))
     try:
         params = stage_files(stagedir, stagefiles, params)
-        stage_files(stagedir, {x[2]: x for x in mzmls})
+        stage_files(stagedir, {'mzmls': [x for x in mzmls]})
     except Exception:
         taskfail_update_db(taskid, 'Could not stage files for analysis')
         raise

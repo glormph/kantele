@@ -25,7 +25,7 @@ class RefineMzmls(DatasetJob):
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
         nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
-        stagefiles = {'--tdb': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
+        stagefiles = {'--tdb': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         all_sfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False, mzmlfile__isnull=False)
         existing_refined = all_sfiles.filter(mzmlfile__refined=True)
         mzmlfiles = all_sfiles.exclude(rawfile__storedfile__in=existing_refined).select_related('mzmlfile__pwiz')
@@ -67,7 +67,7 @@ class RunLabelCheckNF(MultiDatasetJob):
         stagefiles = {}
         for flag, sf_id in kwargs['inputs']['singlefiles'].items():
             sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
-            stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
+            stagefiles[flag] = [(sf.servershare.name, sf.path, sf.filename)]
         sfiles = self.getfiles_query(**kwargs).filter(mzmlfile__refined=False).values(
                 'servershare__name', 'path', 'filename',
                 'rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name',
@@ -111,10 +111,10 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         params = kwargs.get('params', [])
         params.extend(['--mods', 'data/labelfreemods.txt', '--instrument'])
         params.append('velos' if 'elos' in mzml.rawfile.producer.name else 'qe')
-        stagefiles = {'--mzml': (mzml.servershare.name, mzml.path, mzml.filename),
+        stagefiles = {'--mzml': [(mzml.servershare.name, mzml.path, mzml.filename)],
                     # FIXME temp keep both --mzml and --raw, until no longer using old QC
-        	      '--raw': (mzml.servershare.name, mzml.path, mzml.filename),
-                      '--db': (dbfn.servershare.name, dbfn.path, dbfn.filename)}
+        	      '--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
+                      '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
                'rf_id': mzml.rawfile_id,
@@ -163,7 +163,12 @@ class RunNextflowWorkflow(BaseJob):
         stagefiles = {}
         for flag, sf_id in kwargs['inputs']['singlefiles'].items():
             sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
-            stagefiles[flag] = (sf.servershare.name, sf.path, sf.filename)
+            stagefiles[flag] = [(sf.servershare.name, sf.path, sf.filename)]
+        for flag, sf_ids in kwargs['inputs']['multifiles'].items():
+            stagefiles[flag] = []
+            for sf_id in sf_ids:
+                sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
+                stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
         mzmls = [(x.servershare.name, x.path, x.filename, kwargs['setnames'][str(x.id)],
                   kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)], kwargs['fractions'].get(str(x.id), False)) for x in
                  self.getfiles_query(**kwargs)]

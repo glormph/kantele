@@ -210,8 +210,9 @@ def start_analysis(request):
     analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
     analysis.save()
     am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
-    params = {'singlefiles': {nf: fnid for nf, fnid in req['files'].items()},
-              'params': [y for x in req['params'].values() for y in x]}
+    params = {'singlefiles': {nf: fnid for nf, fnid in req['singlefiles'].items()},
+            'multifiles': {nf: fnids for fn, fnids in req['multifiles'].items()},
+            'params': [y for x in req['params'].values() for y in x]}
     if 'sampletable' in req and len(req['sampletable']):
         params['sampletable'] = req['sampletable']
     arg_dsids = [int(x) for x in req['dsids']]
