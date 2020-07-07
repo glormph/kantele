@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from analysis.models import (NextflowWfVersion, NextflowWorkflow, Workflow, ParameterSet,
                              Param, FileParam, PsetParam, PsetFileParam, PsetMultiFileParam,
-                             PsetPredefFileParam, WorkflowType, Proteowizard)
+                             ParamOption, PsetPredefFileParam, WorkflowType, Proteowizard)
 
 
 admin.site.register(NextflowWfVersion)
@@ -15,5 +15,6 @@ admin.site.register(PsetFileParam)
 admin.site.register(PsetMultiFileParam)
 admin.site.register(PsetPredefFileParam)
 admin.site.register(Param)
+admin.site.register(ParamOption)
 admin.site.register(FileParam)
 admin.site.register(Proteowizard)

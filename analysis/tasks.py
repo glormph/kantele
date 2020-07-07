@@ -217,7 +217,10 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_ver
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             # set/plate/fraction in LC runs are channel/samplename
-            mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3])
+            if len(fn) > 6 and fn[6]:
+                mzstr = '{fpath}\{inst}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3], inst=fn[6])
+            else:
+                mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, fn[2]), setn=fn[3])
             if fn[4]:  # if a plate is speced, use plate and fraction if they are speced
                 mzstr = '{ms}\t{pl}'.format(ms=mzstr, pl=fn[4])
                 if len(fn) > 5 and fn[5]:

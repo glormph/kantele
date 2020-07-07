@@ -154,7 +154,8 @@ class RunNextflowWorkflow(BaseJob):
     """
 
     def getfiles_query(self, **kwargs):
-        return rm.StoredFile.objects.filter(pk__in=kwargs['fractions'].keys())
+        return rm.StoredFile.objects.filter(pk__in=kwargs['fractions'].keys()).select_related(
+                'servershare', 'rawfile__producer__msinstrument__instrumenttype')
 
     def process(self, **kwargs):
         analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow__shortname').get(pk=kwargs['analysis_id'])
@@ -170,8 +171,10 @@ class RunNextflowWorkflow(BaseJob):
                 sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
         mzmls = [(x.servershare.name, x.path, x.filename, kwargs['setnames'][str(x.id)],
-                  kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)], kwargs['fractions'].get(str(x.id), False)) for x in
-                 self.getfiles_query(**kwargs)]
+                  kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)],
+                  kwargs['fractions'].get(str(x.id), False),
+                  x.rawfile.producer.msinstrument.instrumenttype.name if nfwf.kanteleanalysis_version == 2 else False,
+                  ) for x in self.getfiles_query(**kwargs)]
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,

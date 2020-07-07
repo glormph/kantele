@@ -142,7 +142,6 @@ def get_workflow_versioned(request):
     files = wf.paramset.psetfileparam_set.select_related('param')
     multifiles = wf.paramset.psetmultifileparam_set.select_related('param')
     fixedfiles = wf.paramset.psetpredeffileparam_set.select_related('libfile__sfile')
-    flags = params.filter(param__ptype='flag')
     ftypes = [x['param__filetype_id'] for x in files.values('param__filetype_id').distinct()]
     ftypes.extend([x['param__filetype_id'] for x in multifiles.values('param__filetype_id').distinct()])
     ftypes = set(ftypes)
@@ -152,8 +151,10 @@ def get_workflow_versioned(request):
         sfile__filetype__in=ftypes)]
     selectable_files.extend(userfiles)
     resp = {
-       'invisible_flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=False)}, 
-       'flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=True)},
+       'flags': {f.param.nfparam: f.param.name for f in params.filter(param__ptype='flag', param__visible=True)},
+       'multicheck': [{'nf': p.param.nfparam, 'name': p.param.name,
+           'opts': {po.value: po.name for po in p.param.paramoption_set.all()}}
+           for p in params.filter(param__ptype='multi', param__visible=True)],
        'fileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
            'ftype': f.param.filetype_id, 
            'allow_resultfile': f.allow_resultfiles} for f in files],
@@ -212,7 +213,8 @@ def start_analysis(request):
     am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
     params = {'singlefiles': {nf: fnid for nf, fnid in req['singlefiles'].items()},
             'multifiles': {nf: fnids for fn, fnids in req['multifiles'].items()},
-            'params': [y for x in req['params'].values() for y in x]}
+            'params': req['params']['flags']}
+    params['params'].extend([multip for p, vals in req['multi'].items() for multip in [p, ';'.join(vals)]])
     if 'sampletable' in req and len(req['sampletable']):
         params['sampletable'] = req['sampletable']
     arg_dsids = [int(x) for x in req['dsids']]

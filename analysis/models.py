@@ -40,6 +40,15 @@ class Param(models.Model):
         return self.name
 
 
+class ParamOption(models.Model):
+    param = models.ForeignKey(Param)
+    name = models.TextField()
+    value = models.TextField()
+
+    def __str__(self):
+        return '{} - {}'.format(self.param.name, self.name)
+
+
 class ParameterSet(models.Model):
     name = models.TextField()
 

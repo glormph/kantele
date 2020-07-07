@@ -44,6 +44,7 @@ let config = {
   wfversion: false,
   analysisname: '',
   flags: [],
+  multicheck: [],
   fileparams: {},
   multifileparams: {},
   v1: false,
@@ -73,7 +74,7 @@ function validate() {
 		notif.errors['You must select a workflow version'] = 1;
 	}
   Object.values(dsets).forEach(ds => {
-    if (config.v1 && config.version_dep.v1.dtype.toLowerCase() !== 'labelcheck' && !ds.filesaresets && !ds.setname) {
+    if (config.version_dep.v1.dtype.toLowerCase() !== 'labelcheck' && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
     } else if (ds.filesaresets) {
       if (ds.files.filter(fn => !fn.setname).length) {
@@ -129,7 +130,10 @@ async function runAnalysis() {
     nfwfvid: config.wfversion.id,
     analysisname: `${allwfs[config.wfid].wftype}_${config.analysisname}`,
     strips: {},
-    params: {flags: config.flags},
+    params: {
+      flags: config.flags,
+      multi: config.multicheck.reduce((acc, x) => {acc[x[0]].push(x[1]); return acc}, Object.fromEntries(config.multicheck.map(x => [x[0], []]))),
+    },
   };
   if (config.v1) {
     post.params.inst = ['--instrument', config.version_dep.v1.instype];
@@ -139,14 +143,19 @@ async function runAnalysis() {
   Object.values(dsets).forEach(ds => {
     post.strips[ds.id] = ds.hr ? ds.hr : ds.prefrac ? 'unknown_plate' : false
   })
-  // general denoms = {set1: [126, 127], set2: [128, 129]}
-  let denoms = Object.fromEntries(Object.entries(isoquants).map(([sname, isoq]) => 
-    [sname, Object.entries(isoq.denoms).filter(([ch, val]) => val).map(([ch, val]) => ch)]
-   ))
-  // API v1: denoms: 'set1:126:127 set2:128:129'
-  denoms = Object.entries(denoms).filter(([sn, chs]) => chs.length > 0).map(([sname, chs]) => `${sname}:${chs.join(':')}`).join(' ')
-  if (denoms.length > 0 && !mediansweep) {
-    post.params.denoms = ['--denoms', denoms];
+  // general denoms = [[set1, [126, 127], tmt10plex], [set2, [128, 129], tmt6plex]]
+  let denoms = Object.entries(isoquants).map(([sname, isoq]) => 
+    [sname, Object.entries(isoq.denoms).filter(([ch, val]) => val).map(([ch, val]) => ch), isoq.chemistry]
+   )
+  // TODO This filters sets without denoms, possibly change this for when not using any (e.g. intensities instead)
+  denoms = denoms.filter(([sn, chs, chem]) => chs.length > 0)
+  // mediansweep is only active at 1-set analyses, otherwise it is supposed to not make sense, so we can have global flag
+  if (denoms.length && !mediansweep && config.v1) {
+    // API v1: denoms: 'set1:126:127 set2:128:129'
+    post.params.denoms = ['--denoms', denoms.map(([sname, chs, chem]) => `${sname}:${chs.join(':')}`).join(' ')];
+  } else if (denoms.length && !mediansweep && !config.v1) {
+    // API v2: isobaric: 'set1:tmt10plex:126:127 set2:itraq8plex:114'
+    post.params.denoms = ['--isobaric', denoms.map(([sname, chs, chem]) => `${sname}:${chem}:${chs.join(':')}`).join(' ')]
   }
 
   // sampletable [[ch, sname, groupname], [ch2, sname, samplename, groupname], ...]
@@ -281,21 +290,28 @@ function sortChannels(channels) {
 function updateIsoquant() {
   // Add new set things if necessary
   Object.values(dsets).forEach(ds => {
-    if (!(ds.setname in isoquants)) {
+    const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
+    notif.errors[errmsg] = 0;
+    if (ds.setname && !(ds.setname in isoquants)) {
       isoquants[ds.setname] = {
+        chemistry: ds.details.qtypeshort,
         channels: ds.details.channels,
         samplegroups: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, ''])),
         denoms: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, false]))
       };
+    } else if (ds.setname && ds.setname in isoquants) {
+      if (isoquants[ds.setname].channels !== ds.details.channels) {
+        notif.errors[errmsg] = 1;
+      }
     }
   });
   // Remove old sets from isoquants if necessary
-  const dset_sets = new Set(Object.values(dsets).map(ds => ds.setname));
+  const dset_sets = new Set(Object.values(dsets).map(ds => ds.setname).filter(x => x));
   Object.keys(isoquants).filter(x => !(dset_sets.has(x))).forEach(x => {
     delete(isoquants[x])
   });
+  isoquants = Object.assign({}, isoquants);  // assign so svelte notices (doesnt act on deletion)
 }
-
 
 onMount(async() => {
   frregex = Object.fromEntries(dsids.map(dsid => [dsid, '.*fr([0-9]+).*mzML$']));
@@ -508,16 +524,29 @@ onMount(async() => {
     {/each}
   </div>
   {/if}
-  <!---------- ##################### -->
 
   <div class="box">
     <div class="title is-5">Workflow parameters</div>
+    {#each wf.multicheck as {nf, name, opts}}
+    <div class="field">
+      <label class="label">{name} <code>{nf}</code></label> 
+      {#each Object.entries(opts) as opt}
+      <div>
+        <input value={[nf, opt[0]]} bind:group={config.multicheck} type="checkbox">
+        <label class="checkbox">{opt[1]}</label>
+      </div>
+      {/each}
+    </div>
+    {/each}
+
+    <label class="label">Config flags</label>
     {#each Object.entries(wf.flags) as flag}
     <div>
       <input value={flag[0]} bind:group={config.flags} type="checkbox">
       <label class="checkbox">{flag[1]}</label>: <code>{flag[0]}</code>
     </div>
     {/each}
+
     {#if !('flags' in wf) || !(Object.keys(wf.flags).length)}
     <div>No parameters for this workflow</div>
     {/if}
