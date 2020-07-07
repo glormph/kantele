@@ -88,6 +88,14 @@ class PsetFileParam(models.Model):
         return '{} -- {}'.format(self.pset.name, self.param.name)
 
 
+class PsetMultiFileParam(models.Model):
+    param = models.ForeignKey(FileParam)
+    allow_resultfiles = models.BooleanField(default=False)
+    pset = models.ForeignKey(ParameterSet)
+
+    def __str__(self):
+        return '{} -- {}'.format(self.pset.name, self.param.name)
+
 # TODO get rid of predefined files, put them in some workflow config file instead
 class PsetPredefFileParam(models.Model):
     param = models.ForeignKey(FileParam)

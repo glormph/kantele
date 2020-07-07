@@ -45,6 +45,7 @@ let config = {
   analysisname: '',
   flags: [],
   fileparams: {},
+  multifileparams: {},
   v1: false,
   v2: false,
   version_dep: {
@@ -186,6 +187,9 @@ async function fetchWorkflow() {
     config.v1 = wf.analysisapi === 1;
     config.v2 = wf.analysisapi === 2;
   }
+  if (wf.multifileparams.length) {
+    config.multifileparams = Object.fromEntries(wf.multifileparams.map(x => [x.nf, {0: ''}]));
+  }
   fetchDatasetDetails();
 }
 
@@ -235,6 +239,21 @@ async function fetchDatasetDetails() {
       config.version_dep.v1.instype = instypes.keys().next().value;
     }
   }
+}
+
+function removeMultifile(nf, key) {
+  delete(config.multifileparams[nf][key]);
+  let newmfp = {}
+  Object.keys(config.multifileparams[nf]).forEach((k, ix) => {
+    newmfp[ix] = config.multifileparams[nf][k]
+  });
+  config.multifileparams[nf] = newmfp;
+}
+
+function addMultifile(nf) {
+  const keyints = Object.keys(config.multifileparams[nf]).map(x => +x);
+  const newkey = keyints.length ? Math.max(...keyints) + 1 : 0;
+  config.multifileparams[nf][newkey] = '';
 }
 
 function matchFractions(ds) {
@@ -504,6 +523,39 @@ onMount(async() => {
 
   <div class="box">
     <div class="title is-5">Input files</div>
+    {#each wf.multifileparams as filep}
+      <label class="label">{filep.name}
+        <span class="icon is-small">
+          <a on:click={e => addMultifile(filep.nf)} title="Add another file"><i class="fa fa-plus-square"></i></a>
+        </span>
+      </label>
+      {#each Object.keys(config.multifileparams[filep.nf]) as mfpkey}
+      <label class="label is-small">
+        File nr. {mfpkey} 
+        <span class="icon is-small">
+          <a on:click={e => removeMultifile(filep.nf, mfpkey)} title="Remove this file"><i class="fa fa-trash-alt"></i></a>
+        </span>
+      </label>
+        <div class="field">
+            <div class="select">
+              <select bind:value={config.multifileparams[filep.nf][mfpkey]}>
+                <option disabled value="">Please select one</option>
+                <option value="">Do not use this parameter</option>
+                {#if filep.ftype in wf.libfiles}
+                {#each wf.libfiles[filep.ftype] as libfn}
+                <option value={libfn.id}>{libfn.name} -- {libfn.desc}</option>
+                {/each}
+                {/if}
+                {#if filep.allow_resultfile}
+                {#each wf.prev_resultfiles as resfile}
+                <option value={resfile.id}>{resfile.analysisname} -- {resfile.analysisdate} -- {resfile.name}</option>
+                {/each}
+                {/if}
+              </select>
+            </div>
+              </div>
+      {/each}
+    {/each}
     {#each wf.fileparams as filep}
     <div class="field">
       <label class="label">{filep.name}</label>

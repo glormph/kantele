@@ -6,7 +6,6 @@ from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, Http
 from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
-from django.db.models import Subquery
 
 from kantele import settings
 from analysis import models as am
@@ -141,35 +140,36 @@ def get_workflow_versioned(request):
         return HttpResponseNotFound()
     params = wf.paramset.psetparam_set.select_related('param')
     files = wf.paramset.psetfileparam_set.select_related('param')
+    multifiles = wf.paramset.psetmultifileparam_set.select_related('param')
     fixedfiles = wf.paramset.psetpredeffileparam_set.select_related('libfile__sfile')
     flags = params.filter(param__ptype='flag')
-    ftypes = files.values('param__filetype__name').distinct()
+    ftypes = [x['param__filetype_id'] for x in files.values('param__filetype_id').distinct()]
+    ftypes.extend([x['param__filetype_id'] for x in multifiles.values('param__filetype_id').distinct()])
+    ftypes = set(ftypes)
     selectable_files = [x for x in am.LibraryFile.objects.select_related('sfile__filetype').filter(
-        sfile__filetype__in=Subquery(files.values('param__filetype')))]
+        sfile__filetype__in=ftypes)]
     userfiles = [x for x in rm.UserFile.objects.select_related('sfile__filetype').filter(
-        sfile__filetype__in=Subquery(files.values('param__filetype')))]
+        sfile__filetype__in=ftypes)]
     selectable_files.extend(userfiles)
-#    versions = [{'name': wfv.update, 'id': wfv.id, 'latest': False,
-#                 'date': datetime.strftime(wfv.date, '%Y-%m-%d'),
-#                 'analysisapi': wfv.kanteleanalysis_version} for wfv in
-#                am.NextflowWfVersion.objects.filter(nfworkflow_id=wf.nfworkflow_id).order_by('pk')][::-1]
-#    versions[0]['latest'] = True
     resp = {
        'invisible_flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=False)}, 
        'flags': {f.param.nfparam: f.param.name for f in flags.filter(param__visible=True)},
        'fileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
-           'ftype': f.param.filetype.name, 
+           'ftype': f.param.filetype_id, 
            'allow_resultfile': f.allow_resultfiles} for f in files],
+       'multifileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
+           'ftype': f.param.filetype_id, 
+           'allow_resultfile': f.allow_resultfiles} for f in multifiles],
        'fixedfileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
                        'fn': f.libfile.sfile.filename,
                        'id': f.libfile.sfile.id,
                        'desc': f.libfile.description}
                       for f in fixedfiles],
         'analysisapi': wf.kanteleanalysis_version,
-        'libfiles': {ft['param__filetype__name']: [{'id': x.sfile.id, 'desc': x.description,
+        'libfiles': {ft: [{'id': x.sfile.id, 'desc': x.description,
                                            'name': x.sfile.filename}
                                           for x in selectable_files 
-                                          if x.sfile.filetype.name == ft['param__filetype__name']]
+                                          if x.sfile.filetype_id == ft]
                   for ft in ftypes}
     }
     # Get files from earlier analyses on same datasets
