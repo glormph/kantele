@@ -143,7 +143,7 @@ async function runAnalysis() {
     [sname, Object.entries(isoq.denoms).filter(([ch, val]) => val).map(([ch, val]) => ch), isoq.chemistry]
    )
   // TODO This filters sets without denoms, possibly change this for when not using any (e.g. intensities instead)
-  if (!mediansweep && denoms.filter(([sn, chs, chem]) => !chs.length)) {
+  if (denoms.length && !mediansweep && denoms.filter(([sn, chs, chem]) => !chs.length).length) {
     notif.errors['Median sweep not used but not all sets have denominator, cannot run this'] = 1;
   }
   // mediansweep is only active at 1-set analyses, otherwise it is supposed to not make sense, so we can have global flag
