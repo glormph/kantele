@@ -447,6 +447,7 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
             'storestate': storestate,
             'fn_ids': [x.id for x in dsfiles],
             'ptype': dataset.runname.experiment.project.projtype.ptype.name,
+            'prefrac': False,
         }
         if showjobs:
             jobmap = get_ds_jobs(dbdsets)
@@ -517,7 +518,7 @@ def get_analysis_info(request, nfs_id):
                    'repo': nfs.nfworkflow.nfworkflow.repo},
 #             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
-            'nrfiles': fjobs.count(),
+            'nrfiles': fjobs.distinct('storedfile__rawfile').count(),
             'storage_locs': [{'server': x.servershare.uri, 'share': x.servershare.name, 'path': x.path}
                 for x in storeloc.values()],
             'log': logentry, 
