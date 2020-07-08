@@ -39,12 +39,12 @@ Test
 let isoquants = {};
 let mediansweep = false;
 
+let multicheck = [];
 let config = {
   wfid: false,
   wfversion: false,
   analysisname: '',
   flags: [],
-  multicheck: [],
   fileparams: {},
   inputparams: {},
   multifileparams: {},
@@ -133,8 +133,8 @@ async function runAnalysis() {
     strips: {},
     params: {
       flags: config.flags,
-      inputparams: Object.fromEntries(config.inputparams).flat(),
-      multi: config.multicheck.reduce((acc, x) => {acc[x[0]].push(x[1]); return acc}, Object.fromEntries(config.multicheck.map(x => [x[0], []]))),
+      inputparams: Object.entries(config.inputparams).filter(([k,v]) => v).flat(),
+      multi: multicheck.reduce((acc, x) => {acc[x[0]].push(x[1]); return acc}, Object.fromEntries(multicheck.map(x => [x[0], []]))),
     },
   };
   if (config.v1) {
@@ -150,7 +150,9 @@ async function runAnalysis() {
     [sname, Object.entries(isoq.denoms).filter(([ch, val]) => val).map(([ch, val]) => ch), isoq.chemistry]
    )
   // TODO This filters sets without denoms, possibly change this for when not using any (e.g. intensities instead)
-  denoms = denoms.filter(([sn, chs, chem]) => chs.length > 0)
+  if (!mediansweep && denoms.filter(([sn, chs, chem]) => !chs.length)) {
+    notif.errors['Median sweep not used but not all sets have denominator, cannot run this'] = 1;
+  }
   // mediansweep is only active at 1-set analyses, otherwise it is supposed to not make sense, so we can have global flag
   if (denoms.length && !mediansweep && config.v1) {
     // API v1: denoms: 'set1:126:127 set2:128:129'
@@ -172,16 +174,18 @@ async function runAnalysis() {
   post.sampletable = sampletable.map(row => row.slice(0, 3).concat(row[3] ? row[3] : 'X__POOL'));
    
   // Post the payload
-  notif.messages[`Posting analysis job for ${this.analysisname}`] = 1;
-  const resp = await postJSON('/analysis/run/', post);
-  if (resp.error) {
-    notif.errors[resp.error] = 1;
-    if ('link' in resp) {
-      notif.links[resp.link] = 1;
+  if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
+    notif.messages[`Posting analysis job for ${this.analysisname}`] = 1;
+    const resp = await postJSON('/analysis/run/', post);
+    if (resp.error) {
+      notif.errors[resp.error] = 1;
+      if ('link' in resp) {
+        notif.links[resp.link] = 1;
+      }
+    } else {
+      window.location.href = '/?tab=searches';
     }
-  } else {
-	  window.location.href = '/?tab=searches';
-	}
+  }
   postingAnalysis = false;
   runButtonActive = true;
 }
@@ -536,7 +540,7 @@ onMount(async() => {
       <label class="label">{name} <code>{nf}</code></label> 
       {#each Object.entries(opts) as opt}
       <div>
-        <input value={[nf, opt[0]]} bind:group={config.multicheck} type="checkbox">
+        <input value={[nf, opt[0]]} bind:group={multicheck} type="checkbox">
         <label class="checkbox">{opt[1]}</label>
       </div>
       {/each}
