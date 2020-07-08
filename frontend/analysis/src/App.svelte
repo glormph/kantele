@@ -155,7 +155,9 @@ async function runAnalysis() {
     post.params.denoms = ['--denoms', denoms.map(([sname, chs, chem]) => `${sname}:${chs.join(':')}`).join(' ')];
   } else if (denoms.length && !mediansweep && !config.v1) {
     // API v2: isobaric: 'set1:tmt10plex:126:127 set2:itraq8plex:114'
-    post.params.denoms = ['--isobaric', denoms.map(([sname, chs, chem]) => `${sname}:${chem}:${chs.join(':')}`).join(' ')]
+    post.params.denoms = ['--isobaric', denoms.map(([sname, chs, chem]) => `${sname}:${chem}:${chs.join(':')}`).join(' ')];
+  } else if (mediansweep) {
+    post.params.denoms = ['--isobaric', `${denoms[0][0]}:${denoms[0][2]}:sweep`];
   }
 
   // sampletable [[ch, sname, groupname], [ch2, sname, samplename, groupname], ...]
