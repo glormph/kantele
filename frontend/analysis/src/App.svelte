@@ -15,26 +15,19 @@ let wf = false;
 let wforder = [];
 let dsets = {};
 
-/* API v1:
+/*
+NF workflow API v1:
 - no mixed isobaric
 - no mixed instruments
 - mixed dtype is ok i guess, but stupid
-- use invisible flags (check that stuff, deqmspossible, nf1901, nf-coremarker: could ALL be removed?)
-  Can at least remove from passing to NF pipe
-- isobaric passing to pipeline in a certain way (flags, sets etc)
-- predefined files in old version
-- version switcher for new version
+- predefined files exist
+- isobaric spec as --isobaric tmt10plex --denoms set1:126 set2:127N
  
-Test
-- normal hirief
-- labelfree?
-- filesaresets (eg LG)
-- labelcheck
-- 6FT, vardb
-- nf-core version config
+NF workflow API v2:
+- mods / locptms via multi-checkbox
+- DBs via multi-file interface
+- isobaric spec as --isobaric set1:tmt10plex:126 set2:6plex:sweep
 */
-
-// API v1 instype is not important in v2
 
 let isoquants = {};
 let mediansweep = false;
