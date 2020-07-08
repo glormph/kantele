@@ -151,27 +151,28 @@ def get_workflow_versioned(request):
         sfile__filetype__in=ftypes)]
     selectable_files.extend(userfiles)
     resp = {
-       'flags': {f.param.nfparam: f.param.name for f in params.filter(param__ptype='flag', param__visible=True)},
-       'multicheck': [{'nf': p.param.nfparam, 'name': p.param.name,
-           'opts': {po.value: po.name for po in p.param.paramoption_set.all()}}
-           for p in params.filter(param__ptype='multi', param__visible=True)],
-       'fileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
-           'ftype': f.param.filetype_id, 
-           'allow_resultfile': f.allow_resultfiles} for f in files],
-       'multifileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
-           'ftype': f.param.filetype_id, 
-           'allow_resultfile': f.allow_resultfiles} for f in multifiles],
-       'fixedfileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
-                       'fn': f.libfile.sfile.filename,
-                       'id': f.libfile.sfile.id,
-                       'desc': f.libfile.description}
-                      for f in fixedfiles],
-        'analysisapi': wf.kanteleanalysis_version,
-        'libfiles': {ft: [{'id': x.sfile.id, 'desc': x.description,
-                                           'name': x.sfile.filename}
-                                          for x in selectable_files 
-                                          if x.sfile.filetype_id == ft]
-                  for ft in ftypes}
+            'analysisapi': wf.kanteleanalysis_version,
+            'flags': [{'nf': f.param.nfparam, 'name': f.param.name} 
+                for f in params.filter(param__ptype='flag', param__visible=True)],
+            'numparams': [{'nf': p.param.nfparam, 'name': p.param.name}
+                for p in params.filter(param__ptype='number')],
+            'multicheck': [{'nf': p.param.nfparam, 'name': p.param.name,
+                'opts': {po.value: po.name for po in p.param.paramoption_set.all()}}
+                for p in params.filter(param__ptype='multi', param__visible=True)],
+            'fileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
+                'ftype': f.param.filetype_id, 
+                'allow_resultfile': f.allow_resultfiles} for f in files],
+            'multifileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
+                'ftype': f.param.filetype_id, 
+                'allow_resultfile': f.allow_resultfiles} for f in multifiles],
+            'fixedfileparams': [{'name': f.param.name, 'nf': f.param.nfparam,
+                'fn': f.libfile.sfile.filename,
+                'id': f.libfile.sfile.id,
+                'desc': f.libfile.description}
+                for f in fixedfiles],
+            'libfiles': {ft: [{'id': x.sfile.id, 'desc': x.description,
+                'name': x.sfile.filename}
+                for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}
     }
     # Get files from earlier analyses on same datasets
     # double filtering gets first all DsS records that that have an analysis with ANY of the records,
@@ -212,9 +213,9 @@ def start_analysis(request):
     analysis.save()
     am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=x, analysis=analysis) for x in req['dsids']])
     params = {'singlefiles': {nf: fnid for nf, fnid in req['singlefiles'].items()},
-            'multifiles': {nf: fnids for fn, fnids in req['multifiles'].items()},
-            'params': req['params']['flags']}
-    params['params'].extend([multip for p, vals in req['multi'].items() for multip in [p, ';'.join(vals)]])
+            'multifiles': {nf: fnids for nf, fnids in req['multifiles'].items()},
+            'params': [multip for p, vals in req['params'].pop('multi').items() for multip in [p, ';'.join(vals)]]}
+    params['params'].extend([y for x in req['params'].values() for y in x])
     if 'sampletable' in req and len(req['sampletable']):
         params['sampletable'] = req['sampletable']
     arg_dsids = [int(x) for x in req['dsids']]

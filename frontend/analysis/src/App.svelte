@@ -46,6 +46,7 @@ let config = {
   flags: [],
   multicheck: [],
   fileparams: {},
+  inputparams: {},
   multifileparams: {},
   v1: false,
   v2: false,
@@ -132,6 +133,7 @@ async function runAnalysis() {
     strips: {},
     params: {
       flags: config.flags,
+      inputparams: Object.fromEntries(config.inputparams).flat(),
       multi: config.multicheck.reduce((acc, x) => {acc[x[0]].push(x[1]); return acc}, Object.fromEntries(config.multicheck.map(x => [x[0], []]))),
     },
   };
@@ -541,17 +543,21 @@ onMount(async() => {
     </div>
     {/each}
 
-    <label class="label">Config flags</label>
-    {#each Object.entries(wf.flags) as flag}
-    <div>
-      <input value={flag[0]} bind:group={config.flags} type="checkbox">
-      <label class="checkbox">{flag[1]}</label>: <code>{flag[0]}</code>
+    {#each wf.numparams as {nf, name, type}}
+    <div class="field">
+      <label class="label">{name} <code>{nf}</code></label> 
+      <input type="number" class="input" bind:value={config.inputparams[nf]}>
     </div>
     {/each}
 
-    {#if !('flags' in wf) || !(Object.keys(wf.flags).length)}
-    <div>No parameters for this workflow</div>
-    {/if}
+    <label class="label">Config flags</label>
+    {#each wf.flags as {nf, name}}
+    <div>
+      <input value={nf} bind:group={config.flags} type="checkbox">
+      <label class="checkbox">{name}</label>: <code>{nf}</code>
+    </div>
+    {/each}
+
 	</div>
 
   <div class="box">
