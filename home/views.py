@@ -484,7 +484,10 @@ def get_analysis_invocation(job):
         else:
             desc = ''
         fnmap[pk] = [fn[0], desc]
-    invoc = {'files': [[x[0], *fnmap[x[1]]] for x in params['singlefiles'].items()]}
+    invoc = {'files': [[x[0], *fnmap[x[1]]] for x in params['singlefiles'].items()],
+            'multifiles': [[x[0], *[y['filename'] for y in filemodels.StoredFile.objects.filter(pk__in=x[1]).values('filename')]] 
+                for x in params['multifiles'].items()],
+            }
     invoc['params'] = params['params']
     if 'sampletable' in params:
         invoc['sampletable'] = [x for x in params['sampletable']]

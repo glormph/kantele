@@ -63,10 +63,9 @@ onMount(async() => {
     {/each}
     </p>
 
-    <h6 class="title is-6">Output</h6>
-    {#each analysis.servedfiles as linkname}
-    <div><a href="analysis/showfile/{linkname[0]}" target="_blank">{linkname[1]}</a></div>
-    {/each}
+
+    <div class="content">
+    <p class="has-text-weight-bold">Output</p>
     {#each analysis.storage_locs as {server, path, share}}
     <div class="tags has-addons">
       <span class="tag">{server}</span>
@@ -74,35 +73,59 @@ onMount(async() => {
       &nbsp;{path}
     </div>
     {/each}
-
-    <h6 class="title is-6">Pipeline parameters</h6>
-    {#each analysis.invocation.files as param}
-    <p><code>{param[0]}</code>: {param[2]} ( {param[1]} )</p>
+    {#each analysis.servedfiles as linkname}
+    <div><a href="analysis/showfile/{linkname[0]}" target="_blank">{linkname[1]}</a></div>
     {/each}
-    <p>Other parameters: <code>{analysis.invocation.params.join(' ')}<code></p>
+    </div>
 
-    <h6 class="title is-6">Samples:</h6> 
-    {#if analysis.invocation.sampletable}
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Channel</th>
-          <th>Sample set</th>
-          <th>Sample name</th>
-          <th>Sample group</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each analysis.invocation.sampletable as sample}
-        <tr>
-          {#each sample as txt}
-          <td>{txt}</td>
-          {/each}
-        </tr>
+    <div class="content">
+      <p class="has-text-weight-bold">Input files</p>
+      {#each analysis.invocation.files as param}
+      <p><code>{param[0]}</code> {param[2]} ( {param[1]} )</p>
+      {/each}
+      {#each analysis.invocation.multifiles as param}
+      <div>
+        <code>{param[0]}</code> 
+        {#if param.slice(1).length === 1}
+        {param[1]}
+        {:else}
+        {#each param.slice(1) as fn}
+        <div>{fn}</div>
         {/each}
-      </tbody>
-    </table>
-    {/if}
+        {/if}
+      </div>
+      {/each}
+    </div>
+
+    <div class="content">
+      <h6 class="title is-6">Other parameters</h6>
+      <code>{analysis.invocation.params.join(' ')}</code>
+    </div>
+
+    <div class="content">
+      <h6 class="title is-6">Samples:</h6> 
+      {#if analysis.invocation.sampletable}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Channel</th>
+            <th>Sample set</th>
+            <th>Sample name</th>
+            <th>Sample group</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each analysis.invocation.sampletable as sample}
+          <tr>
+            {#each sample as txt}
+            <td>{txt}</td>
+            {/each}
+          </tr>
+          {/each}
+        </tbody>
+      </table>
+      {/if}
+    </div>
 
   {/each}
 </DetailBox>
