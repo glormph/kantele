@@ -292,7 +292,8 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
     print('Staging files to {}'.format(stagedir))
     try:
         params = stage_files(stagedir, stagefiles, params)
-        stage_files(stagedir, {'mzmls': mzmls})
+        if len(mzmls):
+            stage_files(stagedir, {'mzmls': mzmls})
     except Exception:
         taskfail_update_db(taskid, 'Could not stage files for analysis')
         raise

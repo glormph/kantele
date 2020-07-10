@@ -185,10 +185,11 @@ class RunNextflowWorkflow(BaseJob):
                'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger'
                }
         profiles = ['standard', 'docker', 'lehtio']
-        kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
+        params = [str(x) for x in kwargs['inputs']['params']]
+        params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
         if 'sampletable' in kwargs['inputs']:
-            kwargs['inputs']['params'].extend(['SAMPLETABLE', kwargs['inputs']['sampletable']])
-        self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
+            params.extend(['SAMPLETABLE', kwargs['inputs']['sampletable']])
+        self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         # TODO remove this logging
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
         analysis.save()
