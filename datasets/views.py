@@ -1263,7 +1263,7 @@ def save_sampleprep(request):
         return update_sampleprep(data, qtype)
     if data['enzymes']:
         models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
-            dataset_id=dset_id, enzyme_id=x['id']) for x in data['enzymes']])
+            dataset_id=dset_id, enzyme_id=x['id']) for x in data['enzymes'] if x['checked']])
     models.QuantDataset.objects.create(dataset_id=dset_id,
                                        quanttype_id=data['quanttype'])
     if not data['labelfree']:
