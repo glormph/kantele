@@ -178,11 +178,6 @@ def dataset_sampleprep(request, dataset_id):
         # species for dset and mostused ones TODO make sample specific
         response_json['species'] = [{'id': x.species.id, 'linnean': x.species.linnean, 'name': x.species.popname} 
                 for x in models.DatasetSpecies.objects.select_related('species').filter(dataset_id=dataset_id)]
-        response_json['allspecies'] = {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
-            'name': x['species__popname'], 'total': x['total']} for x in 
-            models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
-                ).annotate(total=Count('species__linnean')).order_by('-total')[:5]}
-
         #########
 
         get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
@@ -920,7 +915,12 @@ def empty_sampleprep_json():
             'labelfree_multisample': False,
             'labelfree_singlesample': {'model': '', 'newprojsample': ''},
             'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
-                for x in models.Enzyme.objects.all()]}
+                for x in models.Enzyme.objects.all()],
+            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
+                'name': x['species__popname'], 'total': x['total']} 
+                for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
+            }
 
 
 def fill_admin_selectparam(params, p, value=False):
