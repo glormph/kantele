@@ -269,9 +269,10 @@ def file_transferred(request):
             file_transferred.save()
             jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
         else:
-            print('File already registered as transferred, client asks for new '
-                  'MD5 check after a possible retransfer. Running MD5 check.')
-            jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
+            print('File already registered as transferred')
+            if not file_transferred.checked:
+                print('Transferred file ile not (yet) checked, running MD5 check after a possible retransfer')
+                jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
         return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
     else:
         return HttpResponseNotAllowed(permitted_methods=['POST'])
