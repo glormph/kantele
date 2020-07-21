@@ -33,14 +33,35 @@ def store_longitudinal_qc(data):
         update_qcdata(qcrun, data)
 
 
-def create_newplot(qcrun, qcdata, name):
+def create_newplot(qcrun, qcdata, qcname):
+    # translate names from QC pipeline to plot shortnames,
+    # TODO migrate shortnames so we are in sync with QC pipeline
+    try:
+        name = {
+                'nrpsms': 'psms',
+                'nrscans': 'scans',
+                'nrpeptides': 'peptides',
+                'nr_unique_peptides': 'unique_peptides',
+                'nrproteins': 'proteins',
+                'precursor_errors': 'perror',
+                'msgfscores': 'msgfscore',
+                'retention_times': 'rt',
+                'peptide_areas': 'peparea',
+                'ionmobilities': 'ionmob',
+                }[qcname]
+    except KeyError:
+        name = qcname
     if type(qcdata) == dict and 'q1' in qcdata:
         models.BoxplotData.objects.create(shortname=name, qcrun=qcrun,
                                           upper=qcdata['upper'],
                                           lower=qcdata['lower'],
                                           q1=qcdata['q1'], q2=qcdata['q2'],
                                           q3=qcdata['q3'])
-    else:
+    elif name == 'missed_cleavages':
+        models.LineplotData.objects.bulk_create([models.LineplotData(qcrun=qcrun, value=num_psm, shortname='miscleav{}'.format(num_mc))
+            for num_mc, num_psm in qcdata.items()])
+    elif qcdata:
+        # check if qcdata not false, eg peparea for TIMS
         models.LineplotData.objects.create(qcrun=qcrun, value=qcdata, shortname=name)
 
 

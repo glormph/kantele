@@ -356,27 +356,10 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
         taskfail_update_db(self.request.id)
         raise RuntimeError('Error occurred running QC workflow '
                            '{}'.format(rundir))
-    outfiles = os.listdir(os.path.join(rundir, 'output'))
-    # TODO hardcoded is probably not a good idea
-    qcfiles = {}
-    expect_out = {'sqltable': 'mslookup_db.sqlite', 'psmtable': 'psmtable.txt',
-                  'peptable': 'peptable.txt', 'prottable': 'prottable.txt'}
-    if set(expect_out.values()).difference(outfiles):
-        taskfail_update_db(self.request.id)
-        raise RuntimeError('Ran QC workflow but output files {} not '
-                           'found'.format(set(expect_out.values()).different(outfiles)))
-    qcfiles = {x: os.path.join(rundir, 'output', fn) for x, fn
-               in expect_out.items()}
-    qcreport = qc.calc_longitudinal_qc(qcfiles)
+    with open(os.path.join(rundir, 'output', 'qc.json')) as fp:
+        qcreport = json.load(fp)
+    log_analysis(run['analysis_id'], 'QC Workflow finished')
     postdata.update({'state': 'ok', 'plots': qcreport})
-    fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
-    outfiles_db = register_resultfiles(qcfiles.values())
-    fn_ids = transfer_resultfiles((settings.ANALYSISSHARENAME, run['outdir']), rundir, outfiles_db, fileurl, self.request.id, run['analysis_id'])
-    check_rawfile_resultfiles_match(fn_ids, self.request.id)
-    with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
-        nflog = fp.read()
-    log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
-                 ' cleaning. NF log: \n{}'.format(nflog))
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
@@ -393,7 +376,7 @@ def check_md5(fn_id, ftype_id, apikey=False):
 def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
-    postdata.update({'log': '[{}] - Analysis completed.'.format(
+    postdata.update({'log': '[{}] - Analysis task completed.'.format(
         datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')),
                      'analysis_id': analysis_id})
     update_db(url, json=postdata)
