@@ -17,7 +17,6 @@ from celery import shared_task
 
 from jobs.post import update_db, taskfail_update_db
 from kantele import settings
-from analysis import qc
 from rawstatus.tasks import calc_md5
 
 
