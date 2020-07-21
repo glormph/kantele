@@ -129,7 +129,8 @@ class ConvertDatasetMzml(BaseJob):
             mzsf.save()
             nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
             win_mzmls.append((fn, mzsf))
-        if pwiz.is_docker:
+        if pwiz.is_docker and len(nf_raws):
+            print('Queuing {} raw files for conversion'.format(len(nf_raws)))
             nfwf = NextflowWfVersion.objects.select_related('nfworkflow').get(
                     pk=pwiz.nf_version_id)
             run = {'timestamp': kwargs['timestamp'],
@@ -144,7 +145,7 @@ class ConvertDatasetMzml(BaseJob):
                 if len(p2parse):
                     params.extend(['--{}'.format(pname), ';'.join(p2parse)])
             self.run_tasks.append(((run, params, nf_raws), {'pwiz_id': pwiz.id}))
-        else:
+        elif not pwiz.is_docker and len(win_mzmls):
             options = ['--{}'.format(x) for x in kwargs.get('options', [])]
             filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
             queues = cycle(settings.QUEUES_PWIZ)
@@ -176,17 +177,18 @@ class ConvertDatasetMzml(BaseJob):
             TaskChain.objects.create(task_id=t.id, lasttask=chain_ids[0])
 
     def queue_tasks(self):
-        pwiz_v = self.run_tasks[0][1].get('pwiz_id', '-1')
-        if Proteowizard.objects.filter(pk=pwiz_v, is_docker=True).exists():
-            # checks if dockerized-NF workflow should be queued
-            super().queue_tasks()
-        else:
-            # if not docker/NF -- run on windows box
-            for task in self.run_tasks:
-                args, kwargs = task[0], task[1]
-                alltaskargs, runchain = self.get_mzmlconversion_taskchain(*args)
-                lastnode = chain(*runchain).delay()
-                self.save_task_chain(lastnode, alltaskargs)
+        if len(self.run_tasks):
+            pwiz_v = self.run_tasks[0][1].get('pwiz_id', '-1')
+            if Proteowizard.objects.filter(pk=pwiz_v, is_docker=True).exists():
+                # checks if dockerized-NF workflow should be queued
+                super().queue_tasks()
+            else:
+                # if not docker/NF -- run on windows box
+                for task in self.run_tasks:
+                    args, kwargs = task[0], task[1]
+                    alltaskargs, runchain = self.get_mzmlconversion_taskchain(*args)
+                    lastnode = chain(*runchain).delay()
+                    self.save_task_chain(lastnode, alltaskargs)
 
 
 class ConvertFileMzml(ConvertDatasetMzml):

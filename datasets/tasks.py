@@ -38,8 +38,7 @@ def run_convert_mzml_nf(self, run, params, raws, **kwargs):
     run['runname'] = runname
     baserundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
     rundir = os.path.join(baserundir, runname).replace(' ', '_')
-    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, {}, raws, params)
-    params.extend(['--raws', os.path.join(stagedir, '*.raw')])
+    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, {'--raws': raws}, [], params)
     profiles = 'docker,lehtio' # TODO put in deploy/settings
     try:
         run_nextflow(run, params, rundir, gitwfdir, profiles, '20.01.0')
