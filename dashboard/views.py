@@ -1,9 +1,13 @@
 from django.shortcuts import render
 from django.http import JsonResponse
+from django.db.models import Sum
+from django.db.models.functions import Trunc
 from bokeh.embed import components
 
+from datetime import datetime, timedelta
+
 from analysis.models import AnalysisError, NextflowWfVersion
-from rawstatus.models import Producer
+from rawstatus.models import Producer, RawFile
 from dashboard import qcplots, models
 from kantele import settings
 
@@ -33,9 +37,9 @@ def store_longitudinal_qc(data):
         update_qcdata(qcrun, data)
 
 
-def create_newplot(qcrun, qcdata, qcname):
-    # translate names from QC pipeline to plot shortnames,
-    # TODO migrate shortnames so we are in sync with QC pipeline
+def translate_plotname(qcname):
+    """Translate names from QC pipeline to plot shortnames,
+    TODO migrate shortnames so we are in sync with QC pipeline"""
     try:
         name = {
                 'nrpsms': 'psms',
@@ -51,6 +55,11 @@ def create_newplot(qcrun, qcdata, qcname):
                 }[qcname]
     except KeyError:
         name = qcname
+    return name
+
+
+def create_newplot(qcrun, qcdata, qcname):
+    name = translate_plotname(qcname)
     if type(qcdata) == dict and 'q1' in qcdata:
         models.BoxplotData.objects.create(shortname=name, qcrun=qcrun,
                                           upper=qcdata['upper'],
@@ -65,17 +74,37 @@ def create_newplot(qcrun, qcdata, qcname):
         models.LineplotData.objects.create(qcrun=qcrun, value=qcdata, shortname=name)
 
 
+def get_file_production(request):
+    lastdate = datetime.now() - timedelta(30)
+    proddate = {}
+    for date_instr in RawFile.objects.filter(date__gt=lastdate, producer__msinstrument__isnull=False).annotate(day=Trunc('date', 'day')).values('day', 'producer__name').annotate(sizesum=Sum('size')):
+        day = datetime.strftime(date_instr['day'], '%Y-%m-%d')
+        try:
+            proddate[day][date_instr['producer__name']] = date_instr['sizesum']
+        except KeyError:
+            proddate[day] = {date_instr['producer__name']: date_instr['sizesum']}
+    instruments = {z for x in proddate.values() for z in list(x.keys())}
+    for day, vals in proddate.items():
+        for missing_inst in instruments.difference(vals.keys()):
+            vals[missing_inst] = 0
+    proddate = {'data': [{**{'day': day}, **vals} for day, vals in proddate.items()]}
+    print(proddate)
+    return JsonResponse(proddate)
+    #[{'date': datetime.strftime(x.date, '%Y%m%d'), 
+
+
 def update_qcdata(qcrun, data):
     # FIXME rerun old data on new plots or methods at qc task update --> what happens?
     # also FIXME if no changes in msgf etc do recalculation on the analysed files
     old_plots = {p.shortname: p for p in qcrun.boxplotdata_set.all()}
-    for lpd in qcrun.lineplotdata_set.all():
+    for lpd in qcrun.lineplotdata_set.exclude(shortname__startswith='miscleav'):
         old_plots[lpd.shortname] = lpd
-    for plotname, qcdata in data['plots'].items():
+    for qcname, qcdata in data['plots'].items():
+        name = translate_plotname(qcname)
         try:
-            oldp = old_plots[plotname]
+            oldp = old_plots[name]
         except KeyError:
-            create_newplot(qcrun, qcdata, plotname)
+            create_newplot(qcrun, qcdata, qcname)
         else:
             if type(qcdata) == dict and 'q1' in qcdata:
                 oldp.upper = qcdata['upper']
@@ -84,6 +113,11 @@ def update_qcdata(qcrun, data):
                 oldp.q2 = qcdata['q2']
                 oldp.q3 = qcdata['q3']
                 oldp.save()
+            elif name == 'missed_cleavages':
+                for num_mc, num_psm in qcdata.items():
+                    lpd = models.LineplotData.objects.get(qcrun=qcrun, shortname='miscleav{}'.format(num_mc))
+                    lpd.value = num_psm
+                    lpd.save()
             else:
                 oldp.value = qcdata
                 oldp.save()
@@ -121,15 +155,17 @@ def show_qc(request, instrument_id):
     instrument = Producer.objects.get(pk=instrument_id)
     wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk').id
     dateddata = get_longitud_qcdata(instrument, wf_id)
-    plot = {
+    print(dateddata['peparea'])
+    plots = {
         'amount_peptides': qcplots.timeseries_line(dateddata, ['peptides', 'proteins', 'unique_peptides']),
         'amount_psms': qcplots.timeseries_line(dateddata, ['scans', 'psms', 'miscleav1', 'miscleav2']),
         'precursorarea': qcplots.boxplotrange(dateddata, 'peparea'),
+        'fwhm': qcplots.boxplotrange(dateddata, 'fwhms'),
         'prec_error': qcplots.boxplotrange(dateddata, 'perror'),
         'msgfscore': qcplots.boxplotrange(dateddata, 'msgfscore'),
         'rt': qcplots.boxplotrange(dateddata, 'rt'),
+        'ionmob': qcplots.boxplotrange(dateddata, 'ionmob'),
         }
-    if 'ionmob' in dateddata:
-        plot['ionmob'] = qcplots.boxplotrange(dateddata, 'ionmob')
-    script, div = components(plot, wrap_script=False, wrap_plot_info=False)
+    plots = {k: v for k, v in plots.items() if v}
+    script, div = components(plots, wrap_script=False, wrap_plot_info=False)
     return JsonResponse({'bokeh_code': {'script': script, 'div': div}})

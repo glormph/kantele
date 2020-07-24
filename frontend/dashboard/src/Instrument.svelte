@@ -12,6 +12,11 @@ export let bokeh_code;
   <h5 class="title is-5">Peptide precursor areas</h5>
   <div class="bk-plotdiv" id={bokeh_code.div.precursorarea.elementid}></div>
   <hr>
+  {#if bokeh_code.div.fwhm}
+  <h5 class="title is-5">Peak width half max</h5>
+  <div class="bk-plotdiv" id={bokeh_code.div.fwhm.elementid}></div>
+  <hr>
+  {/if}
   {#if 'ionmob' in bokeh_code.div}
   <h5 class="title is-5">Ion mobility</h5>
   <div class="bk-plotdiv" id={bokeh_code.div.ionmob.elementid}></div>

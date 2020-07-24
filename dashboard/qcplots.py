@@ -11,7 +11,10 @@ def boxplotrange(qcdata, qckey):
     width = timedelta(3)
     color = 'lightblue'
     plot = figure(x_axis_type='datetime', height=200, width=300, toolbar_location='above')
-    qcd = qcdata[qckey]
+    try:
+        qcd = qcdata[qckey]
+    except KeyError:
+        return False
     xs = [date for date in qcd]
     ups = [qcd[x]['upper'] for x in xs]
     lows = [qcd[x]['lower'] for x in xs]

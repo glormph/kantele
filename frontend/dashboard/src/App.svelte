@@ -1,9 +1,9 @@
 <script>
 
-import { onMount } from 'svelte';
 import Instrument from './Instrument.svelte'
+import ProdPlot from './ProdPlot.svelte'
 
-let tabshow = 'dash';
+let tabshow = 'prod';
 let qcdata = Object.fromEntries(instruments.map(x => [x[1], {loaded: false}]));
 
 async function showInst(iid) {
@@ -22,8 +22,7 @@ async function reload() {
   if (tabshow.slice(0, 6) === 'instr_') {
     const iid = tabshow.substr(6);
     qcdata[iid].loaded = false;
-    await getInstrumentQC(iid);
-    eval(qcdata[iid].bokeh_code.script);
+    await getInstrumentQC(iid); eval(qcdata[iid].bokeh_code.script);
   }
 }
 
@@ -47,11 +46,9 @@ async function getInstrumentQC(instr_id) {
 
 <div class="tabs is-toggle is-centered is-small">
 	<ul>
-    <!--
     <li class={tabshow === `prod` ? 'is-active' : ''}>
       <a on:click={showProd}><span>Production</span></a>
     </li>
-    -->
     {#each instruments as instr}
     <li class={tabshow === `instr_${instr[1]}` ? 'is-active' : '' }>
       <a on:click={e => showInst(instr[1])}><span>{instr[0]}</span></a>
@@ -70,5 +67,8 @@ async function getInstrumentQC(instr_id) {
     </div>
     {/if}
     {/each}
+    <div class={`instrplot ${tabshow === `prod` ? 'active' : 'inactive'}`} >
+      <ProdPlot />
+    </div>
 	</section>
 </div>
