@@ -24,7 +24,6 @@ class Producer(models.Model):
     name = models.CharField(max_length=100)
     client_id = models.CharField(max_length=100)
     shortname = models.CharField(max_length=10)
-    #active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.name
@@ -34,6 +33,7 @@ class MSInstrument(models.Model):
     producer = models.OneToOneField(Producer)
     instrumenttype = models.ForeignKey(MSInstrumentType)
     filetype = models.ForeignKey(StoredFileType) # raw, .d
+    active = models.BooleanField(default=True)
 
     def __str__(self):
         return 'MS - {}/{}'.format(self.producer.name, self.filetype.name)
