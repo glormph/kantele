@@ -36,7 +36,7 @@ QUEUE_PDC = 'pdc_archive'
 QUEUE_NXF = 'nextflow'
 QUEUE_QC_NXF = 'qc_nextflow'
 
-QUEUES_PWIZ = ['pwiz1', 'pwiz2']
+QUEUES_PWIZ = ['pwiz2'] #, 'pwiz1']
 QUEUE_QCPWIZ = 'pwiz_qc'
 QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out', 'pwiz_qc': 'proteowiz2_out'}
 PROTOCOL = 'https://'

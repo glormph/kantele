@@ -101,19 +101,13 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
         nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
-        # FIXME temp conditional code until all QC runs through msconvert
-        if nfwf.id > 14:
-            mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
-        else:
-            mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(rawfile__storedfile__id=kwargs['sf_id'], mzmlfile__isnull=False)
+        mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
         wf = models.Workflow.objects.filter(shortname__name='QC').last()
         # FIXME hardcoded mods location
         params = kwargs.get('params', [])
         params.extend(['--mods', 'data/labelfreemods.txt', '--instrument'])
         params.append('velos' if 'elos' in mzml.rawfile.producer.name else 'qe')
-        stagefiles = {'--mzml': [(mzml.servershare.name, mzml.path, mzml.filename)],
-                    # FIXME temp keep both --mzml and --raw, until no longer using old QC
-        	      '--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
+        stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,

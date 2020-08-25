@@ -383,6 +383,8 @@ def singlefile_qc(rawfile, storedfile):
     if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('--combineIonMobilitySpectra')
+        # FIXME until dinosaur can do MS1 on TIMS spectra we have to specify noquant, remove later I hope
+        params.append('--noquant')
     if len(filters):
         params.extend(['--filters', ';'.join(filters)])
     if len(options):
