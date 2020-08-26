@@ -255,6 +255,7 @@ def mzml_convert_or_refine_file_done(request):
     sfile.filename = data['filename']
     sfile.md5 = data['md5']
     sfile.checked = True
+    sfile.deleted = False
     sfile.save()
     create_job('move_single_file', sf_id=sfile.id, dst_path=sfile.rawfile.datasetrawfile.dataset.storage_loc)
     return HttpResponse()
