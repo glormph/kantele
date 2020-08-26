@@ -175,10 +175,14 @@ class MzmlFile(models.Model):
 
 
 class EnsemblFasta(models.Model):
-    libfile = models.ForeignKey(LibraryFile)
+    libfile = models.OneToOneField(LibraryFile)
     version = models.IntegerField(unique=True)
+    organism = models.TextField()
 
 
 class UniProtFasta(models.Model):
     libfile = models.OneToOneField(LibraryFile)
     version = models.TextField(unique=True)
+    organism = models.TextField()
+    #organismcode = models.IntegerField()
+    isoforms = models.BooleanField()

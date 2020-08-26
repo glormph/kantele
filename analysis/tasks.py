@@ -75,59 +75,64 @@ def check_ensembl_uniprot_fasta_download(self):
     # First check ENSEMBL and uniprot
     r = requests.get(settings.ENSEMBL_API, headers={'Content-type': 'application/json'})
     ens_version = r.json()['release'] if r.ok else ''
-    r = requests.get(settings.UNIPROT_API, stream=True)
+    r = requests.get(settings.UNIPROT_API.format(settings.UP_ORGS['Homo sapiens']), stream=True)
     up_version = r.headers['X-UniProt-Release'] if r.ok else ''
     # verify releases with Kantele
-    dbstate = requests.get(url=urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease')),
-            params={'ensembl': ens_version, 'uniprot': up_version}).json()
+    dbstates = requests.get(url=urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease')),
+            params={'ensembl': ens_version, 'uniprot': up_version})
     done_url = urljoin(settings.KANTELEHOST, reverse('analysis:setfastarelease'))
-    if dbstate['uniprot']:
-        print('Uniprot version {} is already stored'.format(up_version))
-    else:
-        print('Downloading uniprot (H.sapiens, swiss, caniso) version {}'.format(up_version))
-        with requests.get(settings.UNIPROT_API, stream=True) as req, NamedTemporaryFile(mode='wb') as wfp:
-            for chunk in req.iter_content(chunk_size=8192):
-                if chunk:
-                    wfp.write(chunk)
-            dstfn = 'Swissprot_{}_caniso.fa'.format(up_version)
-            regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
-        register_transfer_libfile(regresp, dstfn,
-                'Uniprot release {} swiss canonical/isoform fasta'.format(up_version), settings.DATABASE_FTID)
-        requests.post(done_url, data={'type': 'uniprot', 'version': up_version, 'fn_id': regresp['file_id']})
-        print('Finished downloading Uniprot database')
-    if dbstate['ensembl']:
-        print('ENSEMBL version {} is already stored'.format(up_version))
-    else:
-        print('Downloading new ENSEMBL Homo sapiens version {}'.format(ens_version))
-        # Download db, use FTP to get file, download zipped via HTTPS and unzip in stream
-        url = urlsplit(settings.ENSEMBL_DL_URL.format(ens_version))
-        with FTP(url.netloc) as ftp:
-            ftp.login()
-            fn = [x for x in ftp.nlst(url.path) if 'pep.all.fa.gz' in x][0]
-        with requests.get(urljoin('https://' + url.netloc, fn), stream=True).raw as reqfp:
-            with NamedTemporaryFile(mode='wb') as wfp, GzipFile(fileobj=reqfp) as gzfp:
-                for line in gzfp:
-                    wfp.write(line)
-                dstfn = 'ENS{}_{}'.format(ens_version, os.path.basename(fn).replace('.gz', ''))
-                # Now register download in Kantele, still in context manager
-                # since tmp file will be deleted on close()
+    for dbstate in dbstates:
+        if dbstate['state']:
+            print('{} - {} version {} is already stored'.format(dbstate['db'], dbstate['organism'], dbstate['version']))
+            continue
+        else:
+            print('Downloading {} - {} version {}'.format(dbstate['db'], dbstate['organism'], dbstate['version']))
+        if dbstate['db'] == 'uniprot':
+            with requests.get(settings.UNIPROT_API.format(settings.UP_ORGS[dbstate['organism']]), stream=True) as req, NamedTemporaryFile(mode='wb') as wfp:
+                for chunk in req.iter_content(chunk_size=8192):
+                    if chunk:
+                        wfp.write(chunk)
+                dstfn = 'Swissprot_{}_canonical{}.fa'.format(up_version, '_isoforms' if dbstate['isoforms'] else '')
                 regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
-        register_transfer_libfile(regresp, dstfn, 'ENSEMBL release {} pep.all fasta'.format(ens_version),
-                settings.DATABASE_FTID)
+            register_transfer_libfile(regresp, dstfn,
+                    'Uniprot release {} swiss canonical{}.fasta'.format(up_version, '/isoforms' if dbstate['isoforms'] else ''),
+                    settings.DATABASE_FTID)
+            requests.post(done_url, 
+                    json={'type': 'uniprot', 'version': dbstate['version'], 
+                        'organism': dbstate['organism'], 'isoforms': dbstate['isoforms'],
+                        'fn_id': regresp['file_id']})
+        elif dbstate['db'] == 'ensembl':
+            # Download db, use FTP to get file, download zipped via HTTPS and unzip in stream
+            url = urlsplit(settings.ENSEMBL_DL_URL.format(ens_version, dbstate['organism'].lower().replace(' ', '_')))
+            with FTP(url.netloc) as ftp:
+                ftp.login()
+                fn = [x for x in ftp.nlst(url.path) if 'pep.all.fa.gz' in x][0]
+            with requests.get(urljoin('https://' + url.netloc, fn), stream=True).raw as reqfp:
+                with NamedTemporaryFile(mode='wb') as wfp, GzipFile(fileobj=reqfp) as gzfp:
+                    for line in gzfp:
+                        wfp.write(line)
+                    dstfn = 'ENS{}_{}'.format(ens_version, os.path.basename(fn).replace('.gz', ''))
+                    # Now register download in Kantele, still in context manager
+                    # since tmp file will be deleted on close()
+                    regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
+            register_transfer_libfile(regresp, dstfn, 'ENSEMBL {} release {} pep.all fasta'.format(dbstate['organism'], dbstate['version']),
+                    settings.DATABASE_FTID)
         # Download biomart for ENSEMBL
-        martxml = '<?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE Query> <Query  header="1" completionStamp="1" virtualSchemaName = "default" formatter = "TSV" uniqueRows = "0" count = "" datasetConfigVersion = "0.6" > <Dataset name = "hsapiens_gene_ensembl" interface = "default" > <Attribute name = "ensembl_gene_id" /> <Attribute name = "ensembl_peptide_id" /> <Attribute name = "description" /> <Attribute name = "external_gene_name" /> </Dataset> </Query>'
-        with requests.get(settings.BIOMART_URL, params={'query': martxml}, stream=True) as reqfp, NamedTemporaryFile(mode='wb') as wfp:
-            for chunk in reqfp.iter_content(chunk_size=8192):
-                if chunk:
-                    wfp.write(chunk)
-            dstfn = 'Biomart_table_ENS{}'.format(ens_version)
-            # Now register download in Kantele, still in context manager
-            # since tmp file will be deleted on close()
-            regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
-        register_transfer_libfile(regresp, dstfn, 'Biomart map for ENSEMBL release {}'.format(ens_version),
-                settings.MARTMAP_FTID)
-        requests.post(done_url, data={'type': 'ensembl', 'version': ens_version, 'fn_id': regresp['file_id']})
-        print('Finished downloading ENSEMBL database and mart map')
+#        martxml = '<?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE Query> <Query  header="1" completionStamp="1" virtualSchemaName = "default" formatter = "TSV" uniqueRows = "0" count = "" datasetConfigVersion = "0.6" > <Dataset name = "hsapiens_gene_ensembl" interface = "default" > <Attribute name = "ensembl_gene_id" /> <Attribute name = "ensembl_peptide_id" /> <Attribute name = "description" /> <Attribute name = "external_gene_name" /> </Dataset> </Query>'
+#        with requests.get(settings.BIOMART_URL, params={'query': martxml}, stream=True) as reqfp, NamedTemporaryFile(mode='wb') as wfp:
+#            for chunk in reqfp.iter_content(chunk_size=8192):
+#                if chunk:
+#                    wfp.write(chunk)
+#            dstfn = 'Biomart_table_ENS{}'.format(ens_version)
+#            # Now register download in Kantele, still in context manager
+#            # since tmp file will be deleted on close()
+#            regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
+#        register_transfer_libfile(regresp, dstfn, 'Biomart map for ENSEMBL release {}'.format(ens_version),
+#                settings.MARTMAP_FTID)
+            requests.post(done_url, json={'type': 'ensembl', 'version': dbstate['version'], 
+                        'organism': dbstate['organism'], 'fn_id': regresp['file_id']})
+        print('Finished downloading {} {} version {} database'.format(dbstate['db'], dbstate['organism'], dbstate['version']))
+        
 
 
 def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):

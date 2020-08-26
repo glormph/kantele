@@ -28,31 +28,35 @@ def get_analysis_init(request):
 
 
 def check_fasta_release(request):
-    resp, dbmods = {}, {'ensembl': am.EnsemblFasta, 'uniprot': am.UniProtFasta}
+    dbmods = {'ensembl': am.EnsemblFasta, 'uniprot': am.UniProtFasta}
+    dbstates = []
     for ftype in ['ensembl', 'uniprot']:
-        if ftype in request.GET and request.GET[ftype]:
-            try:
-                frec = dbmods[ftype].objects.select_related('libfile__sfile').get(version=request.GET[ftype])
-            except dbmods[ftype].DoesNotExist:
-                resp[ftype] = False
-            else:
-                resp[ftype] = frec.libfile.sfile.checked
-        else:
-            # Do not signal we dont have a database if it is not sure from the 
-            # request (False, '', no key). Return true so no download ensues.
-            resp[ftype] = True
-    return JsonResponse(resp)
+        isoforms = [True, False] if ftype == 'uniprot' else [False]
+        for organism in settings.UP_ORGS:
+            if ftype in request.GET and request.GET[ftype]:
+                version = request.GET[ftype]
+                frecords = dbmods[ftype].objects.select_related('libfile__sfile').filter(version=version, organism=organism)
+                output = [{'db': ftype, 'version': version, 'state': False, 'organism': organism, 'isoforms': x} for x in isoforms]
+                for frec in frecords:
+                    if ftype == 'uniprot':
+                        [x.update({'state': frec.libfile.sfile.checked}) for x in output if x['isoforms'] == frec.isoforms]
+                    else:
+                        [x.update({'state': frec.libfile.sfile.checked}) for x in output]
+                dbstates.extend(output)
+    return JsonResponse({'dbstates': dbstates})
 
 
 def set_protein_database_lib(request):
     libfile = am.LibraryFile.objects.select_related('sfile').get(sfile__rawfile_id=request.POST['fn_id'])
+    req = json.loads(request.body.decode('utf-8'))
     dbmod = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[request.POST['type']]
-    try:
-        dbmod.objects.create(version=request.POST['version'], libfile_id=libfile.id)
-    except IntegrityError:
-        pass # FIXME
-    jj.send_slack_message('New automatic fasta release done: {}, version {}'.format(
-        request.POST['type'], request.POST['version']), 'kantele')
+    if req['type'] == 'uniprot':
+        try:
+            dbmod.objects.create(version=req['version'], libfile_id=libfile.id, organism=req['organism'], isoforms=req['isoforms'])
+        except IntegrityError:
+            pass # FIXME
+    jj.send_slack_message('New automatic fasta release done: {} - {} {}, version {}'.format(
+        req['type'], req['organism'], 'with isoforms' if req['isoforms'] else '', req['version']), 'kantele')
     return HttpResponse()
 
 
