@@ -73,10 +73,6 @@ CELERY_RESULT_BACKEND = 'rpc'
 # datatypes
 try:
     RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID'))
-    BRUKER_SFGROUP_ID = int(os.environ.get('BRUKER_SF_GROUP_ID'))
-    MZML_SFGROUP_ID = int(os.environ.get('MZML_SF_GROUP_ID'))
-    REFINEDMZML_SFGROUP_ID = int(os.environ.get('REFINED_SF_GROUP_ID'))
-    SECONDARY_FTYPES = [MZML_SFGROUP_ID, REFINEDMZML_SFGROUP_ID]
 except TypeError:
     # Tasks have no notion of these IDs so they will error
     pass
