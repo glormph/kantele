@@ -75,11 +75,11 @@ def check_ensembl_uniprot_fasta_download(self):
     # First check ENSEMBL and uniprot
     r = requests.get(settings.ENSEMBL_API, headers={'Content-type': 'application/json'})
     ens_version = r.json()['release'] if r.ok else ''
-    r = requests.get(settings.UNIPROT_API.format(settings.UP_ORGS['Homo sapiens']), stream=True)
+    r = requests.get(settings.UNIPROT_API.format(settings.UP_ORGS['Homo sapiens'], ''), stream=True)
     up_version = r.headers['X-UniProt-Release'] if r.ok else ''
     # verify releases with Kantele
     dbstates = requests.get(url=urljoin(settings.KANTELEHOST, reverse('analysis:checkfastarelease')),
-            params={'ensembl': ens_version, 'uniprot': up_version})
+            params={'ensembl': ens_version, 'uniprot': up_version}).json()['dbstates']
     done_url = urljoin(settings.KANTELEHOST, reverse('analysis:setfastarelease'))
     for dbstate in dbstates:
         if dbstate['state']:
@@ -88,17 +88,18 @@ def check_ensembl_uniprot_fasta_download(self):
         else:
             print('Downloading {} - {} version {}'.format(dbstate['db'], dbstate['organism'], dbstate['version']))
         if dbstate['db'] == 'uniprot':
-            with requests.get(settings.UNIPROT_API.format(settings.UP_ORGS[dbstate['organism']]), stream=True) as req, NamedTemporaryFile(mode='wb') as wfp:
+            with requests.get(settings.UNIPROT_API.format(settings.UP_ORGS[dbstate['organism']], '&include=yes' if dbstate['isoforms'] else ''),
+                    stream=True) as req, NamedTemporaryFile(mode='wb') as wfp:
                 for chunk in req.iter_content(chunk_size=8192):
                     if chunk:
                         wfp.write(chunk)
-                dstfn = 'Swissprot_{}_canonical{}.fa'.format(up_version, '_isoforms' if dbstate['isoforms'] else '')
+                dstfn = 'Swissprot_{}_{}_canonical{}.fa'.format(dbstate['organism'].replace(' ', '_'), dbstate['version'], '_isoforms' if dbstate['isoforms'] else '')
                 regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
             register_transfer_libfile(regresp, dstfn,
-                    'Uniprot release {} swiss canonical{}.fasta'.format(up_version, '/isoforms' if dbstate['isoforms'] else ''),
+                    'Uniprot {} release {} swiss canonical{}.fasta'.format(dbstate['organism'], dbstate['version'], '/isoforms' if dbstate['isoforms'] else ''),
                     settings.DATABASE_FTID)
-            requests.post(done_url, 
-                    json={'type': 'uniprot', 'version': dbstate['version'], 
+            requests.post(done_url,
+                    json={'type': 'uniprot', 'version': dbstate['version'],
                         'organism': dbstate['organism'], 'isoforms': dbstate['isoforms'],
                         'fn_id': regresp['file_id']})
         elif dbstate['db'] == 'ensembl':

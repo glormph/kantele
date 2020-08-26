@@ -104,7 +104,7 @@ LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID'))
 # external datasets
 ENSEMBL_API = 'https://rest.ensembl.org/info/software'
 # human, canonical/isoform, only swiss
-UNIPROT_API = 'https://www.uniprot.org/uniprot/?query=organism:{}+AND+reviewed:yes&format=fasta'
+UNIPROT_API = 'https://www.uniprot.org/uniprot/?query=organism:{}+AND+reviewed:yes&format=fasta{}'
 UP_ORGS = {'Homo sapiens': 9606, 'Mus musculus': 10090}
 ENSEMBL_DL_URL = 'ftp://ftp.ensembl.org/pub/release-{}/fasta/{}/pep/'
 BIOMART_URL = 'https://ensembl.org/biomart/martservice'

@@ -47,16 +47,21 @@ def check_fasta_release(request):
 
 
 def set_protein_database_lib(request):
-    libfile = am.LibraryFile.objects.select_related('sfile').get(sfile__rawfile_id=request.POST['fn_id'])
     req = json.loads(request.body.decode('utf-8'))
-    dbmod = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[request.POST['type']]
+    isoforms = 'isoforms' in req and req['isoforms']
+    libfile = am.LibraryFile.objects.select_related('sfile').get(sfile__rawfile_id=req['fn_id'])
+    dbmod = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[req['type']]
+    kwargs = {'version': req['version'], 'libfile_id': libfile.id, 'organism': req['organism']}
     if req['type'] == 'uniprot':
-        try:
-            dbmod.objects.create(version=req['version'], libfile_id=libfile.id, organism=req['organism'], isoforms=req['isoforms'])
-        except IntegrityError:
-            pass # FIXME
-    jj.send_slack_message('New automatic fasta release done: {} - {} {}, version {}'.format(
-        req['type'], req['organism'], 'with isoforms' if req['isoforms'] else '', req['version']), 'kantele')
+        kwargs['isoforms'] = isoforms
+    try:
+        dbmod.objects.create(**kwargs)
+    except IntegrityError as e:
+        # THrown when DB complains about FK/uniqueness
+        pass # FIXME
+    else:
+        jj.send_slack_message('New automatic fasta release done: {} - {} {}, version {}'.format(
+            req['type'], req['organism'], 'with isoforms' if isoforms else '', req['version']), 'kantele')
     return HttpResponse()
 
 
