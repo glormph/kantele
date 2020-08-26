@@ -107,7 +107,8 @@ def check_ensembl_uniprot_fasta_download(self):
             with FTP(url.netloc) as ftp:
                 ftp.login()
                 fn = [x for x in ftp.nlst(url.path) if 'pep.all.fa.gz' in x][0]
-            with requests.get(urljoin('https://' + url.netloc, fn), stream=True).raw as reqfp:
+            # make sure to specify no compression (identity) to server, otherwise the raw object will be gzipped and when unzipped contain a gzipped file
+            with requests.get(urljoin('http://' + url.netloc, fn), headers={'Accept-Encoding': 'identity'}, stream=True).raw as reqfp:
                 with NamedTemporaryFile(mode='wb') as wfp, GzipFile(fileobj=reqfp) as gzfp:
                     for line in gzfp:
                         wfp.write(line)
