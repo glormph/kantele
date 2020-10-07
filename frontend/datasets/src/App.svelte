@@ -369,6 +369,8 @@ function showFiles() {
       {/if}
       {#if (Object.keys($datasetFiles).length && components.indexOf('labelchecksamples')>-1)}
       <LCheck bind:this={lccomp} bind:errors={errors.lc} />
+      {:else if (Object.keys($datasetFiles).length && components.indexOf('pooledlabelchecksamples')>-1)}
+      <Prepcomp bind:this={prepcomp} bind:errors={errors.lc} />
       {/if}
     </div>
 </div>

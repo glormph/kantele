@@ -382,7 +382,7 @@ onMount(async() => {
 {#if prepdata.quanttype}
 <div class="field">
   <label class="label">Samples</label>
-  <textarea class="textarea" bind:value={trysamplenames} placeholder="Try this: paste your sample names here (one line per sample, tab separated sample/file or channel)"></textarea>
+  <textarea class="textarea" bind:value={trysamplenames} placeholder="Paste your sample names here (one line per sample, tab separated sample/file or channel)"></textarea>
   <a class="button is-primary" on:click={parseSampleNames}>Parse sample names</a>
   <div class="control">
     {#if isLabelfree}
