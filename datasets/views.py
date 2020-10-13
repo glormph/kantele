@@ -63,6 +63,7 @@ def dataset_info(request, dataset_id):
         try:
             dset = models.Dataset.objects.select_related(
                 'runname__experiment__project__projtype', 'datatype',
+                'runname__experiment__project__pi',
                 'prefractionationdataset__prefractionation',
                 'prefractionationdataset__hiriefdataset',
                 'prefractionationdataset__prefractionationfractionamount',
@@ -78,7 +79,9 @@ def dataset_info(request, dataset_id):
                 'experiment_id': dset.runname.experiment_id,
                 'runname': dset.runname.name,
                 'pi_id': project.pi_id,
+                'pi_name': project.pi.name,
                 'project_id': project.id,
+                'project_name': project.name,
                 'ptype_id': project.projtype.ptype_id,
                 'datatype_id': dset.datatype_id,
                 'storage_location': dset.storage_loc,
@@ -862,13 +865,13 @@ def get_project(request, project_id):
 
 
 def empty_dataset_json():
-    edpr = {'projects': [
+    edpr = {'projects': {x.id:
         {'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
             'select': False, 'pi_id': x.pi_id} 
-        for x in models.Project.objects.select_related('projtype').filter(active=True)],
+        for x in models.Project.objects.select_related('projtype').filter(active=True)},
             'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
-            'external_pis': [{'name': x.name, 'id': x.id} for x in
-                             models.PrincipalInvestigator.objects.all()],
+            'external_pis': {x.id: {'name': x.name, 'id': x.id} for x in
+                             models.PrincipalInvestigator.objects.all()},
             'internal_pi_id': INTERNAL_PI_PK,
             'local_ptype_id': settings.LOCAL_PTYPE_ID,
             'datasettypes': [{'name': x.name, 'id': x.id} for x in
