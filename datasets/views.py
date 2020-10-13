@@ -393,9 +393,14 @@ def update_dataset(data):
         dset.storage_loc = new_storage_loc
     dset.save()
     if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
-        if dset.externaldatasetcontact.email != data['externalcontact']:
-            dset.externaldatasetcontact.email = data['externalcontact']
-            dset.externaldatasetcontact.save()
+        try:
+            if dset.externaldatasetcontact.email != data['externalcontact']:
+                dset.externaldatasetcontact.email = data['externalcontact']
+                dset.externaldatasetcontact.save()
+        except models.ExternalDatasetContact.DoesNotExist:
+            dset_mail = models.ExternalDatasetContact(dataset=dset,
+                    email=data['externalcontact'])
+            dset_mail.save()
     return JsonResponse({'dataset_id': dset.id})
 
 
