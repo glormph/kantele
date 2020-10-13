@@ -72,10 +72,11 @@ let tabshow = 'meta';
 let tabcolor = 'has-text-grey-lighter';
   // Yes, for microscopy/genomics, we need separation between samples/prep
   // files is given, and possibly samples as well, check it out but samples is needed for:
-  // - QMS, LCheck?, IP, TPP, microscopy, QC?, genomics
+  // - QMS, LCheck, IP, TPP, microscopy QC?, genomics
 
 $: showMsdata = components.indexOf('acquisition') > -1;
 $: isExternal = dsinfo.ptype_id && dsinfo.ptype_id !== pdata.local_ptype_id;
+$: isLabelcheck = components.indexOf('labelchecksamples') > -1 || components.indexOf('pooledlabelchecksamples') > -1;
 
 async function getcomponents() {
   const result = await getJSON(`/datasets/show/components/${dsinfo.datatype_id}`);
@@ -153,7 +154,7 @@ function validate() {
 		comperrors.push('Experiment name may only contain a-z 0-9 - _');
 	}
   if (isExternal) {
-		if (!dsinfo.newpiname && (!dsinfo.pi_id || dsinfo.pi_id === pdata.internal_pi_id)) {
+		if (isNewProject && !dsinfo.newpiname && (!dsinfo.pi_id || dsinfo.pi_id === pdata.internal_pi_id)) {
 			comperrors.push('Need to select or create a PI');
 		}
 		if (!dsinfo.externalcontactmail) {
@@ -335,8 +336,36 @@ function showFiles() {
         </div>
       </div>
 
+      {#if !isLabelcheck}
+      <div class="field">
+        <label class="label">Experiment name
+          <a class="button is-danger is-outlined is-small" on:click={e => isNewExperiment = isNewExperiment === false}>
+          {#if isNewExperiment}
+          Existing experiment
+          {:else}
+          Create new experiment
+          {/if}
+          </a>
+        </label>
+        <div class="control">
+          {#if isNewExperiment}
+          <input class="input" bind:value={dsinfo.newexperimentname} on:change={editMade} type="text" placeholder="Experiment name">
+          {:else}
+          <div class="select">
+            <select bind:value={dsinfo.experiment_id} on:change={editMade}>
+              <option disabled value="">Please select one</option>
+              {#each experiments as exp}
+              <option value={exp.id}>{exp.name}</option>
+              {/each}
+            </select>
+          </div>
+          {/if}
+        </div>
+      </div>
+      {/if}
+  
       {#if showMsdata}
-      <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} bind:isNewExperiment={isNewExperiment} experiments={experiments} prefracs={pdata.prefracs} hirief_ranges={pdata.hirief_ranges} />
+      <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} prefracs={pdata.prefracs} hirief_ranges={pdata.hirief_ranges} />
 
       <div class="field">
         <label class="label">Run name</label>

@@ -5,16 +5,11 @@ const dispatch = createEventDispatcher();
 
 // props
 export let dsinfo;
-export let experiments;
 export let hirief_ranges;
 export let prefracs;
-export let isNewExperiment;
 
 let errors = [];
 
-function toggle_experiment() {
-  isNewExperiment = isNewExperiment === false;
-}
 
 $: hiriefselected = prefracs.some(pf => pf.id == dsinfo.prefrac_id && pf.name.toLowerCase().indexOf('hirief') > -1)
 
@@ -42,32 +37,6 @@ function save() {
 }
 
 </script>
-
-<div class="field">
-  <label class="label">Experiment name
-    <a class="button is-danger is-outlined is-small" on:click={toggle_experiment}>
-    {#if isNewExperiment}
-    Existing experiment
-    {:else}
-    Create new experiment
-    {/if}
-    </a>
-  </label>
-  <div class="control">
-    {#if isNewExperiment}
-    <input class="input" bind:value={dsinfo.newexperimentname} on:change={editMade} type="text" placeholder="Experiment name">
-    {:else}
-    <div class="select">
-      <select bind:value={dsinfo.experiment_id} on:change={editMade}>
-        <option disabled value="">Please select one</option>
-        {#each experiments as exp}
-        <option value={exp.id}>{exp.name}</option>
-        {/each}
-      </select>
-    </div>
-    {/if}
-  </div>
-</div>
 
 <div class="field">
   <label class="label">Prefractionation</label>
