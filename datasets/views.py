@@ -308,6 +308,37 @@ def update_dataset(data):
         project = newproject_save(data)
     else:
         project = models.Project.objects.get(pk=data['project_id'])
+    if project.id != dset.runname.experiment.project_id:
+        # all ds proj samples need new project, either move or duplicate...
+        dsraws = dset.datasetrawfile_set.all()
+        dspsams = models.ProjectSample.objects.filter(quantchannelsample__dataset=dset).union(
+                models.ProjectSample.objects.filter(quantsamplefile__rawfile__in=dsraws),
+                models.ProjectSample.objects.filter(quantfilechannelsample__dsrawfile__in=dsraws))
+        # Since unions cant be filtered/excluded on, re-query
+        dspsams = models.ProjectSample.objects.filter(pk__in=dspsams)
+        # Duplicate multi DS projsamples from QCS:
+        multipsams = set()
+        multidsqcs = models.QuantChannelSample.objects.filter(projsample__in=dspsams).exclude(dataset=dset)
+        for qcs in multidsqcs.distinct('projsample'):
+            multipsams.add(qcs.projsample_id)
+            newpsam = models.ProjectSample(sample=qcs.projsample.sample, project=project)
+            newpsam.save()
+            models.QuantChannelSample.objects.filter(dataset=dset, projsample=qcs.projsample).update(projsample=newpsam)
+        multidsqsf = models.QuantSampleFile.objects.filter(projsample__in=dspsams).exclude(rawfile__in=dsraws)
+        for qsf in multidsqsf.distinct('projsample'):
+            multipsams.add(qsf.projsample_id)
+            newpsam = models.ProjectSample(sample=qsf.projsample.sample, project=project)
+            newpsam.save()
+            models.QuantSampleFile.objects.filter(rawfile__in=dsraws, projsample=qsf.projsample).update(projsample=newpsam)
+        multidsqfcs = models.QuantFileChannelSample.objects.filter(projsample__in=dspsams).exclude(dsrawfile__in=dsraws)
+        for qfcs in multidsqfcs.distinct('projsample'):
+            multipsams.add(qfcs.projsample_id)
+            newpsam = models.ProjectSample(sample=qfcs.projsample.sample, project=project)
+            newpsam.save()
+            models.QuantFileChannelSample.objects.filter(dsrawfile__in=dsraws, projsample=qfcs.projsample).update(projsample=newpsam)
+        # having found multi-dset-psams, now move project_id on non-shared projectsamples
+        dspsams.exclude(pk__in=multipsams).update(project=project)
+
     newexp = False
     if 'newexperimentname' in data:
         experiment = models.Experiment(name=data['newexperimentname'],
@@ -317,7 +348,10 @@ def update_dataset(data):
         newexp = True
     else:
         experiment = models.Experiment.objects.get(pk=data['experiment_id'])
+        experiment.project_id = project.id
+        experiment.save()
         if data['experiment_id'] != dset.runname.experiment_id:
+            # another experiment was selected
             newexp = True
             dset.runname.experiment = experiment
     if data['runname'] != dset.runname.name or newexp:
