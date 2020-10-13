@@ -14,6 +14,29 @@ let removed_files = {};
 let findQuery = '';
 let allDsSelector = false;
 let allNewSelector = false;
+let sortkey = 'date';
+let sortascending = {
+  'date': true,
+  'name': true,
+  'size': true,
+  'instrument': true,
+}
+
+let ok_files = [];
+let outside_files = [];
+$: ok_files = Object.values(addedFiles).concat(files.dsfn_order.map(x => $datasetFiles[x])).sort((a, b) => a[sortkey] > b[sortkey] === sortascending[sortkey])
+  ;
+$: outside_files = Object.values(removed_files).concat(files.newfn_order.map(x => files.newFiles[x])).sort((a, b) => a[sortkey] > b[sortkey] === sortascending[sortkey]);
+
+
+function reSort(key) {
+  if (sortkey === key) {
+    sortascending[key] = sortascending[key] === false;
+  } else {
+    sortkey = key;
+  }
+}
+
 
 async function findFiles(event) {
   if (event.keyCode === 13) {
@@ -103,15 +126,23 @@ onMount(async() => {
       <tr>
         <th><input type="checkbox" bind:checked={allNewSelector} on:click={selectAllNew}></th>
         <th></th>
-        <th>File</th>
-        <th>Date</th>
-        <th>Size</th>
-        <th>Instrument</th>
+        <th>
+          File <span on:click={e => reSort('name')} class="icon is-small"><i class="fas fa-sort"></i></span>
+        </th>
+        <th>
+          Date <span on:click={e => reSort('date')} class="icon is-small"><i class="fas fa-sort"></i></span>
+        </th>
+        <th>
+          Size <span on:click={e => reSort('size')} class="icon is-small"><i class="fas fa-sort"></i></span>
+        </th>
+        <th>
+          Instrument <span on:click={e => reSort('instrument')} class="icon is-small"><i class="fas fa-sort"></i></span>
+        </th>
       </tr>
     </thead> 
     <tbody>
       
-      {#each Object.values(addedFiles).concat(files.dsfn_order.map(x => $datasetFiles[x])) as fn}
+      {#each ok_files as fn}
       <tr>
         <td><span on:click={e => deleteFile(fn.id)} class="icon is-small has-text-danger"><i class="fas fa-times"></i></span></td>
         <td>
@@ -125,7 +156,7 @@ onMount(async() => {
         <td>{fn.instrument}</td>
       </tr>
       {/each}
-      {#each Object.values(removed_files).concat(files.newfn_order.map(x => files.newFiles[x])) as fn}
+      {#each outside_files as fn}
       <tr>
         <td>
           <input type="checkbox" bind:checked={fn.checked}>
