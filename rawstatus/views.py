@@ -597,12 +597,12 @@ def cleanup_old_files(request):
     # if there are ALSO joins where date is gt...
     # old normal mzmls from searches
     old_searched_mzmls = mzmls.exclude(
-            rawfile__datasetrawfile__dataset__datatype_id__in=[settings.QC_DATATYPE, settings.LC_DTYPE_ID]).exclude(
+            rawfile__datasetrawfile__dataset__datatype_id__in=[settings.QC_DATATYPE, *settings.LC_DTYPE_IDS]).exclude(
             rawfile__datasetrawfile__dataset__datasetsearch__isnull=True).exclude(
             rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=maxtime_nonint)
     # old LC mzmls
     lcmzmls = mzmls.filter(
-            rawfile__datasetrawfile__dataset__datatype_id=settings.LC_DTYPE_ID,
+            rawfile__datasetrawfile__dataset__datatype_id__in=settings.LC_DTYPE_IDS,
             rawfile__datasetrawfile__dataset__datasetsearch__isnull=False).exclude(
             rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_LC_STORAGE_TIME))
     # old non-QC mzmls without searches

@@ -92,7 +92,7 @@ except TypeError:
 
 # Labelcheck experiment name
 LCEXPNAME = '__labelchecks'
-LC_DTYPE_ID = int(os.environ.get('LC_DTYPE_ID'))
+LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID').split(',')]
 
 # local datasets
 LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID'))

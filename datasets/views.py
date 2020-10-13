@@ -450,7 +450,7 @@ def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
     subdir = re.sub('[^a-zA-Z0-9_\-\/\.]', '_', subdir)
     if len(subdir):
         subdir = '/{}'.format(subdir)
-    if dtype.id == settings.LC_DTYPE_ID:
+    if dtype.id in settings.LC_DTYPE_IDS:
         return os.path.join(project.name, exp.name, str(runname.id))
     else:
         return '{}/{}{}/{}'.format(project.name, exp.name, subdir, runname.name)
@@ -819,7 +819,7 @@ def save_dataset(request):
             except models.Project.DoesNotExist:
                 print('Project to save to is not active')
                 return HttpResponseForbidden()
-        if data['datatype_id'] == settings.LC_DTYPE_ID:
+        if data['datatype_id'] in settings.LC_DTYPE_IDS:
             try:
                 experiment = models.Experiment.objects.get(project=project, name=settings.LCEXPNAME)
             except models.Experiment.DoesNotExist:
