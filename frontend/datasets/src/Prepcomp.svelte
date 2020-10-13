@@ -10,6 +10,7 @@ export let errors;
 
 let preperrors = [];
 let edited = false;
+let fetchedSpecies = {};
 
 $: stored = $dataset_id && !edited;
 
@@ -50,19 +51,17 @@ function niceSpecies(species) {
   return nice;
 }
 
-async function fetchSpecies(intext) {
-  if (intext.length > 2) {
-    return await getJSON(`/datasets/show/species/?q=${intext}`);
-  }
-}
-
 function removeOrganism(org_id) {
   prepdata.species = prepdata.species.filter(x => x.id !== org_id);
   editMade();
 }
 
 function addOrganism() {
-  prepdata.species = [...prepdata.species, prepdata.allspecies[selectedspecies]];
+  console.log(selectedspecies);
+  console.log(fetchedSpecies[selectedspecies]);
+  console.log(prepdata.species);
+  const species = (selectedspecies in prepdata.allspecies) ? prepdata.allspecies[selectedspecies] : fetchedSpecies[selectedspecies];
+  prepdata.species = [...prepdata.species, species];
   editMade();
 }
 
@@ -337,7 +336,7 @@ onMount(async() => {
 
 <div class="field">
   <label class="label">Organism</label>
-  <DynamicSelect intext="Type to get more organisms" bind:options={prepdata.allspecies} optorder={Object.values(prepdata.allspecies).sort((a,b) => b.total - a.total).map(x => x.id)} bind:selectval={selectedspecies} fetchUrl="/datasets/show/species/" niceName={niceSpecies} on:selectedvalue={addOrganism} />
+  <DynamicSelect intext="Type to get more organisms" fixedoptions={prepdata.allspecies} fixedorder={Object.values(prepdata.allspecies).sort((a,b) => b.total - a.total).map(x => x.id)} bind:selectval={selectedspecies} fetchUrl="/datasets/show/species/" bind:fetchedData={fetchedSpecies} niceName={niceSpecies} on:selectedvalue={addOrganism} />
 </div>
 <div class="tags">
   {#each prepdata.species as spec}

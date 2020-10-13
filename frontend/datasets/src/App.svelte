@@ -8,6 +8,7 @@ import Msdata from './Msdata.svelte';
 import LCheck from './LCheck.svelte';
 import Files from './Files.svelte';
 import ErrorNotif from './ErrorNotif.svelte';
+import DynamicSelect from './DynamicSelect.svelte';
   
 // FIXME dataset_id is global on django template and not updated on save, change that!, FIXED???
 // FIXME files do not get updated
@@ -32,13 +33,18 @@ let comperrors = [];
 
 let dsinfo = {
   datatype_id: '',
+  old_project_id: '',
   project_id: '',
+  project_name: '',
   ptype_id: '',
   storage_location: '',
+  oldnewprojectname: '',
   newprojectname: '',
   experiment_id: '',
   runname: '',
-  pi: '',
+  pi_id: '',
+  newpiname: '',
+  pi_name: '',
   externalcontactmail: '',
   prefrac_id: '',
   prefrac_length: '',
@@ -49,7 +55,7 @@ let dsinfo = {
 let pdata = {
   datasettypes: [],
   ptypes: [],
-  projects: [],
+  projects: {},
   local_ptype_id: '',
   external_pis: [],
   prefracs: [],
@@ -76,10 +82,11 @@ async function getcomponents() {
   components = result.components;
 }
 
-async function project_selected(event=false, saved=false) {
+async function project_selected(saved=false) {
+  // Gets experiments, project details when selecting a project
   if (dsinfo.project_id) {
     const result = await getJSON(`/datasets/show/project/${dsinfo.project_id}`);
-    dsinfo.pi = pdata.external_pis.filter(pi => pi.id === result.pi_id)[0];
+    dsinfo.pi_name = pdata.external_pis[result.pi_id].name;
     dsinfo.ptype_id = result.ptype_id;
     experiments = result.experiments;
     for (let key in projsamples) { delete(projsamples[key]);};
@@ -92,8 +99,14 @@ async function project_selected(event=false, saved=false) {
   editMade();
 }
 
-function toggle_project() {
-  isNewProject = isNewProject === false;
+function setNewProj() {
+  isNewProject = true;
+  dsinfo.ptype_id = '';
+  dsinfo.externalcontactmail = '';
+  experiments = [];
+  for (let key in projsamples) { delete(projsamples[key]);};
+
+  editMade();
 }
 
 function editMade() {
@@ -109,9 +122,8 @@ async function fetchDataset() {
   for (let [key, val] of Object.entries(response.dsinfo)) { dsinfo[key] = val; }
   if ($dataset_id) {
     getcomponents();
-    await project_selected(false, true); // false is event, true is saved param
+    await project_selected(true); // true is saved param
     isNewExperiment = false;
-    isNewPI = false;
   }
   edited = false;
 }
@@ -125,6 +137,9 @@ function validate() {
 	else if (isNewProject && dsinfo.newprojectname && !re.test(dsinfo.newprojectname)) {
 		comperrors.push('Project name may only contain a-z 0-9 - _');
 	}
+  if (!dsinfo.ptype_id) {
+    comperrors.push('Project type selection is required');
+  }
 	if (!dsinfo.runname) {
 		comperrors.push('Run name is required');
 	}
@@ -138,7 +153,7 @@ function validate() {
 		comperrors.push('Experiment name may only contain a-z 0-9 - _');
 	}
   if (isExternal) {
-		if (!dsinfo.newpiname && !dsinfo.pi.id) {
+		if (!dsinfo.newpiname && (!dsinfo.pi_id || dsinfo.pi_id === pdata.internal_pi_id)) {
 			comperrors.push('Need to select or create a PI');
 		}
 		if (!dsinfo.externalcontactmail) {
@@ -179,10 +194,10 @@ async function save() {
     } else {
       postdata.experiment_id = dsinfo.experiment_id;
     }
-    if (isNewPI) {
+    if (dsinfo.newpiname) {
       postdata.newpiname = dsinfo.newpiname;
     } else {
-      postdata.pi_id = isExternal ? dsinfo.pi.id : pdata.internal_pi_id;
+      postdata.pi_id = isExternal ? dsinfo.pi_id : pdata.internal_pi_id;
     }
     if (dsinfo.ptype_id !== pdata.local_ptype_id) {
       postdata.externalcontact = dsinfo.externalcontactmail;
@@ -264,26 +279,16 @@ function showFiles() {
     
       <div class="field"> 
         <label class="label">Project
-          <a class="button is-danger is-outlined is-small" on:click={toggle_project}>
-            {#if isNewProject}
-            Use existing project
-            {:else}
-            Create new project
-            {/if}
-          </a>
+        {#if isNewProject}
+        <span class="tag is-danger is-outlined is-small">New project</span>
+        {#if $dataset_id}
+        <span class="tag is-danger is-outlined is-small">Are you sure?</span>
+        {/if}
+        {/if}
         </label>
         <div class="control">
-        {#if !isNewProject}
-          <div class="select">
-            <select bind:value={dsinfo.project_id} on:change={project_selected}>
-              <option disabled value="">Please select one</option>
-              {#each pdata.projects as project}
-              <option value={project.id}>{project.name}</option>
-              {/each}
-            </select>
-          </div>
-        {:else}
-        <input class="input" bind:value={dsinfo.newprojectname} type="text" placeholder="Project name" on:change={editMade}>
+          <DynamicSelect bind:intext={dsinfo.project_name} fixedoptions={pdata.projects} bind:unknowninput={dsinfo.newprojectname} bind:selectval={dsinfo.project_id} on:selectedvalue={e => project_selected()} on:newvalue={setNewProj} niceName={x => x.name}/>
+        {#if isNewProject}
         <label class="label">Project type</label>
         <div class="select">
           <select bind:value={dsinfo.ptype_id}>
@@ -294,8 +299,9 @@ function showFiles() {
           </select>
         </div>
         {/if}
+
         {#if isExternal}
-        <span class="tag is-success is-medium">External project: {dsinfo.pi.name}</span>
+        <span class="tag is-success is-medium">External project: {dsinfo.pi_name}</span>
         {/if}
         </div>
       </div>
@@ -303,29 +309,13 @@ function showFiles() {
       {#if isExternal}
       <div class="field">
         <label class="label">contact(s)
-          {#if isNewProject && isNewPI}
-          <a class="button is-danger is-outlined is-small" on:click={e => isNewPI = !isNewPI}>Use existing PI</a>
-          {:else if isNewProject}
-          <a class="button is-danger is-outlined is-small" on:click={e => isNewPI = !isNewPI}>Create new PI</a>
-          {/if}
-        </label>
-        {#if isNewProject && !isNewPI}
-        <div class="control">
-          <div class="select">
-            <select on:change={editMade} bind:value={dsinfo.pi}>
-					  	<option disabled value="">Please select one</option>
-              {#each pdata.external_pis as expi}
-              <option value={expi}>{expi.name}</option>
-              {/each}
-					  </select>
-				  </div>
-			  </div>
-        {:else if isNewProject}
-        <div class="control">
-          <input class="input" on:input={editMade} bind:value={dsinfo.newpiname} type="text" placeholder="PI name">
-        </div>
+        {#if dsinfo.newpiname}
+        <span class="tag is-danger is-outlined is-small">New PI</span>
         {/if}
         <div class="control">
+          {#if isNewProject}
+          <DynamicSelect bind:intext={dsinfo.pi_name} fixedoptions={pdata.external_pis} bind:unknowninput={dsinfo.newpiname} bind:selectval={dsinfo.pi_id} niceName={x => x.name} />
+          {/if}
           <input class="input" type="text" on:change={editMade} bind:value={dsinfo.externalcontactmail} placeholder="operational contact email (e.g. postdoc)">
         </div>
       </div>
