@@ -359,7 +359,20 @@ def update_dataset(data):
         print('Update data')
         dset.runname.name = data['runname']
         dset.runname.save()
-    dset.datatype_id = data['datatype_id']
+    if dset.datatype_id != data['datatype_id']:
+        dset.datatype_id = data['datatype_id']
+        new_dtcomponents = models.DatatypeComponent.objects.filter(datatype_id=data['datatype_id'])
+        existing_dtcstates = models.DatasetComponentState.objects.filter(dataset_id=dset.id)
+        existing_dtcstates.delete()
+        for dtc in new_dtcomponents:
+            try:
+                old_dtcs = existing_dtcstates.get(dtcomp__component_id=dtc.component_id)
+            except models.DatasetComponentState.DoesNotExist:
+                state = COMPSTATE_NEW
+            else:
+                state = old_dtcs.state
+            dtcs = models.DatasetComponentState(dataset=dset, dtcomp=dtc, state=state)
+            dtcs.save()
     # update prefrac
     try:
         pfds = models.PrefractionationDataset.objects.filter(
