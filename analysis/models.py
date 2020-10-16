@@ -30,6 +30,16 @@ class FileParam(models.Model):
         return self.name
 
 
+class WFInputComponent(models.Model):
+    name = models.TextField()
+    value = models.TextField() 
+    # JSON in value if any, eg mzmldef: {'lc': [path,ch,sample], 'lcp': [path,set,ch,sam], hirief: [path,inst,set,pl,fr]}
+    # FIXME future also setnames, sampletables, fractions, etc which is not a param
+    # to be included in parameterset
+    def __str__(self):
+        return self.name
+
+
 class Param(models.Model):
     name = models.CharField(max_length=50)
     nfparam = models.CharField(max_length=50)
@@ -86,6 +96,14 @@ class NextflowWfVersion(models.Model):
     
     def __str__(self):
         return '{} - {}'.format(self.nfworkflow.description, self.update)
+
+
+class PsetComponent(models.Model):
+    pset = models.ForeignKey(ParameterSet)
+    component = models.ForeignKey(WFInputComponent)
+
+    def __str__(self):
+        return '{} - {}'.format(self.pset.name, self.component.name)
 
 
 class PsetFileParam(models.Model):
