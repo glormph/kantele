@@ -33,7 +33,8 @@ class RefineMzmls(DatasetJob):
         mzmls = []
         for x in mzmlfiles:
             ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=anashare)
-            mzmls.append((x.servershare.name, x.path, x.filename, ref_sf.id, anashare))
+            mzmls.append({'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
+                'sfid': ref_sf.id})
         allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
         if len(allinstr) > 1:
             raise RuntimeError('Trying to run a refiner job on dataset containing more than one instrument is not possible')
@@ -73,9 +74,11 @@ class RunLabelCheckNF(MultiDatasetJob):
                 'rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name',
                 'rawfile__datasetrawfile__quantfilechannelsample__projsample__sample'
                 )
-        mzmls = [(x['servershare__name'], x['path'], x['filename'],
-            x['rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name'],
-            x['rawfile__datasetrawfile__quantfilechannelsample__projsample__sample']) for x in sfiles]
+        mzmls = [{'servershare': x['servershare__name'], 'path': x['path'], 'fn': x['filename'],
+            'setname': kwargs['setnames'][str(x.id)] if 'setnames' in kwargs else False,
+            'channel': x['rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name'],
+            'sample': x['rawfile__datasetrawfile__quantfilechannelsample__projsample__sample']}
+            for x in sfiles]
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,
@@ -149,7 +152,10 @@ class RunNextflowWorkflow(BaseJob):
 
     def getfiles_query(self, **kwargs):
         return rm.StoredFile.objects.filter(pk__in=kwargs['fractions'].keys()).select_related(
-                'servershare', 'rawfile__producer__msinstrument__instrumenttype')
+                'servershare', 'rawfile__producer__msinstrument__instrumenttype',
+                'rawfile__datasetrawfile__quantfilechannelsample__channel__channel',
+                'rawfile__datasetrawfile__quantfilechannelsample__projsample',
+                )
 
     def process(self, **kwargs):
         analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow__shortname').get(pk=kwargs['analysis_id'])
@@ -164,11 +170,19 @@ class RunNextflowWorkflow(BaseJob):
             for sf_id in sf_ids:
                 sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
-        mzmls = [(x.servershare.name, x.path, x.filename, kwargs['setnames'][str(x.id)],
-                  kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)],
-                  kwargs['fractions'].get(str(x.id), False),
-                  x.rawfile.producer.msinstrument.instrumenttype.name if nfwf.kanteleanalysis_version == 2 else False,
-                  ) for x in self.getfiles_query(**kwargs)]
+        mzmldef_fields = kwargs['components']['mzmldef'] if 'mzmldef' in kwargs['components'] else False
+        mzmls = [{
+            'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
+            'setname': kwargs['setnames'][str(x.id)] if 'setnames' in mzmldef_fields else False,
+            'plate': kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)] if 'plate' in mzmldef_fields else False,
+            'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name if 'channel' in mzmldef_fields else False,
+            'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if 'sample' in mzmldef_fields else False,
+            'fraction': kwargs['fractions'].get(str(x.id), False) if 'fractions' in kwargs else False,
+            'instrument': x.rawfile.producer.msinstrument.instrumenttype.name if 'instrument' in mzmldef_fields else False,
+            } for x in self.getfiles_query(**kwargs)]
+        if mzmldef_fields:
+            mzmls = {'mzmldef': '\t'.join([x[key] for key in mzmldef_fields]), **{x[k] for x in ['servershare', 'path', 'fn']}}
+
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,
@@ -176,10 +190,11 @@ class RunNextflowWorkflow(BaseJob):
                'repo': nfwf.nfworkflow.repo,
                'name': analysis.name,
                'outdir': analysis.user.username,
-               'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger'
+               'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger',
                }
         profiles = ['standard', 'docker', 'lehtio']
         params = [str(x) for x in kwargs['inputs']['params']]
+        # Runname defined when run executed (FIXME can be removed, no reason to not do that here)
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
         if 'sampletable' in kwargs['inputs']:
             params.extend(['SAMPLETABLE', kwargs['inputs']['sampletable']])

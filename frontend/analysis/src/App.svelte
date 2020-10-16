@@ -41,6 +41,7 @@ let config = {
   fileparams: {},
   inputparams: {},
   multifileparams: {},
+  mzmldef: false,
   v1: false,
   v2: false,
   version_dep: {
@@ -67,6 +68,9 @@ function validate() {
   if (!config.wfversion) {
 		notif.errors['You must select a workflow version'] = 1;
 	}
+  if ('mzmldef' in wf.components && !config.mzmldef) {
+		notif.errors['You must select a mzml definition file'] = 1;
+  }
   Object.values(dsets).forEach(ds => {
     if (config.version_dep.v1.dtype.toLowerCase() !== 'labelcheck' && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
@@ -120,6 +124,9 @@ async function runAnalysis() {
     fractions: fractions,
     singlefiles: fns,
     multifiles: multifns,
+    components: {
+      mzmldef: config.mzmldef,
+    },
     wfid: config.wfid,
     nfwfvid: config.wfversion.id,
     analysisname: `${allwfs[config.wfid].wftype}_${config.analysisname}`,
@@ -138,33 +145,35 @@ async function runAnalysis() {
   Object.values(dsets).forEach(ds => {
     post.strips[ds.id] = ds.hr ? ds.hr : ds.prefrac ? 'unknown_plate' : false
   })
-  // general denoms = [[set1, [126, 127], tmt10plex], [set2, [128, 129], tmt6plex]]
-  let denoms = Object.entries(isoquants).map(([sname, isoq]) => 
-    [sname, Object.entries(isoq.denoms).filter(([ch, val]) => val).map(([ch, val]) => ch), isoq.chemistry]
-   )
-  // TODO This filters sets without denoms, possibly change this for when not using any (e.g. intensities instead)
-  if (denoms.length && !mediansweep && denoms.filter(([sn, chs, chem]) => !chs.length).length) {
-    notif.errors['Median sweep not used but not all sets have denominator, cannot run this'] = 1;
-  }
-  // mediansweep is only active at 1-set analyses, otherwise it is supposed to not make sense, so we can have global flag
-  if (denoms.length && !mediansweep && config.v1) {
-    // API v1: denoms: 'set1:126:127 set2:128:129'
-    post.params.denoms = ['--denoms', denoms.map(([sname, chs, chem]) => `${sname}:${chs.join(':')}`).join(' ')];
-  } else if (denoms.length && !mediansweep && !config.v1) {
-    // API v2: isobaric: 'set1:tmt10plex:126:127 set2:itraq8plex:114'
-    post.params.denoms = ['--isobaric', denoms.map(([sname, chs, chem]) => `${sname}:${chem}:${chs.join(':')}`).join(' ')];
-  } else if (mediansweep) {
-    post.params.denoms = ['--isobaric', `${denoms[0][0]}:${denoms[0][2]}:sweep`];
-  }
+  if ('isobaric_quant' in wf.components) {
+    // general denoms = [[set1, [126, 127], tmt10plex], [set2, [128, 129], tmt6plex]]
+    let denoms = Object.entries(isoquants).map(([sname, isoq]) => 
+      [sname, Object.entries(isoq.denoms).filter(([ch, val]) => val).map(([ch, val]) => ch), isoq.chemistry]
+     )
+    // TODO This filters sets without denoms, possibly change this for when not using any (e.g. intensities instead)
+    if (denoms.length && !mediansweep && denoms.filter(([sn, chs, chem]) => !chs.length).length) {
+      notif.errors['Median sweep not used but not all sets have denominator, cannot run this'] = 1;
+    }
+    // mediansweep is only active at 1-set analyses, otherwise it is supposed to not make sense, so we can have global flag
+    if (denoms.length && !mediansweep && config.v1) {
+      // API v1: denoms: 'set1:126:127 set2:128:129'
+      post.params.denoms = ['--denoms', denoms.map(([sname, chs, chem]) => `${sname}:${chs.join(':')}`).join(' ')];
+    } else if (denoms.length && !mediansweep && !config.v1) {
+      // API v2: isobaric: 'set1:tmt10plex:126:127 set2:itraq8plex:114'
+      post.params.denoms = ['--isobaric', denoms.map(([sname, chs, chem]) => `${sname}:${chem}:${chs.join(':')}`).join(' ')];
+    } else if (mediansweep) {
+      post.params.denoms = ['--isobaric', `${denoms[0][0]}:${denoms[0][2]}:sweep`];
+    }
 
-  // sampletable [[ch, sname, groupname], [ch2, sname, samplename, groupname], ...]
-  // we can push sampletables on ANY workflow as nextflow will ignore non-params
-  let sampletable = Object.entries(isoquants).flatMap(([sname, isoq]) => 
-    Object.entries(isoq.channels).map(([ch, sample]) => [ch, sname, sample, isoq.samplegroups[ch]]).sort((a, b) => {
-	  return a[0].replace('N', 'A') > b[0].replace('N', 'A')
-    })
-  );
-  post.sampletable = sampletable.map(row => row.slice(0, 3).concat(row[3] ? row[3] : 'X__POOL'));
+    // sampletable [[ch, sname, groupname], [ch2, sname, samplename, groupname], ...]
+    // we can push sampletables on ANY workflow as nextflow will ignore non-params
+    let sampletable = Object.entries(isoquants).flatMap(([sname, isoq]) => 
+      Object.entries(isoq.channels).map(([ch, sample]) => [ch, sname, sample, isoq.samplegroups[ch]]).sort((a, b) => {
+      return a[0].replace('N', 'A') > b[0].replace('N', 'A')
+      })
+    );
+    post.sampletable = sampletable.map(row => row.slice(0, 3).concat(row[3] ? row[3] : 'X__POOL'));
+  }
    
   // Post the payload
   if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
@@ -290,28 +299,30 @@ function sortChannels(channels) {
 
 function updateIsoquant() {
   // Add new set things if necessary
-  Object.values(dsets).forEach(ds => {
-    const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
-    notif.errors[errmsg] = 0;
-    if (ds.setname && !(ds.setname in isoquants)) {
-      isoquants[ds.setname] = {
-        chemistry: ds.details.qtypeshort,
-        channels: ds.details.channels,
-        samplegroups: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, ''])),
-        denoms: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, false]))
-      };
-    } else if (ds.setname && ds.setname in isoquants) {
-      if (isoquants[ds.setname].channels !== ds.details.channels) {
-        notif.errors[errmsg] = 1;
+  if ('isobaric_quant' in wf.components) {
+    Object.values(dsets).forEach(ds => {
+      const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
+      notif.errors[errmsg] = 0;
+      if (ds.setname && !(ds.setname in isoquants)) {
+        isoquants[ds.setname] = {
+          chemistry: ds.details.qtypeshort,
+          channels: ds.details.channels,
+          samplegroups: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, ''])),
+          denoms: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, false]))
+        };
+      } else if (ds.setname && ds.setname in isoquants) {
+        if (isoquants[ds.setname].channels !== ds.details.channels) {
+          notif.errors[errmsg] = 1;
+        }
       }
-    }
-  });
-  // Remove old sets from isoquants if necessary
-  const dset_sets = new Set(Object.values(dsets).map(ds => ds.setname).filter(x => x));
-  Object.keys(isoquants).filter(x => !(dset_sets.has(x))).forEach(x => {
-    delete(isoquants[x])
-  });
-  isoquants = Object.assign({}, isoquants);  // assign so svelte notices (doesnt act on deletion)
+    });
+    // Remove old sets from isoquants if necessary
+    const dset_sets = new Set(Object.values(dsets).map(ds => ds.setname).filter(x => x));
+    Object.keys(isoquants).filter(x => !(dset_sets.has(x))).forEach(x => {
+      delete(isoquants[x])
+    });
+    isoquants = Object.assign({}, isoquants);  // assign so svelte notices (doesnt act on deletion)
+  }
 }
 
 onMount(async() => {
@@ -469,7 +480,7 @@ onMount(async() => {
   </div>
   {/each}
 
-  {#if Object.keys(isoquants).length}
+  {#if 'isobaric_quant' in wf.components && Object.keys(isoquants).length}
   <div class="box">
 		<div class="title is-5">Isobaric quantification</div>
     {#if Object.keys(isoquants).length === 1}
@@ -526,6 +537,21 @@ onMount(async() => {
   </div>
   {/if}
 
+  {#if 'mzmldef' in wf.components}
+  <div class="title is-5">Mzml inputfile type</div>
+  <div class="field">
+    <div class="select">
+      <select bind:value={config.mzmldef}>
+        <option>Please select one</option>
+        {#each Object.keys(wf.components.mzmldef) as comp}
+        <option value={comp}>{comp.split(' ').map(x => `${x[0].toUpperCase()}${x.slice(1).toLowerCase()}`).join(' ')} ({wf.components.mzmldef[comp].join(', ')})</option>
+        {/each}
+      </select>
+    </div>
+  </div>
+  {/if}
+
+  {#if wf.multicheck.length + wf.numparams.length + wf.flags.length}
   <div class="box">
     <div class="title is-5">Workflow parameters</div>
     {#each wf.multicheck as {nf, name, opts}}
@@ -554,9 +580,11 @@ onMount(async() => {
       <label class="checkbox">{name}</label>: <code>{nf}</code>
     </div>
     {/each}
-
 	</div>
+  {/if}
 
+
+  {#if wf.multifileparams.length + wf.fileparams.length}
   <div class="box">
     <div class="title is-5">Input files</div>
     {#each wf.multifileparams as filep}
@@ -614,6 +642,8 @@ onMount(async() => {
     </div>
     {/each}
 	</div>
+  {/if}
+
 
   {#if wf.fixedfileparams.length}
 	<div class="box">

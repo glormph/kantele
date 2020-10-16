@@ -92,7 +92,8 @@ class MultiDatasetJob(BaseJob):
          return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id__in=kwargs['dset_ids'])
 
 
-def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, platenames=False, fractions=False, setnames=False):
+def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, components, platenames=False, fractions=False, setnames=False):
+    # FIXME this doesnt work, we have no args anymore in jobs, only kwargs!!
     jobargs = json.dumps([dset_ids])[:-1]  # leave out last bracket
     jobs = Job.objects.filter(funcname=fname, 
             args__startswith=jobargs).select_related('nextflowsearch')

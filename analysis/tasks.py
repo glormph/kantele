@@ -220,17 +220,22 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_ver
                 fp.write('\n')
         params.extend(['--sampletable', sampletable_fn])
     # create input file of filenames
+    # FIXME depends on mzmldef component
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
-            # set/plate/fraction in LC runs are channel/samplename
-            if len(fn) > 6 and fn[6]:
-                mzstr = '{fpath}\t{inst}\t{setn}'.format(fpath=os.path.join(stagedir, 'mzmls', fn[2]), setn=fn[3], inst=fn[6])
-            else:
-                mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, 'mzmls', fn[2]), setn=fn[3])
-            if fn[4]:  # if a plate is speced, use plate and fraction if they are speced
-                mzstr = '{ms}\t{pl}'.format(ms=mzstr, pl=fn[4])
-                if len(fn) > 5 and fn[5]:
-                    mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
+            ####
+            fnpath = os.path.join(stagedir, 'mzmls', fn['filename'])
+            mzstr = '{}\t{}'.format(fnpath, fn['mzmldef'])
+            ####
+#            # set/plate/fraction in LC runs are channel/samplename
+#            if len(fn) > 6 and fn[6]:
+#                mzstr = '{fpath}\t{inst}\t{setn}'.format(fpath=os.path.join(stagedir, 'mzmls', fn[2]), setn=fn[3], inst=fn[6])
+#            else:
+#                mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, 'mzmls', fn[2]), setn=fn[3])
+#            if fn[4]:  # if a plate is speced, use plate and fraction if they are speced
+#                mzstr = '{ms}\t{pl}'.format(ms=mzstr, pl=fn[4])
+#                if len(fn) > 5 and fn[5]:
+#                    mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
             mzstr = '{}\n'.format(mzstr)
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
@@ -254,7 +259,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, nf_version):
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             # FIXME not have set, etc, pass rawfnid here!
-            mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, 'mzmls', fn[2]), refined_sfid=fn[3])
+            mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, 'mzmls', fn['fn']), refined_sfid=fn['sfid'])
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version)
@@ -299,7 +304,7 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
     try:
         params = stage_files(stagedir, stagefiles, params)
         if len(mzmls):
-            stage_files(stagedir, {'mzmls': mzmls})
+            stage_files(stagedir, {'mzmls': [(x['servershare'], x['path'], x['fn']) for x in mzmls]})
     except Exception:
         taskfail_update_db(taskid, 'Could not stage files for analysis')
         raise

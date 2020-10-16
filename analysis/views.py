@@ -161,6 +161,8 @@ def get_workflow_versioned(request):
     selectable_files.extend(userfiles)
     resp = {
             'analysisapi': wf.kanteleanalysis_version,
+            'components': {psc.component.name: json.loads(psc.component.value) for psc in 
+                wf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': f.param.nfparam, 'name': f.param.name} 
                 for f in params.filter(param__ptype='flag', param__visible=True)],
             'numparams': [{'nf': p.param.nfparam, 'name': p.param.name}
@@ -225,12 +227,14 @@ def start_analysis(request):
             'multifiles': {nf: fnids for nf, fnids in req['multifiles'].items()},
             'params': [multip for p, vals in req['params'].pop('multi').items() for multip in [p, ';'.join(vals)]]}
     params['params'].extend([y for x in req['params'].values() for y in x])
+    components = {k: v for k, v in req['components'].items() if v}
     if 'sampletable' in req and len(req['sampletable']):
         params['sampletable'] = req['sampletable']
     arg_dsids = [int(x) for x in req['dsids']]
     wf = am.Workflow.objects.select_related('shortname').get(pk=req['wfid'])
-    if wf.shortname.name != 'LC':
-        fname = 'run_nf_search_workflow'
+    fname = 'run_nf_search_workflow'
+    #if wf.shortname.name != 'LC':
+    if 'mzmldef' in components and 'plate' in components['mzmldef']:
         strips = {}
         for dsid in req['dsids']:
             strip = req['strips'][dsid]
@@ -242,15 +246,16 @@ def start_analysis(request):
             else:
                 strips[dsid] = False  # FIXME does that work?
                 # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients 
-        data_args = {'platenames': strips, 'fractions': req['fractions'], 'setnames': req['setnames']}
+        data_args = {'platenames': strips, 'fractions': req['fractions']}
     else:
-        fname = 'run_nf_lc_workflow'
+        #fname = 'run_nf_lc_workflow'
         data_args = {'dset_ids': req['dsids']}
+    data_args['setnames'] = req['setnames']
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': params}
-    jobcheck = jj.check_existing_search_job(fname, req['wfid'], **{'dset_ids': arg_dsids, **data_args, **param_args})
+    jobcheck = jj.check_existing_search_job(fname, req['wfid'], **{'dset_ids': arg_dsids, 'components': components, **data_args, **param_args})
     if jobcheck:
         return JsonResponse({'error': 'This analysis already exists', 'link': '/?tab=searches&anids={}'.format(jobcheck.nextflowsearch.id)})
-    job = jj.create_job(fname, **{'analysis_id': analysis.id, **data_args, **param_args})
+    job = jj.create_job(fname, **{'analysis_id': analysis.id, **data_args, **param_args, **components})
     aj.create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
     return JsonResponse({'error': False})
 
