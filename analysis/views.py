@@ -228,13 +228,15 @@ def start_analysis(request):
             'params': [multip for p, vals in req['params'].pop('multi').items() for multip in [p, ';'.join(vals)]]}
     params['params'].extend([y for x in req['params'].values() for y in x])
     components = {k: v for k, v in req['components'].items() if v}
-    if 'sampletable' in req and len(req['sampletable']):
-        params['sampletable'] = req['sampletable']
+    if 'sampletable' in components:
+        params['sampletable'] = components['sampletable']
     arg_dsids = [int(x) for x in req['dsids']]
     wf = am.Workflow.objects.select_related('shortname').get(pk=req['wfid'])
     fname = 'run_nf_search_workflow'
     #if wf.shortname.name != 'LC':
-    if 'mzmldef' in components and 'plate' in components['mzmldef']:
+    data_args = {'setnames': req['setnames'], 'fractions': req['fractions']}
+    all_mzmldefs = json.loads(am.WFInputComponent.objects.get(name='mzmldef').value)
+    if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
         strips = {}
         for dsid in req['dsids']:
             strip = req['strips'][dsid]
@@ -246,16 +248,15 @@ def start_analysis(request):
             else:
                 strips[dsid] = False  # FIXME does that work?
                 # FIXME when strip is False (as passed from javascript) we need to do something, eg long gradients 
-        data_args = {'platenames': strips, 'fractions': req['fractions']}
+        data_args['platenames'] = strips
     else:
         #fname = 'run_nf_lc_workflow'
-        data_args = {'dset_ids': req['dsids']}
-    data_args['setnames'] = req['setnames']
+        data_args['dset_ids'] = req['dsids']
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': params}
     jobcheck = jj.check_existing_search_job(fname, req['wfid'], **{'dset_ids': arg_dsids, 'components': components, **data_args, **param_args})
     if jobcheck:
         return JsonResponse({'error': 'This analysis already exists', 'link': '/?tab=searches&anids={}'.format(jobcheck.nextflowsearch.id)})
-    job = jj.create_job(fname, **{'analysis_id': analysis.id, **data_args, **param_args, **components})
+    job = jj.create_job(fname, **{'analysis_id': analysis.id, **data_args, **param_args, 'components': components})
     aj.create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
     return JsonResponse({'error': False})
 

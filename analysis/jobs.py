@@ -170,10 +170,12 @@ class RunNextflowWorkflow(BaseJob):
             for sf_id in sf_ids:
                 sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
-        mzmldef_fields = kwargs['components']['mzmldef'] if 'mzmldef' in kwargs['components'] else False
+        mzmldef_fields = False
+        if 'mzmldef' in kwargs['components']:
+            mzmldef_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)[kwargs['components']['mzmldef']]
         mzmls = [{
             'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
-            'setname': kwargs['setnames'][str(x.id)] if 'setnames' in mzmldef_fields else False,
+            'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
             'plate': kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)] if 'plate' in mzmldef_fields else False,
             'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name if 'channel' in mzmldef_fields else False,
             'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if 'sample' in mzmldef_fields else False,
@@ -181,7 +183,8 @@ class RunNextflowWorkflow(BaseJob):
             'instrument': x.rawfile.producer.msinstrument.instrumenttype.name if 'instrument' in mzmldef_fields else False,
             } for x in self.getfiles_query(**kwargs)]
         if mzmldef_fields:
-            mzmls = {'mzmldef': '\t'.join([x[key] for key in mzmldef_fields]), **{x[k] for x in ['servershare', 'path', 'fn']}}
+            mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields]), **{k: x[k] for k in ['servershare', 'path', 'fn']}}
+                for x in mzmls]
 
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
@@ -196,8 +199,8 @@ class RunNextflowWorkflow(BaseJob):
         params = [str(x) for x in kwargs['inputs']['params']]
         # Runname defined when run executed (FIXME can be removed, no reason to not do that here)
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        if 'sampletable' in kwargs['inputs']:
-            params.extend(['SAMPLETABLE', kwargs['inputs']['sampletable']])
+        if 'sampletable' in kwargs['components']:
+            params.extend(['SAMPLETABLE', kwargs['components']['sampletable']])
         self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         # TODO remove this logging
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])

@@ -126,6 +126,7 @@ async function runAnalysis() {
     multifiles: multifns,
     components: {
       mzmldef: config.mzmldef,
+      sampletable: false,
     },
     wfid: config.wfid,
     nfwfvid: config.wfversion.id,
@@ -164,15 +165,17 @@ async function runAnalysis() {
     } else if (mediansweep) {
       post.params.denoms = ['--isobaric', `${denoms[0][0]}:${denoms[0][2]}:sweep`];
     }
+  }
 
+  if ('isobaric_quant' in wf.components || 'sampletable' in wf.components) {
     // sampletable [[ch, sname, groupname], [ch2, sname, samplename, groupname], ...]
     // we can push sampletables on ANY workflow as nextflow will ignore non-params
-    let sampletable = Object.entries(isoquants).flatMap(([sname, isoq]) => 
+    const sampletable = Object.entries(isoquants).flatMap(([sname, isoq]) => 
       Object.entries(isoq.channels).map(([ch, sample]) => [ch, sname, sample, isoq.samplegroups[ch]]).sort((a, b) => {
       return a[0].replace('N', 'A') > b[0].replace('N', 'A')
       })
     );
-    post.sampletable = sampletable.map(row => row.slice(0, 3).concat(row[3] ? row[3] : 'X__POOL'));
+    post.components.sampletable = sampletable.map(row => row.slice(0, 3).concat(row[3] ? row[3] : 'X__POOL'));
   }
    
   // Post the payload
@@ -299,7 +302,7 @@ function sortChannels(channels) {
 
 function updateIsoquant() {
   // Add new set things if necessary
-  if ('isobaric_quant' in wf.components) {
+  if ('isobaric_quant' in wf.components || 'sampletable' in wf.components) {
     Object.values(dsets).forEach(ds => {
       const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
       notif.errors[errmsg] = 0;
