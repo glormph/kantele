@@ -10,22 +10,22 @@ class Job(models.Model):
 
 
 class JobError(models.Model):
-    job = models.OneToOneField(Job)
+    job = models.OneToOneField(Job, on_delete=models.CASCADE)
     message = models.TextField()
 
 
 class Task(models.Model):
     asyncid = models.CharField(max_length=50)
-    job = models.ForeignKey(Job)
+    job = models.ForeignKey(Job, on_delete=models.CASCADE)
     state = models.CharField(max_length=20)
     args = models.TextField()
 
 
 class TaskChain(models.Model):
     lasttask = models.CharField(max_length=50)
-    task = models.ForeignKey(Task)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE)
 
 
 class TaskError(models.Model):
-    task = models.OneToOneField(Task)
+    task = models.OneToOneField(Task, on_delete=models.CASCADE)
     message = models.TextField()

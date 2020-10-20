@@ -13,7 +13,7 @@ class PrincipalInvestigator(models.Model):
 
 class Project(models.Model):
     name = models.CharField(max_length=100)
-    pi = models.ForeignKey(PrincipalInvestigator)
+    pi = models.ForeignKey(PrincipalInvestigator, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
     registered = models.DateTimeField(auto_now_add=True)
 
@@ -23,23 +23,23 @@ class ProjectTypeName(models.Model):
 
 
 class ProjType(models.Model):
-    project = models.OneToOneField(Project)
-    ptype = models.ForeignKey(ProjectTypeName)
+    project = models.OneToOneField(Project, on_delete=models.CASCADE)
+    ptype = models.ForeignKey(ProjectTypeName, on_delete=models.CASCADE)
 
 
 class UserPtype(models.Model):
-    ptype = models.ForeignKey(ProjectTypeName)
-    user = models.ForeignKey(User)
+    ptype = models.ForeignKey(ProjectTypeName, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
 
 
 class Experiment(models.Model):
     name = models.CharField(max_length=200)
-    project = models.ForeignKey(Project)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE)
 
 
 class RunName(models.Model):
     name = models.TextField(max_length=100)
-    experiment = models.ForeignKey(Experiment)
+    experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
 
 
 class Species(models.Model):
@@ -62,8 +62,8 @@ class DatasetComponent(models.Model):
         return self.name
 
 class DatatypeComponent(models.Model):
-    datatype = models.ForeignKey(Datatype)
-    component = models.ForeignKey(DatasetComponent)
+    datatype = models.ForeignKey(Datatype, on_delete=models.CASCADE)
+    component = models.ForeignKey(DatasetComponent, on_delete=models.CASCADE)
 
     def __str__(self):
         return '{} has component {}'.format(self.datatype.name,
@@ -72,33 +72,33 @@ class DatatypeComponent(models.Model):
 
 class Dataset(models.Model):
     date = models.DateTimeField('date created')
-    runname = models.OneToOneField(RunName)
-    datatype = models.ForeignKey(Datatype)
+    runname = models.OneToOneField(RunName, on_delete=models.CASCADE)
+    datatype = models.ForeignKey(Datatype, on_delete=models.CASCADE)
     storage_loc = models.TextField(max_length=200, unique=True)
     deleted = models.BooleanField(default=False) # for UI only, indicate deleted from active storage
     purged = models.BooleanField(default=False) # for UI only, indicate permanent deleted from cold storage too
 
 
 class DatasetOwner(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    user = models.ForeignKey(User)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
 
 
 class DatasetComponentState(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    dtcomp = models.ForeignKey(DatatypeComponent)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    dtcomp = models.ForeignKey(DatatypeComponent, on_delete=models.CASCADE)
     state = models.TextField(max_length=20)
     # state can be new, OK
 
 
 class DatasetRawFile(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    rawfile = models.OneToOneField(RawFile)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    rawfile = models.OneToOneField(RawFile, on_delete=models.CASCADE)
 
 
 class DatasetSpecies(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    species = models.ForeignKey(Species)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    species = models.ForeignKey(Species, on_delete=models.CASCADE)
 
 
 class ParamType(models.Model):
@@ -118,7 +118,7 @@ class ParamLabcategory(models.Model):
 class SelectParameter(models.Model):
     # adminable
     title = models.CharField(max_length=100)
-    category = models.ForeignKey(ParamLabcategory)
+    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -129,8 +129,8 @@ class FieldParameter(models.Model):
     # adminable
     title = models.CharField(max_length=100)
     placeholder = models.CharField(max_length=100)
-    paramtype = models.ForeignKey(ParamType)
-    category = models.ForeignKey(ParamLabcategory)
+    paramtype = models.ForeignKey(ParamType, on_delete=models.CASCADE)
+    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -138,7 +138,7 @@ class FieldParameter(models.Model):
 
 
 class SelectParameterOption(models.Model):
-    param = models.ForeignKey(SelectParameter)
+    param = models.ForeignKey(SelectParameter, on_delete=models.CASCADE)
     value = models.CharField(max_length=100)
 
     def __str__(self):
@@ -146,20 +146,20 @@ class SelectParameterOption(models.Model):
 
 
 class SelectParameterValue(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    value = models.ForeignKey(SelectParameterOption)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    value = models.ForeignKey(SelectParameterOption, on_delete=models.CASCADE)
 
 
 class FieldParameterValue(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    param = models.ForeignKey(FieldParameter)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    param = models.ForeignKey(FieldParameter, on_delete=models.CASCADE)
     value = models.CharField(max_length=100)
 
 
 class CheckboxParameter(models.Model):
     # adminable
     title = models.CharField(max_length=100)
-    category = models.ForeignKey(ParamLabcategory)
+    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -167,7 +167,7 @@ class CheckboxParameter(models.Model):
 
 
 class CheckboxParameterOption(models.Model):
-    param = models.ForeignKey(CheckboxParameter)
+    param = models.ForeignKey(CheckboxParameter, on_delete=models.CASCADE)
     value = models.CharField(max_length=100)
 
     def __str__(self):
@@ -175,8 +175,8 @@ class CheckboxParameterOption(models.Model):
 
 
 class CheckboxParameterValue(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    value = models.ForeignKey(CheckboxParameterOption)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    value = models.ForeignKey(CheckboxParameterOption, on_delete=models.CASCADE)
 
 
 class Enzyme(models.Model):
@@ -187,8 +187,8 @@ class Enzyme(models.Model):
 
 
 class EnzymeDataset(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    enzyme = models.ForeignKey(Enzyme)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    enzyme = models.ForeignKey(Enzyme, on_delete=models.CASCADE)
 
 
 class QuantType(models.Model):
@@ -207,41 +207,41 @@ class QuantChannel(models.Model):
 
 
 class QuantTypeChannel(models.Model):
-    quanttype = models.ForeignKey(QuantType)
-    channel = models.ForeignKey(QuantChannel)
+    quanttype = models.ForeignKey(QuantType, on_delete=models.CASCADE)
+    channel = models.ForeignKey(QuantChannel, on_delete=models.CASCADE)
 
     def __str__(self):
         return '{} - {}'.format(self.quanttype.name, self.channel.name)
 
 
 class QuantDataset(models.Model):
-    dataset = models.OneToOneField(Dataset)
-    quanttype = models.ForeignKey(QuantType)
+    dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
+    quanttype = models.ForeignKey(QuantType, on_delete=models.CASCADE)
 
 
 class ProjectSample(models.Model):
     sample = models.CharField(max_length=100)
-    project = models.ForeignKey(Project)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE)
 
     class Meta:
         unique_together = [['sample', 'project']]
 
 
 class QuantSampleFile(models.Model):
-    rawfile = models.OneToOneField(DatasetRawFile)
-    projsample = models.ForeignKey(ProjectSample)
+    rawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
+    projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
 
 
 class QuantChannelSample(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    channel = models.ForeignKey(QuantTypeChannel)
-    projsample = models.ForeignKey(ProjectSample)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    channel = models.ForeignKey(QuantTypeChannel, on_delete=models.CASCADE)
+    projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
 
 
 class QuantFileChannelSample(models.Model):  # used for labelcheck
-    channel = models.ForeignKey(QuantTypeChannel)
-    projsample = models.ForeignKey(ProjectSample)
-    dsrawfile = models.OneToOneField(DatasetRawFile)
+    channel = models.ForeignKey(QuantTypeChannel, on_delete=models.CASCADE)
+    projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+    dsrawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
     
 
 class HiriefRange(models.Model):
@@ -257,24 +257,24 @@ class HiriefRange(models.Model):
 
 
 class ExternalDatasetContact(models.Model):
-    dataset = models.OneToOneField(Dataset)
+    dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
     email = models.CharField(max_length=100)
 
 
 class Operator(models.Model):
-    user = models.OneToOneField(User)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     def __str__(self):
         return '{} {}'.format(self.user.first_name, self.user.last_name)
 
 
 class OperatorDataset(models.Model):
-    dataset = models.OneToOneField(Dataset)
-    operator = models.ForeignKey(Operator)
+    dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
+    operator = models.ForeignKey(Operator, on_delete=models.CASCADE)
 
 
 class ReversePhaseDataset(models.Model):
-    dataset = models.OneToOneField(Dataset)
+    dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
     length = models.CharField(max_length=20)
 
 
@@ -286,25 +286,25 @@ class Prefractionation(models.Model):
 
 
 class PrefractionationDataset(models.Model):
-    dataset = models.OneToOneField(Dataset)
-    prefractionation = models.ForeignKey(Prefractionation)
+    dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
+    prefractionation = models.ForeignKey(Prefractionation, on_delete=models.CASCADE)
 
 
 class HiriefDataset(models.Model):
-    pfdataset = models.OneToOneField(PrefractionationDataset)
-    hirief = models.ForeignKey(HiriefRange)
+    pfdataset = models.OneToOneField(PrefractionationDataset, on_delete=models.CASCADE)
+    hirief = models.ForeignKey(HiriefRange, on_delete=models.CASCADE)
 
 
 class PrefractionationLength(models.Model):
-    pfdataset = models.OneToOneField(PrefractionationDataset)
+    pfdataset = models.OneToOneField(PrefractionationDataset, on_delete=models.CASCADE)
     length = models.CharField(max_length=20)
 
 
 class PrefractionationFractionAmount(models.Model):
-    pfdataset = models.OneToOneField(PrefractionationDataset)
+    pfdataset = models.OneToOneField(PrefractionationDataset, on_delete=models.CASCADE)
     fractions = models.IntegerField()
 
 
 class DatasetJob(models.Model):
-    dataset = models.ForeignKey(Dataset)
-    job = models.ForeignKey(Job)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    job = models.ForeignKey(Job, on_delete=models.CASCADE)
