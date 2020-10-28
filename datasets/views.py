@@ -1294,8 +1294,8 @@ def save_labelcheck(request):
         # new data, insert, not updating
         models.QuantDataset.objects.create(dataset_id=dset_id, quanttype_id=data['quanttype'])
         models.QuantFileChannelSample.objects.bulk_create([
-            models.QuantFileChannelSample(rawfile_id=fid, projsample_id=sam['sample'],
-                channel=sam['channel']) for fid, sam in data['samples'].items()])
+            models.QuantFileChannelSample(dsrawfile_id=fid, projsample_id=sam['sample'],
+                channel_id=sam['channel']) for fid, sam in data['samples'].items()])
     else:
         update_labelcheck(data, qtype)
     set_component_state(dset_id, 'labelchecksamples', COMPSTATE_OK)
