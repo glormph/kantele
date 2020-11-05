@@ -215,9 +215,11 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
     env['DSM_DIR'] = config.DSM_DIR
     try:
         subprocess.check_call(cmd, env=env)
-    except Exception:
-        taskfail_update_db(self.request.id)
-        raise
+    except subprocess.CalledProcessError as CPE:
+        if CPE.returncode != 8:
+            # exit code 8 is "there are warnings but no problems"
+            taskfail_update_db(self.request.id)
+            raise
     postdata = {'sfid': fn_id, 'pdcpath': link,
                 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:createpdcarchive'))
@@ -241,13 +243,12 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
 
 
 @shared_task(bind=True, queue=config.QUEUE_PDC)
-def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
+def pdc_restore(self, servershare, filepath, pdcpath, fn_id):
     print('Restoring file {} from PDC tape'.format(filepath))
     basedir = config.SHAREMAP[servershare]
     fileloc = os.path.join(basedir, filepath)
-    backupfile = os.path.join(basedir, yearmonth, md5)
     # restore to fileloc
-    cmd = ['dsmc', 'retrieve', '-replace=no', backupfile, fileloc]
+    cmd = ['dsmc', 'retrieve', '-replace=no', pdcpath, fileloc]
     env = os.environ
     env['DSM_DIR'] = config.DSM_DIR
     try:
@@ -263,7 +264,7 @@ def pdc_restore(self, md5, yearmonth, servershare, filepath, fn_id):
     postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': config.APIKEY}
     url = urljoin(config.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
     msg = ('Restore from archive could not update database with for fn {} with PDC path {} :'
-           '{}'.format(filepath, backupfile, '{}'))
+           '{}'.format(filepath, pdcpath, '{}'))
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
