@@ -76,11 +76,16 @@ let tabcolor = 'has-text-grey-lighter';
 
 $: showMsdata = components.indexOf('acquisition') > -1;
 $: isExternal = dsinfo.ptype_id && dsinfo.ptype_id !== pdata.local_ptype_id;
-$: isLabelcheck = components.indexOf('labelchecksamples') > -1 || components.indexOf('pooledlabelchecksamples') > -1;
+$: isLabelcheck = pdata.datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x => x.name.indexOf('abelcheck') > -1).length;
 
 async function getcomponents() {
   const result = await getJSON(`/datasets/show/components/${dsinfo.datatype_id}`);
   components = result.components;
+}
+
+function switchDatatype() {
+  getcomponents();
+  editMade();
 }
 
 async function project_selected(saved=false) {
@@ -326,7 +331,7 @@ function showFiles() {
         <label class="label">Dataset type</label>
         <div class="control">
           <div class="select">
-            <select bind:value={dsinfo.datatype_id} on:change={getcomponents}>
+            <select bind:value={dsinfo.datatype_id} on:change={switchDatatype}>
               <option disabled value="">Please select one</option>
               {#each pdata.datasettypes as dstype}
               <option value={dstype.id}>{dstype.name}</option>
