@@ -224,7 +224,7 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_ver
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             ####
-            fnpath = os.path.join(stagedir, 'mzmls', fn['filename'])
+            fnpath = os.path.join(stagedir, 'mzmls', fn['fn'])
             mzstr = '{}\t{}'.format(fnpath, fn['mzmldef'])
             ####
 #            # set/plate/fraction in LC runs are channel/samplename
