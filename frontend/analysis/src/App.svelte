@@ -10,6 +10,7 @@ let loadingItems = false;
 let runButtonActive = true;
 let postingAnalysis = false;
 
+let analysis_id = false;
 let allwfs = {};
 let wf = false;
 let wforder = [];
@@ -29,15 +30,14 @@ NF workflow API v2:
 - isobaric spec as --isobaric set1:tmt10plex:126 set2:6plex:sweep
 */
 
-let isoquants = {};
-let mediansweep = false;
 
-let multicheck = [];
 let config = {
   wfid: false,
   wfversion: false,
   analysisname: '',
   flags: [],
+  multicheck: [],
+  isoquants: {},
   fileparams: {},
   inputparams: {},
   multifileparams: {},
@@ -52,7 +52,6 @@ let config = {
   },
 }
 let matchedFr = {};
-let frregex = {};
 
 function validate() {
   notif = {errors: {}, messages: {}, links: {}};
@@ -82,7 +81,7 @@ function validate() {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have another set name: only a-z 0-9 _ are allowed`] = 1;
 		}
 	});
-  Object.entries(isoquants).forEach(([sname, isoq]) => {
+  Object.entries(config.isoquants).forEach(([sname, isoq]) => {
     Object.entries(isoq.samplegroups).forEach(([ch, sgroup]) => {
       if (sgroup && !charRe.test(sgroup)) {
         notif.errors[`Incorrect sample group name for set ${sname}, channel ${ch}, only A-Z a-z 0-9 _ are allowed`] =1; 
@@ -93,7 +92,7 @@ function validate() {
 }
 
 
-async function runAnalysis() {
+async function storeAnalysis() {
   if (!validate()) {
   	return false;
   }
@@ -102,26 +101,21 @@ async function runAnalysis() {
   notif.messages['Validated data'] = 1;
   let fns = Object.fromEntries(Object.entries(config.fileparams).filter(([k,v]) => v))
   wf.fixedfileparams.forEach(fn => {
-    fns[fn.nf] = fn.id
+    fns[fn.id] = fn.sfid
   })
   let multifns = Object.fromEntries(Object.entries(config.multifileparams).map(([k, v]) => [k, Object.values(v).filter(x => x)]).filter(([k, v]) => v.length));
-  let setnames = {};
-  Object.values(dsets).filter(ds => ds.filesaresets).forEach(ds => {
-    Object.assign(setnames, Object.fromEntries(ds.files.map(fn => [fn.id, fn.setname])));
-  });
-  Object.values(dsets).filter(ds => !ds.filesaresets).forEach(ds => {
-    Object.assign(setnames, Object.fromEntries(ds.files.map(fn => [fn.id, ds.setname])));
-  });
-
   const fractions = Object.fromEntries(Object.values(dsets).flatMap(ds => ds.files.map(fn => [fn.id, fn.fr])));
 
-  notif.messages[`${Object.keys(setnames).length} set(s) found`] = 1;
   notif.messages[`Using ${Object.keys(dsets).length} dataset(s)`] = 1;
   notif.messages[`${Object.keys(fns).length} other inputfiles found`];
   let post = { 
-    setnames: setnames,
+    analysis_id: existing_analysis ? existing_analysis.analysis_id : false,
     dsids: Object.keys(dsets),
-    fractions: fractions,
+    dssetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => !ds.filesaresets).map(([dsid, ds]) => [dsid, ds.setname])),
+    fnsetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => ds.filesaresets).map(
+      ([dsid, ds]) => ds.files.map(fn => [fn.id, fn.setname])).flat()),
+    frregex: Object.fromEntries(Object.entries(dsets).map(([dsid, ds]) => [dsid, ds.frregex])),
+    matchedfractions: matchedFr,
     singlefiles: fns,
     multifiles: multifns,
     components: {
@@ -131,46 +125,32 @@ async function runAnalysis() {
     wfid: config.wfid,
     nfwfvid: config.wfversion.id,
     analysisname: `${allwfs[config.wfid].wftype}_${config.analysisname}`,
-    strips: {},
+    isoquant: {},
     params: {
-      flags: config.flags,
-      inputparams: Object.entries(config.inputparams).filter(([k,v]) => v).flat(),
-      multi: multicheck.reduce((acc, x) => {acc[x[0]].push(x[1]); return acc}, Object.fromEntries(multicheck.map(x => [x[0], []]))),
+      flags: Object.fromEntries(config.flags.map(x => [x, true])),
+      inputparams: config.inputparams,
+      multicheck: config.multicheck.reduce((acc, x) => {
+        const xspl = x.split('___');
+        console.log(xspl);
+        acc[xspl[0]].push(xspl[1]);
+        return acc},
+        Object.fromEntries(config.multicheck.map(x => {
+          const xspl = x.split('___');
+          return [xspl[0], []]
+        }))),
     },
   };
   if (config.v1) {
     post.params.inst = ['--instrument', config.version_dep.v1.instype];
-    post.params.quant = config.version_dep.v1.qtype === 'labelfree' ? [] : ['--isobaric', config.version_dep.v1.qtype];
   }
-  // HiRIEF
-  Object.values(dsets).forEach(ds => {
-    post.strips[ds.id] = ds.hr ? ds.hr : ds.prefrac ? 'unknown_plate' : false
-  })
   if ('isobaric_quant' in wf.components) {
-    // general denoms = [[set1, [126, 127], tmt10plex], [set2, [128, 129], tmt6plex]]
-    let denoms = Object.entries(isoquants).map(([sname, isoq]) => 
-      [sname, Object.entries(isoq.denoms).filter(([ch, val]) => val).map(([ch, val]) => ch), isoq.chemistry]
-     )
-    // TODO This filters sets without denoms, possibly change this for when not using any (e.g. intensities instead)
-    if (denoms.length && !mediansweep && denoms.filter(([sn, chs, chem]) => !chs.length).length) {
-      notif.errors['Median sweep not used but not all sets have denominator, cannot run this'] = 1;
-    }
-    // mediansweep is only active at 1-set analyses, otherwise it is supposed to not make sense, so we can have global flag
-    if (denoms.length && !mediansweep && config.v1) {
-      // API v1: denoms: 'set1:126:127 set2:128:129'
-      post.params.denoms = ['--denoms', denoms.map(([sname, chs, chem]) => `${sname}:${chs.join(':')}`).join(' ')];
-    } else if (denoms.length && !mediansweep && !config.v1) {
-      // API v2: isobaric: 'set1:tmt10plex:126:127 set2:itraq8plex:114'
-      post.params.denoms = ['--isobaric', denoms.map(([sname, chs, chem]) => `${sname}:${chem}:${chs.join(':')}`).join(' ')];
-    } else if (mediansweep) {
-      post.params.denoms = ['--isobaric', `${denoms[0][0]}:${denoms[0][2]}:sweep`];
-    }
+    post.isoquant = config.isoquants;
   }
 
   if ('isobaric_quant' in wf.components || 'sampletable' in wf.components) {
     // sampletable [[ch, sname, groupname], [ch2, sname, samplename, groupname], ...]
     // we can push sampletables on ANY workflow as nextflow will ignore non-params
-    const sampletable = Object.entries(isoquants).flatMap(([sname, isoq]) => 
+    const sampletable = Object.entries(config.isoquants).flatMap(([sname, isoq]) => 
       Object.entries(isoq.channels).map(([ch, sample]) => [ch, sname, sample, isoq.samplegroups[ch]]).sort((a, b) => {
       return a[0].replace('N', 'A') > b[0].replace('N', 'A')
       })
@@ -180,19 +160,36 @@ async function runAnalysis() {
    
   // Post the payload
   if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
-    notif.messages[`Posting analysis job for ${this.analysisname}`] = 1;
-    const resp = await postJSON('/analysis/run/', post);
+    notif.messages[`Storing analysis for ${config.analysisname}`] = 1;
+    const resp = await postJSON('/analysis/store/', post);
     if (resp.error) {
       notif.errors[resp.error] = 1;
       if ('link' in resp) {
         notif.links[resp.link] = 1;
       }
     } else {
-      window.location.href = '/?tab=searches';
+      analysis_id = resp.analysis_id;
     }
   }
   postingAnalysis = false;
   runButtonActive = true;
+}
+
+
+async function runAnalysis() {
+  await storeAnalysis();
+  if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
+    notif.messages[`Queueing analysis job for ${config.analysisname}`] = 1;
+    const post = {
+      analysis_id: analysis_id,
+    }
+    const resp = await postJSON('/analysis/run/', post);
+    if (resp.error) {
+      notif.errors[resp.error] = 1;
+    } else {
+      window.location.href = '/?tab=searches';
+    }
+  }
 }
 
 
@@ -212,7 +209,7 @@ async function fetchWorkflow() {
     config.v2 = wf.analysisapi === 2;
   }
   if (wf.multifileparams.length) {
-    config.multifileparams = Object.fromEntries(wf.multifileparams.map(x => [x.nf, {0: ''}]));
+    config.multifileparams = Object.fromEntries(wf.multifileparams.map(x => [x.id, {0: ''}]));
   }
   fetchDatasetDetails();
 }
@@ -233,7 +230,10 @@ async function fetchAllWorkflows() {
 
 async function fetchDatasetDetails() {
   let url = new URL('/analysis/dsets/', document.location)
-  const params = {dsids: dsids.join(',')};
+  const params = {
+    dsids: dsids.join(','),
+    anid: existing_analysis ? existing_analysis.analysis_id : 0,
+  };
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   if (result.error) {
@@ -243,10 +243,9 @@ async function fetchDatasetDetails() {
   } else {
     dsets = result.dsets;
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
-    Object.entries(dsets).forEach(ds => {
-      ds.filesaresets = false;
-      ds.setname = '';
-    })
+//    Object.entries(dsets).forEach(ds => {
+//      ds.filesaresets = false;
+//    })
     // API v1 stuff
     const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
     config.version_dep.v1.dtype = dtypes.size > 1 ? 'mixed' : dtypes.keys().next().value;
@@ -265,25 +264,25 @@ async function fetchDatasetDetails() {
   }
 }
 
-function removeMultifile(nf, key) {
-  delete(config.multifileparams[nf][key]);
+function removeMultifile(fparam_id, key) {
+  delete(config.multifileparams[fparam_id][key]);
   let newmfp = {}
-  Object.keys(config.multifileparams[nf]).forEach((k, ix) => {
-    newmfp[ix] = config.multifileparams[nf][k]
+  Object.keys(config.multifileparams[fparam_id]).forEach((k, ix) => {
+    newmfp[ix] = config.multifileparams[fparam_id][k]
   });
-  config.multifileparams[nf] = newmfp;
+  config.multifileparams[fparam_id] = newmfp;
 }
 
-function addMultifile(nf) {
-  const keyints = Object.keys(config.multifileparams[nf]).map(x => +x);
+function addMultifile(fparam_id) {
+  const keyints = Object.keys(config.multifileparams[fparam_id]).map(x => +x);
   const newkey = keyints.length ? Math.max(...keyints) + 1 : 0;
-  config.multifileparams[nf][newkey] = '';
+  config.multifileparams[fparam_id][newkey] = '';
 }
 
 function matchFractions(ds) {
   let allfrs = new Set();
   for (let fn of ds.files) {
-    const match = fn.name.match(RegExp(frregex[ds.id]));
+    const match = fn.name.match(RegExp(ds.frregex));
     if (match) {
       fn.fr = match[1];
       allfrs.add(match[1]);
@@ -297,7 +296,7 @@ function matchFractions(ds) {
 function sortChannels(channels) {
   return Object.entries(channels).sort((a,b) => {
 	  return a[0].replace('N', 'A') > b[0].replace('N', 'A')
-  }).map(x => {return {ch: x[0], sample: x[1]}});
+  }).map(x => {return {ch: x[0], sample: x[1][0], chid: x[1][1]}});
 }
 
 function updateIsoquant() {
@@ -306,31 +305,48 @@ function updateIsoquant() {
     Object.values(dsets).forEach(ds => {
       const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
       notif.errors[errmsg] = 0;
-      if (ds.setname && !(ds.setname in isoquants)) {
-        isoquants[ds.setname] = {
+      if (ds.setname && !(ds.setname in config.isoquants)) {
+        config.isoquants[ds.setname] = {
           chemistry: ds.details.qtypeshort,
           channels: ds.details.channels,
           samplegroups: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, ''])),
-          denoms: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, false]))
+          denoms: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, false])),
+          report_intensity: false,
+          sweep: false,
         };
-      } else if (ds.setname && ds.setname in isoquants) {
-        if (isoquants[ds.setname].channels !== ds.details.channels) {
+      } else if (ds.setname && ds.setname in config.isoquants) {
+        if (config.isoquants[ds.setname].channels !== ds.details.channels) {
           notif.errors[errmsg] = 1;
         }
       }
     });
-    // Remove old sets from isoquants if necessary
+    // Remove old sets from config.isoquants if necessary
     const dset_sets = new Set(Object.values(dsets).map(ds => ds.setname).filter(x => x));
-    Object.keys(isoquants).filter(x => !(dset_sets.has(x))).forEach(x => {
-      delete(isoquants[x])
+    Object.keys(config.isoquants).filter(x => !(dset_sets.has(x))).forEach(x => {
+      delete(config.isoquants[x])
     });
-    isoquants = Object.assign({}, isoquants);  // assign so svelte notices (doesnt act on deletion)
+    config.isoquants = Object.assign({}, config.isoquants);  // assign so svelte notices (doesnt act on deletion)
   }
 }
 
+async function populate_analysis() {
+  config.wfid = existing_analysis.wfid;
+  config.wfversion_id = existing_analysis.wfversion_id;
+  config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
+  for (const key of ['analysisname', 'mzmldef', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
+    config[key] = existing_analysis[key];
+  }
+  await fetchWorkflow();
+  Object.assign(config.multifileparams, existing_analysis.multifileparams);
+  // FIXME now repopulate files with sample names if any
+}
+
+
 onMount(async() => {
-  frregex = Object.fromEntries(dsids.map(dsid => [dsid, '.*fr([0-9]+).*mzML$']));
-  fetchAllWorkflows();
+  await fetchAllWorkflows();
+  if (existing_analysis) {
+    populate_analysis();
+  }
 })
 </script>
 
@@ -420,6 +436,20 @@ onMount(async() => {
     </div>
 	</div>
 
+  {#if 'mzmldef' in wf.components}
+  <div class="title is-5">Mzml input type</div>
+  <div class="field">
+    <div class="select">
+      <select bind:value={config.mzmldef}>
+        <option>Please select one</option>
+        {#each Object.keys(wf.components.mzmldef) as comp}
+        <option value={comp}>{comp.split(' ').map(x => `${x[0].toUpperCase()}${x.slice(1).toLowerCase()}`).join(' ')} ({wf.components.mzmldef[comp].join(', ')})</option>
+        {/each}
+      </select>
+    </div>
+  </div>
+  {/if}
+
   <!-------------------------- ############### API v1? -->
 	<div class="title is-5">Datasets</div>
   {#each Object.values(dsets) as ds}
@@ -460,10 +490,10 @@ onMount(async() => {
         {/if}
 			</div>
 			<div class="column">
-        {#if ds.prefrac}
+        {#if ds.prefrac && 'mzmldef' in wf.components && config.mzmldef in wf.components.mzmldef && wf.components.mzmldef[config.mzmldef].indexOf('plate') > -1}
         <div class="field">
 					<label class="label">Regex for fraction detection</label>
-          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={frregex[ds.id]}>
+          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.frregex}>
 				</div>
 				<span>{matchedFr[ds.id]} fractions matched</span>
         {/if}
@@ -483,12 +513,15 @@ onMount(async() => {
   </div>
   {/each}
 
-  {#if 'isobaric_quant' in wf.components && Object.keys(isoquants).length}
+  {#if 'isobaric_quant' in wf.components && Object.keys(config.isoquants).length}
   <div class="box">
 		<div class="title is-5">Isobaric quantification</div>
-    {#if Object.keys(isoquants).length === 1}
+    {#each Object.entries(config.isoquants) as isoq}
+    <div class="has-text-primary title is-6">Set: {isoq[0]}</div>
+
+    {#if Object.keys(config.isoquants).length === 1 && !Object.values(isoq[1].denoms).length}
     <div class="field">
-      <input type="checkbox" bind:checked={mediansweep}>
+      <input type="checkbox" bind:checked={isoq[1].sweep}>
       <label class="checkbox">Use median sweeping (no predefined denominators)
         <span class="icon is-small">
           <a title="Pick median denominator per PSM, only for single-set analyses"><i class="fa fa-question-circle"></i></a>
@@ -496,14 +529,24 @@ onMount(async() => {
       </label>
     </div>
     {/if}
-    {#each Object.entries(isoquants) as isoq}
-    <div class="has-text-primary title is-6">Set: {isoq[0]}</div>
+
+    {#if !isoq[1].sweep && !Object.values(isoq[1].denoms).filter(x => x).length}
+    <div class="field">
+      <input type="checkbox" bind:checked={isoq[1].report_intensity}>
+      <label class="checkbox">Report median isobaric intensities
+        <span class="icon is-small">
+          <a title="Reports median intensity rather than fold changes, not for use with DEqMS"><i class="fa fa-question-circle"></i></a>
+        </span>
+      </label>
+    </div>
+    {/if}
+
     <div class="columns">
       <div class="column is-three-quarters">
         <table class="table is-striped is-narrow">
           <thead>
             <tr>
-              {#if !mediansweep}
+              {#if !isoq[1].sweep && !isoq[1].report_intensity}
               <th>Denominator</th>
               {:else}
               <th><del>Denominator</del></th>
@@ -521,7 +564,7 @@ onMount(async() => {
             {#each sortChannels(isoq[1].channels) as {ch, sample}}
             <tr>
               <td>
-                {#if !mediansweep}
+                {#if !isoq[1].sweep && !isoq[1].report_intensity}
                 <input type="checkbox" bind:checked={isoq[1].denoms[ch]} />
                 {/if}
               </td>
@@ -540,46 +583,32 @@ onMount(async() => {
   </div>
   {/if}
 
-  {#if 'mzmldef' in wf.components}
-  <div class="title is-5">Mzml inputfile type</div>
-  <div class="field">
-    <div class="select">
-      <select bind:value={config.mzmldef}>
-        <option>Please select one</option>
-        {#each Object.keys(wf.components.mzmldef) as comp}
-        <option value={comp}>{comp.split(' ').map(x => `${x[0].toUpperCase()}${x.slice(1).toLowerCase()}`).join(' ')} ({wf.components.mzmldef[comp].join(', ')})</option>
-        {/each}
-      </select>
-    </div>
-  </div>
-  {/if}
-
   {#if wf.multicheck.length + wf.numparams.length + wf.flags.length}
   <div class="box">
     <div class="title is-5">Workflow parameters</div>
-    {#each wf.multicheck as {nf, name, opts}}
+    {#each wf.multicheck as {nf, id, name, opts}}
     <div class="field">
       <label class="label">{name} <code>{nf}</code></label> 
       {#each Object.entries(opts) as opt}
       <div>
-        <input value={[nf, opt[0]]} bind:group={multicheck} type="checkbox">
+        <input value={`${id}___${opt[0]}`} bind:group={config.multicheck} type="checkbox">
         <label class="checkbox">{opt[1]}</label>
       </div>
       {/each}
     </div>
     {/each}
 
-    {#each wf.numparams as {nf, name, type}}
+    {#each wf.numparams as {nf, id, name, type}}
     <div class="field">
       <label class="label">{name} <code>{nf}</code></label> 
-      <input type="number" class="input" bind:value={config.inputparams[nf]}>
+      <input type="number" class="input" bind:value={config.inputparams[id]}>
     </div>
     {/each}
 
     <label class="label">Config flags</label>
-    {#each wf.flags as {nf, name}}
+    {#each wf.flags as {nf, id, name}}
     <div>
-      <input value={nf} bind:group={config.flags} type="checkbox">
+      <input value={id} bind:group={config.flags} type="checkbox">
       <label class="checkbox">{name}</label>: <code>{nf}</code>
     </div>
     {/each}
@@ -593,19 +622,19 @@ onMount(async() => {
     {#each wf.multifileparams as filep}
       <label class="label">{filep.name}
         <span class="icon is-small">
-          <a on:click={e => addMultifile(filep.nf)} title="Add another file"><i class="fa fa-plus-square"></i></a>
+          <a on:click={e => addMultifile(filep.id)} title="Add another file"><i class="fa fa-plus-square"></i></a>
         </span>
       </label>
-      {#each Object.keys(config.multifileparams[filep.nf]) as mfpkey}
+      {#each Object.keys(config.multifileparams[filep.id]) as mfpkey}
       <label class="label is-small">
         File nr. {mfpkey} 
         <span class="icon is-small">
-          <a on:click={e => removeMultifile(filep.nf, mfpkey)} title="Remove this file"><i class="fa fa-trash-alt"></i></a>
+          <a on:click={e => removeMultifile(filep.id, mfpkey)} title="Remove this file"><i class="fa fa-trash-alt"></i></a>
         </span>
       </label>
         <div class="field">
             <div class="select">
-              <select bind:value={config.multifileparams[filep.nf][mfpkey]}>
+              <select bind:value={config.multifileparams[filep.id][mfpkey]}>
                 <option disabled value="">Please select one</option>
                 <option value="">Do not use this parameter</option>
                 {#if filep.ftype in wf.libfiles}
@@ -627,7 +656,7 @@ onMount(async() => {
     <div class="field">
       <label class="label">{filep.name}</label>
       <div class="select">
-        <select bind:value={config.fileparams[filep.nf]}>
+        <select bind:value={config.fileparams[filep.id]}>
           <option disabled value="">Please select one</option>
           <option value="">Do not use this parameter</option>
           {#if filep.ftype in wf.libfiles}
@@ -665,12 +694,15 @@ onMount(async() => {
   </div>
   {/if}
 
-  {#if runButtonActive}
-  <a class="button is-primary" on:click={runAnalysis}>Run analysis</a>
+  {#if runButtonActive && (!existing_analysis || existing_analysis.editable)}
+  <a class="button is-primary" on:click={storeAnalysis}>Store analysis</a>
+  <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
   {:else if postingAnalysis}
-	<a class="button is-primary is-loading">Run analysis</a>
+	<a class="button is-primary is-loading">Store analysis</a>
+	<a class="button is-primary is-loading">Store and queue analysis</a>
   {:else}
-	<a class="button is-primary" disabled>Run analysis</a>
+	<a class="button is-primary" disabled>Store analysis</a>
+	<a class="button is-primary" disabled>Store and queue analysis</a>
   {/if}
 
   {/if} 

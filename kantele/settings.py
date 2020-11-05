@@ -164,6 +164,7 @@ INSTALLED_APPS = [
     'corefac.apps.CorefacConfig',
     'analysis.apps.AnalysisConfig',
     'dashboard.apps.DashboardConfig',
+    'mstulos.apps.MSResultConfig',
 ]
 
 MIDDLEWARE = [

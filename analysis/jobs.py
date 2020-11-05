@@ -19,6 +19,7 @@ from jobs.jobs import DatasetJob, MultiDatasetJob, SingleFileJob, BaseJob
 class RefineMzmls(DatasetJob):
     refname = 'refine_mzmls'
     task = tasks.refine_mzmls
+    revokable = True
 
     def process(self, **kwargs):
         """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
@@ -59,6 +60,7 @@ class RefineMzmls(DatasetJob):
 class RunLabelCheckNF(MultiDatasetJob):
     refname = 'run_nf_lc_workflow'
     task = tasks.run_nextflow_workflow
+    revokable = True
 
     def process(self, **kwargs):
         analysis = models.Analysis.objects.select_related('user',
@@ -141,6 +143,7 @@ def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
 class RunNextflowWorkflow(BaseJob):
     refname = 'run_nf_search_workflow'
     task = tasks.run_nextflow_workflow
+    revokable = True
 
     """
     inputs is {'params': ['--isobaric', 'tmt10plex'],
@@ -171,7 +174,7 @@ class RunNextflowWorkflow(BaseJob):
                 sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
         mzmldef_fields = False
-        if 'mzmldef' in kwargs['components']:
+        if kwargs['components']['mzmldef']:
             mzmldef_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)[kwargs['components']['mzmldef']]
         mzmls = [{
             'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
@@ -199,7 +202,7 @@ class RunNextflowWorkflow(BaseJob):
         params = [str(x) for x in kwargs['inputs']['params']]
         # Runname defined when run executed (FIXME can be removed, no reason to not do that here)
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        if 'sampletable' in kwargs['components']:
+        if kwargs['components']['sampletable']:
             params.extend(['SAMPLETABLE', kwargs['components']['sampletable']])
         self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         # TODO remove this logging

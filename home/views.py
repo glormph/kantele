@@ -333,6 +333,19 @@ def get_job_actions(job, ownership):
         actions.append('force retry')
     if ownership['is_staff'] and job.state not in jj.JOBSTATES_DONE:
         actions.append('delete')
+    if ownership['is_staff'] and job.state == jj.Jobstates.PENDING:
+        actions.append('pause')
+    return actions
+
+
+def get_ana_actions(nfs, user):
+    actions = []
+    if nfs.analysis.user != user and not user.is_staff:
+        pass
+    elif nfs.job.state == jj.Jobstates.WAITING:
+        actions.append('run job')
+    elif nfs.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
+        actions.append('stop job')
     return actions
 
 
@@ -358,6 +371,7 @@ def populate_analysis(nfsearches, user):
                 'purged': nfs.analysis.purged,
                 'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets],
                 'fn_ids': [x.storedfile_id for x in fjobs],
+                'actions': get_ana_actions(nfs, user),
             }
         except:
         # FIXME this dont work except anmodels.Analysis.RelatedObjectDoesNotExist:
@@ -544,6 +558,25 @@ def refresh_job(request, job_id):
     return JsonResponse({'state': job.state,
                          'canceled': job.state == jj.Jobstates.CANCELED,
                          'actions': get_job_actions(job, ownership)})
+
+
+@login_required
+def refresh_analysis(request, nfs_id):
+    # FIXME share with show/populate
+    nfs = anmodels.NextflowSearch.objects.select_related('analysis', 'job').get(pk=nfs_id)
+    fjobs = nfs.job.filejob_set.all().select_related(
+            'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
+    return JsonResponse({
+        'wf': nfs.workflow.name,
+        'wflink': nfs.nfworkflow.nfworkflow.repo,
+        'jobstate': nfs.job.state,
+        'name': nfs.analysis.name,
+        'jobid': nfs.job_id,
+        'deleted': nfs.analysis.deleted,
+        'purged': nfs.analysis.purged,
+        'fn_ids': [x.storedfile_id for x in fjobs],
+        'actions': get_ana_actions(nfs, request.user),
+        })
 
 
 @login_required

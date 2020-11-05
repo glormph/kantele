@@ -13,6 +13,7 @@ let notif = {errors: {}, messages: {}}
 let uploadVisible = false;
 let treatItems;
 let detailsVisible = false;
+let analyses;
 
 const tablefields = [
   {id: 'jobstate', name: '__hourglass-half', type: 'state', multi: false, links: 'jobid', linkroute: '#/jobs'},
@@ -22,7 +23,48 @@ const tablefields = [
   {id: 'wf', name: 'Workflow', type: 'str', multi: false, links: 'wflink'},
   {id: 'usr', name: 'Users', type: 'str', multi: false},
   {id: 'date', name: 'Date', type: 'str', multi: false},
+  {id: 'actions', name: 'Actions', type: 'button', multi: true, confirm: ['stop job', 'run job']},
 ];
+
+const fixedbuttons = [
+  {name: '__redo', alt: 'Refresh analysis info', action: refreshAnalysis},
+  {name: '__edit', alt: 'Edit analysis', action: editAnalysis},
+]
+
+function editAnalysis(anid) {
+  window.open(`/analysis/${anid}`, '_blank');
+} 
+
+
+function stopJob(jobid) {
+  const callback = (analysis) => {refreshAnalysis(analysis.id)};
+  treatItems('/jobs/delete/', 'job for analysis', 'stopping', callback, [jobid]);
+}
+
+function startJob(jobid) {
+  const callback = (analysis) => {refreshJob(analysis.id)};
+  treatItems('/jobs/start/', 'job for analysis', 'starting', callback, [jobid]);
+}
+
+function doAction(action, anid) {
+  const actionmap = {
+    'stop job': stopJob,
+    'run job': startJob,
+  }
+  actionmap[action](anid);
+}
+
+async function refreshAnalysis(nfsid) {
+  const resp = await getJSON(`/refresh/analysis/${nfsid}`);
+  if (!resp.ok) {
+    const msg = `Something went wrong trying to refresh analysis data for ${nfsid}: ${resp.error}`;
+    notif.errors[msg] = 1;
+     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+   } else {
+     analyses[nfsid] = Object.assign(analyses[nfsid], resp);
+   }
+}
+
 
 const statecolors = {
   jobstate: {
@@ -81,7 +123,7 @@ function purgeAnalyses() {
 {/if}
 <a class="button" on:click={e => uploadVisible = uploadVisible === false}>Upload FASTA</a>
 
-<Table tab="Analyses" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={[]} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} />
+<Table tab="Analyses" bind:items={analyses} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:rowAction={e => doAction(e.detail.action, e.detail.id)} />
  
 {#if uploadVisible}
 <Upload toggleWindow={e => uploadVisible = uploadVisible === false} />

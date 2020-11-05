@@ -12,12 +12,14 @@ from analysis import models as am
 
 
 class Jobstates:
+    WAITING = 'wait'
     PENDING = 'pending'
+    QUEUED = 'queued'
     PROCESSING = 'processing'
     ERROR = 'error'
     DONE = 'done'
+    REVOKING = 'revoking'
     CANCELED = 'canceled'
-    WAITING = 'wait'
 
 
 JOBSTATES_WAIT = [Jobstates.WAITING, Jobstates.PENDING, Jobstates.PROCESSING]
@@ -25,9 +27,11 @@ JOBSTATES_DONE = [Jobstates.DONE, Jobstates.CANCELED]
 JOBSTATES_PREJOB = [Jobstates.WAITING, Jobstates.PENDING]
 
 
-def create_job(name, **kwargs):
+def create_job(name, state=False, **kwargs):
+    if not state:
+        state = Jobstates.PENDING
     job = Job(funcname=name, timestamp=timezone.now(),
-              state=Jobstates.PENDING, kwargs=json.dumps(kwargs))
+            state=state, kwargs=json.dumps(kwargs))
     job.save()
     return job
 
@@ -35,6 +39,7 @@ def create_job(name, **kwargs):
 class BaseJob:
     """Base class for jobs"""
     retryable = True
+    revokable = False
 
     def __init__(self, job_id):
         self.job_id = job_id

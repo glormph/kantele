@@ -43,7 +43,7 @@ class WFInputComponent(models.Model):
 class Param(models.Model):
     name = models.CharField(max_length=50)
     nfparam = models.CharField(max_length=50)
-    ptype = models.CharField(max_length=10)  # file, flag or value
+    ptype = models.CharField(max_length=10)  # multi (options), number, flag or ...
     visible = models.BooleanField(default=True)
 
     def __str__(self):
@@ -201,6 +201,55 @@ class UniProtFasta(models.Model):
     isoforms = models.BooleanField()
 
 
+class AnalysisParam(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    param = models.ForeignKey(Param, on_delete=models.CASCADE)
+    value = models.JSONField() # can be option value, bool or text/number input
+
+
+class AnalysisSampletable(models.Model):
+    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+    samples = models.JSONField()
+
+
+class AnalysisMzmldef(models.Model):
+    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+    mzmldef = models.TextField()
+
+
+class AnalysisSetname(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    setname = models.TextField()
+
+
+class AnalysisDatasetSetname(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
+    setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE, null=True)
+    regex = models.TextField() # optional
+
+
+class AnalysisFileSample(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    sample = models.TextField()
+    sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
+
+
 class DatasetSearch(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
+    # cannot put setname here because of searches without dset/setname
+    # purely a reporting model this is
+
+
+class AnalysisIsoquant(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE)
+    #{denoms: [ch_id, ch_id], sweep: false, intensity: false}
+    value = models.JSONField() 
+
+
+class AnalysisFileParam(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    param = models.ForeignKey(FileParam, on_delete=models.CASCADE)
+    sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)

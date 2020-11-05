@@ -1,4 +1,5 @@
 from django.conf.urls import url
+from django.urls import path
 from home import views
 
 app_name = 'home'
@@ -19,7 +20,8 @@ urlpatterns = [
     url(r'^show/analysis/(?P<nfs_id>[0-9]+)$', views.get_analysis_info, name="anainfo"),
     url(r'^show/job/(?P<job_id>[0-9]+)$', views.get_job_info, name="jobinfo"),
     url(r'^messages/$', views.show_messages, name="messages"),
-    url(r'^refresh/job/(?P<job_id>[0-9]+)$', views.refresh_job, name="jobrefresh"),
+    path('refresh/job/<int:job_id>', views.refresh_job, name="jobrefresh"),
+    path('refresh/analysis/<int:nfs_id>', views.refresh_analysis, name="analysisrefresh"),
     url(r'^createmzml/$', views.create_mzmls),
     url(r'^refinemzml/$', views.refine_mzmls),
 ]

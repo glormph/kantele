@@ -71,7 +71,7 @@ async function getDsetDetails(dsetId) {
 }
 
 async function analyzeDatasets() {
-  window.open(`/analysis/init?dsids=${selectedDsets.join(',')}`, '_blank');
+  window.open(`/analysis/new?dsids=${selectedDsets.join(',')}`, '_blank');
 }
 
 function archiveDataset() {

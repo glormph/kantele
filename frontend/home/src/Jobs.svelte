@@ -42,6 +42,11 @@ function retryJob(jobid) {
   treatItems('/jobs/retry/', 'job', 'retrying', callback, [jobid]);
 }
 
+function pauseJob(jobid) {
+  const callback = (job) => {refreshJob(job.id)};
+  treatItems('/jobs/pause/', 'job', 'pausing', callback, [jobid]);
+}
+
 function deleteJob(jobid) {
   const callback = (job) => {refreshJob(job.id)};
   treatItems('/jobs/delete/', 'job', 'deleting', callback, [jobid]);
@@ -51,6 +56,7 @@ function jobAction(action, jobid) {
   const actionmap = {
     retry: retryJob,
     'force retry': retryJob,
+    pause: pauseJob,
     delete: deleteJob,
   }
   actionmap[action](jobid);

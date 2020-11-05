@@ -9,6 +9,7 @@ Scheduler runs sequential and waits for each job that contains files running in 
 import json
 
 from celery import shared_task, states
+from celery.result import AsyncResult
 
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
@@ -59,13 +60,21 @@ def run_ready_jobs():
     for job in jobs_not_finished:
         print('Job {}, state {}'.format(job.id, job.state))
         # Just print info about ERROR-jobs, but also process tasks
+        job.refresh_from_db()
         if job.state == Jobstates.ERROR:
             print('ERROR MESSAGES:')
             tasks = Task.objects.filter(job_id=job.id)
             process_job_tasks(job, tasks)
             for joberror in JobError.objects.filter(job_id=job.id):
                 print(joberror.message)
-            print('END error messages')
+            print('END job error messages')
+        elif job.state == Jobstates.REVOKING:
+            jwrapper = jobmap[job.funcname](job.id) 
+            if jwrapper.revokable:
+                for task in job.task_set.all():
+                    AsyncResult(task.asyncid).revoke()
+            job.state = Jobstates.CANCELED
+            job.save()
         # Ongoing jobs get updated
         elif job.state == Jobstates.PROCESSING:
             tasks = Task.objects.filter(job_id=job.id)

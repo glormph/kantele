@@ -50,7 +50,6 @@ onMount(async() => {
     <p><span class="has-text-weight-bold">Workflow version:</span> {analysis.wf.name} - {analysis.wf.update}</p>
     <p>{analysis.nrfiles} raw files from {analysis.nrdsets} dataset(s) analysed</p>
     <p><span class="has-text-weight-bold">Quant type:</span> {analysis.quants.join(', ')}</p>
-
     <p><span class="has-text-weight-bold">Last lines of log  
       {#if analysis.log[0].slice(0, 16) !== 'Analysis without'}
       <a href={`analysis/log/${anaid}`} class="is-size-7" target="_blank">(full log)</a>
