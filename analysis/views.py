@@ -14,6 +14,7 @@ from datasets import models as dm
 from rawstatus import models as rm
 from home import views as hv
 from jobs import jobs as jj
+from jobs import views as jv
 from jobs import models as jm
 
 
@@ -575,6 +576,20 @@ def purge_analysis(request):
     jj.create_job('delete_empty_directory',
             sf_ids=[x.sfile_id for x in analysis.analysisresultfile_set.all()])
     return JsonResponse({})
+
+
+@login_required
+def start_analysis(request):
+    pass
+
+
+@login_required
+def stop_analysis(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
+    return jv.revoke_job(job.pk, request)
 
 
 @login_required

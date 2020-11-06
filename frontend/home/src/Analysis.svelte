@@ -28,7 +28,6 @@ const tablefields = [
 
 const fixedbuttons = [
   {name: '__redo', alt: 'Refresh analysis info', action: refreshAnalysis},
-  {name: '__edit', alt: 'Edit analysis', action: editAnalysis},
 ]
 
 function editAnalysis(anid) {
@@ -38,16 +37,17 @@ function editAnalysis(anid) {
 
 function stopJob(jobid) {
   const callback = (analysis) => {refreshAnalysis(analysis.id)};
-  treatItems('/jobs/delete/', 'job for analysis', 'stopping', callback, [jobid]);
+  treatItems('/analysis/stop/', 'job for analysis', 'stopping', callback, [jobid]);
 }
 
 function startJob(jobid) {
   const callback = (analysis) => {refreshJob(analysis.id)};
-  treatItems('/jobs/start/', 'job for analysis', 'starting', callback, [jobid]);
+  treatItems('/analysis/start/', 'job for analysis', 'starting', callback, [jobid]);
 }
 
 function doAction(action, anid) {
   const actionmap = {
+    edit: editAnalysis,
     'stop job': stopJob,
     'run job': startJob,
   }

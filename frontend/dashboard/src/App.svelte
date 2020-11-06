@@ -1,10 +1,22 @@
 <script>
+import { onMount } from 'svelte';
 
 import Instrument from './Instrument.svelte'
 import ProdPlot from './ProdPlot.svelte'
+import CFProdPlot from './CFProdPlot.svelte'
+import ProjDistPlot from './ProjDistPlot.svelte'
+
+let prodplot;
+let cfprodplot;
+let projdistplot;
+
 
 let tabshow = 'prod';
 let qcdata = Object.fromEntries(instruments.map(x => [x[1], {loaded: false}]));
+let proddata = {
+  fileproduction: {},
+  projecttypeproduction: {},
+};
 
 async function showInst(iid) {
   if (!qcdata[iid].loaded) {
@@ -36,6 +48,20 @@ async function getInstrumentQC(instr_id) {
   qcdata[instr_id].loaded = true;
 }
 
+async function fetchProductionData() {
+  const resp = await fetch('/dash/proddata');
+  proddata = await resp.json();
+  // setTimeout since after fetching, the plot components havent updated its props
+  setTimeout(() => {
+    prodplot.parseData();
+    cfprodplot.parseData();
+    projdistplot.parseData();
+  }, 0);
+}
+
+onMount(async() => {
+  fetchProductionData();
+})
 </script>
 
 <style>

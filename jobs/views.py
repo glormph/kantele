@@ -119,13 +119,9 @@ def pause_job(request):
     
 
 
-@login_required
-def delete_job(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Must use POST'}, status=405)
-    req = json.loads(request.body.decode('utf-8'))
+def revoke_job(jobid, request):
     try:
-        job = models.Job.objects.get(pk=req['item_id'])
+        job = models.Job.objects.get(pk=jobid)
     except models.Job.DoesNotExist:
         return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
     ownership = get_job_ownership(job, request)
@@ -134,6 +130,14 @@ def delete_job(request):
     job.state = Jobstates.REVOKING
     job.save()
     return JsonResponse({}) 
+
+
+@login_required
+def delete_job(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    return revoke_job(req['item_id'], request)
 
 
 def purge_storedfile(request):

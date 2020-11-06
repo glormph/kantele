@@ -24,7 +24,7 @@ class Jobstates:
 
 JOBSTATES_WAIT = [Jobstates.WAITING, Jobstates.PENDING, Jobstates.PROCESSING]
 JOBSTATES_DONE = [Jobstates.DONE, Jobstates.CANCELED]
-JOBSTATES_PREJOB = [Jobstates.WAITING, Jobstates.PENDING]
+JOBSTATES_PRE_OK_JOB = [Jobstates.WAITING, Jobstates.ERROR, Jobstates.REVOKING, Jobstates.CANCELED]
 
 
 def create_job(name, state=False, **kwargs):

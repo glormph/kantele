@@ -346,6 +346,8 @@ def get_ana_actions(nfs, user):
         actions.append('run job')
     elif nfs.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
         actions.append('stop job')
+    if nfs.job.state  in jj.JOBSTATES_PRE_OK_JOB:
+        actions.append('edit')
     return actions
 
 

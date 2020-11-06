@@ -9,6 +9,8 @@ urlpatterns = [
     path('store/', views.store_analysis),
     path('run/', views.run_analysis),
     path('delete/', views.delete_analysis),
+    path('stop/', views.stop_analysis),
+    path('start/', views.start_analysis),
     path('undelete/', views.undelete_analysis),
     path('purge/', views.purge_analysis),
     path('dsets/', views.get_datasets),
