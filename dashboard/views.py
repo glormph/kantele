@@ -172,7 +172,7 @@ def update_qcdata(qcrun, data):
                 oldp.save()
 
 
-def get_ident_data(instrument, days, seriesnames):
+def get_line_data(instrument, days, seriesnames):
     long_qc = []
     fromdate = datetime.now() - timedelta(days)
     for qcrun in models.QCData.objects.filter(rawfile__producer=instrument, rawfile__date__gt=fromdate).annotate(day=Trunc('rawfile__date', 'day')).order_by('day'):
@@ -200,43 +200,11 @@ def get_boxplot_data(instrument, days, name):
     return {'xkey': 'day', 'data': data}
 
 
-def get_longitud_qcdata(instrument, wf_id):
-    long_qc = {}
-    # FIXME this shows data from qc runs for each workflow so if rerun against newer version both results will show
-    for qcrun in models.QCData.objects.filter(rawfile__producer=instrument):
-                                              #analysis__nextflowsearch__nfworkflow=wf_id):
-        date = qcrun.rawfile.date
-        for lplot in qcrun.lineplotdata_set.all():
-            try:
-                long_qc[lplot.shortname].append((date, lplot.value))
-            except KeyError:
-                try:
-                    long_qc[lplot.shortname] = [(date, lplot.value)]
-                except KeyError:
-                    long_qc[lplot.shortname] = {[(date, lplot.value)]}
-        for boxplot in qcrun.boxplotdata_set.all():
-            bplot = {'q1': boxplot.q1, 'q2': boxplot.q2, 'q3': boxplot.q3,
-                     'upper': boxplot.upper, 'lower': boxplot.lower}
-            try:
-                long_qc[boxplot.shortname][date] = bplot
-            except KeyError:
-                long_qc[boxplot.shortname] = {date: bplot}
-    return long_qc
-
-
 def show_qc(request, instrument_id):
-    """
-    QC data:
-        Date, Instrument, RawFile, AnalysisResult
-    """
-    instrument = Producer.objects.get(pk=instrument_id)
-    wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk').id
-    #dateddata = get_longitud_qcdata(instrument, wf_id)
-    # FIXME wf_id?
     days = 100
     return JsonResponse({
-        'ident': get_ident_data(instrument_id, days, seriesnames=['peptides', 'proteins', 'unique_peptides']),
-        'psms': get_ident_data(instrument_id, days, ['scans', 'psms', 'miscleav1', 'miscleav2']),
+        'ident': get_line_data(instrument_id, days, seriesnames=['peptides', 'proteins', 'unique_peptides']),
+        'psms': get_line_data(instrument_id, days, ['scans', 'psms', 'miscleav1', 'miscleav2']),
         'fwhm': get_boxplot_data(instrument_id, days, 'fwhms'),
         'precursorarea': get_boxplot_data(instrument_id, days, 'peparea'),
         'prec_error': get_boxplot_data(instrument_id, days, 'perror'),

@@ -12,8 +12,8 @@ import { drawLabels } from './AxisLabels.js'
 
 
 let color;
+let svg;
 
-export let plotid;
 export let colorscheme;
 export let data;
 export let groups;
@@ -62,8 +62,7 @@ export function plot() {
     .domain(extent(datavals))
     .range([sizeconfig.height, 0]);
   
-  let svg = select(`#${plotid}`)
-    .append('svg')
+  svg = select(svg)
     .attr('width', sizeconfig.width + margin.left + margin.right)
     .attr('height', sizeconfig.height + margin.t + margin.bottom);
 
@@ -99,4 +98,6 @@ export function plot() {
 
 </script>
 
-<div id={plotid}></div>
+<div>
+  <svg bind:this={svg}></svg>
+</div>

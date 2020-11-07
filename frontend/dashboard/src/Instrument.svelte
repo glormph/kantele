@@ -26,7 +26,6 @@ export function parseData() {
   qcdata.msgfscore.data.map(d => Object.assign(d, d.day = new Date(d.day)));
   qcdata.rt.data.map(d => Object.assign(d, d.day = new Date(d.day)));
   qcdata.prec_error.data.map(d => Object.assign(d, d.day = new Date(d.day)));
-  //qcdata..data.map(d => Object.assign(d, d.day = new Date(d.day)));
   setTimeout(() => {
     identplot.plot();
     psmplot.plot();
@@ -40,33 +39,68 @@ export function parseData() {
 }
 </script>
 
-<div class="bk-root">
-  <h5 class="title is-5">Identifications</h5>
-  <LinePlot bind:this={identplot} plotid="ident" colorscheme={schemeSet1} data={qcdata.ident.data} series={qcdata.ident.series} xkey={qcdata.ident.xkey} xlab="Date" ylab="Amount PSMs/scans" />
+<div>
+  <div class="tile is-ancestor">
+    <div class="tile">
+      <div class="content">
+        <h5 class="title is-5">Identifications</h5>
+        <LinePlot bind:this={identplot} colorscheme={schemeSet1} data={qcdata.ident.data} series={qcdata.ident.series} xkey={qcdata.ident.xkey} xlab="Date" ylab="Amount PSMs/scans" />
+      </div>
+    </div>
+    <div class="tile">
+      <div class="content">
+        <h5 class="title is-5"># PSMs</h5>
+        <LinePlot bind:this={psmplot} colorscheme={schemeSet1} data={qcdata.psms.data} series={qcdata.psms.series} xkey={qcdata.psms.xkey} xlab="Date" ylab="Amount" />
+      </div>
+    </div>
+  </div>
   <hr>
-  <h5 class="title is-5"># PSMs</h5>
-  <LinePlot bind:this={psmplot} plotid="psms" colorscheme={schemeSet1} data={qcdata.psms.data} series={qcdata.psms.series} xkey={qcdata.psms.xkey} xlab="Date" ylab="Amount" />
+  <div class="tile is-ancestor">
+    <div class="tile">
+      <div class="content">
+        <h5 class="title is-5">Peptide precursor areas</h5>
+        <BoxPlot bind:this={pepms1plot} colorscheme={schemeSet1} data={qcdata.precursorarea.data} xkey={qcdata.precursorarea.xkey} xlab="Date" ylab="" />
+      </div>
+    </div>
+    <div class="tile">
+      <div class="content">
+        <h5 class="title is-5">Precursor error (ppm)</h5>
+        <BoxPlot bind:this={perrorplot} colorscheme={schemeSet1} data={qcdata.prec_error.data} xkey={qcdata.prec_error.xkey} xlab="Date" ylab="" />
+      </div>
+    </div>
+  </div>
   <hr>
-  <h5 class="title is-5">Peptide precursor areas</h5>
-    <BoxPlot bind:this={pepms1plot} plotid="pepms1" colorscheme={schemeSet1} data={qcdata.precursorarea.data} xkey={qcdata.precursorarea.xkey} xlab="Date" ylab="" />
+  <div class="tile is-ancestor">
+    <div class="tile">
+      <div class="content">
+        <h5 class="title is-5">Retention time (min)</h5>
+        <BoxPlot bind:this={rtplot} colorscheme={schemeSet1} data={qcdata.rt.data} xkey={qcdata.rt.xkey} xlab="Date" ylab="" />
+      </div>
+    </div>
+    <div class="tile">
+      <div class="content">
+        <h5 class="title is-5">PSM MSGFScore</h5>
+        <BoxPlot bind:this={msgfplot} colorscheme={schemeSet1} data={qcdata.msgfscore.data} xkey={qcdata.msgfscore.xkey} xlab="Date" ylab="" />
+      </div>
+    </div>
+  </div>
   <hr>
-  {#if 'fwhm' in qcdata}
-  <h5 class="title is-5">Peak width half max</h5>
-    <BoxPlot bind:this={fwhmplot} plotid="fwhm" colorscheme={schemeSet1} data={qcdata.fwhm.data} xkey={qcdata.fwhm.xkey} xlab="Date" ylab="" />
-  <hr>
-  {/if}
-  {#if 'ionmob' in qcdata}
-  <h5 class="title is-5">Ion mobility</h5>
-    <BoxPlot bind:this={ionmobplot} plotid="ionmob" colorscheme={schemeSet1} data={qcdata.ionmob.data} xkey={qcdata.ionmob.xkey} xlab="Date" ylab="" />
-  <hr>
-  {/if}
-  <h5 class="title is-5">PSM MSGFScore</h5>
-    <BoxPlot bind:this={msgfplot} plotid="msgf" colorscheme={schemeSet1} data={qcdata.msgfscore.data} xkey={qcdata.msgfscore.xkey} xlab="Date" ylab="" />
-  <hr>
-  <h5 class="title is-5">Precursor error (ppm)</h5>
-    <BoxPlot bind:this={perrorplot} plotid="precerror" colorscheme={schemeSet1} data={qcdata.prec_error.data} xkey={qcdata.prec_error.xkey} xlab="Date" ylab="" />
-  <hr>
-  <h5 class="title is-5">Retention time (min)</h5>
-    <BoxPlot bind:this={rtplot} plotid="retentiontime" colorscheme={schemeSet1} data={qcdata.rt.data} xkey={qcdata.rt.xkey} xlab="Date" ylab="" />
-  <hr>
+  <div class="tile is-ancestor">
+    <div class="tile">
+      <div class="content">
+        {#if 'fwhm' in qcdata}
+        <h5 class="title is-5">Peak width half max</h5>
+        <BoxPlot bind:this={fwhmplot} colorscheme={schemeSet1} data={qcdata.fwhm.data} xkey={qcdata.fwhm.xkey} xlab="Date" ylab="" />
+        {/if}
+      </div>
+    </div>
+    <div class="tile">
+      <div class="content">
+        {#if 'ionmob' in qcdata}
+        <h5 class="title is-5">Ion mobility</h5>
+        <BoxPlot bind:this={ionmobplot} colorscheme={schemeSet1} data={qcdata.ionmob.data} xkey={qcdata.ionmob.xkey} xlab="Date" ylab="" />
+        {/if}
+      </div>
+    </div>
+  </div>
 </div>

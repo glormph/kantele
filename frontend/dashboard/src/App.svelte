@@ -1,5 +1,6 @@
 <script>
 import { onMount } from 'svelte';
+import { schemeSet1 } from 'd3-scale-chromatic';
 
 // FIXME todo:
 // - day slider or something)//
@@ -7,9 +8,8 @@ import { onMount } from 'svelte';
 // - project type only local?
 
 import Instrument from './Instrument.svelte'
-import ProdPlot from './ProdPlot.svelte'
-import CFProdPlot from './CFProdPlot.svelte'
-import ProjDistPlot from './ProjDistPlot.svelte'
+import StackedPlot from './StackedPlot.svelte';
+import GroupedBarPlot from './GroupedBarPlot.svelte'
 
 
 let prodplot;
@@ -23,8 +23,7 @@ let qcdata = Object.fromEntries(instruments.map(x => [x[1], {loaded: false}]));
 let proddata = {
   fileproduction: {},
   projecttypeproduction: {},
-
-  instrument: {},
+  projectdistribution: {},
 };
 
 async function showInst(iid) {
@@ -45,6 +44,7 @@ async function reload() {
     const iid = tabshow.substr(6);
     qcdata[iid].loaded = false;
     await getInstrumentQC(iid);
+    instrumenttabs[iid].parseData();
   }
 }
 
@@ -62,10 +62,15 @@ async function fetchProductionData() {
   const resp = await fetch('/dash/proddata');
   proddata = await resp.json();
   // setTimeout since after fetching, the plot components havent updated its props
+  proddata.fileproduction.data.map(d => Object.assign(d, d.day = new Date(d.day)));
+  proddata.fileproduction.instruments = new Set(proddata.fileproduction.data.map(d => Object.keys(d)).flat());
+  proddata.projecttypeproduction.data.map(d => Object.assign(d, d.day = new Date(d.day)));
+  proddata.projecttypeproduction.projtypes= new Set(proddata.projecttypeproduction.data.map(d => Object.keys(d)).flat());
+  proddata.projectdistribution.ptypes = new Set(proddata.projectdistribution.data.map(d => Object.keys(d)).flat());
   setTimeout(() => {
-    prodplot.parseData();
-    cfprodplot.parseData();
-    projdistplot.parseData();
+    prodplot.plot();
+    cfprodplot.plot();
+    projdistplot.plot();
   }, 0);
 }
 
@@ -107,19 +112,21 @@ onMount(async() => {
       <div class="tile is-ancestor">
         <div class="tile">
           <div class="content">
-            <ProdPlot bind:this={prodplot} bind:inputData={proddata.fileproduction} />
+            <StackedPlot bind:this={prodplot} colorscheme={schemeSet1} data={proddata.fileproduction.data} stackgroups={proddata.fileproduction.instruments} xkey={proddata.fileproduction.xkey} xlab="Date" ylab="Raw files (GB)" />
           </div>
         </div>
         <div class="tile">
           <div class="content">
-            <CFProdPlot bind:this={cfprodplot} bind:inputData={proddata.projecttypeproduction} />
+<h5 class="title is-5">Raw file production per project type</h5>
+            <StackedPlot bind:this={cfprodplot} colorscheme={schemeSet1} data={proddata.projecttypeproduction.data} stackgroups={proddata.projecttypeproduction.projtypes} xkey={proddata.projecttypeproduction.xkey} xlab="Date" ylab="Raw files (GB)" />
           </div>
         </div>
       </div>
       <div class="tile is-ancestor">
         <div class="tile">
           <div class="content">
-            <ProjDistPlot bind:this={projdistplot} bind:inputData={proddata.projectdistribution} />
+            <h5 class="title is-5">Active project size distribution</h5>
+            <GroupedBarPlot bind:this={projdistplot} colorscheme={schemeSet1} data={proddata.projectdistribution.data} groups={proddata.projectdistribution.ptypes} xkey={proddata.projectdistribution.xkey} ylab="# Projects" xlab="Raw files (GB)" />
           </div>
         </div>
         <div class="tile">
