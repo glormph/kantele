@@ -172,20 +172,18 @@ def update_qcdata(qcrun, data):
                 oldp.save()
 
 
-def get_line_data(instrument, days, seriesnames):
+def get_line_data(qcruns, seriesnames):
     long_qc = []
-    fromdate = datetime.now() - timedelta(days)
-    for qcrun in models.QCData.objects.filter(rawfile__producer=instrument, rawfile__date__gt=fromdate).annotate(day=Trunc('rawfile__date', 'day')).order_by('day'):
+    for qcrun in qcruns:
         datepoints = {lplot.shortname: lplot.value for lplot in qcrun.lineplotdata_set.filter(shortname__in=seriesnames)}
         datepoints['day'] = datetime.strftime(qcrun.day, '%Y-%m-%d')
         long_qc.append(datepoints)
     return {'xkey': 'day', 'data': long_qc}
     
 
-def get_boxplot_data(instrument, days, name):
+def get_boxplot_data(qcruns, name):
     data = []
-    fromdate = datetime.now() - timedelta(days)
-    for qcrun in models.QCData.objects.filter(boxplotdata__shortname=name, rawfile__date__gt=fromdate, rawfile__producer=instrument).annotate(day=Trunc('rawfile__date', 'day')).order_by('day'):
+    for qcrun in qcruns.filter(boxplotdata__shortname=name):
         bplot = qcrun.boxplotdata_set.get(shortname=name)
         dayvals = {
             'upper': bplot.upper,
@@ -200,15 +198,17 @@ def get_boxplot_data(instrument, days, name):
     return {'xkey': 'day', 'data': data}
 
 
-def show_qc(request, instrument_id):
-    days = 100
+def show_qc(request, instrument_id, daysago, maxdays):
+    todate = datetime.now() - timedelta(daysago - 1)
+    fromdate = todate - timedelta(maxdays)
+    qcruns = models.QCData.objects.filter(rawfile__producer=instrument_id, rawfile__date__gt=fromdate, rawfile__date__lt=todate).annotate(day=Trunc('rawfile__date', 'day')).order_by('day')
     return JsonResponse({
-        'ident': get_line_data(instrument_id, days, seriesnames=['peptides', 'proteins', 'unique_peptides']),
-        'psms': get_line_data(instrument_id, days, ['scans', 'psms', 'miscleav1', 'miscleav2']),
-        'fwhm': get_boxplot_data(instrument_id, days, 'fwhms'),
-        'precursorarea': get_boxplot_data(instrument_id, days, 'peparea'),
-        'prec_error': get_boxplot_data(instrument_id, days, 'perror'),
-        'rt': get_boxplot_data(instrument_id, days, 'rt'),
-        'msgfscore': get_boxplot_data(instrument_id, days, 'msgfscore'),
-        'ionmob': get_boxplot_data(instrument_id, days, 'ionmob'),
+        'ident': get_line_data(qcruns, seriesnames=['peptides', 'proteins', 'unique_peptides']),
+        'psms': get_line_data(qcruns, ['scans', 'psms', 'miscleav1', 'miscleav2']),
+        'fwhm': get_boxplot_data(qcruns, 'fwhms'),
+        'precursorarea': get_boxplot_data(qcruns, 'peparea'),
+        'prec_error': get_boxplot_data(qcruns, 'perror'),
+        'rt': get_boxplot_data(qcruns, 'rt'),
+        'msgfscore': get_boxplot_data(qcruns, 'msgfscore'),
+        'ionmob': get_boxplot_data(qcruns, 'ionmob'),
         })

@@ -28,34 +28,31 @@ let proddata = {
 
 async function showInst(iid) {
   if (!qcdata[iid].loaded) {
-    await getInstrumentQC(iid);
+    await getInstrumentQC(iid, 0, 30);
     instrumenttabs[iid].parseData();
 
   }
   tabshow = `instr_${iid}`;
 }
 
+async function getInstrumentQC(instrument_id, daysago, maxdays) {
+  const response = await fetch(`/dash/longqc/${instrument_id}/${daysago}/${maxdays}`);
+  const result = await response.json();
+  qcdata[instrument_id] = {};
+  for (let key in result) {
+    qcdata[instrument_id][key] = result[key];
+  }
+  qcdata[instrument_id].loaded = true;
+}
+
 function showProd() {
   tabshow = 'prod';
 }
 
-async function reload() {
-  if (tabshow.slice(0, 6) === 'instr_') {
-    const iid = tabshow.substr(6);
-    qcdata[iid].loaded = false;
-    await getInstrumentQC(iid);
-    instrumenttabs[iid].parseData();
-  }
-}
-
-async function getInstrumentQC(instr_id) {
-  const response = await fetch('/dash/longqc/' + instr_id);
-  const result = await response.json();
-  qcdata[instr_id] = {};
-  for (let key in result) {
-    qcdata[instr_id][key] = result[key];
-  }
-  qcdata[instr_id].loaded = true;
+async function reloadInstrument(e) {
+  qcdata[e.detail.instrument_id].loaded = false;
+  await getInstrumentQC(e.detail.instrument_id, e.detail.firstday, e.detail.showdays);
+  instrumenttabs[e.detail.instrument_id].parseData();
 }
 
 async function fetchProductionData() {
@@ -98,20 +95,17 @@ onMount(async() => {
 	</ul>
 </div>
 <div class="container">
-  <a class="button is-info is-small" on:click={reload}>Refresh</a>
-  <hr>
   <section>
     {#each instruments as instr}
-    {#if qcdata[instr[1]].loaded}
     <div class={`instrplot ${tabshow === `instr_${instr[1]}` ? 'active' : 'inactive'}`} >
-      <Instrument bind:this={instrumenttabs[instr[1]]} bind:qcdata={qcdata[instr[1]]} />
+      <Instrument on:reloaddata={e => reloadInstrument(e)} bind:this={instrumenttabs[instr[1]]} bind:instrument_id={instr[1]} bind:qcdata={qcdata[instr[1]]} />
     </div>
-    {/if}
     {/each}
     <div class={`instrplot ${tabshow === `prod` ? 'active' : 'inactive'}`} >
       <div class="tile is-ancestor">
         <div class="tile">
           <div class="content">
+<h5 class="title is-5">Raw file production per instrument</h5>
             <StackedPlot bind:this={prodplot} colorscheme={schemeSet1} data={proddata.fileproduction.data} stackgroups={proddata.fileproduction.instruments} xkey={proddata.fileproduction.xkey} xlab="Date" ylab="Raw files (GB)" />
           </div>
         </div>
