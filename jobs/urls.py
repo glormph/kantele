@@ -10,7 +10,6 @@ urlpatterns = [
     url(r'^set/md5/$', views.set_md5, name='setmd5'),
     url(r'^unzipped/$', views.unzipped_folder, name='unzipped'),
     url(r'^delete/$', views.delete_job, name='deletejob'),
-    url(r'^start/$', views.start_job, name='startjob'),
     url(r'^pause/$', views.pause_job, name='pausejob'),
     url(r'^deletefile/$', views.purge_storedfile, name='deletefile'),
     url(r'^deletedir/$', views.removed_emptydir, name='rmdir'),

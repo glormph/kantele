@@ -580,7 +580,21 @@ def purge_analysis(request):
 
 @login_required
 def start_analysis(request):
-    pass
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
+    except models.Job.DoesNotExist:
+        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
+    ownership = jv.get_job_ownership(job, request)
+    if not ownership['owner_loggedin'] and not ownership['is_staff']:
+        return JsonResponse({'error': 'Only job owners and admin can start this job'}, status=403)
+    elif job.state != jj.Jobstates.WAITING:
+        return JsonResponse({'error': 'Only waiting jobs can be started'}, status=403)
+    job.state = jj.Jobstates.PENDING
+    job.save()
+    return JsonResponse({}) 
 
 
 @login_required

@@ -35,14 +35,14 @@ function editAnalysis(anid) {
 } 
 
 
-function stopJob(jobid) {
+function stopJob(anid) {
   const callback = (analysis) => {refreshAnalysis(analysis.id)};
-  treatItems('/analysis/stop/', 'job for analysis', 'stopping', callback, [jobid]);
+  treatItems('/analysis/stop/', 'job for analysis', 'stopping', callback, [anid]);
 }
 
-function startJob(jobid) {
+function startJob(anid) {
   const callback = (analysis) => {refreshJob(analysis.id)};
-  treatItems('/analysis/start/', 'job for analysis', 'starting', callback, [jobid]);
+  treatItems('/analysis/start/', 'job for analysis', 'starting', callback, [anid]);
 }
 
 function doAction(action, anid) {
@@ -72,6 +72,7 @@ const statecolors = {
     pending: 'has-text-info',
     error: 'has-text-danger', 
     processing: 'has-text-warning', 
+    revoking: 'has-text-grey-dark',
     done: 'has-text-success',
   },
 }
