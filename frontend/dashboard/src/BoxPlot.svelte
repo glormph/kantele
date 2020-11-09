@@ -78,42 +78,47 @@ export async function plot() {
     .selectAll("text")
     .style("text-anchor", "end");
 
-  plot.selectAll('rect').data(data).enter()
+  plot.selectAll('.boxwhisker').data(data).enter()
+    .append('g')
+    .attr('class', 'boxwhisker')
     .append('rect')
     .attr('fill', 'steelblue')
-    .attr('fill-opacity', 0.5 )//d => color(d.group))
+    .attr('fill-opacity', 0.5 )
     .attr('stroke', 'black')
     .attr('width', barwidth)
     .attr('x', d => xScaleValues(d[xkey]))
     .attr('y' ,d => yScaleValues(d.q3))
     .attr('height', d => yScaleValues(d.q1) - yScaleValues(d.q3))
 
-  plot.selectAll('.upperline').data(data).enter()
+  plot.selectAll('.boxwhisker').data(data)
     .append('line')
     .attr('class', 'upperline')
     .attr('fill', 'none')
     .attr('stroke', 'black')
+    .attr('stroke-opacity', 0.5 )
     .attr('stroke-width', 2)
     .attr('x1', d => xScaleValues(d[xkey]) + 0.5 * barwidth)
     .attr('y1' ,d => yScaleValues(d.q3))
     .attr('x2', d => xScaleValues(d[xkey]) + 0.5 * barwidth)
     .attr('y2' ,d => yScaleValues(d.upper))
 
-  plot.selectAll('.lowerline').data(data).enter()
+  plot.selectAll('.boxwhisker').data(data)
     .append('line')
     .attr('class', 'lowerline')
     .attr('fill', 'none')
     .attr('stroke', 'black')
+    .attr('stroke-opacity', 0.5 )
     .attr('stroke-width', 2)
     .attr('x1', d => xScaleValues(d[xkey]) + 0.5 * barwidth)
     .attr('y1' ,d => yScaleValues(d.q1))
     .attr('x2', d => xScaleValues(d[xkey]) + 0.5 * barwidth)
     .attr('y2' ,d => yScaleValues(d.lower))
 
-  plot.selectAll('.median').data(data).enter()
+  plot.selectAll('.boxwhisker').data(data)
     .append('line')
     .attr('class', 'median')
     .attr('fill', 'none')
+    .attr('stroke-opacity', 0.5 )
     .attr('stroke', 'black')
     .attr('stroke-width', 2)
     .attr('x1', d => xScaleValues(d[xkey]))
@@ -121,7 +126,6 @@ export async function plot() {
     .attr('x2', d => xScaleValues(d[xkey]) + barwidth)
     .attr('y2' ,d => yScaleValues(d.q2))
 }
-
 </script>
 
 <div>
