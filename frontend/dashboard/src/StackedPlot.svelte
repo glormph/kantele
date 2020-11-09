@@ -12,6 +12,7 @@ import { drawLabels } from './AxisLabels.js'
 
 let color;
 let svg;
+let plotgroup;
 
 export let colorscheme;
 export let data;
@@ -39,7 +40,18 @@ function setColors(groups) {
     .domain(groups)
 }
 
+export function startplot() {
+  svg = select(svg)
+    .attr('width', sizeconfig.width + margin.left + margin.right)
+    .attr('height', sizeconfig.height + margin.t + margin.bottom);
+}
+
 export function plot() {
+  svg.select('.plotgroup').remove();
+  plotgroup = svg.append("g")
+    .attr('class', 'plotgroup')
+    .attr("transform", "translate(" + margin.left + "," + margin.t + ")");
+
   stackgroups.delete(xkey);
   const arr_groups = Array.from(stackgroups);
   setColors(arr_groups);
@@ -53,33 +65,26 @@ export function plot() {
     .domain([0, max(datavals)])
     .range([sizeconfig.height, 0]);
   
-  svg = select(svg)
-    .attr('width', sizeconfig.width + margin.left + margin.right)
-    .attr('height', sizeconfig.height + margin.t + margin.bottom);
-
   const stackeddata = stack().keys(arr_groups)(data);
   const barwidth = sizeconfig.width / data.length;
 
   plotLegend(svg, arr_groups, color, sizeconfig.width, margin);
 
-  let plot = svg.append("g")
-    .attr("transform", "translate(" + margin.left + "," + margin.t + ")");
-
-  plot.append('g').attr('transform', "translate(0," + sizeconfig.height + ")")
+  plotgroup.append('g').attr('transform', "translate(0," + sizeconfig.height + ")")
     .call(axisBottom(xScaleValues))
     .selectAll("text")
     .attr("transform", "translate(-10,0)rotate(-45)")
     .style("text-anchor", "end");
 
-  plot.append('g')
+  plotgroup.append('g')
     .call(axisLeft(yScaleValues).ticks(10, "s"))
     .attr("transform", "translate(-10,0)")
     .selectAll("text")
     .style("text-anchor", "end");
 
-  drawLabels(plot, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
+  drawLabels(plotgroup, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
 
-  plot.selectAll('plotbar').data(stackeddata).enter()
+  plotgroup.selectAll('plotbar').data(stackeddata).enter()
     .append('g').attr('fill', d => color(d.key))
     .selectAll('rect')
     .data(d => d).enter()
@@ -89,7 +94,12 @@ export function plot() {
     .attr('x', d => xScaleValues(d.data[xkey]))
     .attr('y' ,d => yScaleValues(d[1]))
     .attr('height', d => yScaleValues(d[0]) - yScaleValues(d[1]))
+
 }
+
+onMount(async() => {
+  startplot();
+})
 </script>
 
 <div>

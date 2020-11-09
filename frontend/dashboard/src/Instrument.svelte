@@ -4,30 +4,13 @@ import { createEventDispatcher } from 'svelte';
 
 import BoxPlot from './BoxPlot.svelte';
 import LinePlot from './LinePlot.svelte';
+import DateSlider from './DateSlider.svelte';
 
 const dispatch = createEventDispatcher();
 
 export let qcdata;
 export let instrument_id;
 
-const now = new Date(Date.now());
-let daysago = 0;
-let todate = new Date(now);
-todate.setDate(todate.getDate() - daysago);
-let displaydate = todate.toISOString().slice(0, 10);
-let newdate;
-$: {
-  newdate = new Date(now);
-  newdate.setDate(newdate.getDate() - daysago);
-  if (newdate.getTime() !== todate.getTime()) {
-    todate = newdate;
-    displaydate = todate.toISOString().slice(0, 10);
-  }
-}
-let firstday = 0;
-$: firstday = Math.round((now.getTime() - todate.getTime()) / (1000 * 60 * 60 * 24));
-
-let maxdays = 30;
 
 let identplot;
 let psmplot;
@@ -38,7 +21,7 @@ let msgfplot;
 let rtplot;
 let perrorplot;
 
-function reloadData() {
+function reloadData(maxdays, firstday) {
   dispatch('reloaddata', {instrument_id: instrument_id, showdays: maxdays, firstday: firstday});
 }
 
@@ -68,28 +51,9 @@ export function parseData() {
 </script>
 
 <div>
-  <div class="level">
-    <div class="level-left">
-      <div class="level-item">
-        <a class="button is-info is-small" on:click={reloadData}>Refresh</a>
-      </div>
-      <div class="level-item">
-        Days to show: <input class="input" type="number" size="1" bind:value={maxdays} on:change={reloadData}>
-      </div>
-      <div class="level-item">
-  <input type="range" max="100" min="1" step="1" bind:value={maxdays} on:change={reloadData}>
-      </div>
-      <div class="level-item">
-        Last day: <input class="input" type="date" bind:value={displaydate} on:change={reloadData}>
-      </div>
-      <div class="level-item">
-  <input type="range" max="100" min="0" step="1" bind:value={daysago} on:change={reloadData}>
-      </div>
-    </div>
-  </div>
+  <DateSlider on:updatedates={e => reloadData(e.detail.showdays, e.detail.firstday)} />
   <hr>
   
-  {#if qcdata.loaded}
   <div class="tile is-ancestor">
     <div class="tile">
       <div class="content">
@@ -153,5 +117,4 @@ export function parseData() {
       </div>
     </div>
   </div>
-  {/if}
 </div>

@@ -23,8 +23,10 @@ function calculateLegendPosition(textwidths, plotwidth) {
 }
 
 export function plotLegend(svg, groups, color, plotwidth, margin) {
+  svg.select('.legendgroup').remove();
+
   groups.reverse();
-  let legend = svg.append('g');
+  let legend = svg.append('g').attr('class', 'legendgroup');
 
   legend.selectAll('text')
     .data(groups.map((x,i) => [x, i]))
@@ -66,7 +68,7 @@ export function plotLegend(svg, groups, color, plotwidth, margin) {
   margin.t = legendbbox.height + 4 * legendBoxpadding;
 
   // legend box
-  svg.append('rect')
+  legend.append('rect')
     .attr('x', 0).attr('y', 0)
     .attr('width', legendbbox.width + 2 * legendBoxpadding)
     .attr('height', legendbbox.height + 2 * legendBoxpadding)

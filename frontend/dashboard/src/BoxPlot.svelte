@@ -11,6 +11,7 @@ import { drawLabels } from './AxisLabels.js'
 
 let color;
 let svg;
+let plotgroup;
 
 export let colorscheme;
 export let data;
@@ -38,7 +39,18 @@ function setColors(groups) {
     .domain(groups)
 }
 
+function startplot() {
+  svg = select(svg)
+    .attr('width', sizeconfig.width + margin.left + margin.right)
+    .attr('height', sizeconfig.height + margin.t + margin.bottom);
+}
+
 export async function plot() {
+  svg.select('.plotgroup').remove();
+  plotgroup = svg.append("g")
+    .attr('class', 'plotgroup')
+    .attr("transform", "translate(" + margin.left + "," + margin.t + ")");
+
   const xScaleValues = xscale()
     .domain(extent(data.map(d => d[xkey])))
     .range([0, sizeconfig.width]);
@@ -55,30 +67,23 @@ export async function plot() {
     .domain(extent(datavals))
     .range([sizeconfig.height, 0]);
   
-  svg = select(svg)
-    .attr('width', sizeconfig.width + margin.left + margin.right)
-    .attr('height', sizeconfig.height + margin.t + margin.bottom);
-
   const barwidth = sizeconfig.width / data.length;
 
-  let plot = svg.append("g")
-    .attr("transform", "translate(" + margin.left + "," + margin.t + ")");
-
-  plot.append('g').attr('transform', "translate(0," + sizeconfig.height + ")")
+  plotgroup.append('g').attr('transform', "translate(0," + sizeconfig.height + ")")
     .call(axisBottom(xScaleValues).ticks(10))
     .selectAll("text")
     .attr("transform", "translate(-10,0)rotate(-45)")
     .style("text-anchor", "end");
 
-  drawLabels(plot, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
+  drawLabels(plotgroup, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
 
-  plot.append('g')
+  plotgroup.append('g')
     .call(axisLeft(yScaleValues).ticks(10, "s"))
     .attr("transform", "translate(-10,0)")
     .selectAll("text")
     .style("text-anchor", "end");
 
-  plot.selectAll('.boxwhisker').data(data).enter()
+  plotgroup.selectAll('.boxwhisker').data(data).enter()
     .append('g')
     .attr('class', 'boxwhisker')
     .append('rect')
@@ -90,7 +95,7 @@ export async function plot() {
     .attr('y' ,d => yScaleValues(d.q3))
     .attr('height', d => yScaleValues(d.q1) - yScaleValues(d.q3))
 
-  plot.selectAll('.boxwhisker').data(data)
+  plotgroup.selectAll('.boxwhisker').data(data)
     .append('line')
     .attr('class', 'upperline')
     .attr('fill', 'none')
@@ -102,7 +107,7 @@ export async function plot() {
     .attr('x2', d => xScaleValues(d[xkey]) + 0.5 * barwidth)
     .attr('y2' ,d => yScaleValues(d.upper))
 
-  plot.selectAll('.boxwhisker').data(data)
+  plotgroup.selectAll('.boxwhisker').data(data)
     .append('line')
     .attr('class', 'lowerline')
     .attr('fill', 'none')
@@ -114,7 +119,7 @@ export async function plot() {
     .attr('x2', d => xScaleValues(d[xkey]) + 0.5 * barwidth)
     .attr('y2' ,d => yScaleValues(d.lower))
 
-  plot.selectAll('.boxwhisker').data(data)
+  plotgroup.selectAll('.boxwhisker').data(data)
     .append('line')
     .attr('class', 'median')
     .attr('fill', 'none')
@@ -126,6 +131,10 @@ export async function plot() {
     .attr('x2', d => xScaleValues(d[xkey]) + barwidth)
     .attr('y2' ,d => yScaleValues(d.q2))
 }
+
+onMount(async() => {
+  startplot();
+})
 </script>
 
 <div>

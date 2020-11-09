@@ -3,13 +3,12 @@ import { onMount } from 'svelte';
 import { schemeSet1 } from 'd3-scale-chromatic';
 
 // FIXME todo:
-// - day slider or something)//
-// - grouped bar plot (just because we can)
 // - project type only local?
 
 import Instrument from './Instrument.svelte'
 import StackedPlot from './StackedPlot.svelte';
 import GroupedBarPlot from './GroupedBarPlot.svelte'
+import DateSlider from './DateSlider.svelte';
 
 
 let prodplot;
@@ -17,9 +16,16 @@ let cfprodplot;
 let projdistplot;
 let instrumenttabs = {};
 
-
+let firstday = 0;
+let maxdays = 30;
 let tabshow = 'prod';
+
 let qcdata = Object.fromEntries(instruments.map(x => [x[1], {loaded: false}]));
+['ident', 'psms', 'precursorarea', 'prec_error', 'rt', 'msgfscore', 'fwhm', 'ionmob'].forEach(x => {
+  instruments.forEach(inst => {
+    qcdata[inst[1]][x] = {data: [], series: [], xkey: false};
+  })
+});
 let proddata = {
   fileproduction: {},
   projecttypeproduction: {},
@@ -30,7 +36,6 @@ async function showInst(iid) {
   if (!qcdata[iid].loaded) {
     await getInstrumentQC(iid, 0, 30);
     instrumenttabs[iid].parseData();
-
   }
   tabshow = `instr_${iid}`;
 }
@@ -50,13 +55,15 @@ function showProd() {
 }
 
 async function reloadInstrument(e) {
+  console.log(e);
   qcdata[e.detail.instrument_id].loaded = false;
   await getInstrumentQC(e.detail.instrument_id, e.detail.firstday, e.detail.showdays);
   instrumenttabs[e.detail.instrument_id].parseData();
 }
 
-async function fetchProductionData() {
-  const resp = await fetch('/dash/proddata');
+async function fetchProductionData(maxdays, firstday) {
+  console.log(firstday, maxdays);
+  const resp = await fetch(`/dash/proddata/${firstday}/${maxdays}`);
   proddata = await resp.json();
   // setTimeout since after fetching, the plot components havent updated its props
   proddata.fileproduction.data.map(d => Object.assign(d, d.day = new Date(d.day)));
@@ -72,7 +79,7 @@ async function fetchProductionData() {
 }
 
 onMount(async() => {
-  fetchProductionData();
+  fetchProductionData(maxdays, firstday);
 })
 </script>
 
@@ -102,6 +109,8 @@ onMount(async() => {
     </div>
     {/each}
     <div class={`instrplot ${tabshow === `prod` ? 'active' : 'inactive'}`} >
+      <DateSlider on:updatedates={e => fetchProductionData(e.detail.showdays, e.detail.firstday)} />
+      <hr>
       <div class="tile is-ancestor">
         <div class="tile">
           <div class="content">

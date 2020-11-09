@@ -12,6 +12,7 @@ import { drawLabels } from './AxisLabels.js'
 
 let color;
 let svg;
+let plotgroup;
 
 export let colorscheme;
 export let data;
@@ -38,7 +39,18 @@ function setColors(groups) {
     .domain(groups)
 }
 
+function startplot() {
+  svg = select(svg)
+    .attr('width', sizeconfig.width + margin.left + margin.right)
+    .attr('height', sizeconfig.height + margin.t + margin.bottom);
+}
+
 export async function plot() {
+  svg.select('.plotgroup').remove();
+  plotgroup = svg.append("g")
+    .attr('class', 'plotgroup')
+    .attr("transform", "translate(" + margin.left + "," + margin.t + ")");
+
   series.delete(xkey);
   const arr_series = Array.from(series);
   setColors(arr_series);
@@ -52,34 +64,27 @@ export async function plot() {
     .domain([0, max(datavals)])
     .range([sizeconfig.height, 0]);
   
-  svg = select(svg)
-    .attr('width', sizeconfig.width + margin.left + margin.right)
-    .attr('height', sizeconfig.height + margin.t + margin.bottom);
-
   //const stackeddata = stack().keys(arr_groups)(data);
   //const barwidth = sizeconfig.width / data.length;
 
   plotLegend(svg, arr_series, color, sizeconfig.width, margin);
 
-  let plot = svg.append("g")
-    .attr("transform", "translate(" + margin.left + "," + margin.t + ")");
-
-  plot.append('g').attr('transform', "translate(0," + sizeconfig.height + ")")
+  plotgroup.append('g').attr('transform', "translate(0," + sizeconfig.height + ")")
     .call(axisBottom(xScaleValues))
     .selectAll("text")
     .attr("transform", "translate(-10,0)rotate(-45)")
     .style("text-anchor", "end");
 
-  plot.append('g')
+  plotgroup.append('g')
     .call(axisLeft(yScaleValues).ticks(10, "s"))
     .attr("transform", "translate(-10,0)")
     .selectAll("text")
     .style("text-anchor", "end");
 
-  drawLabels(plot, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
+  drawLabels(plotgroup, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
   
   arr_series.forEach(serie => {
-    plot.append('path')
+    plotgroup.append('path')
       .datum(data)  // FIXME what is datum?
       .attr("fill", "none")
       .attr("stroke", d => color(serie))
@@ -90,6 +95,10 @@ export async function plot() {
       );
   });
 }
+
+onMount(async() => {
+  startplot();
+})
 </script>
 
 <div>

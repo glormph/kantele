@@ -75,14 +75,15 @@ def create_newplot(qcrun, qcdata, qcname):
         models.LineplotData.objects.create(qcrun=qcrun, value=qcdata, shortname=name)
 
 
-def get_file_production(request):
+def get_file_production(request, daysago, maxdays):
     def get_from_bins(allbins, value, binsize):
         for abin in allbins:
             if value < abin:
                 break
             prevbin = abin
         return prevbin + binsize / 2
-    lastdate = datetime.now() - timedelta(50)
+    todate = datetime.now() - timedelta(daysago)
+    lastdate = todate - timedelta(maxdays)
     # get from db: list of [(size, projtype)]
     projsizelist = [(x['sizesum'] >> 30,
         x['datasetrawfile__dataset__runname__experiment__project__projtype__ptype__name']) for x in 
@@ -114,7 +115,7 @@ def get_file_production(request):
             projdist[sizebin][ptype] = 1
     projdist = {'xkey': 'bin', 'data': [{**{'bin': sizebin}, **vals} for sizebin, vals in projdist.items()]}
     projdate = {}
-    for date_proj in RawFile.objects.filter(date__gt=lastdate, producer__msinstrument__isnull=False, claimed=True).annotate(day=Trunc('date', 'day')).values('day', 'datasetrawfile__dataset__runname__experiment__project__projtype__ptype__name').annotate(sizesum=Sum('size')):
+    for date_proj in RawFile.objects.filter(date__gt=lastdate, date__lt=todate, producer__msinstrument__isnull=False, claimed=True).annotate(day=Trunc('date', 'day')).values('day', 'datasetrawfile__dataset__runname__experiment__project__projtype__ptype__name').annotate(sizesum=Sum('size')):
         day = datetime.strftime(date_proj['day'], '%Y-%m-%d')
         key = date_proj['datasetrawfile__dataset__runname__experiment__project__projtype__ptype__name']
         try:
@@ -124,7 +125,7 @@ def get_file_production(request):
     projdate = {'xkey': 'day', 'data': [{**{'day': day}, **vals} for day, vals in projdate.items()]}
 
     proddate = {}
-    for date_instr in RawFile.objects.filter(date__gt=lastdate, producer__msinstrument__isnull=False).annotate(day=Trunc('date', 'day')).values('day', 'producer__name').annotate(sizesum=Sum('size')):
+    for date_instr in RawFile.objects.filter(date__gt=lastdate, date__lt=todate, producer__msinstrument__isnull=False).annotate(day=Trunc('date', 'day')).values('day', 'producer__name').annotate(sizesum=Sum('size')):
         day = datetime.strftime(date_instr['day'], '%Y-%m-%d')
         try:
             proddate[day][date_instr['producer__name']] = date_instr['sizesum']
