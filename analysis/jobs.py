@@ -125,19 +125,10 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
-        create_nf_search_entries(analysis, wf.id, nfwf.id, self.job_id)
+        models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 'job_id': self.job.id, 'workflow_id': wf.id}, analysis=analysis)
         self.run_tasks.append(((run, params, stagefiles, nfwf.nfversion), {}))
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
         analysis.save()
-
-
-def create_nf_search_entries(analysis, wf_id, nfv_id, job_id):
-    try:
-        nfs = models.NextflowSearch.objects.get(analysis=analysis)
-    except models.NextflowSearch.DoesNotExist:
-        nfs = models.NextflowSearch(nfworkflow_id=nfv_id, job_id=job_id,
-                                    workflow_id=wf_id, analysis=analysis)
-        nfs.save()
 
 
 class RunNextflowWorkflow(BaseJob):
@@ -174,8 +165,8 @@ class RunNextflowWorkflow(BaseJob):
                 sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
         mzmldef_fields = False
-        if kwargs['components']['mzmldef']:
-            mzmldef_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)[kwargs['components']['mzmldef']]
+        if kwargs['inputs']['components']['mzmldef']:
+            mzmldef_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)[kwargs['inputs']['components']['mzmldef']]
         mzmls = [{
             'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
             'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
@@ -202,8 +193,8 @@ class RunNextflowWorkflow(BaseJob):
         params = [str(x) for x in kwargs['inputs']['params']]
         # Runname defined when run executed (FIXME can be removed, no reason to not do that here)
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        if kwargs['components']['sampletable']:
-            params.extend(['SAMPLETABLE', kwargs['components']['sampletable']])
+        if kwargs['inputs']['components']['sampletable']:
+            params.extend(['SAMPLETABLE', kwargs['inputs']['components']['sampletable']])
         self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         # TODO remove this logging
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])

@@ -7,7 +7,6 @@ urlpatterns = [
     path('new/', views.get_analysis_init),
     path('<int:anid>/', views.get_analysis),
     path('store/', views.store_analysis),
-    path('run/', views.run_analysis),
     path('delete/', views.delete_analysis),
     path('stop/', views.stop_analysis),
     path('start/', views.start_analysis),

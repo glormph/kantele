@@ -38,7 +38,7 @@ def get_analysis(request, anid):
         return HttpResponseForbidden()
     analysis = {
             'analysis_id': ana.pk,
-            'editable': ana.nextflowsearch.job.state == jj.Jobstates.WAITING,
+            'editable': ana.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR],
             'wfversion_id': ana.nextflowsearch.nfworkflow_id,
             'wfid': ana.nextflowsearch.workflow_id,
             'mzmldef': False,
@@ -236,7 +236,7 @@ def get_datasets(request):
                 dsdetails['details']['channels'] = {}
                 dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '',
                     'sample': x.rawfile.datasetrawfile.quantsamplefile.projsample.sample,
-                    'setname': qsfiles[x.rawfile.datasetrawfile_id] if anid else ''
+                    'setname': qsfiles[x.rawfile.datasetrawfile.id] if anid else ''
                     } for x in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample')]
             if not anid:
                 [x.update({'setname': x['sample'] if x['setname'] == '' else x['setname']}) for x in dsdetails['files']]
@@ -319,51 +319,20 @@ def show_analysis_log(request, nfs_id):
     return HttpResponse('\n'.join(json.loads(nfs.analysis.log)), content_type="text/plain")
 
 
-#@login_required
-#def get_analysis
-    # populate analysis for home or for new analysis
-
-@login_required
-def run_analysis(request):
-    """This executes a job for an existing analysis"""
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
-    req = json.loads(request.body.decode('utf-8'))
-    job = jm.Job.objects.select_related('nextflowsearch__analysis').get(nextflowsearch__analysis_id=req['analysis_id'])
-    if job.nextflowsearch.analysis.user != request.user and not request.user.is_staff:
-        return JsonResponse({'error': 'You do not have permission to run this analysis'})
-    elif job.state in jj.JOBSTATES_DONE:
-        return JsonResponse({'error': 'This job is already finished or deleted, cannot run again'})
-    elif job.state != jj.Jobstates.WAITING:
-        return JsonResponse({'error': 'This job is already queued or running, you have to stop it first'})
-    else:
-        job.state = jj.Jobstates.PENDING
-        job.save()
-        return JsonResponse({'error': False})
-
-
-# List of analysis scenarios:
-# - copy analysis (only params, not input files/dsets)
-# - edit analysis (only store)
-# - rerun analysis (filters out old/new files from DB!! etc but keeps sample names)
-# - build-on-old-analysis: run e.g. deqms with old details (only setnames, params, result files, BUT not files)
-
-
-
-
 @login_required
 def store_analysis(request):
     """Edits or stores a new analysis"""
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     req = json.loads(request.body.decode('utf-8'))
-    if dm.Dataset.objects.filter(pk__in=req['dsids'], deleted=True):
+    dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids'])
+    if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
     if req['analysis_id']:
         analysis = am.Analysis.objects.get(pk=req['analysis_id'])
         if analysis.user_id != request.user.id and not request.user.is_staff:
             return JsonResponse({'error': 'You do not have permission to edit this analysis'})
-        elif analysis.nextflowsearch.job.state != jj.Jobstates.WAITING:
+        elif analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'})
         analysis.name = req['analysisname']
         analysis.save()
@@ -372,10 +341,6 @@ def store_analysis(request):
         dss.filter(dataset_id__in=excess_dss).delete()
         am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
-        components = {k: v for k, v in req['components'].items() if v}
-        all_mzmldefs = json.loads(am.WFInputComponent.objects.get(name='mzmldef').value)
-        jobinputs = {'components': {}, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
-        data_args = {'setnames': {}, 'fractions': {}, 'platenames': {}}
     else:
         analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
         analysis.save()
@@ -384,7 +349,10 @@ def store_analysis(request):
     components = {k: v for k, v in req['components'].items() if v}
     all_mzmldefs = json.loads(am.WFInputComponent.objects.get(name='mzmldef').value)
     jobinputs = {'components': {}, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
-    data_args = {'setnames': {}, 'fractions': {}, 'platenames': {}}
+    data_args = {'setnames': {}, 'platenames': {}}
+
+    # Input files are passed as "fractions" currently, maybe make this cleaner in future
+    data_args['fractions'] = req['fractions']
 
     # Mzml definition
     if 'mzmldef' in components:
@@ -402,20 +370,17 @@ def store_analysis(request):
         setname_ids[setname] = anaset.pk
     # setnames for datasets, optionally fractions and strips
     new_ads = {}
+    dsets = {str(dset.id): dset for dset in dsetquery}
     for dsid, setname in req['dssetnames'].items():
         regex = ''
-        dsfiles = get_dataset_files(dsid, nrneededfiles=False)
-        if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
-            regex = req['frregex'][dsid] 
-            for fn in dsfiles:
-                frnum = re.search(regex, fn.filename).group(1)
-                data_args['fractions'][fn.pk] = frnum
         ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
                 defaults={'setname_id': setname_ids[setname], 'regex': regex},
                 analysis=analysis, dataset_id=dsid) 
         new_ads[ads.pk] = created
-        data_args['setnames'].update({sf.pk: setname for sf in dsfiles})
-        dset = dm.Dataset.objects.get(pk=dsid)
+        data_args['setnames'].update({sf.pk: setname for sf in get_dataset_files(dsid, nrneededfiles=False)})
+        if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
+            regex = req['frregex'][dsid] 
+        dset = dsets[dsid]
         if hasattr(dset, 'prefractionationdataset'):
             pfd = dset.prefractionationdataset
             if hasattr(pfd, 'hiriefdataset'):
@@ -432,14 +397,13 @@ def store_analysis(request):
 
     # Store params
     jobparams = {}
-    allparams = {**req['params']['multicheck'], **req['params']['flags'], **req['params']['inputparams']}
-    am.AnalysisParam.objects.filter(analysis=analysis).exclude(param_id__in=allparams).delete()
-            #req['params']['multicheck'] | req['params']['flags'] | req['params']['inputparams']).delete()
+    passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams']}
+    am.AnalysisParam.objects.filter(analysis=analysis).exclude(param_id__in=passedparams_exdelete).delete()
     paramopts = {po.pk: po.value for po in am.ParamOption.objects.all()}
     for pid, valueids in req['params']['multicheck'].items():
         for valueid in valueids:
             ap, created = am.AnalysisParam.objects.update_or_create(
-                    defaults={'value': int(valueid)}, analysis=analysis, param_id=pid)
+                    defaults={'param_id': pid, 'value': int(valueid)}, analysis=analysis)
             try:
                 jobparams[ap.param.nfparam].append(paramopts[ap.value])
             except KeyError:
@@ -476,30 +440,43 @@ def store_analysis(request):
         jobinputs['sampletable'] = False
         am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
 
+    # Labelcheck special stuff:
+    is_lcheck = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid'], paramset__psetcomponent__component__name='labelcheck').exists()
+    if is_lcheck:
+        try:
+            qtype = dsetquery.values('quantdataset__quanttype__shortname').distinct().get()
+        except dm.Dataset.MultipleObjectsReturned:
+            return JsonResponse({'error': True, 'errmsg': 'Labelcheck pipeline cannot handle mixed isobaric types'})
+        else:
+            jobparams['--isobaric'] = qtype['quantdataset__quanttype__shortname']
+            
     # FIXME isobaric quant is API v1/v2 diff, fix it
     # need passed: setname, any denom, or sweep or intensity
-    if req['isoquant']:
+    if req['isoquant'] and not is_lcheck:
         am.AnalysisIsoquant.objects.filter(analysis=analysis).exclude(setname_id__in=setname_ids.values()).delete()
+        isoq_cli = []
         for setname, quants in req['isoquant'].items():
             vals = {'sweep': False, 'intensity': False, 'denoms': []}
             if quants['sweep']:
                 vals['sweep'] = True
+                calc_psm = 'sweep'
             elif quants['report_intensity']:
                 vals['report_intensity'] = True
+                calc_psm = 'intensity'
             elif quants['denoms']:
                 vals['denoms'] = quants['denoms']
+                calc_psm = ':'.join([ch for ch, is_denom in vals['denoms'].items() if is_denom])
             else:
                 return JsonResponse({'error': True, 'errmsg': 'Need to select one of sweep/intensity/denominator for set {}'.format(setname)})
-
+            isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
             am.AnalysisIsoquant.objects.update_or_create(defaults={'value': vals}, analysis=analysis, setname_id=setname_ids[setname])
-        jobparams.update
-        nfwfv = am.NextflowWfVersion.objects.get(pk=req['nfwfvid'])
-            
+        jobparams['--isobaric'] = [' '.join(isoq_cli)]
+
     # All data collected, now create a job in WAITING state
     fname = 'run_nf_search_workflow'
     jobinputs['params'] = [x for nf, vals in jobparams.items() for x in [nf, ';'.join([str(v) for v in vals])]]
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': jobinputs}
-    kwargs = {'analysis_id': analysis.id, **data_args, **param_args, 'components': components}
+    kwargs = {'analysis_id': analysis.id, 'wfv_id': req['nfwfvid'], 'inputs': jobinputs, **data_args}
     if req['analysis_id']:
         job = analysis.nextflowsearch.job
         job.kwargs = json.dumps(kwargs)
@@ -507,7 +484,7 @@ def store_analysis(request):
         job.save()
     else:
         job = jj.create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-        aj.create_nf_search_entries(analysis, req['wfid'], req['nfwfvid'], job.id)
+        am.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid']}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id})
 
 
@@ -584,16 +561,20 @@ def start_analysis(request):
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
-        job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
+        if 'item_id' in req:
+            # home app
+            job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
+        elif 'analysis_id' in req:
+            # analysis start app
+            job = jm.Job.objects.get(nextflowsearch__analysis_id=req['analysis_id'])
     except models.Job.DoesNotExist:
         return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
     ownership = jv.get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can start this job'}, status=403)
-    elif job.state != jj.Jobstates.WAITING:
-        return JsonResponse({'error': 'Only waiting jobs can be started'}, status=403)
-    job.state = jj.Jobstates.PENDING
-    job.save()
+    elif job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
+        return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started'}, status=403)
+    jv.do_retry_job(job)
     return JsonResponse({}) 
 
 

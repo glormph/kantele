@@ -342,7 +342,7 @@ def get_ana_actions(nfs, user):
     actions = []
     if nfs.analysis.user != user and not user.is_staff:
         pass
-    elif nfs.job.state == jj.Jobstates.WAITING:
+    elif nfs.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
         actions.append('run job')
     elif nfs.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
         actions.append('stop job')
@@ -507,6 +507,8 @@ def get_analysis_invocation(job):
     invoc['params'] = params['params']
     if 'sampletable' in params:
         invoc['sampletable'] = [x for x in params['sampletable']]
+    elif 'sampletable' in params['components'] and params['components']['sampletable']:
+        invoc['sampletable'] = [x for x in params['components']['sampletable']]
     else:
         invoc['sampletable'] = False
     return invoc
