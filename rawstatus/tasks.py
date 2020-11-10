@@ -11,7 +11,7 @@ from datetime import datetime
 
 from django.urls import reverse
 
-from kantele import settings as config
+from kantele import settings
 from celery import shared_task
 from celery.exceptions import MaxRetriesExceededError
 from jobs.post import update_db, taskfail_update_db
@@ -25,17 +25,17 @@ def calc_md5(fnpath):
     return hash_md5.hexdigest()
 
 
-@shared_task(queue=config.QUEUE_PXDOWNLOAD, bind=True)
+@shared_task(queue=settings.QUEUE_PXDOWNLOAD, bind=True)
 def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename, dset_id):
     """Downloads PX file, validate by file size, get MD5
     Uses separate queue on storage, because otherwise trouble when 
     needing the storage queue while downloading PX massive dsets.
     """
     print('Downloading PX dataset rawfile {}'.format(ftpurl))
-    postdata = {'client_id': config.APIKEY, 'task': self.request.id,
+    postdata = {'client_id': settings.APIKEY, 'task': self.request.id,
                 'sf_id': sf_id, 'raw_id': raw_id, 'dset_id': dset_id}
     fn = os.path.split(ftpurl)[1]
-    dstfile = os.path.join(config.SHAREMAP[sharename], fn)
+    dstfile = os.path.join(settings.SHAREMAP[sharename], fn)
     try:
         with FTP(ftpnetloc) as ftp:
             ftp.login()
@@ -52,7 +52,7 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename
     except Exception:
         taskfail_update_db(self.request.id)
         raise
-    url = urljoin(config.KANTELEHOST, reverse('jobs:downloadpx'))
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:downloadpx'))
     try:
         update_db(url, json=postdata)
     except RuntimeError:
@@ -64,22 +64,22 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename
     print('MD5 of {} is {}, registered in DB'.format(dstfile, postdata['md5']))
 
 
-@shared_task(queue=config.QUEUE_STORAGE, bind=True)
+@shared_task(queue=settings.QUEUE_STORAGE, bind=True)
 def get_md5(self, source_md5, sfid, fnpath, servershare):
     # This should be run on the storage server
     """Checks MD5 of file and compares with source_md5. Report to host.
     If they do not match, host will set checked to False of storedfile
     """
     print('MD5 requested for file {}'.format(sfid))
-    fnpath = os.path.join(config.SHAREMAP[servershare], fnpath)
+    fnpath = os.path.join(settings.SHAREMAP[servershare], fnpath)
     try:
         result = calc_md5(fnpath)
     except Exception:
         taskfail_update_db(self.request.id)
         raise
-    postdata = {'sfid': sfid, 'md5': result, 'client_id': config.APIKEY,
+    postdata = {'sfid': sfid, 'md5': result, 'client_id': settings.APIKEY,
                 'task': self.request.id, 'source_md5': source_md5}
-    url = urljoin(config.KANTELEHOST, reverse('jobs:setmd5'))
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:setmd5'))
     msg = ('Could not update database: http/connection error {}. '
            'Retrying in one minute')
     try:
@@ -94,9 +94,9 @@ def get_md5(self, source_md5, sfid, fnpath, servershare):
     return result
 
 
-@shared_task(bind=True, queue=config.QUEUE_STORAGE)
+@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def delete_file(self, servershare, filepath, fn_id):
-    fileloc = os.path.join(config.SHAREMAP[servershare], filepath)
+    fileloc = os.path.join(settings.SHAREMAP[servershare], filepath)
     try:
         os.remove(fileloc)
     except FileNotFoundError:
@@ -108,9 +108,9 @@ def delete_file(self, servershare, filepath, fn_id):
         raise
     msg = ('Could not update database with deletion of fn {} :'
            '{}'.format(filepath, '{}'))
-    url = urljoin(config.KANTELEHOST, reverse('jobs:deletefile'))
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:deletefile'))
     postdata = {'sfid': fn_id, 'task': self.request.id,
-                'client_id': config.APIKEY}
+                'client_id': settings.APIKEY}
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
@@ -121,11 +121,11 @@ def delete_file(self, servershare, filepath, fn_id):
             raise
 
 
-@shared_task(bind=True, queue=config.QUEUE_STORAGE)
+@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def delete_empty_dir(self, servershare, directory):
     """Deletes the (reportedly) empty directory, then proceeds to delete any
     parent directory which is also empty"""
-    dirpath = os.path.join(config.SHAREMAP[servershare], directory)
+    dirpath = os.path.join(settings.SHAREMAP[servershare], directory)
     print('Trying to delete empty directory {}'.format(dirpath))
     try:
         os.rmdir(dirpath)
@@ -139,7 +139,7 @@ def delete_empty_dir(self, servershare, directory):
     # Now delete parent directories if any empty
     while os.path.split(directory)[0]:
         directory = os.path.split(directory)[0]
-        dirpath = os.path.join(config.SHAREMAP[servershare], directory)
+        dirpath = os.path.join(settings.SHAREMAP[servershare], directory)
         print('Trying to delete parent directory {}'.format(dirpath))
         try:
             os.rmdir(dirpath)
@@ -149,8 +149,8 @@ def delete_empty_dir(self, servershare, directory):
     # Report
     msg = ('Could not update database with deletion of dir {} :'
            '{}'.format(dirpath, '{}'))
-    url = urljoin(config.KANTELEHOST, reverse('jobs:rmdir'))
-    postdata = {'task': self.request.id, 'client_id': config.APIKEY}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:rmdir'))
+    postdata = {'task': self.request.id, 'client_id': settings.APIKEY}
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
@@ -161,9 +161,9 @@ def delete_empty_dir(self, servershare, directory):
             raise
 
 
-@shared_task(bind=True, queue=config.QUEUE_STORAGE)
+@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def unzip_folder(self, servershare, fnpath, sf_id):
-    zipped_fn = os.path.join(config.SHAREMAP[servershare], fnpath)
+    zipped_fn = os.path.join(settings.SHAREMAP[servershare], fnpath)
     unzippath = os.path.join(os.path.split(zipped_fn)[0], os.path.splitext(zipped_fn)[0])
     try:
         with zipfile.ZipFile(zipped_fn, 'r') as zipfp:
@@ -173,8 +173,8 @@ def unzip_folder(self, servershare, fnpath, sf_id):
         raise
     else:
         os.remove(zipped_fn)
-    url = urljoin(config.KANTELEHOST, reverse('jobs:unzipped'))
-    postdata = {'task': self.request.id, 'client_id': config.APIKEY, 'sfid': sf_id}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:unzipped'))
+    postdata = {'task': self.request.id, 'client_id': settings.APIKEY, 'sfid': sf_id}
     msg = ('Could not update database for unzipping fn {}. '
            '{}'.format(fnpath, '{}'))
     try:
@@ -187,10 +187,10 @@ def unzip_folder(self, servershare, fnpath, sf_id):
             raise
 
 
-@shared_task(bind=True, queue=config.QUEUE_PDC)
+@shared_task(bind=True, queue=settings.QUEUE_PDC)
 def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
     print('Archiving file {} to PDC tape'.format(filepath))
-    basedir = config.SHAREMAP[servershare]
+    basedir = settings.SHAREMAP[servershare]
     fileloc = os.path.join(basedir, filepath)
     link = os.path.join(basedir, yearmonth, md5)
     try:
@@ -212,7 +212,7 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
     # it will arvchive again
     cmd = ['dsmc', 'archive', link]
     env = os.environ
-    env['DSM_DIR'] = config.DSM_DIR
+    env['DSM_DIR'] = settings.DSM_DIR
     try:
         subprocess.check_call(cmd, env=env)
     except subprocess.CalledProcessError as CPE:
@@ -221,8 +221,8 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
             taskfail_update_db(self.request.id)
             raise
     postdata = {'sfid': fn_id, 'pdcpath': link,
-                'task': self.request.id, 'client_id': config.APIKEY}
-    url = urljoin(config.KANTELEHOST, reverse('jobs:createpdcarchive'))
+                'task': self.request.id, 'client_id': settings.APIKEY}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:createpdcarchive'))
     msg = ('Could not update database with for fn {} with PDC path {} :'
            '{}'.format(filepath, link, '{}'))
     try:
@@ -242,15 +242,15 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
             pass
 
 
-@shared_task(bind=True, queue=config.QUEUE_PDC)
+@shared_task(bind=True, queue=settings.QUEUE_PDC)
 def pdc_restore(self, servershare, filepath, pdcpath, fn_id):
     print('Restoring file {} from PDC tape'.format(filepath))
-    basedir = config.SHAREMAP[servershare]
+    basedir = settings.SHAREMAP[servershare]
     fileloc = os.path.join(basedir, filepath)
     # restore to fileloc
     cmd = ['dsmc', 'retrieve', '-replace=no', pdcpath, fileloc]
     env = os.environ
-    env['DSM_DIR'] = config.DSM_DIR
+    env['DSM_DIR'] = settings.DSM_DIR
     try:
         subprocess.check_call(cmd, env=env)
     except subprocess.CalledProcessError as CPE:
@@ -261,8 +261,8 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id):
     except Exception:
         taskfail_update_db(self.request.id)
         raise
-    postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': config.APIKEY}
-    url = urljoin(config.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
+    postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': settings.APIKEY}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
     msg = ('Restore from archive could not update database with for fn {} with PDC path {} :'
            '{}'.format(filepath, pdcpath, '{}'))
     try:
@@ -274,17 +274,17 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id):
             raise
 
 
-@shared_task(bind=True, queue=config.QUEUE_SWESTORE)
+@shared_task(bind=True, queue=settings.QUEUE_SWESTORE)
 def swestore_upload(self, md5, servershare, filepath, fn_id):
     print('Uploading file {} to swestore'.format(filepath))
-    fileloc = os.path.join(config.SHAREMAP[servershare], filepath)
-    uri = os.path.join(config.SWESTORE_URI, md5)
-    mountpath_fn = os.path.join(config.DAV_PATH, md5)
+    fileloc = os.path.join(settings.SHAREMAP[servershare], filepath)
+    uri = os.path.join(settings.SWESTORE_URI, md5)
+    mountpath_fn = os.path.join(settings.DAV_PATH, md5)
     # Check if proj folder exists on the /mnt/dav, mkdir if not
     # Dont upload using /mnt/dav, use curl
     curl = ['curl', '-1', '--location', 
-            '--cert',  '{}:{}'.format(config.CERTLOC, config.CERTPASS),
-            '--key', config.CERTKEYLOC, '-T', fileloc, uri]
+            '--cert',  '{}:{}'.format(settings.CERTLOC, settings.CERTPASS),
+            '--key', settings.CERTKEYLOC, '-T', fileloc, uri]
     try:
         subprocess.check_call(curl)
     except Exception:
@@ -311,8 +311,8 @@ def swestore_upload(self, md5, servershare, filepath, fn_id):
             print('Successfully uploaded {} '
                   'with MD5 {}'.format(mountpath_fn, md5_upl))
     postdata = {'sfid': fn_id, 'swestore_path': uri,
-                'task': self.request.id, 'client_id': config.APIKEY}
-    url = urljoin(config.KANTELEHOST, reverse('jobs:createswestore'))
+                'task': self.request.id, 'client_id': settings.APIKEY}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:createswestore'))
     msg = ('Could not update database with for fn {} with swestore URI {} :'
            '{}'.format(filepath, uri, '{}'))
     try:
