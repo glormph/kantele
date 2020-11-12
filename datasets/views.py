@@ -535,7 +535,7 @@ def get_or_create_px_dset(exp, px_acc, user_id):
         run = models.RunName(name=px_acc, experiment=experiment)
         run.save()
         data = {'datatype_id': get_quantprot_id(), 'prefrac_id': False,
-                'ptype_id': settings.LOCAL_PTYPE_ID, 'organism_ids': [settings.QC_ORGANISM]}
+                'ptype_id': settings.LOCAL_PTYPE_ID}
         return save_new_dataset(data, project, experiment, run, user_id)
 
 
@@ -552,7 +552,6 @@ def get_or_create_qc_dataset(data):
         data['datatype_id'] = settings.QC_DATATYPE
         data['prefrac_id'] = False
         data['ptype_id'] = settings.LOCAL_PTYPE_ID
-        data['organism_ids'] = [settings.QC_ORGANISM]
         return save_new_dataset(data, project, exp, run, settings.QC_USER_ID)
 
 

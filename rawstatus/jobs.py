@@ -134,6 +134,22 @@ class DeleteEmptyDirectory(BaseJob):
                 'have not been purged yet in the directory')
 
 
+class RegisterExternalFile(BaseJob):
+    refname = 'register_external_raw'
+    task = tasks.register_downloaded_external_raw
+    """gets sf_ids, of non-checked downloaded external RAW files in tmp., checks MD5 and 
+    registers to dataset
+    """
+
+    def getfiles_query(self, **kwargs):
+        return models.StoredFile.objects.filter(rawfile_id__in=kwargs['rawfnids'], checked=False)
+    
+    def process(self, **kwargs):
+        for fn in self.getfiles_query(**kwargs):
+            self.run_tasks.append(((os.path.join(fn.path, fn.filename), fn.id,
+                fn.rawfile_id, kwargs['sharename'], kwargs['dset_id']), {}))
+
+
 class DownloadPXProject(BaseJob):
     refname = 'download_px_data'
     task = tasks.download_px_file_raw

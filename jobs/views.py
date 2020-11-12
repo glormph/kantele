@@ -149,7 +149,7 @@ def removed_emptydir(request):
     return HttpResponse()
 
 
-def downloaded_px_file(request):
+def register_external_file(request):
     """Storedfile and rawfn update proper md5 and set checked
     Creates job to add file to dset to move file to storage.
     """

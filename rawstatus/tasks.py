@@ -25,6 +25,46 @@ def calc_md5(fnpath):
     return hash_md5.hexdigest()
 
 
+@shared_task(queue=settings.QUEUE_PXDOWNLOAD)
+def search_raws_downloaded(serversharename, dirname):
+    raw_paths_found = []
+    fullpath = os.path.join(settings.servershares[serversharename], dirname)
+    for wpath, subdirs, files in os.walk(fullpath):
+        raws = [x for x in files if os.path.splitext(x)[1].lower() == '.raw']
+        if len(raws):
+            dirname = os.path.relpath(wpath, fullpath)
+            raw_paths_found.append({'dirname': dirname, 
+                'files': [(os.path.join(dirname, x), os.path.getsize(os.path.join(dirname, x)))
+                    for x in files]})
+    return raw_paths_found
+
+
+@shared_task(queue=settings.QUEUE_PXDOWNLOAD, bind=True)
+def register_downloaded_external_raw(self, fpath, sf_id, raw_id, sharename, dset_id):
+    """Downloaded external files on inbox somewhere get MD5 checked and associate
+    with a dataset
+    """
+    print('Registering external rawfile {}'.format(os.path.basename(fpath)))
+    postdata = {'client_id': settings.APIKEY, 'task': self.request.id,
+                'sf_id': sf_id, 'raw_id': raw_id, 'dset_id': dset_id}
+    dstfile = os.path.join(settings.SHAREMAP[sharename], fpath)
+    try:
+        postdata['md5'] = calc_md5(dstfile)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:register_external'))
+    try:
+        update_db(url, json=postdata)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            update_db(url, postdata)
+            raise
+    print('MD5 of {} is {}, registered in DB'.format(dstfile, postdata['md5']))
+
+
 @shared_task(queue=settings.QUEUE_PXDOWNLOAD, bind=True)
 def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename, dset_id):
     """Downloads PX file, validate by file size, get MD5
@@ -52,7 +92,7 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename
     except Exception:
         taskfail_update_db(self.request.id)
         raise
-    url = urljoin(settings.KANTELEHOST, reverse('jobs:downloadpx'))
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:register_external'))
     try:
         update_db(url, json=postdata)
     except RuntimeError:

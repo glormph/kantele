@@ -106,6 +106,7 @@ ENSEMBL_DL_URL = 'ftp://ftp.ensembl.org/pub/release-{}/fasta/{}/pep/'
 BIOMART_URL = 'https://ensembl.org/biomart/martservice'
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')
+EXTERNAL_PRODUCER_IDS = [int(x) for x in os.environ.get('EXTERNAL_PRODUCER_IDS').split(',')]
 UPLOADDIR = 'uploadfiles'
 
 # qc datasets

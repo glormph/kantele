@@ -1,7 +1,7 @@
 <script>
 
 import { onMount } from 'svelte';
-import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+import { getJSON } from '../../datasets/src/funcJSON.js'
 
 export let toggleWindow;
 

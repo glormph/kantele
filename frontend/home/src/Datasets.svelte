@@ -1,13 +1,15 @@
 <script>
 
 import {querystring, push} from 'svelte-spa-router';
-import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+import { getJSON } from '../../datasets/src/funcJSON.js'
+import ImportExternal from './ImportExternal.svelte'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
 import Details from './DatasetDetails.svelte'
 import { flashtime } from '../../util.js'
 
 const inactive = ['deleted'];
+let importVisible = false;
 let selectedDsets = []
 let notif = {errors: {}, messages: {}};
 let detailsVisible = false;
@@ -113,8 +115,16 @@ function setConfirm() {
 <a class="button" title="Move datasets to active storage (undelete)" disabled>Reactivate datasets</a>
 <a class="button" title="PERMANENTLY delete datasets from active and cold storage" disabled>Purge datasets</a>
 {/if}
+{#if is_staff}
+<a class="button" title="Already downloaded files on tmp inbox" on:click={e => importVisible = importVisible === false}>Import external data</a>
+{/if}
+
 
 <Table tab="Datasets" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedDsets} fetchUrl="/show/datasets" findUrl="/find/datasets" getdetails={getDsetDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview={showDetails} />
+
+{#if importVisible}
+<ImportExternal toggleWindow={e => importVisible = importVisible === false} />
+{/if}
 
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} dsetIds={detailsVisible} />
