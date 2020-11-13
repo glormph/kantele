@@ -25,16 +25,17 @@ def calc_md5(fnpath):
     return hash_md5.hexdigest()
 
 
-@shared_task(queue=settings.QUEUE_PXDOWNLOAD)
+@shared_task(queue=settings.QUEUE_SEARCH_INBOX)
 def search_raws_downloaded(serversharename, dirname):
+    print('Scanning {} folder {} for import raws'.format(serversharename, dirname))
     raw_paths_found = []
-    fullpath = os.path.join(settings.servershares[serversharename], dirname)
+    fullpath = os.path.join(settings.SHAREMAP[serversharename], dirname)
     for wpath, subdirs, files in os.walk(fullpath):
         raws = [x for x in files if os.path.splitext(x)[1].lower() == '.raw']
         if len(raws):
             dirname = os.path.relpath(wpath, fullpath)
             raw_paths_found.append({'dirname': dirname, 
-                'files': [(os.path.join(dirname, x), os.path.getsize(os.path.join(dirname, x)))
+                'files': [(os.path.join(dirname, x), os.path.getsize(os.path.join(fullpath, wpath, x)))
                     for x in files]})
     return raw_paths_found
 

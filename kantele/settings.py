@@ -35,6 +35,7 @@ QUEUE_SWESTORE = 'create_swestore'
 QUEUE_PDC = 'pdc_archive'
 QUEUE_NXF = 'nextflow'
 QUEUE_QC_NXF = 'qc_nextflow'
+QUEUE_SEARCH_INBOX = 'scaninbox'
 
 QUEUES_PWIZ = ['pwiz2'] #, 'pwiz1']
 QUEUE_QCPWIZ = 'pwiz_qc'
