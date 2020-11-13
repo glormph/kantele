@@ -12,7 +12,6 @@ let dirsaredsets = false;
 let dirsfound = [];
 let dsets = {};
 let instruments = [];
-let ftypes = [];
 let view = 'rawfiles';
 
 async function initUserUpload() {
@@ -39,7 +38,7 @@ async function queueImport() {
   console.log(data);
   let resp = await postJSON('/files/external/import', data);
   // API wants:
-  // {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'filetype_id': int(thermo_raw_file, etc), 'files': [(path/to/file.raw', ], 
+  // {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'files': [(path/to/file.raw', ], 
 }
 
 async function scanFolders() {
@@ -48,22 +47,18 @@ async function scanFolders() {
   instruments = resp.instruments.map(x => {
     return {id: x[0], name: x[1]};
     })
-  ftypes = resp.ftypes.map(x => {
-    return {id: x[0], name: x[1]};
-    })
 }
 
 function groupDirsToDsets() {
   // After user inputs names, directories are grouped to datasets if applicable
   // API wants:
-  // {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'filetype_id': int(thermo_raw_file, etc), 'files': [(path/to/file.raw', ], 
+  // {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'files': [(path/to/file.raw', ], 
   dsets = {};
   dirsfound.filter(x => x.dsname !== '').forEach(x => {
     if (!(x.dsname in dsets)) {
       dsets[x.dsname] = {
         name: x.dsname,
         instrument_id: instruments[0].id,
-        filetype_id: ftypes[0].id,
         files: [],
       };
     }
@@ -116,7 +111,7 @@ onMount(async() => {
       {#if dirsfound.length && view === 'rawfiles'}
       <hr>
       <h5 class="title is-5">Raw files found in directories
-        {#if dirsfound.filter(x => x.dsname === '').length}
+        {#if !dirsfound.filter(x => x.dsname !== '').length}
         <a class="button is-small" disabled>Group directories</a>
         {:else}
         <a class="button is-small" on:click={groupDirsToDsets}>Group directories</a>
@@ -129,7 +124,7 @@ onMount(async() => {
           <th><input class="checkbox" type="checkbox" value={dirsaredsets} on:click={evalDirsDsets} > 1 directory per dataset</th>
         </thead>
         <tbody>
-          {#each dirsfound as {dsname, dirname, nrraw, dsinstrument, dsftype}}
+          {#each dirsfound as {dsname, dirname, nrraw, dsinstrument}}
           <tr>
             <td>{dirname}</td>
             <td>{nrraw}</td>
@@ -149,10 +144,9 @@ onMount(async() => {
           <th>Dataset</th>
           <th># of raw files</th>
           <th>Instrument</th>
-          <th>File type</th>
         </thead>
         <tbody>
-          {#each Object.values(dsets) as {name, files, instrument_id, filetype_id}}
+          {#each Object.values(dsets) as {name, files, instrument_id}}
           <tr>
             <td>{name}</td>
             <td>{files.length}</td>
@@ -164,15 +158,6 @@ onMount(async() => {
                   {/each}
                 </select>
               </div>
-            <td>
-              <div class="select">
-                <select bind:value={filetype_id}>
-                  {#each ftypes as {id, name}}
-                  <option value={id}>{name}</option>
-                  {/each}
-                </select>
-              </div>
-            </td>
           </tr>
           {/each}
         </tbody>

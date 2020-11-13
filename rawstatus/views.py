@@ -64,8 +64,9 @@ def check_producer(producer_id):
 @login_required
 @staff_member_required
 def import_external_data(request):
-    # Input like so: {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'filetype_id': int(thermo_raw_file, etc), 'files': [(path/to/file.raw', ], 
-    if request.method != 'POST':
+    # Input like so: {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'files': [(path/to/file.raw', ],
++    # FIXME thermo files are .raw, but how do we handle bruker raws? they are folders!
+   if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     share = ServerShare.objects.get(pk=req['share_id'])
@@ -91,8 +92,9 @@ def import_external_data(request):
             rawfn = get_or_create_rawfile(fakemd5, fn, extprod, size, date, {'claimed': True})
             raw_ids.append(rawfn['file_id'])
             if not rawfn['stored']:
-                sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=indset['filetype_id'],
-                        servershare_id=share.id, path=path, filename=fn, md5='', checked=False)
+                sfn = StoredFile(rawfile_id=rawfn['file_id'],
+                        filetype_id=extprod.msinstrument.filetype_id,
+                        servershare_id=share.id, path=os.path.join(req['dirname'], path), filename=fn, md5='', checked=False)
                 sfn.save()
         # Jobs to get MD5 etc
         jobutil.create_job('register_external_raw', dset_id=dset.id, rawfnids=raw_ids, sharename=share.name)
@@ -105,22 +107,16 @@ def scan_raws_tmp(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'Must use GET'}, status=405)
     if 'dirname' not in request.GET:
-        return JsonResponse({'shares': [{'id': x.id, 'name': x.name} for x in ServerShare.objects.filter(name='tmp')]})
+        return JsonResponse({'shares': [{'id': x.id, 'name': x.name} 
+            for x in ServerShare.objects.filter(name='tmp')]})
     dirname = request.GET['dirname']
     serversharename = 'tmp'
-    #res = search_raws_downloaded.delay(serversharename, dirname)
+    res = search_raws_downloaded.delay(serversharename, dirname)
     # TODO make async to allow large time diff if we have network or other
     # problems, or are busy on backend file server
-    #return JsonResponse({'dirsfound': res.get()})
     exprods = Producer.objects.filter(pk__in=settings.EXTERNAL_PRODUCER_IDS)
-    ftypes = StoredFileType.objects.filter(filetype='raw')
-    # result = res.get()
-    # FIXME thermo files are .raw, but how do we handle bruker raws? they are folders!
-    result = [{'dirname': 'firstdir', 'files': [('firstdir/f1.raw', 123453), ('firstdir/f2.raw', 25348794)]},
-            {'dirname': 'a/b/b/c/d', 'files': [('firstdir/f3.raw', 43289342), ('firstdir/f4.raw', 438290)]},
-            ]
-    return JsonResponse({'dirsfound': result, 'ftypes': [(ft.id, ft.name) for ft in ftypes],
-        'instruments': [(ep.id, ep.name) for ep in exprods]})
+    result = res.get()
+    return JsonResponse({'dirsfound': result, 'instruments': [(ep.id, ep.name) for ep in exprods]})
 
 
 def register_file(request):
