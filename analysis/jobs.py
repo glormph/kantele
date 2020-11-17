@@ -125,7 +125,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
-        models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 'job_id': self.job.id, 'workflow_id': wf.id}, analysis=analysis)
+        models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 'job_id': self.job_id, 'workflow_id': wf.id}, analysis=analysis)
         self.run_tasks.append(((run, params, stagefiles, nfwf.nfversion), {}))
         analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
         analysis.save()

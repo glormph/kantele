@@ -400,10 +400,10 @@ def store_analysis(request):
     passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams']}
     am.AnalysisParam.objects.filter(analysis=analysis).exclude(param_id__in=passedparams_exdelete).delete()
     paramopts = {po.pk: po.value for po in am.ParamOption.objects.all()}
+    am.AnalysisParam.objects.filter(analysis=analysis).delete()
     for pid, valueids in req['params']['multicheck'].items():
         for valueid in valueids:
-            ap, created = am.AnalysisParam.objects.update_or_create(
-                    defaults={'param_id': pid, 'value': int(valueid)}, analysis=analysis)
+            ap = am.AnalysisParam.objects.create(param_id=pid, value=int(valueid), analysis=analysis)
             try:
                 jobparams[ap.param.nfparam].append(paramopts[ap.value])
             except KeyError:
@@ -435,9 +435,9 @@ def store_analysis(request):
     # If any, store sampletable
     if 'sampletable' in components:
         am.AnalysisSampletable.objects.update_or_create(defaults={'samples': components['sampletable']}, analysis=analysis)
-        jobinputs['sampletable'] = components['sampletable']
+        jobinputs['components']['sampletable'] = components['sampletable']
     else:
-        jobinputs['sampletable'] = False
+        jobinputs['components']['sampletable'] = False
         am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
 
     # Labelcheck special stuff:

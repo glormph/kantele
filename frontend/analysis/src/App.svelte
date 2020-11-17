@@ -515,7 +515,7 @@ onMount(async() => {
     <div class="has-text-primary title is-6">Set: {isoq[0]}</div>
 
     {#if !('labelcheck' in wf.components)}
-      {#if Object.keys(config.isoquants).length === 1 && !Object.values(isoq[1].denoms).length}
+    {#if Object.keys(config.isoquants).length === 1 && !Object.values(isoq[1].denoms).filter(x=>x).length}
       <div class="field">
         <input type="checkbox" bind:checked={isoq[1].sweep}>
         <label class="checkbox">Use median sweeping (no predefined denominators)
@@ -529,7 +529,7 @@ onMount(async() => {
       {#if !isoq[1].sweep && !Object.values(isoq[1].denoms).filter(x => x).length}
       <div class="field">
         <input type="checkbox" bind:checked={isoq[1].report_intensity}>
-        <label class="checkbox">Report median isobaric intensities
+        <label class="checkbox">Report isobaric ion intensities instead of ratios
           <span class="icon is-small">
             <a title="Reports median intensity rather than fold changes, not for use with DEqMS"><i class="fa fa-question-circle"></i></a>
           </span>
