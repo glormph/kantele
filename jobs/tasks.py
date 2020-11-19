@@ -41,6 +41,7 @@ alljobs = [
         rsjobs.DeleteEmptyDirectory,
         rsjobs.PurgeFiles,
         rsjobs.DownloadPXProject,
+        rsjobs.RegisterExternalFile,
         anjobs.RunLongitudinalQCWorkflow,
         anjobs.RunNextflowWorkflow,
         anjobs.RunLabelCheckNF,
