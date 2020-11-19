@@ -3,6 +3,7 @@
 import { onMount } from 'svelte';
 import { flashtime } from '../../util.js'
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 
 let notif = {errors: {}, messages: {}, links: {}};
 let loadingItems = false;
@@ -15,6 +16,13 @@ let allwfs = {};
 let wf = false;
 let wforder = [];
 let dsets = {};
+let base_analysis = {
+  isComplement: false,
+  selected: false,
+  typedname: '',
+  fetched: {},
+  resultfiles: [],
+}
 
 /*
 NF workflow API v1:
@@ -107,8 +115,9 @@ async function storeAnalysis() {
 
   notif.messages[`Using ${Object.keys(dsets).length} dataset(s)`] = 1;
   notif.messages[`${Object.keys(fns).length} other inputfiles found`];
-  let post = { 
+  let post = {
     analysis_id: analysis_id,
+    base_analysis: base_analysis,
     dsids: Object.keys(dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => !ds.filesaresets).map(([dsid, ds]) => [dsid, ds.setname])),
     fractions: Object.fromEntries(Object.values(dsets).flatMap(ds => ds.files.map(fn => [fn.id, fn.fr]))),
@@ -207,9 +216,8 @@ async function fetchWorkflow() {
     config.v2 = wf.analysisapi === 2;
   }
   if (wf.multifileparams.length) {
-    config.multifileparams = Object.fromEntries(wf.multifileparams.map(x => [x.id, {0: ''}]));
+    config.multifileparams = Object.assign(config.multifileparams, Object.fromEntries(wf.multifileparams.filter(x => !(x.id in config.multifileparams)).map(x => [x.id, {0: ''}])));
   }
-  fetchDatasetDetails();
 }
 
 async function fetchAllWorkflows() {
@@ -258,6 +266,36 @@ async function fetchDatasetDetails() {
     }
   }
 }
+
+async function loadBaseAnalysis() {
+  let url = `/analysis/baseanalysis/load/${base_analysis.selected}/`;
+  const result = await getJSON(url);
+  if ('error' in result) {
+    const msg = `While fetching base analysis, encountered: ${result.error}`;
+    notif.errors[msg] = 1;
+    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+  } else {
+    base_analysis.resultfiles = result.resultfiles;
+    let overlapping_setnames = new Set();
+    for (const dsid in result.datasets) {
+      if (dsid in dsets) {
+        dsets[dsid].setname = result.datasets[dsid].setname;
+        overlapping_setnames.add(dsets[dsid].setname);
+        dsets[dsid].regex = result.datasets[dsid].regex;
+      }
+    }
+    for (const sname in result.base_analysis.isoquants) {
+      if (overlapping_setnames.has(sname)) {
+        config.isoquants[sname] = result.base_analysis.isoquants[sname];
+      }
+    }
+    for (const key of ['mzmldef', 'flags', 'inputparams', 'multicheck', 'fileparams']) {
+      config[key] = result.base_analysis[key];
+    }
+    Object.assign(config.multifileparams, result.base_analysis.multifileparams);
+  }
+}
+
 
 function removeMultifile(fparam_id, key) {
   delete(config.multifileparams[fparam_id][key]);
@@ -333,6 +371,7 @@ async function populate_analysis() {
   }
   await fetchWorkflow();
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
+  base_analysis = existing_analysis.base_analysis || base_analysis;
   // FIXME now repopulate files with sample names if any
 }
 
@@ -340,8 +379,9 @@ async function populate_analysis() {
 onMount(async() => {
   await fetchAllWorkflows();
   if (existing_analysis) {
-    populate_analysis();
+    await populate_analysis();
   }
+  await fetchDatasetDetails();
 })
 </script>
 
@@ -422,13 +462,26 @@ onMount(async() => {
     </div>
 	</div>
 
-
   {#if wf}
 	<div class="field">
     <input type="text" class="input" bind:value={config.analysisname} placeholder="Please enter analysis name">
     <div>Full name will be <code>{allwfs[config.wfid].wftype}_{config.analysisname}</code>
     This will be the folder name for the output and prefixed to the output filenames
     </div>
+	</div>
+
+  <div class="box">
+    <div class="title is-5">Existing analysis to copy, complement, or use as input</div>
+    {#if wf && 'complement_analysis' in wf.components}
+    <div class="checkbox">
+      <input type="checkbox" bind:checked={base_analysis.isComplement}>
+      <label class="checkbox">
+        The new analysis is an addition or partial re-run with replaced or extra raw data, of this "existing analysis"
+      </label>
+      <a title="Skips parts of analysis already run, faster output"><i class="fa fa-question-circle"></i></a>
+    </div>
+    {/if}
+    <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={base_analysis.fetched} />
 	</div>
 
   {#if 'mzmldef' in wf.components}
@@ -443,6 +496,7 @@ onMount(async() => {
       </select>
     </div>
   </div>
+  {/if}
   {/if}
 
   <!-------------------------- ############### API v1? -->
@@ -485,6 +539,7 @@ onMount(async() => {
         {/if}
 			</div>
 			<div class="column">
+      {#if wf}
         {#if ds.prefrac && 'mzmldef' in wf.components && config.mzmldef in wf.components.mzmldef && wf.components.mzmldef[config.mzmldef].indexOf('plate') > -1}
         <div class="field">
 					<label class="label">Regex for fraction detection</label>
@@ -492,6 +547,7 @@ onMount(async() => {
 				</div>
 				<span>{matchedFr[ds.id]} fractions matched</span>
         {/if}
+      {/if}
 			</div>
 		</div>
     {#if ds.filesaresets}
@@ -508,6 +564,7 @@ onMount(async() => {
   </div>
   {/each}
 
+  {#if wf}
   {#if 'isobaric_quant' in wf.components && Object.keys(config.isoquants).length}
   <div class="box">
 		<div class="title is-5">Isobaric quantification</div>
@@ -647,9 +704,13 @@ onMount(async() => {
                 <option value={libfn.id}>{libfn.name} -- {libfn.desc}</option>
                 {/each}
                 {/if}
-                {#if filep.allow_resultfile}
+                {#if filep.allow_resultfile && !base_analysis.isComplement}
                 {#each wf.prev_resultfiles as resfile}
                 <option value={resfile.id}>{resfile.analysisname} -- {resfile.analysisdate} -- {resfile.name}</option>
+                {/each}
+                {:else if filep.allow_resultfile}
+                {#each base_analysis.resultfiles as resfile}
+                <option value={resfile.id}>{resfile.name}</option>
                 {/each}
                 {/if}
               </select>
@@ -669,10 +730,14 @@ onMount(async() => {
           <option value={libfn.id}>{libfn.name} -- {libfn.desc}</option>
           {/each}
           {/if}
-          {#if filep.allow_resultfile}
-          {#each wf.prev_resultfiles as resfile}
-          <option value={resfile.id}>{resfile.analysisname} -- {resfile.analysisdate} -- {resfile.name}</option>
-          {/each}
+          {#if filep.allow_resultfile && !base_analysis.isComplement}
+            {#each wf.prev_resultfiles as resfile}
+            <option value={resfile.id}>{resfile.analysisname} -- {resfile.analysisdate} -- {resfile.name}</option>
+            {/each}
+          {:else if filep.allow_resultfile}
+            {#each base_analysis.resultfiles as resfile}
+            <option value={resfile.id}>{resfile.name}</option>
+            {/each}
           {/if}
         </select>
       </div>

@@ -253,3 +253,13 @@ class AnalysisFileParam(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     param = models.ForeignKey(FileParam, on_delete=models.CASCADE)
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
+
+
+class AnalysisBaseanalysis(models.Model):
+    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE, related_name='analysis')
+    base_analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE, related_name='base_analysis')
+    is_complement = models.BooleanField()
+    # we can theoretically get shadow_ from analysisisoquant, but what if we have a recursive base analysis
+    # then we have to get the base analysis' base analysis isoquant. Instead accumulate here in JSON
+    shadow_isoquants = models.JSONField() # {setname: {ch: [sample, chid]} ...}
+    shadow_dssetnames = models.JSONField() # {dsid: {setname: abc, regex: .*fr01} ...}

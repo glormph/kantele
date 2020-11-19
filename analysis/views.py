@@ -6,6 +6,7 @@ from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, Http
 from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
+from django.db.models import Q
 
 from kantele import settings
 from analysis import models as am
@@ -26,6 +27,62 @@ def get_analysis_init(request):
     except:
         return HttpResponseForbidden()
     return render(request, 'analysis/analysis.html', context)
+
+
+@login_required
+def load_base_analysis(request, anid):
+    try:
+        ana = am.Analysis.objects.get(pk=anid)
+    except am.Analysis.DoesNotExist:
+        return JsonResponse({'error': 'Base analysis not found'}, status=403)
+    analysis = {
+            'analysis_id': ana.pk,
+            'mzmldef': False,
+            'flags': [],
+            'multicheck': [],
+            'inputparams': {},
+            'multifileparams': {},
+            'fileparams': {},
+            'isoquants': {},
+            'resultfiles': [],
+            }
+    for ap in ana.analysisparam_set.all():
+        if ap.param.ptype == 'flag' and ap.value:
+            analysis['flags'].append(ap.param.id)
+        elif ap.param.ptype == 'multi':
+            analysis['multicheck'].append('{}___{}'.format(ap.param.id, str(ap.value)))
+        elif ap.param.ptype == 'number':
+            analysis['inputparams'][ap.param_id] = ap.value
+    pset = ana.nextflowsearch.nfworkflow.paramset
+    multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
+    for afp in ana.analysisfileparam_set.all():
+        if afp.param_id in multifiles:
+            try:
+                fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
+            except KeyError:
+                fnr = 0
+                analysis['multifileparams'][afp.param_id] = {}
+            analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
+        else:
+            analysis['fileparams'][afp.param_id] = afp.sfile_id
+    if hasattr(ana, 'analysismzmldef'):
+        analysis['mzmldef'] = ana.analysismzmldef.mzmldef
+    dsets = {ads.dataset_id: {'setname': ads.setname.setname, 'regex': ads.regex} for ads in ana.analysisdatasetsetname_set.all()}
+    try:
+        sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
+    except am.AnalysisSampletable.DoesNotExist:
+        sampletables = {}
+    analysis['isoquants'] = get_isoquants(ana, sampletables)
+    try:
+        baseana_dbrec = am.AnalysisBaseanalysis.objects.get(analysis=ana)
+    except am.AnalysisBaseanalysis.DoesNotExist:
+        pass
+    else:
+        dsets.update(baseana_dbrec.shadow_dssetnames)
+        analysis['isoquants'].update(baseana_dbrec.shadow_isoquants)
+    resultfiles = [{'id': x.sfile_id, 'name': x.sfile.filename} for x in ana.analysisresultfile_set.all()]
+    return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': resultfiles})
+
 
 
 @login_required
@@ -75,23 +132,23 @@ def get_analysis(request, anid):
         sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
     except am.AnalysisSampletable.DoesNotExist:
         sampletables = {}
-    for aiq in am.AnalysisIsoquant.objects.select_related('setname').filter(analysis=ana):
-        set_dsets = aiq.setname.analysisdatasetsetname_set.all()
-        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').get()['dataset__quantdataset__quanttype__shortname']
-        qcsamples = {qcs.channel.channel_id: qcs.projsample.sample for qcs in dm.QuantChannelSample.objects.filter(dataset_id__in=set_dsets.values('dataset'))}
-        channels = {qtc.channel.name: qtc.channel_id for anasds in set_dsets.distinct('dataset__quantdataset__quanttype') for qtc in anasds.dataset.quantdataset.quanttype.quanttypechannel_set.all()}
-        analysis['isoquants'][aiq.setname.setname] = {
-                'chemistry': qtypename,
-                'channels': {name: (qcsamples[chid], chid) for name, chid in channels.items()},
-                'samplegroups': {samch[0]: samch[3] if samch[3] != 'X__POOL' else '' for samch in sampletables if samch[1] == aiq.setname.setname},
-                'denoms': aiq.value['denoms'],
-                'report_intensity': aiq.value['intensity'],
-                'sweep': aiq.value['sweep'],
-                }
+    analysis['isoquants'] = get_isoquants(ana, sampletables)
     context = {
             'dsids': [dss.dataset_id for dss in ana.datasetsearch_set.all()],
-            'analysis': analysis
+            'analysis': analysis,
+            'base_analysis': False,
             }
+    ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis').filter(analysis_id=ana.id)
+    if ana_base.exists():
+        ana_base = ana_base.get()
+        context['analysis']['base_analysis'] = {
+                'resultfiles':  [{'id': x.sfile_id, 'name': x.sfile.filename} for x in ana_base.base_analysis.analysisresultfile_set.all()],
+                'selected': ana_base.base_analysis_id,
+                'typedname': '{} - {} - {} - {} - {}'.format(ana_base.base_analysis.name,
+                ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
+                ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
+                'isComplement': ana_base.is_complement,
+                }
     return render(request, 'analysis/analysis.html', context)
 
 
@@ -178,6 +235,23 @@ def match_fractions(request):
         else:
             fn['fr'] = frnum
     return JsonResponse({'error': False, 'fractions': dsfiles})
+
+
+@login_required
+def get_base_analyses(request):
+    if 'q' in request.GET:
+        query = Q()
+        searchterms = request.GET['q'].split()
+        for st in searchterms:
+            query &= Q(name__icontains=st)
+        resp = {}
+        for x in am.Analysis.objects.select_related('nextflowsearch').filter(query, nextflowsearch__isnull=False):
+            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(x.name,
+                x.nextflowsearch.workflow.name, x.nextflowsearch.nfworkflow.update,
+                x.user.username, datetime.strftime(x.date, '%Y%m%d'))}
+        return JsonResponse(resp)
+    else:
+        return JsonResponse({'error': 'Need to specify search string to base analysis search'})
 
 
 @login_required
@@ -372,14 +446,15 @@ def store_analysis(request):
     new_ads = {}
     dsets = {str(dset.id): dset for dset in dsetquery}
     for dsid, setname in req['dssetnames'].items():
-        regex = ''
+        if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
+            regex = req['frregex'][dsid] 
+        else:
+            regex = ''
         ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
                 defaults={'setname_id': setname_ids[setname], 'regex': regex},
                 analysis=analysis, dataset_id=dsid) 
         new_ads[ads.pk] = created
         data_args['setnames'].update({sf.pk: setname for sf in get_dataset_files(dsid, nrneededfiles=False)})
-        if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
-            regex = req['frregex'][dsid] 
         dset = dsets[dsid]
         if hasattr(dset, 'prefractionationdataset'):
             pfd = dset.prefractionationdataset
@@ -432,14 +507,6 @@ def store_analysis(request):
             except KeyError:
                 jobinputs['multifiles'][afp.param.nfparam] = [sfid]
 
-    # If any, store sampletable
-    if 'sampletable' in components:
-        am.AnalysisSampletable.objects.update_or_create(defaults={'samples': components['sampletable']}, analysis=analysis)
-        jobinputs['components']['sampletable'] = components['sampletable']
-    else:
-        jobinputs['components']['sampletable'] = False
-        am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
-
     # Labelcheck special stuff:
     is_lcheck = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid'], paramset__psetcomponent__component__name='labelcheck').exists()
     if is_lcheck:
@@ -472,6 +539,57 @@ def store_analysis(request):
             am.AnalysisIsoquant.objects.update_or_create(defaults={'value': vals}, analysis=analysis, setname_id=setname_ids[setname])
         jobparams['--isobaric'] = [' '.join(isoq_cli)]
 
+    # Base analysis
+    if req['base_analysis']['selected']:
+        # parse isoquants from base analysis (and possibly its base analysis,
+        # which it will have accumulated)
+        base_ana = am.Analysis.objects.select_related('analysissampletable').get(pk=req['base_analysis']['selected'])
+        shadow_dss = {x.dataset_id: {'setname': x.setname.setname, 'regex': x.regex}
+                for x in base_ana.analysisdatasetsetname_set.all()}
+        if hasattr(base_ana, 'analysissampletable'):
+            sampletables = base_ana.analysissampletable.samples
+        else:
+            sampletables = {}
+        shadow_isoquants = get_isoquants(base_ana, sampletables)
+        try:
+            baseana_dbrec = am.AnalysisBaseanalysis.objects.get(analysis=base_ana)
+        except am.AnalysisBaseanalysis.DoesNotExist:
+            pass
+        else:
+            shadow_dss.update(baseana_dbrec.shadow_dssetnames)
+            shadow_isoquants.update(baseana_dbrec.shadow_isoquants)
+        # Remove current from previous (shadow) data if this is rerun 
+        # and current isoquants are defined
+        for setname in req['isoquant'].keys():
+            if setname in shadow_isoquants:
+                del(shadow_isoquants[setname])
+        for dsid, setname in req['dssetnames'].items():
+            if int(dsid) in shadow_dss:
+                del(shadow_dss[int(dsid)])
+        ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
+                defaults={'setname_id': setname_ids[setname], 'regex': regex},
+                analysis=analysis, dataset_id=dsid) 
+        base_def = {'base_analysis': base_ana,
+                'is_complement': req['base_analysis']['isComplement'],
+                'shadow_isoquants': shadow_isoquants,
+                'shadow_dssetnames': shadow_dss,
+                }
+        ana_base, cr = am.AnalysisBaseanalysis.objects.update_or_create(defaults=base_def, analysis_id=analysis.id)
+
+    # If any, store sampletable
+    if 'sampletable' in components:
+        sampletable = components['sampletable']
+        am.AnalysisSampletable.objects.update_or_create(defaults={'samples': sampletable}, analysis=analysis)
+        # check if we need to concat shadow isoquants to sampletable that gets passed to job
+        if req['base_analysis']['isComplement']:
+            for sname, isoq in shadow_isoquants.items():
+                for ch, (sample, chid) in isoq['channels'].items():
+                    sampletable.append([ch, sname, sample, isoq['samplegroups'][ch] or 'X__POOL'])
+        jobinputs['components']['sampletable'] = components['sampletable']
+    else:
+        jobinputs['components']['sampletable'] = False
+        am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
+
     # All data collected, now create a job in WAITING state
     fname = 'run_nf_search_workflow'
     jobinputs['params'] = [x for nf, vals in jobparams.items() for x in [nf, ';'.join([str(v) for v in vals])]]
@@ -486,6 +604,24 @@ def store_analysis(request):
         job = jj.create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
         am.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid']}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id})
+
+
+def get_isoquants(analysis, sampletables):
+    isoquants = {}
+    for aiq in am.AnalysisIsoquant.objects.select_related('setname').filter(analysis=analysis):
+        set_dsets = aiq.setname.analysisdatasetsetname_set.all()
+        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').get()['dataset__quantdataset__quanttype__shortname']
+        qcsamples = {qcs.channel.channel_id: qcs.projsample.sample for qcs in dm.QuantChannelSample.objects.filter(dataset_id__in=set_dsets.values('dataset'))}
+        channels = {qtc.channel.name: qtc.channel_id for anasds in set_dsets.distinct('dataset__quantdataset__quanttype') for qtc in anasds.dataset.quantdataset.quanttype.quanttypechannel_set.all()}
+        isoquants[aiq.setname.setname] = {
+                'chemistry': qtypename,
+                'channels': {name: (qcsamples[chid], chid) for name, chid in channels.items()},
+                'samplegroups': {samch[0]: samch[3] if samch[3] != 'X__POOL' else '' for samch in sampletables if samch[1] == aiq.setname.setname},
+                'denoms': aiq.value['denoms'],
+                'report_intensity': aiq.value['intensity'],
+                'sweep': aiq.value['sweep'],
+                }
+    return isoquants
 
 
 @login_required
