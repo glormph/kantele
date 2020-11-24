@@ -515,7 +515,7 @@ def store_analysis(request):
         except dm.Dataset.MultipleObjectsReturned:
             return JsonResponse({'error': True, 'errmsg': 'Labelcheck pipeline cannot handle mixed isobaric types'})
         else:
-            jobparams['--isobaric'] = qtype['quantdataset__quanttype__shortname']
+            jobparams['--isobaric'] = [qtype['quantdataset__quanttype__shortname']]
             
     # FIXME isobaric quant is API v1/v2 diff, fix it
     # need passed: setname, any denom, or sweep or intensity
