@@ -73,7 +73,7 @@ def run_ready_jobs():
             jwrapper = jobmap[job.funcname](job.id) 
             if jwrapper.revokable:
                 for task in job.task_set.all():
-                    AsyncResult(task.asyncid).revoke()
+                    AsyncResult(task.asyncid).revoke(terminate=True, signal='SIGUSR1')
             job.state = Jobstates.CANCELED
             job.save()
         # Ongoing jobs get updated
