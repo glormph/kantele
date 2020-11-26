@@ -294,29 +294,34 @@ def get_datasets(request):
         else:
             nrneededfiles = dsdetails['details']['nrstoredfiles']['raw']
             dsfiles = get_dataset_files(dsid, nrneededfiles)
+            # FIXME mzmls as fixmes above
             if dsfiles.count() != nrneededfiles:
                 response['error'] = True
                 response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
+            dsdetails['channels'] = {}
+            dsdetails['files'] = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''} for x in dsfiles}
             if 'lex' in dset.quantdataset.quanttype.name:
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '',
-                    'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if hasattr(x.rawfile.datasetrawfile, 'quantfilechannelsample') else '',
-                    'setname': qfcsfiles[x.rawfile.datasetrawfile.id] if anid and x.rawfile.datasetrawfile.id in qfcsfiles else '',
-                    } for x in dsfiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample')]
+                for fn in dsfiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
+                    dsdetails['files'][fn.id]['sample'] = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if hasattr(fn.rawfile.datasetrawfile, 'quantfilechannelsample') else ''
                 dsdetails['details']['channels'] = {
                     ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
                     dm.QuantChannelSample.objects.select_related(
                         'projsample', 'channel__channel').filter(dataset_id=dsid)}
+
             else:
-                dsdetails['details']['channels'] = {}
-                dsdetails['files'] = [{'id': x.id, 'name': x.filename, 'fr': '',
-                    'sample': x.rawfile.datasetrawfile.quantsamplefile.projsample.sample,
-                    'setname': qsfiles[x.rawfile.datasetrawfile.id] if anid else ''
-                    } for x in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample')]
-            if not anid:
-                [x.update({'setname': x['sample'] if x['setname'] == '' else x['setname']}) for x in dsdetails['files']]
+                for fn in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
+                    dsdetails['files'][fn.id]['sample'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
+            # Add stored analysis file-setnames if any:
+            if anid:
+                for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
+                    dsdetails['files'][afs.sfile_id]['setname'] = afs.sample
+                dsdetails['filesaresets'] = any((x['setname'] != '' for x in dsdetails['files'].values()))
+            else:
+                [x.update({'setname': x['sample'] if x['setname'] == '' else x['setname']})
+                        for x in dsdetails['files'].values()]
                 dsdetails['filesaresets'] = False
-            else:
-                dsdetails['filesaresets'] = all((x['setname'] != '' for x in dsdetails['files']))
+            # to list, keep ordering correct:
+            dsdetails['files'] = [dsdetails['files'][x.id] for x in dsfiles]
     # FIXME labelfree quantsamplefile without sample prep error msg
     response['dsets'] = dsetinfo
     return JsonResponse(response)
@@ -610,7 +615,7 @@ def get_isoquants(analysis, sampletables):
     isoquants = {}
     for aiq in am.AnalysisIsoquant.objects.select_related('setname').filter(analysis=analysis):
         set_dsets = aiq.setname.analysisdatasetsetname_set.all()
-        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').get()['dataset__quantdataset__quanttype__shortname']
+        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').distinct().get()['dataset__quantdataset__quanttype__shortname']
         qcsamples = {qcs.channel.channel_id: qcs.projsample.sample for qcs in dm.QuantChannelSample.objects.filter(dataset_id__in=set_dsets.values('dataset'))}
         channels = {qtc.channel.name: qtc.channel_id for anasds in set_dsets.distinct('dataset__quantdataset__quanttype') for qtc in anasds.dataset.quantdataset.quanttype.quanttypechannel_set.all()}
         isoquants[aiq.setname.setname] = {
