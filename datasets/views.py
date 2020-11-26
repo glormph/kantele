@@ -188,6 +188,20 @@ def dataset_sampleprep(request, dataset_id):
 
 
 @login_required
+def show_pooled_lc(request, dataset_id):
+    response_json = {'quants': get_empty_isoquant()}
+    if dataset_id:
+        try:
+            qtype = models.QuantDataset.objects.filter(
+                dataset_id=dataset_id).get()
+        except models.QuantDataset.DoesNotExist:
+            pass
+        else:
+            response_json['quanttype'] = qtype.quanttype_id
+    return JsonResponse(response_json)
+
+
+@login_required
 def labelcheck_samples(request, dataset_id):
     response_json = {
             'quants': get_empty_isoquant(),
