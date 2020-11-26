@@ -714,7 +714,7 @@ def start_analysis(request):
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can start this job'}, status=403)
     elif job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
-        return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started'}, status=403)
+        return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, this job is {}'.format(job.state)}, status=403)
     jv.do_retry_job(job)
     return JsonResponse({}) 
 
