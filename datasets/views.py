@@ -1217,7 +1217,6 @@ def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
 
 def update_labelcheck(data, qtype):
     dset_id = data['dataset_id']
-    oldqtype = qtype.quanttype.name
     if data['quanttype'] != qtype.quanttype_id:
         qtype.quanttype_id = data['quanttype']
         qtype.save()
@@ -1290,6 +1289,27 @@ def update_sampleprep(data, qtype):
     models.DatasetSpecies.objects.filter(
         species_id__in=savedspecies.difference(newspec)).delete()
     set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
+    return JsonResponse({})
+
+
+@login_required
+def save_pooled_lc(request):
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return user_denied
+    dset_id = data['dataset_id']
+    try:
+        qtype = models.QuantDataset.objects.select_related(
+            'quanttype').get(dataset_id=dset_id)
+    except models.QuantDataset.DoesNotExist:
+        # new data, insert, not updating
+        models.QuantDataset.objects.create(dataset_id=dset_id, quanttype_id=data['quanttype'])
+    else:
+        if data['quanttype'] != qtype.quanttype_id:
+            qtype.quanttype_id = data['quanttype']
+            qtype.save()
+    set_component_state(dset_id, 'pooledlabelchecksamples', COMPSTATE_OK)
     return JsonResponse({})
 
 
