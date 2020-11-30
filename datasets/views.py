@@ -57,6 +57,11 @@ def get_species(request):
 
 
 @login_required
+def dataset_info_nods(request):
+    return dataset_info(request, False)
+
+
+@login_required
 def dataset_info(request, dataset_id):
     response_json = {'projdata': empty_dataset_json(), 'dsinfo': {}}
     if dataset_id:
@@ -96,6 +101,11 @@ def dataset_info(request, dataset_id):
 
 
 @login_required
+def dataset_files_nods(request):
+    return dataset_files(request, False)
+
+
+@login_required
 def dataset_files(request, dataset_id):
     response_json = empty_files_json()
     if dataset_id:
@@ -112,6 +122,11 @@ def dataset_files(request, dataset_id):
                'size': round(x.rawfile.size / (2**20), 1),
                'date': x.rawfile.date.timestamp() * 1000, 'checked': False} for x in ds_files}})
     return JsonResponse(response_json)
+
+
+@login_required
+def dataset_acquisition_nods(request):
+    return dataset_acquisition(request, False)
 
 
 @login_required
@@ -133,6 +148,11 @@ def dataset_acquisition(request, dataset_id):
             response_json['dsinfo']['rp_length'] = ''
         get_admin_params_for_dset(response_json['dsinfo'], dataset_id, 'acquisition')
     return JsonResponse(response_json)
+
+
+@login_required
+def dataset_sampleprep_nods(request):
+    return dataset_sampleprep(request, False)
 
 
 @login_required
@@ -188,6 +208,11 @@ def dataset_sampleprep(request, dataset_id):
 
 
 @login_required
+def show_pooled_lc_nods(request):
+    return show_pooled_lc(request, False)
+
+
+@login_required
 def show_pooled_lc(request, dataset_id):
     response_json = {'quants': get_empty_isoquant()}
     if dataset_id:
@@ -199,6 +224,11 @@ def show_pooled_lc(request, dataset_id):
         else:
             response_json['quanttype'] = qtype.quanttype_id
     return JsonResponse(response_json)
+
+
+@login_required
+def labelcheck_samples_nods(request):
+    labelcheck_samples(request, False)
 
 
 @login_required
@@ -263,11 +293,8 @@ def save_projsample(request):
 
 @login_required
 def get_datatype_components(request, datatype_id):
-    if datatype_id:
-        dtcomps = models.DatatypeComponent.objects.filter(datatype_id=datatype_id).select_related('component')
-        return JsonResponse({'dt_id': datatype_id, 'components': [x.component.name for x in dtcomps]})
-    else:
-        return HttpResponse()
+    dtcomps = models.DatatypeComponent.objects.filter(datatype_id=datatype_id).select_related('component')
+    return JsonResponse({'dt_id': datatype_id, 'components': [x.component.name for x in dtcomps]})
 
 
 def get_admin_params_for_dset(response, dset_id, category):
