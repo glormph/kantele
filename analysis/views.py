@@ -521,29 +521,23 @@ def store_analysis(request):
             return JsonResponse({'error': True, 'errmsg': 'Labelcheck pipeline cannot handle mixed isobaric types'})
         else:
             jobparams['--isobaric'] = [qtype['quantdataset__quanttype__shortname']]
-            
-    # FIXME isobaric quant is API v1/v2 diff, fix it
-    # need passed: setname, any denom, or sweep or intensity
-    if req['isoquant'] and not is_lcheck:
-        am.AnalysisIsoquant.objects.filter(analysis=analysis).exclude(setname_id__in=setname_ids.values()).delete()
-        isoq_cli = []
-        for setname, quants in req['isoquant'].items():
-            vals = {'sweep': False, 'intensity': False, 'denoms': []}
-            if quants['sweep']:
-                vals['sweep'] = True
-                calc_psm = 'sweep'
-            elif quants['report_intensity']:
-                vals['report_intensity'] = True
-                calc_psm = 'intensity'
-            elif quants['denoms']:
-                vals['denoms'] = quants['denoms']
-                calc_psm = ':'.join([ch for ch, is_denom in vals['denoms'].items() if is_denom])
-            else:
-                return JsonResponse({'error': True, 'errmsg': 'Need to select one of sweep/intensity/denominator for set {}'.format(setname)})
-            isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
-            am.AnalysisIsoquant.objects.update_or_create(defaults={'value': vals}, analysis=analysis, setname_id=setname_ids[setname])
-        jobparams['--isobaric'] = [' '.join(isoq_cli)]
 
+    def parse_isoquant(quants):
+        vals = {'sweep': False, 'intensity': False, 'denoms': {}}
+        if quants['sweep']:
+            vals['sweep'] = True
+            calc_psm = 'sweep'
+        elif quants['report_intensity']:
+            vals['report_intensity'] = True
+            calc_psm = 'intensity'
+        elif quants['denoms']:
+            vals['denoms'] = quants['denoms']
+            calc_psm = ':'.join([ch for ch, is_denom in vals['denoms'].items() if is_denom])
+        else:
+            return False, False
+        return vals, calc_psm
+
+    isoq_cli = []
     # Base analysis
     if req['base_analysis']['selected']:
         # parse isoquants from base analysis (and possibly its base analysis,
@@ -571,15 +565,33 @@ def store_analysis(request):
         for dsid, setname in req['dssetnames'].items():
             if int(dsid) in shadow_dss:
                 del(shadow_dss[int(dsid)])
-        ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
-                defaults={'setname_id': setname_ids[setname], 'regex': regex},
-                analysis=analysis, dataset_id=dsid) 
+            ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
+                    defaults={'setname_id': setname_ids[setname], 'regex': regex},
+                    analysis=analysis, dataset_id=dsid) 
         base_def = {'base_analysis': base_ana,
                 'is_complement': req['base_analysis']['isComplement'],
                 'shadow_isoquants': shadow_isoquants,
                 'shadow_dssetnames': shadow_dss,
                 }
         ana_base, cr = am.AnalysisBaseanalysis.objects.update_or_create(defaults=base_def, analysis_id=analysis.id)
+        # Add base analysis isoquant to the job params if it is complement analysis
+        if base_def['is_complement']:
+            for setname, quants in shadow_isoquants.items():
+                vals, calc_psm = parse_isoquant(quants)
+                isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
+            
+    # Add isobaric quant (NB there may already be some in the job params from base analysis above
+    # FIXME isobaric quant is API v1/v2 diff, fix it
+    # need passed: setname, any denom, or sweep or intensity
+    if req['isoquant'] and not is_lcheck:
+        am.AnalysisIsoquant.objects.filter(analysis=analysis).exclude(setname_id__in=setname_ids.values()).delete()
+        for setname, quants in req['isoquant'].items():
+            vals, calc_psm = parse_isoquant(quants)
+            if not vals:
+                return JsonResponse({'error': True, 'errmsg': 'Need to select one of sweep/intensity/denominator for set {}'.format(setname)})
+            isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
+            am.AnalysisIsoquant.objects.update_or_create(defaults={'value': vals}, analysis=analysis, setname_id=setname_ids[setname])
+        jobparams['--isobaric'] = [' '.join(isoq_cli)]
 
     # If any, store sampletable
     if 'sampletable' in components:
@@ -612,6 +624,7 @@ def store_analysis(request):
 
 
 def get_isoquants(analysis, sampletables):
+    """For analysis passed, return its analysisisoquants from DB in nice format for frontend"""
     isoquants = {}
     for aiq in am.AnalysisIsoquant.objects.select_related('setname').filter(analysis=analysis):
         set_dsets = aiq.setname.analysisdatasetsetname_set.all()
