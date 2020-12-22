@@ -16,6 +16,11 @@ let allwfs = {};
 let wf = false;
 let wforder = [];
 let dsets = {};
+
+let libfiles = {};
+let fetched_resultfiles = [];
+let prev_resultfiles = [];
+
 let base_analysis = {
   isComplement: false,
   selected: false,
@@ -23,6 +28,10 @@ let base_analysis = {
   fetched: {},
   resultfiles: [],
 }
+
+let added_analyses = [];
+
+$: resultfiles = Object.fromEntries(fetched_resultfiles.concat(base_analysis.resultfiles).concat(prev_resultfiles).map(x => [x.id, x]));
 
 /*
 NF workflow API v1:
@@ -212,6 +221,8 @@ async function fetchWorkflow() {
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
     wf = result['wf'];
+    libfiles = Object.fromEntries(Object.entries(wf.libfiles).map(([ft, lf]) => [ft, Object.fromEntries(lf.map(x => [x.id, x]))]));
+    prev_resultfiles = wf.prev_resultfiles;
     config.v1 = wf.analysisapi === 1;
     config.v2 = wf.analysisapi === 2;
   }
@@ -695,52 +706,22 @@ onMount(async() => {
         </span>
       </label>
         <div class="field">
-            <div class="select">
-              <select bind:value={config.multifileparams[filep.id][mfpkey]}>
-                <option disabled value="">Please select one</option>
-                <option value="">Do not use this parameter</option>
-                {#if filep.ftype in wf.libfiles}
-                {#each wf.libfiles[filep.ftype] as libfn}
-                <option value={libfn.id}>{libfn.name} -- {libfn.desc}</option>
-                {/each}
-                {/if}
-                {#if filep.allow_resultfile && !base_analysis.isComplement}
-                {#each wf.prev_resultfiles as resfile}
-                <option value={resfile.id}>{resfile.analysisname} -- {resfile.analysisdate} -- {resfile.name}</option>
-                {/each}
-                {:else if filep.allow_resultfile}
-                {#each base_analysis.resultfiles as resfile}
-                <option value={resfile.id}>{resfile.name}</option>
-                {/each}
-                {/if}
-              </select>
-            </div>
-              </div>
+          {#if !filep.allow_resultfile}
+          <DynamicSelect bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} />
+          {:else}
+          <DynamicSelect bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} />
+          {/if}
+        </div>
       {/each}
     {/each}
     {#each wf.fileparams as filep}
     <div class="field">
       <label class="label">{filep.name}</label>
-      <div class="select">
-        <select bind:value={config.fileparams[filep.id]}>
-          <option disabled value="">Please select one</option>
-          <option value="">Do not use this parameter</option>
-          {#if filep.ftype in wf.libfiles}
-          {#each wf.libfiles[filep.ftype] as libfn}
-          <option value={libfn.id}>{libfn.name} -- {libfn.desc}</option>
-          {/each}
-          {/if}
-          {#if filep.allow_resultfile && !base_analysis.isComplement}
-            {#each wf.prev_resultfiles as resfile}
-            <option value={resfile.id}>{resfile.analysisname} -- {resfile.analysisdate} -- {resfile.name}</option>
-            {/each}
-          {:else if filep.allow_resultfile}
-            {#each base_analysis.resultfiles as resfile}
-            <option value={resfile.id}>{resfile.name}</option>
-            {/each}
-          {/if}
-        </select>
-      </div>
+      {#if !filep.allow_resultfile}
+      <DynamicSelect bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} />
+      {:else}
+      <DynamicSelect bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} />
+      {/if}
     </div>
     {/each}
 	</div>
