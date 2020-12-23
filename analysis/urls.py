@@ -15,6 +15,7 @@ urlpatterns = [
     path('dsets/', views.get_datasets),
     path('baseanalysis/show/', views.get_base_analyses),
     path('baseanalysis/load/<int:anid>/', views.load_base_analysis),
+    path('resultfiles/load/<int:anid>/', views.load_analysis_resultfiles),
     path('workflow/', views.get_workflow_versioned),
     path('workflows/', views.get_allwfs),
     path('logappend/', views.append_analysis_log, name='appendlog'),
