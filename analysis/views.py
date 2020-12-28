@@ -563,7 +563,7 @@ def store_analysis(request):
             jobparams['--isobaric'] = [qtype['quantdataset__quanttype__shortname']]
 
     def parse_isoquant(quants):
-        vals = {'sweep': False, 'intensity': False, 'denoms': {}}
+        vals = {'sweep': False, 'report_intensity': False, 'denoms': {}}
         if quants['sweep']:
             vals['sweep'] = True
             calc_psm = 'sweep'
@@ -676,7 +676,7 @@ def get_isoquants(analysis, sampletables):
                 'channels': {name: (qcsamples[chid], chid) for name, chid in channels.items()},
                 'samplegroups': {samch[0]: samch[3] if samch[3] != 'X__POOL' else '' for samch in sampletables if samch[1] == aiq.setname.setname},
                 'denoms': aiq.value['denoms'],
-                'report_intensity': aiq.value['intensity'],
+                'report_intensity': aiq.value['report_intensity'],
                 'sweep': aiq.value['sweep'],
                 }
     return isoquants
