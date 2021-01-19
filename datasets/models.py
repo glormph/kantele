@@ -36,10 +36,16 @@ class Experiment(models.Model):
     name = models.CharField(max_length=200)
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['name', 'project'], name='uni_expproj')]
+
 
 class RunName(models.Model):
     name = models.TextField(max_length=100)
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['name', 'experiment'], name='uni_runexp')]
 
 
 class Species(models.Model):

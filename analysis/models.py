@@ -221,6 +221,9 @@ class AnalysisSetname(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     setname = models.TextField()
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'setname'], name='uni_anasets')]
+
 
 class AnalysisDatasetSetname(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
@@ -228,11 +231,18 @@ class AnalysisDatasetSetname(models.Model):
     setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE, null=True)
     regex = models.TextField() # optional
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_anadsets')]
+
 
 class AnalysisFileSample(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     sample = models.TextField()
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
+
+    # FIXME this should maybe FK to infile above here?
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anassamplefile')]
 
 
 class DatasetSearch(models.Model):
@@ -248,11 +258,18 @@ class AnalysisIsoquant(models.Model):
     #{denoms: [ch_id, ch_id], sweep: false, intensity: false}
     value = models.JSONField() 
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'setname'], name='uni_anaiso')]
 
 class AnalysisFileParam(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     param = models.ForeignKey(FileParam, on_delete=models.CASCADE)
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
+
+    # Multifiles makes this useless? Can still put in more files than needed with a race, just not
+    # duplicates FIXME
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'param', 'sfile'], name='uni_anafileparam')]
 
 
 class AnalysisBaseanalysis(models.Model):
