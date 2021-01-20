@@ -203,6 +203,16 @@ async function storeAnalysis() {
       if ('link' in resp) {
         notif.links[resp.link] = 1;
       }
+      if ('files_nods' in resp) {
+        // Dsets have been changed while editing analysis
+        const files_nodset = new Set(resp.files_nods);
+        Object.values(dsets).filter(ds => files_nodset.intersect(Object.values(ds.files).map(x => x.id))).forEach(ds => {
+          ds.changed = true;
+        });
+        Object.entries(dsets).filter(([dsid, ds]) => resp.ds_newfiles.indexOf(dsid) > -1).forEach(([dsid, ds]) => {
+          ds.changed = true;
+        });
+      }
     } else {
       analysis_id = resp.analysis_id;
     }
@@ -266,10 +276,10 @@ async function fetchAllWorkflows() {
   }
 }
 
-async function fetchDatasetDetails() {
+async function fetchDatasetDetails(fetchdsids) {
   let url = new URL('/analysis/dsets/', document.location)
   const params = {
-    dsids: dsids.join(','),
+    dsids: fetchdsids ? fetchdsids.join(',') : dsids.join(','),
     anid: existing_analysis ? existing_analysis.analysis_id : 0,
   };
   url.search = new URLSearchParams(params).toString();
@@ -279,7 +289,13 @@ async function fetchDatasetDetails() {
     notif.errors[msg] = 1;
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
-    dsets = result.dsets;
+    Object.keys(result.dsets).forEach(x => {
+      dsets[x] = result.dsets[x];
+      dsets[x].changed = false;
+      });
+    Object.keys(dsets).forEach(x => {
+      dsets[x].changed = false;
+    })
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
     // API v1 stuff
     const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
@@ -449,7 +465,7 @@ onMount(async() => {
   if (existing_analysis) {
     await populate_analysis();
   }
-  await fetchDatasetDetails();
+  await fetchDatasetDetails(false);
 })
 </script>
 
@@ -595,6 +611,11 @@ onMount(async() => {
           <span>{ds.prefrac}</span>
           {/if}
 			  </div>
+        {#if ds.changed}
+        <div class="has-text-danger">
+          <span>This dataset has changed files while editing  <button on:click={e => fetchDatasetDetails([ds.id])} class="button is-small">Reload dataset</button></span>
+        </div>
+        {/if}
 			  <div class="subtitle is-6">
 				  <span>{ds.details.qtype} </span>
           {#each Object.entries(ds.details.nrstoredfiles) as sf}

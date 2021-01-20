@@ -226,6 +226,9 @@ class AnalysisSetname(models.Model):
 
 
 class AnalysisDatasetSetname(models.Model):
+    # Note that datasets can be deleted, or have their file contents changed
+    # That means this is not to be trusted for future bookkeeping of what was in the analysis
+    # For that, you should combine it with using the below AnalysisDSInputfile model
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE, null=True)
@@ -233,6 +236,15 @@ class AnalysisDatasetSetname(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_anadsets')]
+
+
+class AnalysisDSInputFile(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
+    analysisdset = models.ForeignKey(AnalysisDatasetSetname, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anainfile')]
 
 
 class AnalysisFileSample(models.Model):

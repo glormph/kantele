@@ -247,11 +247,11 @@ def get_allwfs(request):
     return JsonResponse({'allwfs': allwfs, 'order': order})
 
 
-def get_dataset_files(dsid, nrneededfiles):
+def get_dataset_files(dsid, use_refined):
     dsfiles = rm.StoredFile.objects.select_related('rawfile').filter(
         rawfile__datasetrawfile__dataset_id=dsid, checked=True, deleted=False, purged=False)
     refineddsfiles = dsfiles.filter(mzmlfile__refined=True)
-    if refineddsfiles.count() and refineddsfiles.count() == nrneededfiles:
+    if use_refined and refineddsfiles.count() == dsfiles.filter(mzmlfile__isnull=True).count():
         dsfiles = refineddsfiles
     else:
         # TODO this gets only mzml files from the dataset:
@@ -304,8 +304,6 @@ def get_datasets(request):
     info = {'jobs': [unijob for unijob in
                     {x.job.id: {'name': x.job.funcname, 'state': x.job.state}
                      for x in dsjobs}.values()]}
-    # FIXME default to refined mzmls if exist, now we enforce if exist for simplicity, make optional
-    # FIXME if refined have been deleted, state it, maybe old auto-deleted and need to remake
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
     deleted = dbdsets.filter(deleted=True)
     if deleted.count():
@@ -332,8 +330,9 @@ def get_datasets(request):
             response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
         else:
             nrneededfiles = dsdetails['details']['nrstoredfiles']['raw']
-            dsfiles = get_dataset_files(dsid, nrneededfiles)
-            # FIXME mzmls as fixmes above
+            dsfiles = get_dataset_files(dsid, use_refined=True)
+    # FIXME default to refined mzmls if exist, now we enforce if exist for simplicity, make optional
+    # FIXME if refined have been deleted, state it, maybe old auto-deleted and need to remake
             if dsfiles.count() != nrneededfiles:
                 response['error'] = True
                 response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
@@ -490,6 +489,8 @@ def store_analysis(request):
     # setnames for datasets, optionally fractions and strips
     new_ads = {}
     dsets = {str(dset.id): dset for dset in dsetquery}
+    am.AnalysisDSInputfile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fractions']).delete()
+    frontend_files_not_in_ds, dsfiles_not_in_frontend = {x for x in req['fractions']}, set()
     for dsid, setname in req['dssetnames'].items():
         if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
             regex = req['frregex'][dsid] 
@@ -499,13 +500,24 @@ def store_analysis(request):
                 defaults={'setname_id': setname_ids[setname], 'regex': regex},
                 analysis=analysis, dataset_id=dsid) 
         new_ads[ads.pk] = created
-        data_args['setnames'].update({sf.pk: setname for sf in get_dataset_files(dsid, nrneededfiles=False)})
+        dsfiles = get_dataset_files(dsid, use_refined=True)
+        for sf in dsfiles:
+            if sf.pk in frontend_files_not_in_ds:
+                frontend_files_not_in_ds.pop(sf.pk)
+            else:
+                ds_withfiles_not_in_frontend.add(dsid)
+            am.AnalysisDSInputfile.objects.get_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
+            data_args['setnames'][sf.pk] = setname
         dset = dsets[dsid]
         if hasattr(dset, 'prefractionationdataset'):
             pfd = dset.prefractionationdataset
             if hasattr(pfd, 'hiriefdataset'):
                 strip = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(pfd.hiriefdataset.hirief).split('-')])
                 data_args['platenames'][dsid] = strip
+    if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
+        return JsonResponse({'error': True,
+            'errmsg': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
+            'files_nods': frontend_files_not_in_ds, 'ds_newfiles': ds_withfiles_not_in_frontend})
     am.AnalysisDatasetSetname.objects.filter(analysis=analysis).exclude(pk__in=new_ads).delete()
 
     # store samples if non-prefrac labelfree files are sets
