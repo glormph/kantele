@@ -484,31 +484,66 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
 # Etc CANNOT dynamically code the table too much
 # Make three tables and make them share some code but not all
 
-def get_analysis_invocation(job):
-    kwargs = json.loads(job.kwargs)
-    # TODO remove old jobs from system so we dont need to check this:
-    if kwargs == {}:
-        return {'params': [], 'files': []}
-    params = kwargs['inputs']
-    fnmap = {x['pk']: (x['filename'], x['libraryfile__description'], x['userfile__description']) for x in filemodels.StoredFile.objects.filter(pk__in=params['singlefiles'].values()).values('pk', 'filename', 'libraryfile__description', 'userfile__description')}
-    for pk, fn in fnmap.items():
+def get_analysis_invocation(ana):
+    """Fetch parameters passed to pipeline from database. Yes, this could be fetched
+    from the job, but that structure is more likely to change and things in a DB are
+    more controlled. Upside of using job data would be that it doesnt get updated
+    as DB data can possibly be."""
+
+    fnmap = {}
+    for x in anmodels.AnalysisFileParam.objects.filter(analysis=ana).values(
+            'param__nfparam', 'sfile_id', 'sfile__filename', 'sfile__libraryfile__description', 'sfile__userfile__description'):
         # description is library file or userfile or nothing, pick
-        if fn[1] is not None:
-            desc = fn[1]
-        elif fn[2] is not None:
-            desc = fn[2]
+        desc = x['sfile__libraryfile__description'] or x['sfile__libraryfile__description'] or ''
+        try:
+            fnmap[x['param__nfparam']].append([x['sfile_id'], x['sfile__filename'], desc])
+        except KeyError:
+            fnmap[x['param__nfparam']] = [[x['sfile_id'], x['sfile__filename'], desc]]
+    invoc = {'files': [], 'multifiles': [], 'params': []}
+    for param, fns in fnmap.items():
+        if len(fns) == 1:
+            invoc['files'].append([param, *fns[0]])
         else:
-            desc = ''
-        fnmap[pk] = [fn[0], desc]
-    invoc = {'files': [[x[0], *fnmap[x[1]]] for x in params['singlefiles'].items()],
-            'multifiles': [[x[0], *[y['filename'] for y in filemodels.StoredFile.objects.filter(pk__in=x[1]).values('filename')]] 
-                for x in params['multifiles'].items()],
-            }
-    invoc['params'] = params['params']
-    if 'sampletable' in params:
-        invoc['sampletable'] = [x for x in params['sampletable']]
-    elif 'sampletable' in params['components'] and params['components']['sampletable']:
-        invoc['sampletable'] = [x for x in params['components']['sampletable']]
+            invoc['multifiles'].append([param, *[fns]])
+    allp_options = {}
+    for x in anmodels.Param.objects.filter(ptype='multi'):
+        for opt in x.paramoption_set.all():
+            try:
+                allp_options[x.nfparam][opt.id] = opt.value
+            except KeyError:
+                allp_options[x.nfparam] = {opt.id: opt.value}
+    params = []
+    mparams = {}
+    for ap in anmodels.AnalysisParam.objects.select_related('param').filter(analysis=ana):
+        if ap.param.ptype == 'multi':
+            val = allp_options[ap.param.nfparam][ap.value]
+            try:
+                mparams[ap.param.nfparam].append(val)
+            except KeyError:
+                mparams[ap.param.nfparam] = [val]
+        elif ap.param.ptype == 'flag' and ap.value:
+            params.append(ap.param.nfparam)
+        else:
+            params.extend([ap.param.nfparam, ap.value])
+    params.extend([x for p, val in mparams.items() for x in [p, *val]])
+
+    iqparams = []
+    for aiq in anmodels.AnalysisIsoquant.objects.select_related('setname').filter(analysis=ana):
+        set_dsets = aiq.setname.analysisdatasetsetname_set.all()
+        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').distinct().get()['dataset__quantdataset__quanttype__shortname']
+        if aiq.value['sweep']:
+            calc_psm = 'sweep'
+        elif aiq.value['report_intensity']:
+            calc_psm = 'intensity'
+        else:
+            calc_psm = ':'.join([x for x, tf in aiq.value['denoms'].items() if tf])
+        iqparams.append('{}:{}:{}'.format(aiq.setname.setname, qtypename, calc_psm))
+    if len(iqparams):
+        params.extend(['--isobaric', *iqparams])
+
+    invoc['params'] = params
+    if hasattr(ana, 'analysissampletable'):
+        invoc['sampletable'] = ana.analysissampletable.samples
     else:
         invoc['sampletable'] = False
     return invoc
@@ -517,12 +552,11 @@ def get_analysis_invocation(job):
 @login_required
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
-        'analysis', 'job', 'workflow', 'nfworkflow').get()
+        'analysis', 'workflow', 'nfworkflow').get()
+    ana = nfs.analysis
     storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
                 anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
-    fjobs = nfs.job.filejob_set.all().select_related(
-        'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
-    dsets =  {x.storedfile.rawfile.datasetrawfile.dataset for x in fjobs}
+    dsets = {x.dataset for x in ana.datasetsearch_set.all()}
     #projs = {x.runname.experiment.project for x in dsets}
     if nfs.analysis.log == '':
         logentry = ['Analysis without logging or not yet queued']
@@ -539,12 +573,12 @@ def get_analysis_info(request, nfs_id):
                    'repo': nfs.nfworkflow.nfworkflow.repo},
 #             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
-            'nrfiles': fjobs.distinct('storedfile__rawfile').count(),
+            'nrfiles': ana.analysisdsinputfile_set.count(),
             'storage_locs': [{'server': x.servershare.uri, 'share': x.servershare.name, 'path': x.path}
                 for x in storeloc.values()],
             'log': logentry, 
             'servedfiles': linkedfiles,
-            'invocation': get_analysis_invocation(nfs.job),
+            'invocation': get_analysis_invocation(ana),
             }
     # FIXME dsets, files are already counted in the non-detailed view, so maybe frontend can reuse those
     try:

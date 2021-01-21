@@ -80,18 +80,14 @@ onMount(async() => {
     <div class="content">
       <p class="has-text-weight-bold">Input files</p>
       {#each analysis.invocation.files as param}
-      <p><code>{param[0]}</code> {param[2]} ( {param[1]} )</p>
+      <p><code>{param[0]}</code> {param[3]} ( <a href={`#/files?ids=${param[1]}`}>{param[2]}</a> )</p>
       {/each}
       {#each analysis.invocation.multifiles as param}
       <div>
         <code>{param[0]}</code> 
-        {#if param.slice(1).length === 1}
-        {param[1]}
-        {:else}
-        {#each param.slice(1) as fn}
-        <div>{fn}</div>
+        {#each param[1] as fn}
+        <div>{fn[2]} ( <a href={`#/files?ids=${fn[0]}`}>{fn[1]}</a> ) </div>
         {/each}
-        {/if}
       </div>
       {/each}
     </div>
