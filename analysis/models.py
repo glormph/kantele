@@ -204,7 +204,10 @@ class UniProtFasta(models.Model):
 class AnalysisParam(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     param = models.ForeignKey(Param, on_delete=models.CASCADE)
-    value = models.JSONField() # can be option value, bool or text/number input
+    value = models.JSONField() # can be option_id value, list of those, bool, or text/number input
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'param'], name='uni_anaparam')]
 
 
 class AnalysisSampletable(models.Model):

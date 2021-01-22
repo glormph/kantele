@@ -63,7 +63,7 @@ def load_base_analysis(request, anid):
         if ap.param.ptype == 'flag' and ap.value:
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == 'multi':
-            analysis['multicheck'].append('{}___{}'.format(ap.param.id, str(ap.value)))
+            analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
         elif ap.param.ptype == 'number':
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
@@ -128,7 +128,7 @@ def get_analysis(request, anid):
         if ap.param.ptype == 'flag' and ap.value:
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == 'multi':
-            analysis['multicheck'].append('{}___{}'.format(ap.param.id, str(ap.value)))
+            analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
         elif ap.param.ptype == 'number':
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
@@ -529,17 +529,13 @@ def store_analysis(request):
 
     # Store params
     jobparams = {}
-    passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams']}
+    passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams'], **req['params']['multicheck']}
     am.AnalysisParam.objects.filter(analysis=analysis).exclude(param_id__in=passedparams_exdelete).delete()
     paramopts = {po.pk: po.value for po in am.ParamOption.objects.all()}
-    am.AnalysisParam.objects.filter(analysis=analysis).delete()
     for pid, valueids in req['params']['multicheck'].items():
-        for valueid in valueids:
-            ap = am.AnalysisParam.objects.create(param_id=pid, value=int(valueid), analysis=analysis)
-            try:
-                jobparams[ap.param.nfparam].append(paramopts[ap.value])
-            except KeyError:
-                jobparams[ap.param.nfparam] = [paramopts[ap.value]]
+        ap = am.AnalysisParam.objects.get_or_create(param_id=pid, analysis=analysis,
+                value=[int(x) for x in valueids])
+        jobparams[ap.param.nfparam] = [paramopts[x] for x in ap.value]
     for pid in req['params']['flags'].keys():
         ap, created = am.AnalysisParam.objects.get_or_create(analysis=analysis, param_id=pid, value=True)
         jobparams[ap.param.nfparam] = ['']

@@ -513,19 +513,14 @@ def get_analysis_invocation(ana):
             except KeyError:
                 allp_options[x.nfparam] = {opt.id: opt.value}
     params = []
-    mparams = {}
     for ap in anmodels.AnalysisParam.objects.select_related('param').filter(analysis=ana):
         if ap.param.ptype == 'multi':
-            val = allp_options[ap.param.nfparam][ap.value]
-            try:
-                mparams[ap.param.nfparam].append(val)
-            except KeyError:
-                mparams[ap.param.nfparam] = [val]
+            vals = [allp_options[ap.param.nfparam][x] for x in ap.value]
+            params.extend([ap.param.nfparam, *vals])
         elif ap.param.ptype == 'flag' and ap.value:
             params.append(ap.param.nfparam)
         else:
             params.extend([ap.param.nfparam, ap.value])
-    params.extend([x for p, val in mparams.items() for x in [p, *val]])
 
     iqparams = []
     for aiq in anmodels.AnalysisIsoquant.objects.select_related('setname').filter(analysis=ana):
