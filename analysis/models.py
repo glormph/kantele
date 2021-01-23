@@ -231,7 +231,7 @@ class AnalysisSetname(models.Model):
 class AnalysisDatasetSetname(models.Model):
     # Note that datasets can be deleted, or have their file contents changed
     # That means this is not to be trusted for future bookkeeping of what was in the analysis
-    # For that, you should combine it with using the below AnalysisDSInputfile model
+    # For that, you should combine it with using the below AnalysisDSInputFile model
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE, null=True)

@@ -190,7 +190,38 @@ class RunNextflowWorkflow(BaseJob):
                'name': analysis.name,
                'outdir': analysis.user.username,
                'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger',
+               'old_mzmls': False,
                }
+
+        # Add base analysis stuff if it is complement and fractionated
+        try:
+            ana_baserec = models.AnalysisBaseanalysis.objects.select_related('base_analysis').get(is_complement=True, analysis_id=analysis.id)
+        except models.AnalysisBaseanalysis.DoesNotExist:
+            pass
+        else:
+            if hasattr(ana_baserec.base_analysis, 'analysismzmldef') and ana_baserec.base_analysis.analysismzmldef.mzmldef == 'fractionated':
+                # complement runs with fractionaded base analysis need --oldmzmldef parameter
+                # First get stripnames of old ds
+                old_adsets = ana_baserec.base_analysis.analysisdatasetsetname_set.select_related('dataset__prefractionationdataset__hiriefdataset')
+                strips = {}
+                for oldads in old_adsets:
+                    hirief = oldads.dataset.prefractionationdataset.hiriefdataset.hirief
+                    strips[oldads.dataset_id] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(hirief).split('-')])
+                
+                # Put old files fields into the run dict
+                old_sfiles = models.AnalysisDSInputFile.objects.filter(
+                        analysis=ana_baserec.base_analysis).select_related(
+                        'sfile__rawfile__producer', 'analysisdset__setname')
+                old_mzmls = [{
+                    'fn': x.sfile.filename,
+                    'instrument': x.sfile.rawfile.producer.name,
+                    'setname': x.analysisdset.setname.setname,
+                    'plate': strips[x.analysisdset.dataset_id],
+                    'fraction': re.match(x.analysisdset.regex, x.sfile.filename).group(1),
+                    } for x in old_sfiles]
+                oldmz_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)['fractionated']
+                run['old_mzmls'] = '{}\t{}'.format(fn, ['\t'.join([x[key] for key in oldmz_fields]) for x in old_mzmls])
+
         profiles = ['standard', 'docker', 'lehtio']
         params = [str(x) for x in kwargs['inputs']['params']]
         # Runname defined when run executed (FIXME can be removed, no reason to not do that here)

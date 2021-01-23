@@ -40,7 +40,7 @@ def searchjobs2db(apps, sc_ed):
     AnalysisFileParam = apps.get_model('analysis', 'AnalysisFileParam')
     AIQ = apps.get_model('analysis', 'AnalysisIsoquant')
     QTChannel = apps.get_model('datasets', 'QuantTypeChannel')
-    ADSIF = apps.get_model('analysis', 'AnalysisDSInputfile')
+    ADSIF = apps.get_model('analysis', 'AnalysisDSInputFile')
     for job in Job.objects.filter(funcname__in=['run_ipaw_nextflow', 'run_nf_search_workflow']):
         kw = json.loads(job.kwargs)
         if job.args != '' and len(kw) == 0:
@@ -107,6 +107,8 @@ def searchjobs2db(apps, sc_ed):
                 if not analysis.analysisfileparam_set.count() and not hasattr(analysis, 'analysismzmldef'):
                     ads = ADS.objects.create(analysis=analysis, regex='.*fr([0-9][0-9]).*',
                             setname_id=setname_ids[setnames[0]], dataset_id=ds)
+                else:
+                    ads = ADS.objects.get(analysis=analysis, setname_id=setname_ids[setnames[0]], dataset_id=ds)
                 ADSIF.objects.bulk_create([ADSIF(analysis=analysis, sfile_id=sfid, analysisdset=ads)
                     for sfid in sfids])
             elif len(setnames) == 0:
@@ -116,6 +118,8 @@ def searchjobs2db(apps, sc_ed):
                             setname='unknown_ds_{}'.format(ds)) 
                     ads = ADS.objects.create(analysis=analysis, regex='.*fr([0-9][0-9]).*',
                             setname=unknown_set, dataset_id=ds)
+                else:
+                    ads = ADS.objects.get(analysis=analysis, setname_id=setname_ids[setnames[0]], dataset_id=ds)
                 ADSIF.objects.bulk_create([ADSIF(analysis=analysis, sfile_id=sfid, analysisdset=ads)
                     for sfid in sfids])
         if analysis.analysisfileparam_set.count() or hasattr(analysis, 'analysismzmldef'):

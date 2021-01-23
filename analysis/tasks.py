@@ -220,25 +220,20 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_ver
                 fp.write('\n')
         params.extend(['--sampletable', sampletable_fn])
     # create input file of filenames
-    # FIXME depends on mzmldef component
+    # FIXME depends on mzmldef component, which is always in our dda but maybe not in later
+    # pipelines
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
-            ####
             fnpath = os.path.join(stagedir, 'mzmls', fn['fn'])
-            mzstr = '{}\t{}'.format(fnpath, fn['mzmldef'])
-            ####
-#            # set/plate/fraction in LC runs are channel/samplename
-#            if len(fn) > 6 and fn[6]:
-#                mzstr = '{fpath}\t{inst}\t{setn}'.format(fpath=os.path.join(stagedir, 'mzmls', fn[2]), setn=fn[3], inst=fn[6])
-#            else:
-#                mzstr = '{fpath}\t{setn}'.format(fpath=os.path.join(stagedir, 'mzmls', fn[2]), setn=fn[3])
-#            if fn[4]:  # if a plate is speced, use plate and fraction if they are speced
-#                mzstr = '{ms}\t{pl}'.format(ms=mzstr, pl=fn[4])
-#                if len(fn) > 5 and fn[5]:
-#                    mzstr = '{ms}\t{fr}'.format(ms=mzstr, fr=fn[5])
-            mzstr = '{}\n'.format(mzstr)
+            mzstr = '{}\t{}\n'.format(fnpath, fn['mzmldef'])
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
+    if run['old_mzmls']:
+        with open(os.path.join(rundir, 'oldmzmldef.txt'), 'w') as fp:
+            for fn in run['old_mzmls']:
+                mzstr = '{}\n'.format(fn)
+                fp.write(mzstr)
+        params.extend(['--oldmzmldef', os.path.join(rundir, 'oldmzmldef.txt')])
     params = [x if x != 'RUNNAME__PLACEHOLDER' else run['runname'] for x in params]
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles=profiles)
     postdata.update({'state': 'ok'})

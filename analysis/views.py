@@ -489,8 +489,8 @@ def store_analysis(request):
     # setnames for datasets, optionally fractions and strips
     new_ads = {}
     dsets = {str(dset.id): dset for dset in dsetquery}
-    am.AnalysisDSInputfile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fractions']).delete()
-    frontend_files_not_in_ds, dsfiles_not_in_frontend = {x for x in req['fractions']}, set()
+    am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fractions']).delete()
+    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['fractions']}, set()
     for dsid, setname in req['dssetnames'].items():
         if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
             regex = req['frregex'][dsid] 
@@ -503,10 +503,10 @@ def store_analysis(request):
         dsfiles = get_dataset_files(dsid, use_refined=True)
         for sf in dsfiles:
             if sf.pk in frontend_files_not_in_ds:
-                frontend_files_not_in_ds.pop(sf.pk)
+                frontend_files_not_in_ds.remove(sf.pk)
             else:
                 ds_withfiles_not_in_frontend.add(dsid)
-            am.AnalysisDSInputfile.objects.get_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
+            am.AnalysisDSInputFile.objects.update_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
             data_args['setnames'][sf.pk] = setname
         dset = dsets[dsid]
         if hasattr(dset, 'prefractionationdataset'):
@@ -515,9 +515,8 @@ def store_analysis(request):
                 strip = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(pfd.hiriefdataset.hirief).split('-')])
                 data_args['platenames'][dsid] = strip
     if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
-        return JsonResponse({'error': True,
-            'errmsg': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
-            'files_nods': frontend_files_not_in_ds, 'ds_newfiles': ds_withfiles_not_in_frontend})
+        return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
+            'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
     am.AnalysisDatasetSetname.objects.filter(analysis=analysis).exclude(pk__in=new_ads).delete()
 
     # store samples if non-prefrac labelfree files are sets
@@ -533,11 +532,11 @@ def store_analysis(request):
     am.AnalysisParam.objects.filter(analysis=analysis).exclude(param_id__in=passedparams_exdelete).delete()
     paramopts = {po.pk: po.value for po in am.ParamOption.objects.all()}
     for pid, valueids in req['params']['multicheck'].items():
-        ap = am.AnalysisParam.objects.get_or_create(param_id=pid, analysis=analysis,
+        ap, created = am.AnalysisParam.objects.update_or_create(param_id=pid, analysis=analysis,
                 value=[int(x) for x in valueids])
         jobparams[ap.param.nfparam] = [paramopts[x] for x in ap.value]
     for pid in req['params']['flags'].keys():
-        ap, created = am.AnalysisParam.objects.get_or_create(analysis=analysis, param_id=pid, value=True)
+        ap, created = am.AnalysisParam.objects.update_or_create(analysis=analysis, param_id=pid, value=True)
         jobparams[ap.param.nfparam] = ['']
     for pid, value in req['params']['inputparams'].items():
         ap, created = am.AnalysisParam.objects.update_or_create(
@@ -667,7 +666,7 @@ def store_analysis(request):
         job.save()
     else:
         job = jj.create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-        am.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid']}, analysis=analysis)
+    am.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid']}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id})
 
 
