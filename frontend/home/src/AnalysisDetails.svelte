@@ -45,10 +45,18 @@ onMount(async() => {
 
 <DetailBox notif={notif} closeWindow={closeWindow}>
   {#each Object.entries(analyses) as [anaid, analysis]}
-
     <h4 class="title is-4">{analysis.name}</h4>
+    {#if analysis.base_analysis.nfsid}
+    <p><span class="has-text-weight-bold">Complementing previous run:</span> <a href={`#/analyses?ids=${analysis.base_analysis.nfsid}`}>{analysis.base_analysis.name}</a></p>
+    {/if}
     <p><span class="has-text-weight-bold">Workflow version:</span> {analysis.wf.name} - {analysis.wf.update}</p>
-    <p>{analysis.nrfiles} raw files from {analysis.nrdsets} dataset(s) analysed</p>
+    <p>
+      <span class="has-text-weight-bold">Input data:</span> 
+      {analysis.nrfiles} raw files from {analysis.nrdsets} dataset(s) analysed
+      {#if analysis.base_analysis.nfsid}
+      ({analysis.base_analysis.nrdsets} datasets, {analysis.base_analysis.nrfiles} files cumulatively analysed in previous run)
+      {/if}
+    </p>
     <p><span class="has-text-weight-bold">Quant type:</span> {analysis.quants.join(', ')}</p>
     <p><span class="has-text-weight-bold">Last lines of log  
       {#if analysis.log[0].slice(0, 16) !== 'Analysis without'}
@@ -79,14 +87,18 @@ onMount(async() => {
 
     <div class="content">
       <p class="has-text-weight-bold">Input files</p>
-      {#each analysis.invocation.files as param}
-      <p><code>{param[0]}</code> {param[3]} ( <a href={`#/files?ids=${param[1]}`}>{param[2]}</a> )</p>
+      {#each analysis.invocation.files as {param, fn, fnid, desc, parentanalysis, anid}}
+        {#if parentanalysis}
+        <p><code>{param}</code> from <a target="_blank" href={`#/analyses?ids=${anid}`}>{parentanalysis}</a> ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )</p>
+        {:else}
+        <p><code>{param}</code> {desc} ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )</p>
+        {/if}
       {/each}
-      {#each analysis.invocation.multifiles as param}
+      {#each analysis.invocation.multifiles as multif}
       <div>
-        <code>{param[0]}</code> 
-        {#each param[1] as fn}
-        <div>{fn[2]} ( <a href={`#/files?ids=${fn[0]}`}>{fn[1]}</a> ) </div>
+        <code>{multif[0]}</code> 
+        {#each multif[1] as {fn, fnid, desc, parentanalysis, anid}}
+        <div>{desc} ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )</div>
         {/each}
       </div>
       {/each}

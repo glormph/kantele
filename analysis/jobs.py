@@ -133,6 +133,54 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         analysis.save()
 
 
+
+
+def recurse_nrdsets_baseanalysis(aba):
+    """Recursively get all old mzmls from what is possibly a chain of growing analyses,
+    each e.g. adding a single set fresh of the MS"""
+    try:
+        # if this base ana has its base ana, run the recursive func
+        older_aba = models.AnalysisBaseanalysis.objects.get(
+                analysis=aba.base_analysis, is_complement=True)
+    except models.AnalysisBaseanalysis.DoesNotExist:
+        # youve found the last base ana, dont call deeper
+        old_mzmls = {}
+        old_dsets = {}
+    else:
+        # get older analysis' old mzmls
+        old_mzmls, old_dsets = recurse_nrdsets_baseanalysis(older_aba)
+    # First get stripnames of old ds
+    strips = {}
+    for oldads in aba.base_analysis.analysisdatasetsetname_set.select_related('dataset__prefractionationdataset__hiriefdataset'):
+        hirief = oldads.dataset.prefractionationdataset.hiriefdataset.hirief
+        strips[oldads.dataset_id] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(hirief).split('-')])
+    # Put old files fields into the run dict, group them by set so we dont get duplicates in case an analysis chain is:
+    # 1. setA + setB
+    # 2. setB rerun based on 1.
+    # 3. setC addition based on 2
+    # This would in 3. give us all oldmzmls from 1. and 2., so setB would be double
+    single_ana_oldmzml = {}
+    single_ana_oldds = {}
+    for asf in models.AnalysisDSInputFile.objects.filter(
+            analysis=aba.base_analysis).select_related(
+                    'sfile__rawfile__producer', 'analysisdset__setname'):
+        oldasf = {'fn': asf.sfile.filename,
+                'instrument': asf.sfile.rawfile.producer.name,
+                'setname': asf.analysisdset.setname.setname,
+                'plate': strips[asf.analysisdset.dataset_id],
+                'fraction': re.match(asf.analysisdset.regex, asf.sfile.filename).group(1),
+                }
+        try:
+            single_ana_oldmzml[asf.analysisdset.setname.setname].append(oldasf)
+            single_ana_oldds[asf.analysisdset.setname.setname].add(asf.analysisdset.dataset_id)
+        except KeyError:
+            single_ana_oldmzml[asf.analysisdset.setname.setname] = [oldasf]
+            single_ana_oldds[asf.analysisdset.setname.setname] = {asf.analysisdset.dataset_id}
+    old_mzmls.update(single_ana_oldmzml)
+    old_dsets.update(single_ana_oldds)
+    return old_mzmls, old_dsets
+
+
 class RunNextflowWorkflow(BaseJob):
     refname = 'run_nf_search_workflow'
     task = tasks.run_nextflow_workflow
@@ -192,49 +240,7 @@ class RunNextflowWorkflow(BaseJob):
                'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger',
                'old_mzmls': False,
                }
-
         
-        def recursive_oldmzml_fetch(aba):
-            """Recursively get all old mzmls from what is possibly a chain of growing analyses,
-            each e.g. adding a single set fresh of the MS"""
-            try:
-                # if this base ana has its base ana, run the recursive func
-                older_aba = models.AnalysisBaseanalysis.objects.get(
-                        analysis=aba.base_analysis, is_complement=True)
-            except models.AnalysisBaseanalysis.DoesNotExist:
-                # youve found the last base ana, dont call deeper
-                old_mzmls = {}
-            else:
-                # get older analysis' old mzmls
-                old_mzmls = recursive_oldmzml_fetch(older_aba)
-            # First get stripnames of old ds
-            old_adsets = aba.base_analysis.analysisdatasetsetname_set.select_related('dataset__prefractionationdataset__hiriefdataset')
-            strips = {}
-            for oldads in old_adsets:
-                hirief = oldads.dataset.prefractionationdataset.hiriefdataset.hirief
-                strips[oldads.dataset_id] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(hirief).split('-')])
-            # Put old files fields into the run dict, group them by set so we dont get duplicates in case an analysis chain is:
-            # 1. setA + setB
-            # 2. setB rerun based on 1.
-            # 3. setC addition based on 2
-            # This would in 3. give us all oldmzmls from 1. and 2., so setB would be double
-            single_ana_oldmzml = {}
-            for asf in models.AnalysisDSInputFile.objects.filter(
-                    analysis=aba.base_analysis).select_related(
-                            'sfile__rawfile__producer', 'analysisdset__setname'):
-                oldasf = {'fn': asf.sfile.filename,
-                        'instrument': asf.sfile.rawfile.producer.name,
-                        'setname': asf.analysisdset.setname.setname,
-                        'plate': strips[asf.analysisdset.dataset_id],
-                        'fraction': re.match(asf.analysisdset.regex, asf.sfile.filename).group(1),
-                        }
-                try:
-                    single_ana_oldmzml[asf.analysisdset.setname.setname].append(oldasf)
-                except KeyError:
-                    single_ana_oldmzml[asf.analysisdset.setname.setname] = [oldasf]
-            old_mzmls.update(single_ana_oldmzml)
-            return old_mzmls
-
         # Add base analysis stuff if it is complement and fractionated
         try:
             ana_baserec = models.AnalysisBaseanalysis.objects.select_related('base_analysis').get(is_complement=True, analysis_id=analysis.id)
@@ -243,7 +249,7 @@ class RunNextflowWorkflow(BaseJob):
         else:
             if hasattr(ana_baserec.base_analysis, 'analysismzmldef') and ana_baserec.base_analysis.analysismzmldef.mzmldef == 'fractionated':
                 # complement runs with fractionaded base analysis need --oldmzmldef parameter
-                old_mzmls = recursive_oldmzml_fetch(ana_baserec)
+                old_mzmls, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
                 oldmz_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)['fractionated']
                 run['old_mzmls'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in oldmz_fields]))
                         for setmzmls in old_mzmls.values() for x in setmzmls]

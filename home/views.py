@@ -14,6 +14,7 @@ from kantele import settings
 from datasets import models as dsmodels
 from analysis import models as anmodels
 from analysis import views as av
+from analysis import jobs as aj
 from datasets import jobs as dsjobs
 from datasets.views import check_ownership, get_dset_storestate
 from rawstatus import models as filemodels
@@ -492,19 +493,28 @@ def get_analysis_invocation(ana):
 
     fnmap = {}
     for x in anmodels.AnalysisFileParam.objects.filter(analysis=ana).values(
-            'param__nfparam', 'sfile_id', 'sfile__filename', 'sfile__libraryfile__description', 'sfile__userfile__description'):
+            'param__nfparam', 'sfile_id', 'sfile__filename', 'sfile__libraryfile__description', 'sfile__userfile__description',
+            'sfile__analysisresultfile__analysis__name', 'sfile__analysisresultfile__analysis__nextflowsearch__id'):
+        fninfo = {'fn': x['sfile__filename'],
+                'fnid': x['sfile_id'],
+                'desc': x['sfile__libraryfile__description'] or x['sfile__userfile__description'] or '',
+                'parentanalysis': False,
+                }
         # description is library file or userfile or nothing, pick
-        desc = x['sfile__libraryfile__description'] or x['sfile__libraryfile__description'] or ''
+        if x['sfile__analysisresultfile__analysis__nextflowsearch__id']:
+            fninfo.update({'parentanalysis': x['sfile__analysisresultfile__analysis__name'],
+                    'anid': x['sfile__analysisresultfile__analysis__nextflowsearch__id'],
+                    })
         try:
-            fnmap[x['param__nfparam']].append([x['sfile_id'], x['sfile__filename'], desc])
+            fnmap[x['param__nfparam']].append(fninfo)
         except KeyError:
-            fnmap[x['param__nfparam']] = [[x['sfile_id'], x['sfile__filename'], desc]]
+            fnmap[x['param__nfparam']] = [fninfo]
     invoc = {'files': [], 'multifiles': [], 'params': []}
-    for param, fns in fnmap.items():
-        if len(fns) == 1:
-            invoc['files'].append([param, *fns[0]])
+    for param, fninfos in fnmap.items():
+        if len(fninfos) == 1:
+            invoc['files'].append({'param': param, **fninfos[0]})
         else:
-            invoc['multifiles'].append([param, *[fns]])
+            invoc['multifiles'].append([{'param': param, **fninfo} for fninfo in fninfos])
     allp_options = {}
     for x in anmodels.Param.objects.filter(ptype='multi'):
         for opt in x.paramoption_set.all():
@@ -543,7 +553,7 @@ def get_analysis_invocation(ana):
         invoc['sampletable'] = False
     return invoc
 
-    
+
 @login_required
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
@@ -561,7 +571,7 @@ def get_analysis_info(request, nfs_id):
     resp = {#'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
             #                    'retry': jv.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
             #                    'time': nfs.job.timestamp}},
-            'name': nfs.analysis.name,
+            'name': ana.name,
             'wf': {'fn': nfs.nfworkflow.filename, 
                    'name': nfs.nfworkflow.nfworkflow.description,
                    'update': nfs.nfworkflow.update,
@@ -572,9 +582,19 @@ def get_analysis_info(request, nfs_id):
             'storage_locs': [{'server': x.servershare.uri, 'share': x.servershare.name, 'path': x.path}
                 for x in storeloc.values()],
             'log': logentry, 
+            'base_analysis': {'nfsid': False, 'name': False},
             'servedfiles': linkedfiles,
             'invocation': get_analysis_invocation(ana),
             }
+    if anmodels.AnalysisBaseanalysis.objects.filter(analysis=ana, is_complement=True).count():
+        baseana = anmodels.AnalysisBaseanalysis.objects.select_related('base_analysis').get(analysis=ana)
+        old_mzml, old_dsets = aj.recurse_nrdsets_baseanalysis(baseana)
+        resp['base_analysis'] = {
+                'nfsid': baseana.base_analysis.nextflowsearch.pk,
+                'name': baseana.base_analysis.name,
+                'nrdsets': len([dset for setdsets in old_dsets.values() for dset in setdsets]),
+                'nrfiles': len([fn for setfns in old_mzml.values() for fn in setfns]),
+                }
     # FIXME dsets, files are already counted in the non-detailed view, so maybe frontend can reuse those
     try:
         resp['quants'] = list({x.quantdataset.quanttype.name for x in dsets})
