@@ -176,7 +176,7 @@ def stage_files(stagedir, stagefiles, params=False):
         for fdata in files:
             fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
             fdst = os.path.join(stagefiledir, fdata[2])
-            if os.path.exists(fdst):
+            if os.path.exists(fdst) and os.path.getsize(fdst) == os.path.getsize(fpath):
                 continue
             if os.path.isdir(fpath):
                 shutil.copytree(fpath, fdst)
