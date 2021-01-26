@@ -161,6 +161,10 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
     return rundir
 
 
+def get_dir_content_size(fpath):
+    return sum([os.path.getsize(f) for f in os.listdir(fpath) if os.path.isfile(f)])
+
+
 def stage_files(stagedir, stagefiles, params=False):
     for flag, files in stagefiles.items():
         stagefiledir = os.path.join(stagedir, flag.replace('--', ''))
@@ -176,8 +180,15 @@ def stage_files(stagedir, stagefiles, params=False):
         for fdata in files:
             fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
             fdst = os.path.join(stagefiledir, fdata[2])
-            if os.path.exists(fdst) and os.path.getsize(fdst) == os.path.getsize(fpath):
+            if os.path.exists(fdst) and not os.path.isdir(fpath) and os.path.getsize(fdst) == os.path.getsize(fpath):
+                # file already there
                 continue
+            elif os.path.exists(fdst) and os.path.isdir(fpath) and get_dir_content_size(fpath) == get_dir_content_size(fdst):
+                # file is a dir but also ready
+                continue
+            elif os.path.exists(fdst):
+                # file/dir exists but is not correct, delete first
+                shutil.remove(fdst)
             if os.path.isdir(fpath):
                 shutil.copytree(fpath, fdst)
             else:
