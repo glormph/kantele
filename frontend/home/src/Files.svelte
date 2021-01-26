@@ -17,6 +17,7 @@ const tablefields = [
   {id: 'dataset', name: '', type: 'icon', help: 'Dataset', icon: 'clipboard-list', multi: false, links: 'dataset', linkroute: '#/datasets'},
   {id: 'analyses', name: '', type: 'icon', help: 'Analyses', icon: 'cogs', multi: false, links: 'analyses', linkroute: '#/analyses'},
   {id: 'date', name: 'Date', type: 'str', multi: false},
+  {id: 'size', name: 'Size', type: 'str', multi: false},
   {id: 'backup', name: 'Backed up', type: 'bool', multi: false},
   {id: 'owner', name: 'Belongs', type: 'str', multi: false},
   {id: 'ftype', name: 'Type', type: 'str', multi: false},
