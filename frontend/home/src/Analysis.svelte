@@ -1,7 +1,7 @@
 <script>
 
 import {querystring, push} from 'svelte-spa-router';
-import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+import { getJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
 import Upload from './Upload.svelte'

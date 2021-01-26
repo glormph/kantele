@@ -261,22 +261,6 @@ def get_dataset_files(dsid, use_refined):
 
 
 @login_required
-def match_fractions(request):
-    if request.method != 'GET':
-        return HttpResponseNotAllowed(permitted_methods=['GET'])
-    req = json.loads(request.body.decode('utf-8'))
-    dsfiles = [{'name': fn.filename} for fn in get_dataset_files(req['dsid'], nrneededfiles=-1)]
-    for fn in dsfiles:
-        try:
-            frnum = re.search(req['regex'], fn['name']).group(1)
-        except IndexError:
-            return JsonResponse({'error': True, 'errmsg': 'Need to define a regex group with parentheses around the fraction numbers'})
-        else:
-            fn['fr'] = frnum
-    return JsonResponse({'error': False, 'fractions': dsfiles})
-
-
-@login_required
 def get_base_analyses(request):
     if 'q' in request.GET:
         query = Q()

@@ -57,9 +57,6 @@ function removeOrganism(org_id) {
 }
 
 function addOrganism() {
-  console.log(selectedspecies);
-  console.log(fetchedSpecies[selectedspecies]);
-  console.log(prepdata.species);
   const species = (selectedspecies in prepdata.allspecies) ? prepdata.allspecies[selectedspecies] : fetchedSpecies[selectedspecies];
   prepdata.species = [...prepdata.species, species];
   editMade();

@@ -555,12 +555,12 @@ onMount(async() => {
 	</div>
 
   <div class="box">
-    <div class="title is-5">Fetch settings/files from an analysis</div>
+    <div class="title is-5">Fetch settings/files from a previous analysis</div>
     {#if wf && 'complement_analysis' in wf.components}
     <div class="checkbox">
       <input type="checkbox" bind:checked={base_analysis.isComplement}>
       <label class="checkbox">
-        The new analysis is an addition or partial re-run with replaced or extra raw data, of this "existing analysis"
+        Complement previous analysis with new or re-run sets (with replaced or extra raw data)
       </label>
       <a title="Skips parts of analysis already run, faster output"><i class="fa fa-question-circle"></i></a>
     </div>
@@ -601,7 +601,7 @@ onMount(async() => {
           <input type="text" class="input" placeholder="Name of set" bind:value={ds.setname} on:change={updateIsoquant}>
 			  </div>
         {/if}
-			  <div class="subtitle is-6 has-text-primary">
+        <div class="subtitle is-6 has-text-primary">
           <span>{ds.proj} // {ds.exp} // {ds.run} //</span>
           {#if !ds.prefrac}
           <span>{ds.dtype}</span>
@@ -770,7 +770,7 @@ onMount(async() => {
   {#if wf.multifileparams.length + wf.fileparams.length}
   <div class="box">
     <div class="title is-5">Input files</div>
-    Add analyses with input data if missing:
+    Pick previous analyses to use results as input if needed:
     <DynamicSelect bind:intext={adding_analysis.typedname} bind:selectval={adding_analysis.selected} on:selectedvalue={e => loadAnalysisResults()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={adding_analysis.fetched} />
 
     <div class="tags">

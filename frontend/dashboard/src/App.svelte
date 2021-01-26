@@ -2,9 +2,6 @@
 import { onMount } from 'svelte';
 import { schemeSet1 } from 'd3-scale-chromatic';
 
-// FIXME todo:
-// - project type only local?
-
 import Instrument from './Instrument.svelte'
 import StackedPlot from './StackedPlot.svelte';
 import GroupedBarPlot from './GroupedBarPlot.svelte'
@@ -55,14 +52,12 @@ function showProd() {
 }
 
 async function reloadInstrument(e) {
-  console.log(e);
   qcdata[e.detail.instrument_id].loaded = false;
   await getInstrumentQC(e.detail.instrument_id, e.detail.firstday, e.detail.showdays);
   instrumenttabs[e.detail.instrument_id].parseData();
 }
 
 async function fetchProductionData(maxdays, firstday) {
-  console.log(firstday, maxdays);
   const resp = await fetch(`/dash/proddata/${firstday}/${maxdays}`);
   proddata = await resp.json();
   // setTimeout since after fetching, the plot components havent updated its props

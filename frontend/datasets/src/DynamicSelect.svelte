@@ -1,5 +1,4 @@
 <script>
-import { onMount } from 'svelte';
 import { getJSON } from './funcJSON.js';
 import { createEventDispatcher } from 'svelte';
 
