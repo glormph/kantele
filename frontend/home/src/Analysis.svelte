@@ -23,7 +23,7 @@ const tablefields = [
   {id: 'wf', name: 'Workflow', type: 'str', multi: false, links: 'wflink'},
   {id: 'usr', name: 'Users', type: 'str', multi: false},
   {id: 'date', name: 'Date', type: 'str', multi: false},
-  {id: 'actions', name: 'Actions', type: 'button', multi: true, confirm: ['stop job', 'run job']},
+  {id: 'actions', name: 'Actions', type: 'button', multi: true},
 ];
 
 const fixedbuttons = [
