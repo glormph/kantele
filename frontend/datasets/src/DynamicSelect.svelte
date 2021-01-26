@@ -24,6 +24,7 @@ let selectedtext;
 let placeholder = 'Filter by typing';
 let typing = false;
 let mouseSelect = false;
+const initval = selectval;
 
 
 function inputdone() {
@@ -79,9 +80,11 @@ async function handleKeyInput(event) {
     // up arrow key
     hoveropt = hoveropt && optorderindex[hoveropt] > 0 ? optorder[optorderindex[hoveropt] - 1] : false;
   } else if (!intext.length) {
+    // empty input, show all options, reset selectvalue
     hoveropt = false;
     options = Object.fromEntries(Object.entries(fixedoptions));
     optorder = Object.keys(options);
+    selectval = initval;
   } else if (event.key.length > 1 && !(event.keyCode === 8 || event.keyCode === 46)) {
     // special key without modification effect (e.g. alt), not backspace/delete
     return
