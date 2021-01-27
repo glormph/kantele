@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.db.models import Q, Sum, Max, Count
-from django.db.models.functions import Trunc
+from django.db.models.functions import Trunc, Greatest
 from collections import OrderedDict
 
 from kantele import settings
@@ -411,9 +411,10 @@ def get_proj_info(request, proj_id):
 
 def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
     projs, order = {}, []
-    dbprojs = dbprojs.annotate(Max('experiment__runname__dataset__date')).annotate(Max('experiment__runname__dataset__datasetsearch__analysis__date'))
-    for proj in dbprojs.order_by('-experiment__runname__dataset__date__max'): # latest first
-
+    dbprojs = dbprojs.annotate(dsmax=Max('experiment__runname__dataset__date'),
+            anamax=Max('experiment__runname__dataset__datasetsearch__analysis__date')).annotate(
+            greatdate=Greatest('dsmax', 'anamax'))
+    for proj in dbprojs.order_by('-greatdate'): # latest first
         order.append(proj.id)
         projs[proj.id] = {
             'id': proj.id,
@@ -423,18 +424,8 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
             'ptype': proj.projtype.ptype.name,
             'details': False,
             'selected': False,
+            'lastactive': proj.greatdate,
         }
-        # last active: last added dataset, last run analysis
-        dsmax, anmax = proj.experiment__runname__dataset__date__max, proj.experiment__runname__dataset__datasetsearch__analysis__date__max
-        if dsmax and anmax:
-            projs[proj.id]['lastactive'] = sorted([dsmax, anmax])[-1]
-        elif dsmax:
-
-            projs[proj.id]['lastactive'] = dsmax
-        elif anmax:
-            projs[proj.id]['lastactive'] = anmax
-        else:
-            projs[proj.id]['lastactive'] = proj.registered
     return projs, order
 
 
