@@ -18,6 +18,7 @@ from analysis import jobs as aj
 from datasets import jobs as dsjobs
 from datasets.views import check_ownership, get_dset_storestate
 from rawstatus import models as filemodels
+from rawstatus import views as rv
 from jobs import jobs as jj
 from jobs import views as jv
 from jobs import models as jm
@@ -218,7 +219,7 @@ def populate_files(dbfns):
         it = {'id': fn.id,
               'name': fn.filename,
               'date': datetime.strftime(fn.rawfile.date, '%Y-%m-%d %H:%M'),
-              'size': getxbytes(fn.rawfile.size) if not is_mzml else '-',
+              'size': rv.getxbytes(fn.rawfile.size) if not is_mzml else '-',
               'ftype': fn.filetype.name,
               'analyses': [],
               'dataset': [],
@@ -385,15 +386,6 @@ def populate_analysis(nfsearches, user):
     return ana_out, order
 
 
-def getxbytes(bytes, op=50):
-    if bytes is None:
-        return '0B'
-    if bytes >> op:
-        return '{}{}B'.format(bytes >> op, {10:'K', 20:'M', 30:'G', 40:'T', 50:'P'}[op])
-    else:
-        return getxbytes(bytes, op-10)
-
-
 @login_required
 def get_proj_info(request, proj_id):
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(
@@ -406,8 +398,8 @@ def get_proj_info(request, proj_id):
             sfiles[sfile.filetype.name] = [sfile]
     dsowners = dsmodels.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=proj_id).distinct()
     info = {'owners': {x.user_id: x.user.username for x in dsowners},
-            'stored_total_xbytes': getxbytes(files.aggregate(Sum('rawfile__size'))['rawfile__size__sum']),
-            'stored_bytes': {ft: getxbytes(sum([fn.rawfile.size for fn in fns])) for ft, fns in sfiles.items()},
+            'stored_total_xbytes': rv.getxbytes(files.aggregate(Sum('rawfile__size'))['rawfile__size__sum']),
+            'stored_bytes': {ft: rv.getxbytes(sum([fn.rawfile.size for fn in fns])) for ft, fns in sfiles.items()},
             'nrstoredfiles': {ft: len([fn for fn in fns]) for ft, fns in sfiles.items()},
             'instruments': list(set([x.rawfile.producer.name for x in files])),
             'nrbackupfiles': filemodels.SwestoreBackedupFile.objects.filter(

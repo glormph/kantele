@@ -635,18 +635,27 @@ def download_instrument_package(request):
     return resp
 
 
+def getxbytes(bytes, op=50):
+    if bytes is None:
+        return '0B'
+    if bytes >> op:
+        return '{}{}B'.format(bytes >> op, {10:'K', 20:'M', 30:'G', 40:'T', 50:'P'}[op])
+    else:
+        return getxbytes(bytes, op-10)
+
+
+@login_required
 def cleanup_old_files(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
+    if not request.user.is_staff:
+        return JsonResponse({'state': 'error', 'error': 'User has no permission to retire this project, does not own all datasets in project'}, status=403)
+    data = json.loads(request.body.decode('utf-8'))
     try:
-        client_id = request.POST['client_id']
+        queue_job = data['queue_job']
     except KeyError as error:
         return HttpResponseForbidden()
-    if client_id != settings.ADMIN_APIKEY:
-        print('POST request with incorrect client id '
-              '{}'.format(client_id))
-        return HttpResponseForbidden()
-    mzmls = StoredFile.objects.filter(mzmlfile__isnull=False)
+    mzmls = StoredFile.objects.filter(mzmlfile__isnull=False, purged=False)
     maxtime_nonint = timezone.now() - timedelta(settings.MAX_MZML_STORAGE_TIME_POST_ANALYSIS)
     # Filtering gotchas here:
     # filter multiple excludes so they get done in serie, and exclude date__gt rather than
@@ -675,19 +684,28 @@ def cleanup_old_files(request):
     nonsearched_qc = qcmzmls.exclude(
             rawfile__storedfile__filejob__job__nextflowsearch__isnull=False).filter(
             regdate__lt=maxtime_nonint)
-    all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml, old_qc_mzmls, nonsearched_qc).filter(purged=False)
-    # FIXME django 3.0 has iterator(chunk_size=500)
+    all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml, old_qc_mzmls, nonsearched_qc)
+
     def chunk_iter(qset, chunk_size):
         chunk = []
+        # Django iterator has chunk_size but that only affects the database caching level
+        # and not the chunked output. Here we use this to output chunks to create jobs from
+        # otherwise the job params become very large
         for item in qset.iterator():
             chunk.append(item)
             if len(chunk) == chunk_size:
                 yield chunk
                 chunk = []
         yield chunk
-    for chunk in chunk_iter(all_old_mzmls, 500):
-        jobutil.create_job('purge_files', sf_ids=[x.id for x in chunk])
-    return HttpResponse()
+
+    if queue_job:
+        for chunk in chunk_iter(all_old_mzmls, 500):
+            jobutil.create_job('purge_files', sf_ids=[x.id for x in chunk])
+        return JsonResponse({'ok': True})
+    else:
+        # cannot aggregate Sum on UNION
+        totalsize_raw = getxbytes(sum((x['rawfile__size'] for x in all_old_mzmls.values('rawfile__size'))))
+        return JsonResponse({'ok': True, 'mzml_cleanupsize_raws': totalsize_raw})
 
 
 @login_required
