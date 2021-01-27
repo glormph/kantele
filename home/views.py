@@ -424,7 +424,7 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
             'ptype': proj.projtype.ptype.name,
             'details': False,
             'selected': False,
-            'lastactive': proj.greatdate,
+            'lastactive': proj.greatdate or '-',
         }
     return projs, order
 
