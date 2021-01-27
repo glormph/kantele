@@ -11,6 +11,8 @@ import DateSlider from './DateSlider.svelte';
 let prodplot;
 let cfprodplot;
 let projdistplot;
+let projageplot;
+
 let instrumenttabs = {};
 
 let firstday = 0;
@@ -27,6 +29,7 @@ let proddata = {
   fileproduction: {},
   projecttypeproduction: {},
   projectdistribution: {},
+  projectage: {},
 };
 
 async function showInst(iid) {
@@ -63,6 +66,8 @@ async function fetchProductionData(maxdays, firstday) {
   // setTimeout since after fetching, the plot components havent updated its props
   proddata.fileproduction.data.map(d => Object.assign(d, d.day = new Date(d.day)));
   proddata.fileproduction.instruments = new Set(proddata.fileproduction.data.map(d => Object.keys(d)).flat());
+  proddata.projectage.data.map(d => Object.assign(d, d.day = new Date(d.day)));
+  proddata.projectage.ptypes= new Set(proddata.projectage.data.map(d => Object.keys(d)).flat());
   proddata.projecttypeproduction.data.map(d => Object.assign(d, d.day = new Date(d.day)));
   proddata.projecttypeproduction.projtypes= new Set(proddata.projecttypeproduction.data.map(d => Object.keys(d)).flat());
   proddata.projectdistribution.ptypes = new Set(proddata.projectdistribution.data.map(d => Object.keys(d)).flat());
@@ -70,6 +75,7 @@ async function fetchProductionData(maxdays, firstday) {
     prodplot.plot();
     cfprodplot.plot();
     projdistplot.plot();
+    projageplot.plot();
   }, 0);
 }
 
@@ -129,6 +135,8 @@ onMount(async() => {
         </div>
         <div class="tile">
           <div class="content">
+            <h5 class="title is-5">Project sizes by last-activity date</h5>
+            <StackedPlot bind:this={projageplot} colorscheme={schemeSet1} data={proddata.projectage.data} stackgroups={proddata.projectage.ptypes} xkey={proddata.projectage.xkey} xlab="Date" ylab="Project size (B)" />
 
           </div>
         </div>

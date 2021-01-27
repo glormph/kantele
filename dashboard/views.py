@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.db.models import Sum
-from django.db.models.functions import Trunc
+from django.db.models import Sum, Max
+from django.db.models.functions import Trunc, Greatest
 
 from math import isnan
 
@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from analysis.models import AnalysisError, NextflowWfVersion
 from rawstatus.models import Producer, RawFile
+from datasets.models import Project
 from dashboard import qcplots, models
 from kantele import settings
 
@@ -82,8 +83,8 @@ def get_file_production(request, daysago, maxdays):
                 break
             prevbin = abin
         return prevbin + binsize / 2
-    todate = datetime.now() - timedelta(daysago)
-    lastdate = todate - timedelta(maxdays)
+
+    # First project sizes in DB
     # get from db: list of [(size, projtype)]
     projsizelist = [(x['sizesum'] >> 30,
         x['datasetrawfile__dataset__runname__experiment__project__projtype__ptype__name']) for x in 
@@ -113,7 +114,10 @@ def get_file_production(request, daysago, maxdays):
             projdist[sizebin][ptype] += 1
         except KeyError:
             projdist[sizebin][ptype] = 1
-    projdist = {'xkey': 'bin', 'data': [{**{'bin': sizebin}, **vals} for sizebin, vals in projdist.items()]}
+    projdist = {'xkey': 'bin', 'data': [{'bin': sizebin, **vals} for sizebin, vals in projdist.items()]}
+    # CF/local RAW production by date
+    todate = datetime.now() - timedelta(daysago)
+    lastdate = todate - timedelta(maxdays)
     projdate = {}
     for date_proj in RawFile.objects.filter(date__gt=lastdate, date__lt=todate, producer__msinstrument__isnull=False, claimed=True).annotate(day=Trunc('date', 'day')).values('day', 'datasetrawfile__dataset__runname__experiment__project__projtype__ptype__name').annotate(sizesum=Sum('size')):
         day = datetime.strftime(date_proj['day'], '%Y-%m-%d')
@@ -122,8 +126,9 @@ def get_file_production(request, daysago, maxdays):
             projdate[day][key] = date_proj['sizesum']
         except KeyError:
             projdate[day] = {key: date_proj['sizesum']}
-    projdate = {'xkey': 'day', 'data': [{**{'day': day}, **vals} for day, vals in projdate.items()]}
+    projdate = {'xkey': 'day', 'data': [{'day': day, **vals} for day, vals in projdate.items()]}
 
+    # RAW file production per instrument
     proddate = {}
     for date_instr in RawFile.objects.filter(date__gt=lastdate, date__lt=todate, producer__msinstrument__isnull=False).annotate(day=Trunc('date', 'day')).values('day', 'producer__name').annotate(sizesum=Sum('size')):
         day = datetime.strftime(date_instr['day'], '%Y-%m-%d')
@@ -135,11 +140,30 @@ def get_file_production(request, daysago, maxdays):
     for day, vals in proddate.items():
         for missing_inst in instruments.difference(vals.keys()):
             vals[missing_inst] = 0
-    proddate = {'xkey': 'day', 'data': [{**{'day': day}, **vals} for day, vals in proddate.items()]}
+    proddate = {'xkey': 'day', 'data': [{'day': day, **vals} for day, vals in proddate.items()]}
+
+    # Projects age and size
+    proj_age = {}
+    dbprojects = Project.objects.filter(active=True).select_related('projtype__ptype').annotate(
+            rawsum=Sum('experiment__runname__dataset__datasetrawfile__rawfile__size'),
+            dsmax=Max('experiment__runname__dataset__date'),
+            anamax=Max('experiment__runname__dataset__datasetsearch__analysis__date')).annotate(
+            greatdate=Greatest('dsmax', 'anamax'))
+    for proj in dbprojects:
+        if proj.greatdate is None:
+            continue
+        day = datetime.strftime(proj.greatdate, '%Y')
+        try:
+            proj_age[day][proj.projtype.ptype.name] = proj.rawsum
+        except KeyError:
+            proj_age[day] = {proj.projtype.ptype.name: proj.rawsum}
+    proj_age = {'xkey': 'day', 'data': [{'day': day, **vals} for day, vals in proj_age.items()]}
+
     return JsonResponse({
         'projectdistribution': projdist,
         'fileproduction': proddate,
         'projecttypeproduction': projdate,
+        'projectage': proj_age,
         })
 
 

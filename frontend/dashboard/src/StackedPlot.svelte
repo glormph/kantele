@@ -32,7 +32,7 @@ const scaletypes = {
 
 const xscale = scaletypes[xscaletype];
 const yscale = scaletypes[yscaletype];
-const leftaxismargin = 50;
+const leftaxismargin = 60;
 const margin = {t: 130, right: 30, bottom: 70, left: leftaxismargin};
 
 function setColors(groups) {
