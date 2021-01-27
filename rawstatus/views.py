@@ -639,7 +639,7 @@ def getxbytes(bytes, op=50):
     if bytes is None:
         return '0B'
     if bytes >> op:
-        return '{}{}B'.format(bytes >> op, {10:'K', 20:'M', 30:'G', 40:'T', 50:'P'}[op])
+        return '{}{}B'.format(bytes >> op, {0: '', 10: 'K', 20: 'M', 30: 'G', 40: 'T', 50: 'P'}[op])
     else:
         return getxbytes(bytes, op-10)
 

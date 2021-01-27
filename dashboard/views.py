@@ -149,14 +149,18 @@ def get_file_production(request, daysago, maxdays):
             dsmax=Max('experiment__runname__dataset__date'),
             anamax=Max('experiment__runname__dataset__datasetsearch__analysis__date')).annotate(
             greatdate=Greatest('dsmax', 'anamax'))
+    
     for proj in dbprojects:
-        if proj.greatdate is None:
+        if proj.greatdate is None or proj.rawsum is None:
             continue
         day = datetime.strftime(proj.greatdate, '%Y')
         try:
-            proj_age[day][proj.projtype.ptype.name] = proj.rawsum
+            proj_age[day][proj.projtype.ptype.name] += proj.rawsum
         except KeyError:
-            proj_age[day] = {proj.projtype.ptype.name: proj.rawsum}
+            try:
+                proj_age[day].update({proj.projtype.ptype.name: proj.rawsum})
+            except KeyError:
+                proj_age[day] = {proj.projtype.ptype.name: proj.rawsum}
     proj_age = {'xkey': 'day', 'data': [{'day': day, **vals} for day, vals in proj_age.items()]}
 
     return JsonResponse({
