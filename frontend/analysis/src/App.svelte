@@ -432,8 +432,22 @@ function updateIsoquant() {
           sweep: false,
         };
       } else if (ds.setname && ds.setname in config.isoquants) {
-        if (config.isoquants[ds.setname].channels !== ds.details.channels) {
-          notif.errors[errmsg] = 1;
+        const dskeys = new Set(Object.keys(ds.details.channels))
+        const isokeys = Object.keys(config.isoquants[ds.setname].channels);
+        if (isokeys.length !== dskeys.size) {
+            notif.errors[errmsg] = 1;
+        } else {
+          for (const ch of isokeys) {
+            if (!dskeys.has(ch)) {
+              notif.errors[errmsg] = 1;
+              break;
+            }
+            ds.details.channels[ch].map((val, ix) => {
+              if (val !== config.isoquants[ds.setname].channels[ch][ix]) {
+                notif.errors[errmsg] = 1;
+              }
+            });
+          }
         }
       }
     });
