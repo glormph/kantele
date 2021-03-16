@@ -53,6 +53,9 @@ function setConfirm() {
   <button on:click={e => dispatch('rowAction', {id: rowid, action: value})} class="button is-small">{value}</button>
   {/if}
 
+{:else if field.type === 'smallcoloured'}
+<div class={`is-size-7 ${color[value.state]}`}>{value.text}</div>
+
 {:else}
   {#if inactive}
   <del>{value}</del>

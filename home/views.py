@@ -450,7 +450,26 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
             'fn_ids': [x.id for x in dsfiles],
             'ptype': dataset.runname.experiment.project.projtype.ptype.name,
             'prefrac': False,
+            'smallstatus': [],
         }
+        # Mzml/refined status
+        mzmlgroups = {} 
+        nrraw = dsfiles.filter(mzmlfile__isnull=True).count()
+        for mzmlgroup in dsfiles.filter(mzmlfile__isnull=False).values('mzmlfile__pwiz_id', 'mzmlfile__refined', 'deleted').annotate(amount=Count('deleted')):
+            if mzmlgroup['amount'] != nrraw:
+                continue
+            state = 'deleted' if mzmlgroup['deleted'] else 'active'
+            ftypes = ['mzML', 'Refined'] if mzmlgroup['mzmlfile__refined'] else ['mzML']
+            for ftype in ftypes:
+                if ftype in mzmlgroups and mzmlgroups[ftype] == 'active':
+                    continue
+                mzmlgroups[ftype] = state
+        for ftype in ['mzML', 'Refined']:
+            if ftype in mzmlgroups:
+                state = mzmlgroups[ftype]
+                text = f'({ftype})' if state == 'deleted' else ftype
+                dsets[dataset.id]['smallstatus'].append({'text': text, 'state': state})
+        # Add job states
         if showjobs:
             jobmap = get_ds_jobs(dbdsets)
             dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []

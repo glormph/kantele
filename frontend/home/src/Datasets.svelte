@@ -20,6 +20,7 @@ const tablefields = [
   {id: 'ptype', name: 'Project type', type: 'str', multi: false},
   {id: 'storestate', name: 'Stored', type: 'tag', multi: false, links: 'fn_ids', linkroute: '#/files/'},
   {id: 'jobstates', name: '__hourglass-half', type: 'state', multi: true, links: 'jobids', linkroute: '#/jobs'},
+  {id: 'smallstatus', name: '', type: 'smallcoloured', multi: true},
   {id: 'analyses', name: '', type: 'icon', icon: 'cogs', links: 'ana_ids', linkroute: '#/analyses'},
   {id: 'proj', name: 'Project', type: 'str', multi: false},
   {id: 'exp', name: 'Experiment', type: 'str', multi: false},
@@ -45,6 +46,10 @@ const statecolors = {
     processing: 'has-text-warning', 
     done: 'has-text-success',
   },
+  smallstatus: {
+    active: 'has-text-primary',
+    deleted: 'has-text-grey',
+  }
 }
 
 const fixedbuttons = [
