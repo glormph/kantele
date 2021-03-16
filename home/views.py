@@ -266,7 +266,7 @@ def get_ds_jobs(dbdsets):
     jobmap = {}
     for filejob in filemodels.FileJob.objects.select_related('job').exclude(
             job__state__in=jj.JOBSTATES_DONE).filter(
-            storedfile__rawfile__datasetrawfile__dataset_id__in=dbdsets):
+                    storedfile__rawfile__datasetrawfile__dataset_id__in=dbdsets).distinct('job'):
         job = filejob.job
         try:
             jobmap[filejob.storedfile.rawfile.datasetrawfile.dataset_id][str(job.id)] = job.state
