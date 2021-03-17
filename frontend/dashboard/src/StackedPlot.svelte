@@ -8,7 +8,7 @@ import { stack } from 'd3';
 
 import { plotLegend } from './PlotLegend.js'
 import { drawLabels } from './AxisLabels.js'
-
+import { drawGridLines } from './GridLines.js'
 
 let color;
 let svg;
@@ -83,6 +83,8 @@ export function plot() {
     .style("text-anchor", "end");
 
   drawLabels(plotgroup, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
+
+  drawGridLines(yScaleValues, 10, sizeconfig.width, plotgroup);
 
   plotgroup.selectAll('plotbar').data(stackeddata).enter()
     .append('g').attr('fill', d => color(d.key))

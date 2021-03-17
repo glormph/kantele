@@ -7,6 +7,7 @@ import { extent, max, min} from 'd3-array';
 import { line } from 'd3';
 
 import { drawLabels } from './AxisLabels.js'
+import { drawGridLines } from './GridLines.js'
 
 
 let color;
@@ -82,6 +83,8 @@ export async function plot() {
     .attr("transform", "translate(-10,0)")
     .selectAll("text")
     .style("text-anchor", "end");
+
+  drawGridLines(yScaleValues, 10, sizeconfig.width, plotgroup);
 
   plotgroup.selectAll('.boxwhisker').data(data).enter()
     .append('g')

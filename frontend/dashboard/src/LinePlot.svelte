@@ -8,6 +8,7 @@ import { line } from 'd3';
 
 import { plotLegend } from './PlotLegend.js'
 import { drawLabels } from './AxisLabels.js'
+import { drawGridLines } from './GridLines.js'
 
 
 let color;
@@ -82,7 +83,9 @@ export async function plot() {
     .style("text-anchor", "end");
 
   drawLabels(plotgroup, xlab, ylab, sizeconfig.height, sizeconfig.width, leftaxismargin, 12);
-  
+
+  drawGridLines(yScaleValues, 10, sizeconfig.width, plotgroup);
+
   arr_series.forEach(serie => {
     plotgroup.append('path')
       .datum(data)  // FIXME what is datum?

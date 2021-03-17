@@ -9,6 +9,7 @@ import { stack } from 'd3';
 
 import { plotLegend } from './PlotLegend.js'
 import { drawLabels } from './AxisLabels.js'
+import { drawGridLines } from './GridLines.js'
 
 
 let color;
@@ -91,6 +92,8 @@ export function plot() {
     .attr("transform", "translate(-10,0)")
     .selectAll("text")
     .style("text-anchor", "end");
+
+  drawGridLines(yScaleValues, 10, sizeconfig.width, plotgroup);
 
   plotgroup.selectAll('rect').data(plotdata).enter()
     .append('rect')
