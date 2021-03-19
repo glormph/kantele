@@ -119,6 +119,9 @@ function validate() {
 		}
 	});
   Object.entries(config.isoquants).forEach(([sname, isoq]) => {
+    if (!isoq.report_intensity && !isoq.sweep && !Object.values(isoq.denoms).filter(x => x).length) {
+      notif.errors[`No denominator, sweep or intensity values are filled in for set ${sname}`] = 1;
+    }
     Object.entries(isoq.samplegroups).forEach(([ch, sgroup]) => {
       if (sgroup && !charRe.test(sgroup)) {
         notif.errors[`Incorrect sample group name for set ${sname}, channel ${ch}, only A-Z a-z 0-9 _ are allowed`] =1; 
