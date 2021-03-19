@@ -427,7 +427,7 @@ def store_analysis(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
     req = json.loads(request.body.decode('utf-8'))
-    dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids'])
+    dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related('prefractionationdataset__prefractionation')
     if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
     if req['analysis_id']:
@@ -498,6 +498,8 @@ def store_analysis(request):
             if hasattr(pfd, 'hiriefdataset'):
                 strip = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(pfd.hiriefdataset.hirief).split('-')])
                 data_args['platenames'][dsid] = strip
+            else:
+                data_args['platenames'][dsid] = pfd.prefractionation.name
     if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
         return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
             'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})

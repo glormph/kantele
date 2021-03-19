@@ -473,7 +473,7 @@ def newproject_save(data):
 
 def get_prefrac_ids():
     return (models.Prefractionation.objects.get(name__icontains='hirief').id,
-            models.Prefractionation.objects.get(name__icontains='high pH').id)
+            models.Prefractionation.objects.get(name__icontains='high_pH').id)
             
 
 
