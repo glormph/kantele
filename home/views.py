@@ -278,8 +278,8 @@ def get_ds_jobs(dbdsets):
 @login_required
 def show_jobs(request):
     items = {}
-    order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR] + jj.JOBSTATES_DONE},
-             'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR] + jj.JOBSTATES_DONE}}
+    order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR, jj.Jobstates.REVOKING] + jj.JOBSTATES_DONE},
+             'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR, jj.Jobstates.REVOKING] + jj.JOBSTATES_DONE}}
     if 'ids' in request.GET:
         jobids = request.GET['ids'].split(',')
         dbjobs = jm.Job.objects.filter(pk__in=jobids)
