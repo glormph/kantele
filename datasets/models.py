@@ -12,14 +12,14 @@ class PrincipalInvestigator(models.Model):
 
 
 class Project(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.TextField()
     pi = models.ForeignKey(PrincipalInvestigator, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
     registered = models.DateTimeField(auto_now_add=True)
 
 
 class ProjectTypeName(models.Model):
-    name = models.CharField(max_length=50)
+    name = models.TextField()
 
 
 class ProjType(models.Model):
@@ -33,7 +33,7 @@ class UserPtype(models.Model):
 
 
 class Experiment(models.Model):
-    name = models.CharField(max_length=200)
+    name = models.TextField()
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
 
     class Meta:
@@ -108,14 +108,14 @@ class DatasetSpecies(models.Model):
 
 
 class ParamType(models.Model):
-    typename = models.CharField(max_length=100)
+    typename = models.TextField()
 
     def __str__(self):
         return self.typename
 
 
 class ParamLabcategory(models.Model):
-    labcategory = models.CharField(max_length=100)
+    labcategory = models.TextField()
 
     def __str__(self):
         return self.labcategory
@@ -123,7 +123,7 @@ class ParamLabcategory(models.Model):
 
 class SelectParameter(models.Model):
     # adminable
-    title = models.CharField(max_length=100)
+    title = models.TextField()
     category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
@@ -133,8 +133,8 @@ class SelectParameter(models.Model):
 
 class FieldParameter(models.Model):
     # adminable
-    title = models.CharField(max_length=100)
-    placeholder = models.CharField(max_length=100)
+    title = models.TextField()
+    placeholder = models.TextField()
     paramtype = models.ForeignKey(ParamType, on_delete=models.CASCADE)
     category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
@@ -145,7 +145,7 @@ class FieldParameter(models.Model):
 
 class SelectParameterOption(models.Model):
     param = models.ForeignKey(SelectParameter, on_delete=models.CASCADE)
-    value = models.CharField(max_length=100)
+    value = models.TextField()
 
     def __str__(self):
         return self.value
@@ -159,12 +159,12 @@ class SelectParameterValue(models.Model):
 class FieldParameterValue(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     param = models.ForeignKey(FieldParameter, on_delete=models.CASCADE)
-    value = models.CharField(max_length=100)
+    value = models.TextField()
 
 
 class CheckboxParameter(models.Model):
     # adminable
-    title = models.CharField(max_length=100)
+    title = models.TextField()
     category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
@@ -174,7 +174,7 @@ class CheckboxParameter(models.Model):
 
 class CheckboxParameterOption(models.Model):
     param = models.ForeignKey(CheckboxParameter, on_delete=models.CASCADE)
-    value = models.CharField(max_length=100)
+    value = models.TextField()
 
     def __str__(self):
         return self.value
@@ -186,7 +186,7 @@ class CheckboxParameterValue(models.Model):
 
 
 class Enzyme(models.Model):
-    name = models.CharField(max_length=30)
+    name = models.TextField()
 
     def __str__(self):
         return self.name
@@ -198,15 +198,15 @@ class EnzymeDataset(models.Model):
 
 
 class QuantType(models.Model):
-    name = models.CharField(max_length=20)
-    shortname = models.CharField(max_length=15)
+    name = models.TextField()
+    shortname = models.TextField()
 
     def __str__(self):
         return self.name
 
 
 class QuantChannel(models.Model):
-    name = models.CharField(max_length=20)
+    name = models.TextField()
 
     def __str__(self):
         return self.name
@@ -226,7 +226,7 @@ class QuantDataset(models.Model):
 
 
 class ProjectSample(models.Model):
-    sample = models.CharField(max_length=100)
+    sample = models.TextField()
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
 
     class Meta:
@@ -264,7 +264,7 @@ class HiriefRange(models.Model):
 
 class ExternalDatasetContact(models.Model):
     dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
-    email = models.CharField(max_length=100)
+    email = models.TextField()
 
 
 class Operator(models.Model):
@@ -281,11 +281,11 @@ class OperatorDataset(models.Model):
 
 class ReversePhaseDataset(models.Model):
     dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
-    length = models.CharField(max_length=20)
+    length = models.TextField()
 
 
 class Prefractionation(models.Model):
-    name = models.CharField(max_length=20)
+    name = models.TextField()
 
     def __str__(self):
         return self.name
@@ -303,7 +303,7 @@ class HiriefDataset(models.Model):
 
 class PrefractionationLength(models.Model):
     pfdataset = models.OneToOneField(PrefractionationDataset, on_delete=models.CASCADE)
-    length = models.CharField(max_length=20)
+    length = models.TextField()
 
 
 class PrefractionationFractionAmount(models.Model):

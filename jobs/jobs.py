@@ -31,7 +31,7 @@ def create_job(name, state=False, **kwargs):
     if not state:
         state = Jobstates.PENDING
     job = Job(funcname=name, timestamp=timezone.now(),
-            state=state, kwargs=json.dumps(kwargs))
+            state=state, kwargs=kwargs)
     job.save()
     return job
 
@@ -67,8 +67,7 @@ class BaseJob:
             self.create_db_task(tid, *args, **kwargs)
     
     def create_db_task(self, task_id, *args, **kwargs):
-        strargs = json.dumps([args, kwargs])
-        t = Task(asyncid=task_id, job_id=self.job_id, state=states.PENDING, args=strargs)
+        t = Task(asyncid=task_id, job_id=self.job_id, state=states.PENDING, args=[args, kwargs])
         t.save()
         return t
 
@@ -99,6 +98,9 @@ class MultiDatasetJob(BaseJob):
 
 def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, components, platenames=False, fractions=False, setnames=False):
     # FIXME this doesnt work, we have no args anymore in jobs, only kwargs!!
+    # Also job fields are now JSON and cantbe searched with startswith
+    return False
+
     jobargs = json.dumps([dset_ids])[:-1]  # leave out last bracket
     jobs = Job.objects.filter(funcname=fname, 
             args__startswith=jobargs).select_related('nextflowsearch')
@@ -107,8 +109,8 @@ def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, components
         jobs = jobs.filter(args__startswith=extraargs)
     for job in jobs:
         job_is_duplicate = True
-        storedargs = json.loads(job.kwargs)['inputs']
-        #storedargs = [x for x in json.loads(job.args) if type(x)==dict and 'params' in x][0]
+        storedargs = job.kwargs['inputs']
+        #storedargs = [x for x in job.args if type(x)==dict and 'params' in x][0]
         nfs = job.nextflowsearch
         if nfs.workflow_id != wf_id or nfs.nfworkflow_id != wfv_id:
             continue

@@ -297,8 +297,7 @@ def show_jobs(request):
                          'analysis': analysis.nextflowsearch.id if analysis else False,
                          'actions': get_job_actions(job, ownership)}
         items[job.id]['fn_ids'] = [x.storedfile_id for x in job.filejob_set.all()]
-        kwargs = json.loads(job.kwargs)
-        dsets = kwargs.get('dset_id', kwargs.get('dset_ids', []))
+        dsets = job.kwargs.get('dset_id', job.kwargs.get('dset_ids', []))
         if type(dsets) == int:
             dsets = [dsets]
         items[job.id]['dset_ids'] = dsets
@@ -567,10 +566,10 @@ def get_analysis_info(request, nfs_id):
                 anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
     dsets = {x.dataset for x in ana.datasetsearch_set.all()}
     #projs = {x.runname.experiment.project for x in dsets}
-    if nfs.analysis.log == '':
+    if not nfs.analysis.log:
         logentry = ['Analysis without logging or not yet queued']
     else:
-        logentry = [x for y in json.loads(nfs.analysis.log) for x in y.split('\n') if x][-3:]
+        logentry = [x for y in nfs.analysis.log for x in y.split('\n') if x][-3:]
     linkedfiles = [(x.id, x.sfile.filename) for x in av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
     resp = {#'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
             #                    'retry': jv.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
@@ -755,7 +754,7 @@ def fetch_dset_details(dset):
                 storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
                         'job').values('job__funcname', 'job__kwargs'):
             try:
-                job_pwid = int(json.loads(mzj['job__kwargs'])['pwiz_id'])
+                job_pwid = int(mzj['job__kwargs']['pwiz_id'])
             except KeyError:
                 pass
             else:

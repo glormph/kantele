@@ -5,8 +5,8 @@ from jobs.models import Job
 
 
 class StoredFileType(models.Model):
-    name = models.CharField(max_length=100, unique=True) 
-    filetype = models.CharField(max_length=20) # fasta, tabular, mzml, raw, analysisoutput
+    name = models.TextField(unique=True) 
+    filetype = models.TextField() # fasta, tabular, mzml, raw, analysisoutput
     is_folder = models.BooleanField(default=False)
 
     def __str__(self):
@@ -21,9 +21,9 @@ class MSInstrumentType(models.Model):
 
 
 class Producer(models.Model):
-    name = models.CharField(max_length=100)
-    client_id = models.CharField(max_length=100)
-    shortname = models.CharField(max_length=10)
+    name = models.TextField()
+    client_id = models.TextField()
+    shortname = models.TextField()
 
     def __str__(self):
         return self.name
@@ -40,14 +40,14 @@ class MSInstrument(models.Model):
 
 
 class ServerShare(models.Model):
-    name = models.CharField(max_length=50, unique=True)  # storage, tmp,
-    uri = models.CharField(max_length=100)  # uri storage.mydomain.com
-    share = models.CharField(max_length=50)  # /home/disk1
+    name = models.TextField(unique=True)  # storage, tmp,
+    uri = models.TextField()
+    share = models.TextField()  # /home/disk1
 
 
 class RawFile(models.Model):
     """Data (raw) files as reported by instrument"""
-    name = models.CharField(max_length=100)
+    name = models.TextField()
     producer = models.ForeignKey(Producer, on_delete=models.CASCADE)
     source_md5 = models.CharField(max_length=32, unique=True)
     size = models.BigIntegerField('size in bytes')
@@ -61,9 +61,9 @@ class RawFile(models.Model):
 class StoredFile(models.Model):
     """Files transferred from instrument to storage"""
     rawfile = models.ForeignKey(RawFile, on_delete=models.CASCADE)
-    filename = models.CharField(max_length=200)
+    filename = models.TextField()
     servershare = models.ForeignKey(ServerShare, on_delete=models.CASCADE)
-    path = models.CharField(max_length=200)
+    path = models.TextField()
     regdate = models.DateTimeField(auto_now_add=True)
     md5 = models.CharField(max_length=32)
     checked = models.BooleanField()
@@ -87,7 +87,7 @@ class UserFileUpload(models.Model):
 
 class UserFile(models.Model):
     sfile = models.OneToOneField(StoredFile, on_delete=models.CASCADE)
-    description = models.CharField(max_length=100)
+    description = models.TextField()
     upload = models.OneToOneField(UserFileUpload, on_delete=models.CASCADE)
 
 
@@ -100,7 +100,7 @@ class PDCBackedupFile(models.Model):
 
 class SwestoreBackedupFile(models.Model):
     storedfile = models.OneToOneField(StoredFile, on_delete=models.CASCADE)
-    swestore_path = models.CharField(max_length=200)
+    swestore_path = models.TextField()
     success = models.BooleanField()
     deleted = models.BooleanField(default=False)
 

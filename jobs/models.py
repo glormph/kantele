@@ -2,11 +2,11 @@ from django.db import models
 
 
 class Job(models.Model):
-    funcname = models.CharField(max_length=100)
-    args = models.CharField(max_length=100000)
-    kwargs = models.CharField(max_length=100000)
+    funcname = models.TextField()
+    args = models.JSONField()
+    kwargs = models.JSONField()
     timestamp = models.DateTimeField()
-    state = models.CharField(max_length=10)  # pending, processing, error, done
+    state = models.TextField()  # pending, processing, error, done
 
 
 class JobError(models.Model):
@@ -17,12 +17,12 @@ class JobError(models.Model):
 class Task(models.Model):
     asyncid = models.CharField(max_length=50)
     job = models.ForeignKey(Job, on_delete=models.CASCADE)
-    state = models.CharField(max_length=20)
-    args = models.TextField()
+    state = models.TextField()
+    args = models.JSONField()
 
 
 class TaskChain(models.Model):
-    lasttask = models.CharField(max_length=50)
+    lasttask = models.TextField()
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
 
 

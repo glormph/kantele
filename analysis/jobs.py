@@ -1,5 +1,4 @@
 from datetime import datetime
-import json
 import re
 import os
 
@@ -53,7 +52,7 @@ class RefineMzmls(DatasetJob):
                }
         self.run_tasks.append(((run, params, mzmls, stagefiles, nfwf.nfversion), {}))
         # TODO replace this for general logging anyway, not necessary to keep queueing in analysis log
-        analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
+        analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
         analysis.save()
 
 
@@ -93,7 +92,7 @@ class RunLabelCheckNF(MultiDatasetJob):
         profiles = ['standard', 'docker', 'lehtio']
         kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
         self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
-        analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
+        analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
         analysis.save()
 
 
@@ -129,7 +128,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                }
         models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 'job_id': self.job_id, 'workflow_id': wf.id}, analysis=analysis)
         self.run_tasks.append(((run, params, stagefiles, nfwf.nfversion), {}))
-        analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
+        analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
         analysis.save()
 
 
@@ -216,7 +215,7 @@ class RunNextflowWorkflow(BaseJob):
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
         mzmldef_fields = False
         if kwargs['inputs']['components']['mzmldef']:
-            mzmldef_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)[kwargs['inputs']['components']['mzmldef']]
+            mzmldef_fields = models.WFInputComponent.objects.get(name='mzmldef').value[kwargs['inputs']['components']['mzmldef']]
         mzmls = [{
             'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
             'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
@@ -250,7 +249,7 @@ class RunNextflowWorkflow(BaseJob):
             if hasattr(ana_baserec.base_analysis, 'analysismzmldef') and ana_baserec.base_analysis.analysismzmldef.mzmldef == 'fractionated':
                 # complement runs with fractionaded base analysis need --oldmzmldef parameter
                 old_mzmls, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
-                oldmz_fields = json.loads(models.WFInputComponent.objects.get(name='mzmldef').value)['fractionated']
+                oldmz_fields = models.WFInputComponent.objects.get(name='mzmldef').value['fractionated']
                 run['old_mzmls'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in oldmz_fields]))
                         for setmzmls in old_mzmls.values() for x in setmzmls]
 
@@ -262,7 +261,7 @@ class RunNextflowWorkflow(BaseJob):
             params.extend(['SAMPLETABLE', kwargs['inputs']['components']['sampletable']])
         self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         # TODO remove this logging
-        analysis.log = json.dumps(['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))])
+        analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
         analysis.save()
 
 

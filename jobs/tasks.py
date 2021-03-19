@@ -6,8 +6,6 @@ celery chains etc, Nextflow, or Galaxy or whatever one likes.
 Scheduler runs sequential and waits for each job that contains files running in another job
 """
 
-import json
-
 from celery import shared_task, states
 from celery.result import AsyncResult
 
@@ -104,9 +102,8 @@ def run_job(job, jobmap):
     print('Executing job {}'.format(job.id))
     job.state = Jobstates.PROCESSING
     jwrapper = jobmap[job.funcname](job.id) 
-    kwargs = json.loads(job.kwargs)
     try:
-        jwrapper.run(**kwargs)
+        jwrapper.run(**job.kwargs)
     except RuntimeError as e:
         print('Error occurred, trying again automatically in next round')
         job.state = Jobstates.ERROR
@@ -128,7 +125,7 @@ def process_job_file_activity(nonready_jobs):
         if not fjs.count():
             fjs = []
             jwrapper = jobmap[job.funcname](job.id) 
-            for sf_id in jwrapper.get_sf_ids_jobrunner(**json.loads(job.kwargs)):
+            for sf_id in jwrapper.get_sf_ids_jobrunner(**job.kwargs):
                 newfj = FileJob(storedfile_id=sf_id, job_id=job.id)
                 newfj.save()
                 fjs.append(newfj)

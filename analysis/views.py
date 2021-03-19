@@ -369,7 +369,7 @@ def get_workflow_versioned(request):
     selectable_files.extend(userfiles)
     resp = {
             'analysisapi': wf.kanteleanalysis_version,
-            'components': {psc.component.name: json.loads(psc.component.value) for psc in 
+            'components': {psc.component.name: psc.component.value for psc in 
                 wf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': f.param.nfparam, 'id': f.param.pk, 'name': f.param.name} 
                 for f in params.filter(param__ptype='flag', param__visible=True)],
@@ -418,7 +418,7 @@ def show_analysis_log(request, nfs_id):
         nfs = am.NextflowSearch.objects.get(pk=nfs_id)
     except am.NextflowSearch.DoesNotExist:
         return HttpResponseNotFound()
-    return HttpResponse('\n'.join(json.loads(nfs.analysis.log)), content_type="text/plain")
+    return HttpResponse('\n'.join(nfs.analysis.log), content_type="text/plain")
 
 
 @login_required
@@ -449,7 +449,7 @@ def store_analysis(request):
         am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
 
     components = {k: v for k, v in req['components'].items() if v}
-    all_mzmldefs = json.loads(am.WFInputComponent.objects.get(name='mzmldef').value)
+    all_mzmldefs = am.WFInputComponent.objects.get(name='mzmldef').value
     jobinputs = {'components': {}, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
     data_args = {'setnames': {}, 'platenames': {}}
 
@@ -645,7 +645,7 @@ def store_analysis(request):
     kwargs = {'analysis_id': analysis.id, 'wfv_id': req['nfwfvid'], 'inputs': jobinputs, **data_args}
     if req['analysis_id']:
         job = analysis.nextflowsearch.job
-        job.kwargs = json.dumps(kwargs)
+        job.kwargs = kwargs
         job.state = jj.Jobstates.WAITING
         job.save()
     else:
@@ -790,9 +790,7 @@ def get_servable_files(resultfiles):
 
 def write_analysis_log(logline, analysis_id):
     analysis = am.Analysis.objects.get(pk=analysis_id)
-    log = json.loads(analysis.log)
-    log.append(logline)
-    analysis.log = json.dumps(log)
+    analysis.log.append(logline)
     analysis.save()
 
 

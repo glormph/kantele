@@ -7,14 +7,14 @@ from jobs import models as jmodels
 
 
 class WorkflowType(models.Model):
-    name = models.CharField(max_length=20)
+    name = models.TextField()
 
     def __str__(self):
         return self.name
 
 
 class LibraryFile(models.Model):
-    description = models.CharField(max_length=100)
+    description = models.TextField()
     sfile = models.OneToOneField(filemodels.StoredFile, on_delete=models.CASCADE)
 
     def __str__(self):
@@ -22,8 +22,8 @@ class LibraryFile(models.Model):
 
 
 class FileParam(models.Model):
-    name = models.CharField(max_length=50)
-    nfparam = models.CharField(max_length=50)
+    name = models.TextField()
+    nfparam = models.TextField()
     filetype = models.ForeignKey(filemodels.StoredFileType, on_delete=models.CASCADE)
 
     def __str__(self):
@@ -32,7 +32,7 @@ class FileParam(models.Model):
 
 class WFInputComponent(models.Model):
     name = models.TextField()
-    value = models.TextField() 
+    value = models.JSONField() 
     # JSON in value if any, eg mzmldef: {'lc': [path,ch,sample], 'lcp': [path,set,ch,sam], hirief: [path,inst,set,pl,fr]}
     # FIXME future also setnames, sampletables, fractions, etc which is not a param
     # to be included in parameterset
@@ -41,9 +41,9 @@ class WFInputComponent(models.Model):
 
 
 class Param(models.Model):
-    name = models.CharField(max_length=50)
-    nfparam = models.CharField(max_length=50)
-    ptype = models.CharField(max_length=10)  # multi (options), number, flag or ...
+    name = models.TextField()
+    nfparam = models.TextField()
+    ptype = models.TextField()  # multi (options), number, flag or ...
     visible = models.BooleanField(default=True)
 
     def __str__(self):
@@ -67,15 +67,15 @@ class ParameterSet(models.Model):
 
 
 class NextflowWorkflow(models.Model):
-    description = models.CharField(max_length=200, help_text='Description of workflow')
-    repo = models.CharField(max_length=100)
+    description = models.TextField(help_text='Description of workflow')
+    repo = models.TextField()
     
     def __str__(self):
         return self.description
 
 
 class Workflow(models.Model):
-    name = models.CharField(max_length=50)
+    name = models.TextField()
     shortname = models.ForeignKey(WorkflowType, on_delete=models.CASCADE)
     nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
     public = models.BooleanField()
@@ -85,9 +85,9 @@ class Workflow(models.Model):
 
 
 class NextflowWfVersion(models.Model):
-    update = models.CharField(max_length=200, help_text='Description of workflow update')
+    update = models.TextField(help_text='Description of workflow update')
     commit = models.CharField(max_length=50)
-    filename = models.CharField(max_length=50)
+    filename = models.TextField()
     nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
     paramset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
     date = models.DateTimeField(auto_now=True)
@@ -144,8 +144,8 @@ class PsetParam(models.Model):
 class Analysis(models.Model):
     date = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    name = models.CharField(max_length=500)
-    log = models.TextField(default='')
+    name = models.TextField()
+    log = models.JSONField(default=list)
     deleted = models.BooleanField(default=False)
     purged = models.BooleanField(default=False)
 
