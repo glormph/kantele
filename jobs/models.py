@@ -3,7 +3,6 @@ from django.db import models
 
 class Job(models.Model):
     funcname = models.TextField()
-    args = models.JSONField()
     kwargs = models.JSONField()
     timestamp = models.DateTimeField()
     state = models.TextField()  # pending, processing, error, done

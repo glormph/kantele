@@ -110,7 +110,6 @@ def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, components
     for job in jobs:
         job_is_duplicate = True
         storedargs = job.kwargs['inputs']
-        #storedargs = [x for x in job.args if type(x)==dict and 'params' in x][0]
         nfs = job.nextflowsearch
         if nfs.workflow_id != wf_id or nfs.nfworkflow_id != wfv_id:
             continue
