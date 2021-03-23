@@ -369,7 +369,7 @@ def populate_analysis(nfsearches, user):
                 'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
                 'jobstate': nfs.job.state,
                 'jobid': nfs.job_id,
-                'wf': nfs.workflow.name,
+                'wf': f'{nfs.workflow.name} - {nfs.nfworkflow.update}',
                 'wflink': nfs.nfworkflow.nfworkflow.repo,
                 'deleted': nfs.analysis.deleted,
                 'purged': nfs.analysis.purged,

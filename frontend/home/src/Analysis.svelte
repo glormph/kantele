@@ -20,7 +20,7 @@ const tablefields = [
   {id: 'name', name: 'Analysis name', type: 'str', multi: false},
   {id: 'files', name: '', help: 'Input files', type: 'icon', icon: 'database', multi: false, links: 'fn_ids', linkroute: '#/files'},
   {id: 'datasets', name: '', help: 'Datasets', type: 'icon', icon: 'clipboard-list', multi: false, links: 'dset_ids', linkroute: '#/datasets'},
-  {id: 'wf', name: 'Workflow', type: 'str', multi: false, links: 'wflink'},
+  {id: 'wf', name: 'Workflow', type: 'str', multi: false, links: 'wflink', linkroute: false},
   {id: 'usr', name: 'Users', type: 'str', multi: false},
   {id: 'date', name: 'Date', type: 'str', multi: false},
   {id: 'actions', name: 'Actions', type: 'button', multi: true},
