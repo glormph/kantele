@@ -14,6 +14,10 @@ from jobs.jobs import DatasetJob, MultiDatasetJob, SingleFileJob, BaseJob
 
 # TODO
 # rerun qc data and displaying qcdata for a given qc file, how? 
+def get_ana_fullname(analysis):
+    return f'{analysis.nextflowsearch.workflow.shortname.name}_{analysis.name}'
+
+
 
 class RefineMzmls(DatasetJob):
     refname = 'refine_mzmls'
@@ -234,7 +238,7 @@ class RunNextflowWorkflow(BaseJob):
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'name': analysis.name,
+               'name': get_ana_fullname(analysis),
                'outdir': analysis.user.username,
                'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger',
                'old_mzmls': False,

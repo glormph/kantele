@@ -37,15 +37,15 @@ def load_analysis_resultfiles(request, anid):
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis_date = datetime.strftime(ana.date, '%Y-%m-%d')
     resultfiles = [{'id': x.sfile_id, 
-        'name': '{} - Result of {} ({})'.format(x.sfile.filename, ana.name, analysis_date)}
+        'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(ana), analysis_date)}
         for x in ana.analysisresultfile_set.all()]
-    return JsonResponse({'analysisname': ana.name, 'date': analysis_date, 'fns': resultfiles})
+    return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
 
 
 @login_required
 def load_base_analysis(request, anid):
     try:
-        ana = am.Analysis.objects.get(pk=anid)
+        ana = am.Analysis.objects.select_related('nextflowsearch').get(pk=anid)
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis = {
@@ -94,7 +94,7 @@ def load_base_analysis(request, anid):
         dsets.update(baseana_dbrec.shadow_dssetnames)
         analysis['isoquants'].update(baseana_dbrec.shadow_isoquants)
     resultfiles = [{'id': x.sfile_id, 
-        'name': '{} - Result of {} ({})'.format(x.sfile.filename, ana.name, datetime.strftime(ana.date, '%Y-%m-%d'))}
+        'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(ana), datetime.strftime(ana.date, '%Y-%m-%d'))}
         for x in ana.analysisresultfile_set.all()]
     return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': resultfiles})
 
@@ -114,7 +114,7 @@ def get_analysis(request, anid):
             'wfversion_id': ana.nextflowsearch.nfworkflow_id,
             'wfid': ana.nextflowsearch.workflow_id,
             'mzmldef': False,
-            'analysisname': re.sub('^[A-Z]+_', '', ana.name),
+            'analysisname': ana.name,
             'flags': [],
             'multicheck': [],
             'inputparams': {},
@@ -135,13 +135,13 @@ def get_analysis(request, anid):
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
 
     # Parse base analysis if any
-    ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis').filter(analysis_id=ana.id)
+    ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch').filter(analysis_id=ana.id)
     if ana_base.exists():
         ana_base = ana_base.get()
         analysis['base_analysis'] = {
                 'resultfiles':  [{'id': x.sfile_id, 'name': x.sfile.filename} for x in ana_base.base_analysis.analysisresultfile_set.all()],
                 'selected': ana_base.base_analysis_id,
-                'typedname': '{} - {} - {} - {} - {}'.format(ana_base.base_analysis.name,
+                'typedname': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(ana_base.base_analysis),
                 ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
                 ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
                 'isComplement': ana_base.is_complement,
@@ -164,9 +164,9 @@ def get_analysis(request, anid):
             arf = afp.sfile.analysisresultfile
             arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
             arf_fns = [{'id': x.sfile_id, 
-                'name': '{} - Result of {} ({})'.format(x.sfile.filename, arf.analysis.name, arf_date)}
+                'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(arf.analysis), arf_date)}
                 for x in arf.analysis.analysisresultfile_set.all()]
-            analysis['added_results'][arf.analysis_id] = {'analysisname': arf.analysis.name, 'date': arf_date, 'fns': arf_fns}
+            analysis['added_results'][arf.analysis_id] = {'analysisname': aj.get_ana_fullname(arf.analysis), 'date': arf_date, 'fns': arf_fns}
 
         if afp.param_id in multifiles:
             try:
@@ -266,10 +266,12 @@ def get_base_analyses(request):
         query = Q()
         searchterms = request.GET['q'].split()
         for st in searchterms:
-            query &= Q(name__icontains=st)
+            subquery = Q(name__icontains=st)
+            subquery |= Q(nextflowsearch__workflow__shortname__name__icontains=st)
+            query &= subquery
         resp = {}
         for x in am.Analysis.objects.select_related('nextflowsearch').filter(query, nextflowsearch__isnull=False, deleted=False):
-            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(x.name,
+            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(x),
                 x.nextflowsearch.workflow.name, x.nextflowsearch.nfworkflow.update,
                 x.user.username, datetime.strftime(x.date, '%Y%m%d'))}
         return JsonResponse(resp)
@@ -404,8 +406,7 @@ def get_workflow_versioned(request):
     for dsid in dsids:
         qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
     resp['prev_resultfiles'] = [{'id': x.sfile.id, #'name': x.sfile.filename, 
-        'analysisname': x.analysis.name, 
-        'name': '{} - Result of {} ({})'.format(x.sfile.filename, x.analysis.name, datetime.strftime(x.analysis.date, '%Y-%m-%d')),
+        'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(x.analysis), datetime.strftime(x.analysis.date, '%Y-%m-%d')),
         'analysisdate': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
         for x in am.AnalysisResultFile.objects.filter(
             analysis__in=qset_analysis.distinct()).select_related('analysis')]

@@ -164,7 +164,7 @@ async function storeAnalysis() {
     },
     wfid: config.wfid,
     nfwfvid: config.wfversion.id,
-    analysisname: `${allwfs[config.wfid].wftype}_${config.analysisname}`,
+    analysisname: config.analysisname,
     isoquant: {},
     params: {
       flags: Object.fromEntries(config.flags.map(x => [x, true])),
