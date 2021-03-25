@@ -623,10 +623,10 @@ def refresh_analysis(request, nfs_id):
     fjobs = nfs.job.filejob_set.all().select_related(
             'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     return JsonResponse({
-        'wf': nfs.workflow.name,
+        'wf': f'{nfs.workflow.name} - {nfs.nfworkflow.update}',
         'wflink': nfs.nfworkflow.nfworkflow.repo,
         'jobstate': nfs.job.state,
-        'name': nfs.analysis.name,
+        'name': aj.get_ana_fullname(nfs.analysis),
         'jobid': nfs.job_id,
         'deleted': nfs.analysis.deleted,
         'purged': nfs.analysis.purged,
