@@ -236,7 +236,7 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
     if not os.path.exists(fileloc):
         taskfail_update_db(self.request.id)
         return
-    link = os.path.join(basedir, yearmonth, md5)
+    link = os.path.join(settings.BACKUPSHARE, yearmonth, md5)
     try:
         os.makedirs(os.path.dirname(link))
     except FileExistsError:
