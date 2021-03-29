@@ -137,6 +137,7 @@ def get_md5(self, source_md5, sfid, fnpath, servershare):
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def delete_file(self, servershare, filepath, fn_id):
+    print('Deleting file {} on {}'.format(filepath, servershare))
     fileloc = os.path.join(settings.SHAREMAP[servershare], filepath)
     try:
         os.remove(fileloc)
@@ -204,6 +205,7 @@ def delete_empty_dir(self, servershare, directory):
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def unzip_folder(self, servershare, fnpath, sf_id):
+    print('Unzipping {} on {} to a folder'.format(fnpath, servershare))
     zipped_fn = os.path.join(settings.SHAREMAP[servershare], fnpath)
     unzippath = os.path.join(os.path.split(zipped_fn)[0], os.path.splitext(zipped_fn)[0])
     try:
