@@ -260,7 +260,7 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id, isdir):
     # it will arvchive again
     if isdir:
         linkpath = os.path.join(link, '') # append a slash
-        cmd = ['dsmc', 'archive', linkpath, 'subdir=yes']
+        cmd = ['dsmc', 'archive', linkpath, '-subdir=yes']
     else:
         cmd = ['dsmc', 'archive', link]
     env = os.environ
@@ -306,7 +306,7 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id, isdir):
         if not os.path.exists(dstpath):
             os.makedirs(dstpath)
         pdcdirpath = os.path.join(pdcpath, '') # append a slash
-        cmd = ['dsmc', 'retrieve', 'subdir=yes', '-replace=no', pdcdirpath, dstpath]
+        cmd = ['dsmc', 'retrieve', '-subdir=yes', '-replace=no', pdcdirpath, dstpath]
     else:
         cmd = ['dsmc', 'retrieve', '-replace=no', pdcpath, fileloc]
     env = os.environ

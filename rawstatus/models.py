@@ -96,6 +96,7 @@ class PDCBackedupFile(models.Model):
     pdcpath = models.TextField()
     success = models.BooleanField()
     deleted = models.BooleanField(default=False)
+    is_dir = models.BooleanField(default=False)
 
 
 class SwestoreBackedupFile(models.Model):

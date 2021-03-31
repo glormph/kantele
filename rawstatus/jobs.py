@@ -37,8 +37,7 @@ class RestoreFromPDC(SingleFileJob):
 
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
-        isdir = hasattr(sfile.producer, 'msinstrument') and sfile.producer.msinstrument.filetype.is_folder
-        self.run_tasks.append((restore_file_pdc_runtask(sfile, isdir), {}))
+        self.run_tasks.append((restore_file_pdc_runtask(sfile), {}))
         print('PDC archival task queued')
 
 
@@ -179,7 +178,7 @@ def upload_file_pdc_runtask(sfile, isdir):
     """Generates the arguments for task to upload file to PDC. Reused in dataset jobs"""
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
     try:
-        pdcfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
+        pdcfile = models.PDCBackedupFile.objects.get(storedfile=sfile, is_dir=isdir)
     except models.PDCBackedupFile.DoesNotExist:
         # only create entry when not already exists
         models.PDCBackedupFile.objects.create(storedfile=sfile, 
@@ -192,11 +191,11 @@ def upload_file_pdc_runtask(sfile, isdir):
     return (sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id, isdir)
 
 
-def restore_file_pdc_runtask(sfile, isdir):
+def restore_file_pdc_runtask(sfile):
     backupfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
     fnpath = os.path.join(sfile.path, sfile.filename)
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
-    return (sfile.servershare.name, fnpath, backupfile.pdcpath, sfile.id, isdir)
+    return (sfile.servershare.name, fnpath, backupfile.pdcpath, sfile.id, backupfile.is_dir)
 
 
 def call_proteomexchange(pxacc):
