@@ -231,20 +231,21 @@ def unzip_folder(self, servershare, fnpath, sf_id):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_PDC)
-def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
+def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id, isdir):
     print('Archiving file {} to PDC tape'.format(filepath))
     basedir = settings.SHAREMAP[servershare]
     fileloc = os.path.join(basedir, filepath)
     if not os.path.exists(fileloc):
-        taskfail_update_db(self.request.id)
+        taskfail_update_db(self.request.id, msg='Cannot find file to archive: {}'.format(fileloc))
         return
     link = os.path.join(settings.BACKUPSHARE, yearmonth, md5)
+    linkdir = os.path.dirname(link)
     try:
-        os.makedirs(os.path.dirname(link))
+        os.makedirs(linkdir)
     except FileExistsError:
         pass
     except Exception:
-        taskfail_update_db(self.request.id)
+        taskfail_update_db(self.request.id, msg='Cannot create linkdir for archiving {}'.format(linkdir))
         raise
     try:
         os.symlink(fileloc, link)
@@ -252,11 +253,16 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
         os.unlink(link)
         os.symlink(fileloc, link)
     except Exception:
-        taskfail_update_db(self.request.id)
+        taskfail_update_db(self.request.id, msg='Cannot create symlink {} on file {} for '
+            'archiving'.format(link, fileloc))
         raise
     # dsmc archive can be reran without error if file already exists
     # it will arvchive again
-    cmd = ['dsmc', 'archive', link]
+    if isdir:
+        linkpath = os.path.join(link, '') # append a slash
+        cmd = ['dsmc', 'archive', linkpath, 'subdir=yes']
+    else:
+        cmd = ['dsmc', 'archive', link]
     env = os.environ
     env['DSM_DIR'] = settings.DSM_DIR
     try:
@@ -264,7 +270,8 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
     except subprocess.CalledProcessError as CPE:
         if CPE.returncode != 8:
             # exit code 8 is "there are warnings but no problems"
-            taskfail_update_db(self.request.id)
+            taskfail_update_db(self.request.id, msg='There was a problem archiving the file {} '
+                    'exit code was {}'.format(fileloc, CPE.returncode))
             raise
     postdata = {'sfid': fn_id, 'pdcpath': link,
                 'task': self.request.id, 'client_id': settings.APIKEY}
@@ -289,12 +296,19 @@ def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_PDC)
-def pdc_restore(self, servershare, filepath, pdcpath, fn_id):
+def pdc_restore(self, servershare, filepath, pdcpath, fn_id, isdir):
     print('Restoring file {} from PDC tape'.format(filepath))
     basedir = settings.SHAREMAP[servershare]
     fileloc = os.path.join(basedir, filepath)
     # restore to fileloc
-    cmd = ['dsmc', 'retrieve', '-replace=no', pdcpath, fileloc]
+    if isdir:
+        dstpath = os.path.join(settings.BACKUPSHARE, 'retrievals', '') # with slash
+        if not os.path.exists(dstpath):
+            os.makedirs(dstpath)
+        pdcdirpath = os.path.join(pdcpath, '') # append a slash
+        cmd = ['dsmc', 'retrieve', 'subdir=yes', '-replace=no', pdcdirpath, dstpath]
+    else:
+        cmd = ['dsmc', 'retrieve', '-replace=no', pdcpath, fileloc]
     env = os.environ
     env['DSM_DIR'] = settings.DSM_DIR
     try:
@@ -302,11 +316,20 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id):
     except subprocess.CalledProcessError as CPE:
         # exit code 4 is output when file already exist (we have replace=no)
         if CPE.returncode != 4:
-            taskfail_update_db(self.request.id)
+            taskfail_update_db(self.request.id, 'Retrieving archive by DSMC failed for file '
+                '{}, exit code was {}'.format(fileloc, CPE.returncode))
             raise
     except Exception:
-        taskfail_update_db(self.request.id)
+        taskfail_update_db(self.request.id, 'DSMC retrieve command succeeded, but errors occurred '
+            'when retrieving archive by DSMC failed for file {}'.format(fileloc, CPE.returncode))
         raise
+    if isdir:
+        basename_pdcpath = os.path.basename(pdcpath)
+        try:
+            shutil.move(os.path.join(dstpath, basename_pdcpath), fileloc)
+        except Exception:
+            taskfail_update_db(self.request.id, msg='File {} to retrieve from backup is directory '
+            'type, it is retrieved to {} but errored when moving from there'.format(fileloc, pdcpath))
     postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': settings.APIKEY}
     url = urljoin(settings.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
     msg = ('Restore from archive could not update database with for fn {} with PDC path {} :'

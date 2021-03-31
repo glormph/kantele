@@ -247,7 +247,8 @@ class BackupPDCDataset(DatasetJob):
     
     def process(self, **kwargs):
         for sfile in self.getfiles_query(**kwargs).exclude(mzmlfile__isnull=False).exclude(pdcbackedupfile__success=True, pdcbackedupfile__deleted=False):
-            self.run_tasks.append((rsjobs.upload_file_pdc_runtask(sfile), {}))
+            isdir = hasattr(sfile.producer, 'msinstrument') and sfile.producer.msinstrument.filetype.is_folder
+            self.run_tasks.append((rsjobs.upload_file_pdc_runtask(sfile, isdir=isdir), {}))
 
 
 class ReactivateDeletedDataset(DatasetJob):
@@ -256,7 +257,8 @@ class ReactivateDeletedDataset(DatasetJob):
 
     def process(self, **kwargs):
         for sfile in self.getfiles_query(**kwargs).exclude(mzmlfile__isnull=False).filter(purged=True, pdcbackedupfile__isnull=False):
-            self.run_tasks.append((rsjobs.restore_file_pdc_runtask(sfile), {}))
+            isdir = hasattr(sfile.producer, 'msinstrument') and sfile.producer.msinstrument.filetype.is_folder
+            self.run_tasks.append((rsjobs.restore_file_pdc_runtask(sfile, isdir), {}))
         # Also set archived/archivable files which are already active (purged=False) to not deleted in UI
         self.getfiles_query(**kwargs).filter(purged=False, deleted=True, pdcbackedupfile__isnull=False).update(deleted=False)
 

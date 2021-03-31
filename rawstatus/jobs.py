@@ -25,7 +25,7 @@ class CreatePDCArchive(SingleFileJob):
     task = tasks.pdc_archive
 
     def process(self, **kwargs):
-        taskargs = upload_file_pdc_runtask(self.getfiles_query(**kwargs))
+        taskargs = upload_file_pdc_runtask(self.getfiles_query(**kwargs), isdir=kwargs['isdir'])
         if taskargs:
             self.run_tasks.append((taskargs, {}))
             print('PDC archival task queued')
@@ -37,7 +37,8 @@ class RestoreFromPDC(SingleFileJob):
 
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
-        self.run_tasks.append((restore_file_pdc_runtask(sfile), {}))
+        isdir = hasattr(sfile.producer, 'msinstrument') and sfile.producer.msinstrument.filetype.is_folder
+        self.run_tasks.append((restore_file_pdc_runtask(sfile, isdir), {}))
         print('PDC archival task queued')
 
 
@@ -174,7 +175,7 @@ class DownloadPXProject(BaseJob):
                     fn['fileSize'], kwargs['sharename'], kwargs['dset_id']), {}))
 
 
-def upload_file_pdc_runtask(sfile):
+def upload_file_pdc_runtask(sfile, isdir):
     """Generates the arguments for task to upload file to PDC. Reused in dataset jobs"""
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
     try:
@@ -188,14 +189,14 @@ def upload_file_pdc_runtask(sfile):
         if pdcfile.success and not pdcfile.deleted:
             return
     fnpath = os.path.join(sfile.path, sfile.filename)
-    return (sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id)
+    return (sfile.md5, yearmonth, sfile.servershare.name, fnpath, sfile.id, isdir)
 
 
-def restore_file_pdc_runtask(sfile):
+def restore_file_pdc_runtask(sfile, isdir):
     backupfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
     fnpath = os.path.join(sfile.path, sfile.filename)
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
-    return (sfile.servershare.name, fnpath, backupfile.pdcpath, sfile.id)
+    return (sfile.servershare.name, fnpath, backupfile.pdcpath, sfile.id, isdir)
 
 
 def call_proteomexchange(pxacc):

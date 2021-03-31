@@ -422,9 +422,12 @@ def do_md5_check(file_transferred):
         if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and not
                 PDCBackedupFile.objects.filter(storedfile_id=file_transferred.id)):
             fn = file_transferred.filename
-            jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id)
             if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
                 jobutil.create_job('unzip_raw_datadir', sf_id=file_transferred.id)
+                ftype_isdir = True
+            else:
+                ftype_isdir = False
+            jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id, isdir=ftype_isdir)
             if 'QC' in fn and 'hela' in fn.lower() and hasattr(file_registered.producer, 'msinstrument'): 
                 singlefile_qc(file_transferred.rawfile, file_transferred)
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
