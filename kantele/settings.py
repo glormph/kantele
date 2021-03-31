@@ -5,8 +5,8 @@ import os
 APIKEY = os.environ.get('APIKEY')
 STORAGESHARE = os.environ.get('STORAGESHARE')
 ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
-TMPSHARE = os.environ.get('TMPSHARE')
-BACKUPSHARE = os.path.join(TMPSHARE, 'pdc_archive_links')
+TMPSHARE = os.environ.get('TMPSHARE', False)
+BACKUPSHARE = os.path.join(TMPSHARE, 'pdc_archive_links') if TMPSHARE else False
 
 # swestore
 SWESTORE_URI = os.environ.get('SWESTORE_URI')
