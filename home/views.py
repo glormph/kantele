@@ -331,12 +331,17 @@ def get_job_actions(job, ownership):
     actions = []
     if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']) and jv.is_job_retryable_ready(job):
         actions.append('retry')
-    elif job.state == jj.Jobstates.PROCESSING and ownership['is_staff']:
-        actions.append('force retry')
-    if ownership['is_staff'] and job.state not in jj.JOBSTATES_DONE:
-        actions.append('delete')
-    if ownership['is_staff'] and job.state == jj.Jobstates.PENDING:
-        actions.append('pause')
+    if ownership['is_staff']:
+        if job.state in [jj.Jobstates.PENDING, jj.Jobstates.ERROR]:
+            actions.append('pause')
+        elif job.state == jj.Jobstates.WAITING:
+            actions.append('resume')
+        if job.state == jj.Jobstates.PROCESSING:
+            actions.append('force retry')
+        if job.state not in jj.JOBSTATES_DONE:
+            actions.append('delete')
+        if job.state == jj.Jobstates.PENDING:
+            actions.append('pause')
     return actions
 
 
