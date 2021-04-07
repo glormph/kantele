@@ -382,12 +382,12 @@ def check_md5_success(request):
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
     print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype_id))
-    try:
-        file_transferred = StoredFile.objects.select_related('rawfile__producer__msinstrument__instrumenttype').get(
+    sfiles = StoredFile.objects.select_related('rawfile__producer__msinstrument__instrumenttype').filter(
             rawfile_id=fn_id, filetype_id=ftype_id)
-    except StoredFile.DoesNotExist:
+    if not sfiles.count():
         return JsonResponse({'fn_id': fn_id, 'md5_state': False})
     else:
+        file_transferred = sfiles.get(mzmlfile__isnull=True)
         return do_md5_check(file_transferred)
 
 
