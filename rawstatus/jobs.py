@@ -181,7 +181,7 @@ def upload_file_pdc_runtask(sfile, isdir):
         pdcfile = models.PDCBackedupFile.objects.get(storedfile=sfile, is_dir=isdir)
     except models.PDCBackedupFile.DoesNotExist:
         # only create entry when not already exists
-        models.PDCBackedupFile.objects.create(storedfile=sfile, 
+        models.PDCBackedupFile.objects.create(storedfile=sfile, is_dir=isdir,
                 pdcpath='', success=False)
     else:
         # Dont do more work than necessary, although this is probably too defensive
