@@ -92,13 +92,32 @@ def pause_job(request):
     ownership = get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can pause this job'}, status=403)
-    elif job.state != Jobstates.PENDING:
-        return JsonResponse({'error': 'Only jobs that are pending for queueing can be paused'}, status=403)
+    elif job.state not in [Jobstates.PENDING, Jobstates.ERROR]:
+        return JsonResponse({'error': 'Only jobs that are pending for queueing or errored can be paused'}, status=403)
     job.state = Jobstates.WAITING
     job.save()
     return JsonResponse({}) 
     
 
+@login_required
+def resume_job(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        job = models.Job.objects.get(pk=req['item_id'])
+    except models.Job.DoesNotExist:
+        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
+    ownership = get_job_ownership(job, request)
+    if not ownership['owner_loggedin'] and not ownership['is_staff']:
+        return JsonResponse({'error': 'Only job owners and admin can resume this job'}, status=403)
+    elif job.state not in Jobstates.WAITING:
+        return JsonResponse({'error': 'Only jobs that are paused can be resumed, this job is in state '
+        '{}'.format(job.state)}, status=403)
+    job.state = Jobstates.PENDING
+    job.save()
+    return JsonResponse({}) 
+    
 
 def revoke_job(jobid, request):
     try:

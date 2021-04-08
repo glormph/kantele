@@ -11,6 +11,7 @@ urlpatterns = [
     url(r'^unzipped/$', views.unzipped_folder, name='unzipped'),
     url(r'^delete/$', views.delete_job, name='deletejob'),
     url(r'^pause/$', views.pause_job, name='pausejob'),
+    url(r'^resume/$', views.resume_job, name='resumejob'),
     url(r'^deletefile/$', views.purge_storedfile, name='deletefile'),
     url(r'^deletedir/$', views.removed_emptydir, name='rmdir'),
     url(r'^set/external/$', views.register_external_file, name='register_external'),
