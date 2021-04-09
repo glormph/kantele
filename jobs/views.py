@@ -92,8 +92,14 @@ def pause_job(request):
     ownership = get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can pause this job'}, status=403)
+    elif not is_job_retryable(job):
+        return JsonResponse({'error': 'Job type {} cannot be paused/resumed'.format(job.funcname)}, status=403)
     elif job.state not in [Jobstates.PENDING, Jobstates.ERROR]:
         return JsonResponse({'error': 'Only jobs that are pending for queueing or errored can be paused'}, status=403)
+    if job.state == Jobstates.ERROR:
+        job.task_set.exclude(state=states.SUCCESS).delete()
+        if hasattr(job, 'joberror'):
+            job.joberror.delete()
     job.state = Jobstates.WAITING
     job.save()
     return JsonResponse({}) 
