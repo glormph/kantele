@@ -317,6 +317,37 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
     return params, gitwfdir, stagedir
 
 
+def process_error_from_nf_log(logfile):
+    """Assume the log contains only a traceback as error (and log lines), 
+    if not process the NF specific error output"""
+    nf_swap_err = 'WARNING: Your kernel does not support swap limit capabilities or the cgroup is not mounted. Memory limited without swap.'
+    errorlines = []
+    is_traceback = True
+    part_of_error = False
+    tracelines = []
+    with open(logfile) as fp:
+        for line in fp:
+            if line.strip() == 'Caused by:':
+                is_traceback = False
+                part_of_error = True
+                break
+            elif 'Cause:' in line or 'Exception' in line:
+                tracelines.append(line.strip())
+        if is_traceback:
+            errorlines = tracelines[:]
+        else:
+            for line in fp:
+                if line.startswith('  ') and part_of_error and line.strip() != nf_swap_err:
+                    errorlines.append(line.strip())
+                elif line.strip() == 'Command error:':
+                    part_of_error = True
+                elif line[:5] == 'Tip: ':
+                    break
+                else:
+                    part_of_error = False
+        return '\n'.join(errorlines)
+
+
 def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profiles=False):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     if not profiles:
@@ -324,11 +355,11 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
     try:
         run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError as e:
-        # FIXME report stderr with e
-        errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
+        errmsg = process_error_from_nf_log(os.path.join(gitwfdir, '.nextflow.log'))
         taskfail_update_db(taskid, errmsg)
         raise RuntimeError('Error occurred running nextflow workflow '
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
+    #TODO use nextflows -weblog functionality to do logging
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
@@ -361,16 +392,21 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
     try:
         run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError:
+        errmsg = process_error_from_nf_log(os.path.join(gitwfdir, '.nextflow.log'))
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')
             exitfield, namefield = header.index('exit'), header.index('name')
             for line in fp:
+                # exit code 3 -> not enough PSMs, but maybe
+                # CANT FIND THIS IN PIPELINE OR MSSTITCH!
+                # it would be ok to have pipeline output
+                # this message instead
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
                     postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
                     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
                     raise RuntimeError('QC file did not contain enough quality PSMs')
-        taskfail_update_db(self.request.id)
+        taskfail_update_db(self.request.id, errmsg)
         raise RuntimeError('Error occurred running QC workflow '
                            '{}'.format(rundir))
     with open(os.path.join(rundir, 'output', 'qc.json')) as fp:
@@ -433,18 +469,19 @@ def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analys
         if not os.path.exists(outdir):
             os.makedirs(outdir)
     except (OSError, PermissionError):
-        taskfail_update_db(task_id)
+        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
         raise
     for fn in outfiles_db:
         dst = os.path.join(outdir, outfiles_db[fn]['newname'])
         try:
             shutil.copy(fn, dst)
         except:
-            taskfail_update_db(task_id)
+            taskfail_update_db(task_id, 'Errored when trying to copy files to analysis result destination')
             raise
         if 'md5' in outfiles_db[fn] and calc_md5(dst) != outfiles_db[fn]['md5']:
-            taskfail_update_db(task_id)
-            raise RuntimeError('Copying error, MD5 of src and dst are different')
+            msg = 'Copying error, MD5 of src and dst are different'
+            taskfail_update_db(task_id, msg)
+            raise RuntimeError(msg)
         postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
                     'outdir': outpath, 'filename': outfiles_db[fn]['newname']}
         if analysis_id:
