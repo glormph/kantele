@@ -33,15 +33,16 @@ def taskclient_authorized(client_id, possible_ids):
 def task_failed(request):
     if not request.method == 'POST':
         return HttpResponseNotAllowed(permitted_methods=['POST'])
-    if 'client_id' not in request.POST or not taskclient_authorized(
-            request.POST['client_id'], settings.CLIENT_APIKEYS):
+    data = json.loads(request.body.decode('utf-8'))
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], settings.CLIENT_APIKEYS):
         return HttpResponseForbidden()
-    print('Failed task registered task id {}'.format(request.POST['task']))
-    task = models.Task.objects.get(asyncid=request.POST['task'])
+    print('Failed task registered task id {}'.format(data['task']))
+    task = models.Task.objects.get(asyncid=data['task'])
     task.state = states.FAILURE
     task.save()
-    msg = request.POST['msg'] if 'msg' in request.POST else ''
-    models.TaskError.objects.create(task_id=task.id, message=msg)
+    if data['msg']:
+        models.TaskError.objects.create(task_id=task.id, message=data['msg'])
     return HttpResponse()
 
 
