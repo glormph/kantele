@@ -576,10 +576,18 @@ def get_analysis_info(request, nfs_id):
     else:
         logentry = [x for y in nfs.analysis.log for x in y.split('\n') if x][-3:]
     linkedfiles = [(x.id, x.sfile.filename) for x in av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
-    resp = {#'jobs': {nfs.job.id: {'name': nfs.job.funcname, 'state': nfs.job.state,
-            #                    'retry': jv.is_job_retryable_ready(nfs.job), 'id': nfs.job.id,
-            #                    'time': nfs.job.timestamp}},
-            'name': aj.get_ana_fullname(ana),
+    errors = []
+    try:
+        errors.append(nfs.job.joberror.message)
+    except jm.JobError.DoesNotExist:
+        pass
+    for task in nfs.job.task_set.filter(state=tstates.FAILURE, taskerror__isnull=False):
+        # Tasks chained in a taskchain are all set to error when one errors, 
+        # otherwise we cannot retry jobs since that waits for all tasks to finish.
+        # This means we have to check for taskerror__isnull here
+        if task.taskerror.message:
+            errors.append(task.taskerror.message)
+    resp = {'name': aj.get_ana_fullname(ana),
             'wf': {'fn': nfs.nfworkflow.filename, 
                    'name': nfs.nfworkflow.nfworkflow.description,
                    'update': nfs.nfworkflow.update,
@@ -593,6 +601,7 @@ def get_analysis_info(request, nfs_id):
             'base_analysis': {'nfsid': False, 'name': False},
             'servedfiles': linkedfiles,
             'invocation': get_analysis_invocation(ana),
+            'errmsg': errors if len(errors) else False,
             }
     if anmodels.AnalysisBaseanalysis.objects.filter(analysis=ana, is_complement=True).count():
         baseana = anmodels.AnalysisBaseanalysis.objects.select_related('base_analysis').get(analysis=ana)
@@ -650,22 +659,22 @@ def get_job_info(request, job_id):
         analysis = analysis.name
     errors = []
     try:
-        errormsg = job.joberror.message
+        errors.append(job.joberror.message)
     except jm.JobError.DoesNotExist:
-        errormsg = False
+        pass
     for task in tasks.filter(state=tstates.FAILURE, taskerror__isnull=False):
         # Tasks chained in a taskchain are all set to error when one errors, 
         # otherwise we cannot retry jobs since that waits for all tasks to finish.
         # This means we have to check for taskerror__isnull here
-        errors.append({'msg': task.taskerror.message, 'args': task.args})
+        if task.taskerror.message:
+            errors.append(task.taskerror.message)
     return JsonResponse({'files': fj.count(), 'dsets': 0, 
                          'analysis': analysis, 
                          'time': datetime.strftime(job.timestamp, '%Y-%m-%d %H:%M'),
-                         'errmsg': errormsg,
+                         'errmsg': errors if len(errors) else False,
                          'tasks': {'error': tasks.filter(state=tstates.FAILURE).count(),
                                    'procpen': tasks.filter(state=tstates.PENDING).count(),
                                    'done': tasks.filter(state=tstates.SUCCESS).count()},
-                         'errors': errors,
                         })
 
 

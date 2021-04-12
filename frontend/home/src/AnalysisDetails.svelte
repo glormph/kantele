@@ -46,6 +46,15 @@ onMount(async() => {
 <DetailBox notif={notif} closeWindow={closeWindow}>
   {#each Object.entries(analyses) as [anaid, analysis]}
     <h4 class="title is-4">{analysis.name}</h4>
+    {#if analysis.errmsg}
+    <div class="notification is-danger is-light"> 
+      ERROR(S):
+      {#each analysis.errmsg as err}
+      <div>{err}</div>
+      {/each}
+    </div>
+    {/if}
+
     {#if analysis.base_analysis.nfsid}
     <p><span class="has-text-weight-bold">Complementing previous run:</span> <a href={`#/analyses?ids=${analysis.base_analysis.nfsid}`}>{analysis.base_analysis.name}</a></p>
     {/if}

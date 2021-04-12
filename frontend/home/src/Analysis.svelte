@@ -84,7 +84,11 @@ function showDetails(event) {
 async function getAnalysisDetails(anaId) {
 	const resp = await getJSON(`/show/analysis/${anaId}`);
   const links = resp.servedfiles.map(([link, name]) => { return `<div><a href="analysis/showfile/${link}" target="_blank">${name}</a></div>`}).join('\n');
+  let errors = resp.errmsg ? resp.errmsg.map(x => `<div>${x}</div>`).join() : false;
+  errors = errors ? `<div class="notification is-danger is-light"><div>ERROR(s):</div>${errors}</div>` : '';
   return `
+    ${errors}
+    ${resp.errmsg ? resp.errmsg.join('<br>') : ''}
     <p><span class="has-text-weight-bold">Workflow version:</span> ${resp.wf.update}</p>
     <p>${resp.nrfiles} raw files from ${resp.nrdsets} dataset(s) analysed</p>
     <p><span class="has-text-weight-bold">Quant type:</span> ${resp.quants.join(', ')}</p>
