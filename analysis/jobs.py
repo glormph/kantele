@@ -1,6 +1,7 @@
 from datetime import datetime
 import re
 import os
+from uuid import uuid4
 
 from django.utils import timezone
 
@@ -96,7 +97,7 @@ class RunLabelCheckNF(MultiDatasetJob):
         profiles = ['standard', 'docker', 'lehtio']
         kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
         self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
-        analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
+        analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()
 
 
@@ -130,9 +131,11 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
-        models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 'job_id': self.job_id, 'workflow_id': wf.id}, analysis=analysis)
+        models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 
+            'job_id': self.job_id, 'workflow_id': wf.id, 'token': 'nf-{}'.format(uuid4)},
+            analysis=analysis)
         self.run_tasks.append(((run, params, stagefiles, nfwf.nfversion), {}))
-        analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
+        analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()
 
 
@@ -232,9 +235,12 @@ class RunNextflowWorkflow(BaseJob):
         if mzmldef_fields:
             mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields]), **{k: x[k] for k in ['servershare', 'path', 'fn']}}
                 for x in mzmls]
-
+        # token is unique per job run:
+        analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
+        analysis.nextflowsearch.save()
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
+               'token': analysis.nextflowsearch.token,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
@@ -264,8 +270,7 @@ class RunNextflowWorkflow(BaseJob):
         if kwargs['inputs']['components']['sampletable']:
             params.extend(['SAMPLETABLE', kwargs['inputs']['components']['sampletable']])
         self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
-        # TODO remove this logging
-        analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
+        analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()
 
 

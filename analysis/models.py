@@ -165,6 +165,8 @@ class NextflowSearch(models.Model):
     nfworkflow = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE)
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+    # token is for authentication of NF with-weblog
+    token = models.TextField()
     job = models.OneToOneField(jmodels.Job, on_delete=models.CASCADE)
 
 

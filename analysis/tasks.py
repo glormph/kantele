@@ -155,6 +155,9 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
     print(cmd)
     env = os.environ
     env['NXF_VER'] = nf_version
+    if 'token' in run and run['token']:
+        nflogurl = urljoin(settings.KANTELEHOST, logurl = reverse('analysis:nflog'))
+        cmd.extend(['-name', run['token'], '-with-weblog', nflogurl])
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
@@ -356,6 +359,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
         run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError as e:
         errmsg = process_error_from_nf_log(os.path.join(gitwfdir, '.nextflow.log'))
+        log_analysis(run['analysis_id'], 'Workflow crashed, reporting errors')
         taskfail_update_db(taskid, errmsg)
         raise RuntimeError('Error occurred running nextflow workflow '
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
@@ -363,7 +367,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
-                 ' cleaning. NF log: \n{}'.format(nflog))
+                 ' cleaning. Full NF trace log: \n{}'.format(nflog))
     outfiles = [os.path.join(rundir, 'output', x) for x in os.listdir(os.path.join(rundir, 'output'))]
     outfiles = [x for x in outfiles if not os.path.isdir(x)]
     reportfile = os.path.join(rundir, 'output', 'Documentation', 'pipeline_report.html')
@@ -393,6 +397,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
         run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError:
         errmsg = process_error_from_nf_log(os.path.join(gitwfdir, '.nextflow.log'))
+        log_analysis(run['analysis_id'], 'QC Workflow crashed')
         with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
             header = next(fp).strip('\n').split('\t')
             exitfield, namefield = header.index('exit'), header.index('name')

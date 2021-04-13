@@ -1,7 +1,8 @@
 import re
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+from uuid import uuid4
 from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound, HttpResponseNotAllowed)
 from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
@@ -653,7 +654,7 @@ def store_analysis(request):
         job.save()
     else:
         job = jj.create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-    am.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid']}, analysis=analysis)
+    am.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id})
 
 
@@ -795,6 +796,25 @@ def write_analysis_log(logline, analysis_id):
     analysis = am.Analysis.objects.get(pk=analysis_id)
     analysis.log.append(logline)
     analysis.save()
+
+
+def nextflow_analysis_log(request):
+    req = json.loads(request.body.decode('utf-8'))
+    print(req)
+    if 'runName' not in req or not req['runName']:
+        return JsonResponse({'error': 'Analysis does not exist'}, status=403)
+    try:
+        nfs = am.NextflowSearch.objects.get(token=req['runName'])
+    except am.NextflowSearch.DoesNotExist:
+        return JsonResponse({'error': 'Analysis does not exist'}, status=403)
+    if nfs.job.state not in [jj.Jobstates.PROCESSING, jj.Jobstates.REVOKING]:
+        return JsonResponse({'error': 'Analysis does not exist'}, status=403)
+    if req['event'] in ['started', 'completed']:
+        logmsg = 'Nextflow reports workflow {}'.format(req['event'])
+    elif req['event'] == 'process_completed':
+        walltime = str(timedelta(seconds=req['trace']['realtime']))
+        logmsg = 'Process {} completed in {}'.format(req['trace']['name'], walltime)
+    write_analysis_log(logmsg, nfs.analysis_id)
 
 
 def append_analysis_log(request):
