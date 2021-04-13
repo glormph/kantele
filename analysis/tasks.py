@@ -201,10 +201,7 @@ def stage_files(stagedir, stagefiles, params=False):
 
 def log_analysis(analysis_id, message):
     logurl = urljoin(settings.KANTELEHOST, reverse('analysis:appendlog'))
-    entry = '[{}] - {}'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'), message)
-    update_db(logurl, json={'analysis_id': analysis_id, 'message': entry})
-
-
+    update_db(logurl, json={'analysis_id': analysis_id, 'message': message})
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
@@ -434,9 +431,7 @@ def check_md5(fn_id, ftype_id, apikey=False):
 def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
-    postdata.update({'log': '[{}] - Analysis task completed.'.format(
-        datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')),
-                     'analysis_id': analysis_id})
+    postdata.update({'log': 'Analysis task completed.', 'analysis_id': analysis_id})
     update_db(url, json=postdata)
     shutil.rmtree(rundir)
     shutil.rmtree(stagedir)

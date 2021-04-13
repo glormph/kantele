@@ -793,6 +793,7 @@ def get_servable_files(resultfiles):
 
 
 def write_analysis_log(logline, analysis_id):
+    entry = '[{}] - {}'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'), logline)
     analysis = am.Analysis.objects.get(pk=analysis_id)
     analysis.log.append(logline)
     analysis.save()
