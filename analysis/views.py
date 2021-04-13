@@ -3,6 +3,8 @@ import os
 import json
 from datetime import datetime, timedelta
 from uuid import uuid4
+
+from django.utils import timezone
 from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound, HttpResponseNotAllowed)
 from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
@@ -795,7 +797,7 @@ def get_servable_files(resultfiles):
 def write_analysis_log(logline, analysis_id):
     entry = '[{}] - {}'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'), logline)
     analysis = am.Analysis.objects.get(pk=analysis_id)
-    analysis.log.append(logline)
+    analysis.log.append(entry)
     analysis.save()
 
 
