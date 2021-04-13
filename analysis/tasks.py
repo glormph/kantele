@@ -156,7 +156,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
     env = os.environ
     env['NXF_VER'] = nf_version
     if 'token' in run and run['token']:
-        nflogurl = urljoin(settings.KANTELEHOST, logurl = reverse('analysis:nflog'))
+        nflogurl = urljoin(settings.KANTELEHOST, reverse('analysis:nflog'))
         cmd.extend(['-name', run['token'], '-with-weblog', nflogurl])
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))

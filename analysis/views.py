@@ -810,11 +810,15 @@ def nextflow_analysis_log(request):
     if nfs.job.state not in [jj.Jobstates.PROCESSING, jj.Jobstates.REVOKING]:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if req['event'] in ['started', 'completed']:
-        logmsg = 'Nextflow reports workflow {}'.format(req['event'])
+        logmsg = 'Nextflow reports: workflow {}'.format(req['event'])
     elif req['event'] == 'process_completed':
-        walltime = str(timedelta(seconds=req['trace']['realtime']))
+        walltime = str(timedelta(seconds=req['trace']['realtime'] / 1000))
         logmsg = 'Process {} completed in {}'.format(req['trace']['name'], walltime)
+    else:
+        # Not logging anything
+        return HttpResponse()
     write_analysis_log(logmsg, nfs.analysis_id)
+    return HttpResponse()
 
 
 def append_analysis_log(request):
