@@ -428,7 +428,7 @@ def do_md5_check(file_transferred):
             else:
                 ftype_isdir = False
             jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id, isdir=ftype_isdir)
-            if 'QC' in fn and 'hela' in fn.lower() and hasattr(file_registered.producer, 'msinstrument'): 
+            if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(file_registered.producer, 'msinstrument'): 
                 singlefile_qc(file_transferred.rawfile, file_transferred)
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
     else:
