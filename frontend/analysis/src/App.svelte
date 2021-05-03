@@ -347,7 +347,7 @@ function removeAnalysisResults(anaid) {
 
 
 async function loadBaseAnalysis() {
-  let url = `/analysis/baseanalysis/load/${base_analysis.selected}/`;
+  let url = `/analysis/baseanalysis/load/${config.wfversion.id}/${base_analysis.selected}/`;
   const result = await getJSON(url);
   if ('error' in result) {
     const msg = `While fetching base analysis, encountered: ${result.error}`;

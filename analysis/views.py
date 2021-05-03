@@ -46,9 +46,13 @@ def load_analysis_resultfiles(request, anid):
 
 
 @login_required
-def load_base_analysis(request, anid):
+def load_base_analysis(request, wfversion_id, baseanid):
     try:
-        ana = am.Analysis.objects.select_related('nextflowsearch').get(pk=anid)
+        new_pset_id = am.NextflowWfVersion.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
+    except am.NextflowWfVersion.DoesNotExist:
+        return JsonResponse({'error': 'Workflow for applying base analysis not found'}, status=403)
+    try:
+        ana = am.Analysis.objects.select_related('nextflowsearch').get(pk=baseanid)
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis = {
@@ -62,7 +66,7 @@ def load_base_analysis(request, anid):
             'isoquants': {},
             'resultfiles': [],
             }
-    for ap in ana.analysisparam_set.all():
+    for ap in ana.analysisparam_set.filter(param__psetparam__pset_id=new_pset_id):
         if ap.param.ptype == 'flag' and ap.value:
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == 'multi':
@@ -71,7 +75,7 @@ def load_base_analysis(request, anid):
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
-    for afp in ana.analysisfileparam_set.all():
+    for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
         if afp.param_id in multifiles:
             try:
                 fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
@@ -81,7 +85,8 @@ def load_base_analysis(request, anid):
             analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
         else:
             analysis['fileparams'][afp.param_id] = afp.sfile_id
-    if hasattr(ana, 'analysismzmldef'):
+    if hasattr(ana, 'analysismzmldef') and am.PsetComponent.objects.filter(
+            pset_id=new_pset_id, component__name='mzmldef'):
         analysis['mzmldef'] = ana.analysismzmldef.mzmldef
     dsets = {ads.dataset_id: {'setname': ads.setname.setname, 'regex': ads.regex} for ads in ana.analysisdatasetsetname_set.all()}
     try:
