@@ -483,7 +483,6 @@ def store_analysis(request):
     new_ads = {}
     dsets = {str(dset.id): dset for dset in dsetquery}
     am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fractions']).delete()
-    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['fractions']}, set()
     for dsid, setname in req['dssetnames'].items():
         if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
             regex = req['frregex'][dsid] 
@@ -493,12 +492,7 @@ def store_analysis(request):
                 defaults={'setname_id': setname_ids[setname], 'regex': regex},
                 analysis=analysis, dataset_id=dsid) 
         new_ads[ads.pk] = created
-        dsfiles = get_dataset_files(dsid, use_refined=True)
-        for sf in dsfiles:
-            if sf.pk in frontend_files_not_in_ds:
-                frontend_files_not_in_ds.remove(sf.pk)
-            else:
-                ds_withfiles_not_in_frontend.add(dsid)
+        for sf in get_dataset_files(dsid, use_refined=True):
             am.AnalysisDSInputFile.objects.update_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
             data_args['setnames'][sf.pk] = setname
         dset = dsets[dsid]
@@ -509,10 +503,19 @@ def store_analysis(request):
                 data_args['platenames'][dsid] = strip
             else:
                 data_args['platenames'][dsid] = pfd.prefractionation.name
+    am.AnalysisDatasetSetname.objects.filter(analysis=analysis).exclude(pk__in=new_ads).delete()
+
+    # Check if files have not changed while editing an analysis (e.g. long open window)
+    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['fractions']}, set()
+    for dsid in req['dsids']:
+        for sf in get_dataset_files(dsid, use_refined=True):
+            if sf.pk in frontend_files_not_in_ds:
+                frontend_files_not_in_ds.remove(sf.pk)
+            else:
+                ds_withfiles_not_in_frontend.add(dsid)
     if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
         return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
             'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
-    am.AnalysisDatasetSetname.objects.filter(analysis=analysis).exclude(pk__in=new_ads).delete()
 
     # store samples if non-prefrac labelfree files are sets
     am.AnalysisFileSample.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fnsetnames']).delete()
