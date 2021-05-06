@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from analysis.models import AnalysisError, NextflowWfVersion
 from rawstatus.models import Producer, RawFile
 from datasets.models import Project
-from dashboard import qcplots, models
+from dashboard import models
 from kantele import settings
 
 
