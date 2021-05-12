@@ -13,6 +13,7 @@ urlpatterns = [
    path('upload/token/', views.upload_userfile_token, name='upload_userfile_token'),
    path('upload/userfile/', views.browser_userupload, name='upload_browserfile'),
    path('transferred/', views.file_transferred, name='transferred'),
+   path('transferstate/', views.get_files_transferstate, name='trfstate'),
    path('md5/', views.check_md5_success, name='md5check'),
    path('md5/userfile/', views.check_md5_success_userfile, name='md5checkuserfile'),
    path('setlibrary/', views.set_libraryfile, name='setlibfile'),

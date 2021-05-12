@@ -286,6 +286,58 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
     return response
 
 
+# /files/transferstate
+def get_files_transferstate(request):
+    if not request.method == 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    data =  json.loads(request.body.decode('utf-8'))
+    try:
+        fnids = data['fnids']
+        client_id = data['client_id']
+    except KeyError as error:
+        print('GET request to get transferstate with missing parameter, '
+              '{}'.format(error))
+        return JsonResponse({'error': 'Bad request'}, status=400)
+    try:
+        producer = check_producer(client_id)
+    except Producer.DoesNotExist:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    # Also do registration here? if MD5? prob not.
+    # FIXME check producer/token etc
+    scpfns, donefns, waitfns = [], [], []
+    jobs_to_create = []
+    rawfiles = RawFile.objects.filter(pk__in=fnids)
+    for rfn in rawfiles:
+        if rfn.producer != producer:
+            return JsonResponse({'error': 'File with ID {} is not from producer {}'.format(rfn.id, producer.name)}, status=403)
+        sfns = rfn.storedfile_set.filter(mzmlfile__isnull=True)
+        if not sfns.count():
+            # has not been reported as transferred,
+            scpfns.append(rfn.pk)
+        elif sfns.count() > 1:
+            return JsonResponse({'error': 'Problem, there are multiple stored files with that raw file ID'}, status=409)
+        else:
+            sfn = sfns.get()
+            if sfn.checked:
+                # File transfer finished
+                # NB: scp corrupt file, no reporting transferred, then this view -> problem
+                donefns.append(rfn.pk)
+            elif sfn.filejob_set.filter(job__funcname='get_md5').exclude(job__state__in=jobutil.JOBSTATES_DONE):
+                # File not checked, so either md5 check in progress, or it crashed
+                waitfns.append(rfn.pk)
+            else:
+                # No MD5 job exists for file, fire one, do not report back
+                jobs_to_create.append((rfn.source_md5, sfn.id))
+                waitfns.append(rfn.pk)
+    # create job afterwards to allow error responses while looping
+    for job in jobs_to_create:
+        jobutil.create_job('get_md5', source_md5=job[0], sf_id=job[1])
+    rawfnids = [x.pk for x in rawfiles]
+    unknownfns = [x for x in fnids if x not in rawfnids]
+    return JsonResponse({'scpfns': scpfns, 'donefns': donefns,
+        'waitfns': waitfns, 'unknownfns': unknownfns})
+
+
 def file_transferred(request):
     """Treats POST requests with:
         - fn_id
