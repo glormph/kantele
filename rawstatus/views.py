@@ -271,7 +271,7 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
                               size=size, date=file_date, claimed=claim)
         file_record.save()
         response = {'file_id': file_record.id, 'state': 'registered',
-                    'stored': False}
+                'remote_name': file_record.name, 'stored': False}
     else:
         stored = True if StoredFile.objects.select_related(
             'rawfile').filter(rawfile__source_md5=md5).count() else False
@@ -279,7 +279,7 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
                'stored'.format(existing_fn.name, existing_fn.source_md5,
                                '' if stored else 'not '))
         response = {'stored': stored, 'md5': existing_fn.source_md5,
-                    'msg': msg}
+                'remote_name': existing_fn.name, 'msg': msg}
         response['state'] = 'registered' if stored else 'error'
         if existing_fn.source_md5 == md5:
             response['file_id'] = existing_fn.id
@@ -347,21 +347,22 @@ def file_transferred(request):
         except KeyError as error:
             print('POST request to file_transferred with missing parameter, '
                   '{}'.format(error))
-            return HttpResponseForbidden()
+            return JsonResponse({'error': 'Bad request'}, status=400)
         try:
             check_producer(client_id)
         except Producer.DoesNotExist:
-            return HttpResponseForbidden()
+            return JsonResponse({'error': 'Forbidden'}, status=403)
         tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
         try:
             rawfn = RawFile.objects.get(pk=fn_id)
         except RawFile.DoesNotExist:
-            print('File has not been registered yet, cannot transfer')
-            return JsonResponse({'fn_id': fn_id, 'state': 'error'})
+            errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
+            print(errmsg)
+            return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
         try:
             ftype_id = StoredFileType.objects.get(pk=ftype_id).id
         except StoredFileType.DoesNotExist:
-            return HttpResponseForbidden('File type does not exist')
+            return JsonResponse({'error': 'File type does not exist'}, status=400)
         try:
             file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
                                                       filetype_id=ftype_id)
