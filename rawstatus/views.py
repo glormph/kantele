@@ -371,16 +371,20 @@ def file_transferred(request):
             file_transferred = StoredFile(rawfile_id=fn_id, filetype_id=ftype_id,
                                           servershare=tmpshare, path='',
                                           filename=fname, md5='', checked=False)
-            file_transferred.save()
-            jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
         else:
-            print('File already registered as transferred')
-            if not file_transferred.checked:
-                print('Transferred file ile not (yet) checked, running MD5 check after a possible retransfer')
-                jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
+            print('File already registered as transferred, rerunning MD5 check in case new '
+                    'file arrived')
+            # Ensure any new MD5 job gets clean slate so no checks before it finishes are 
+            # returning OLD md5 value
+            file_transferred.md5 = ''
+            file_transferred.checked = False
+        file_transferred.save()
+        # if re-transfer happens and second time it is corrupt, overwriting old file
+        # then we have a problem! So always fire MD5 job, not only on new files
+        jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
         return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
     else:
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+        return JsonResponse({'error': 'Bad request, must POST'}, status=400)
 
 
 def upload_userfile_token(request):
