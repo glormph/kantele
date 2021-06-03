@@ -17,6 +17,15 @@ from celery.exceptions import MaxRetriesExceededError
 from jobs.post import update_db, taskfail_update_db
 
 
+def calc_sha1(fnpath):
+    """Need SHA1 to verify checksums from ProteomeXchange"""
+    hash_sha = hashlib.sha1()
+    with open(fnpath, 'rb') as fp:
+        for chunk in iter(lambda: fp.read(4096), b''):
+            hash_sha.update(chunk)
+    return hash_sha.hexdigest()
+
+
 def calc_md5(fnpath):
     hash_md5 = hashlib.md5()
     with open(fnpath, 'rb') as fp:
@@ -67,8 +76,8 @@ def register_downloaded_external_raw(self, fpath, sf_id, raw_id, sharename, dset
 
 
 @shared_task(queue=settings.QUEUE_PXDOWNLOAD, bind=True)
-def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename, dset_id):
-    """Downloads PX file, validate by file size, get MD5
+def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, shasum, size, sharename, dset_id):
+    """Downloads PX file, validate by file size and SHA1, get MD5.
     Uses separate queue on storage, because otherwise trouble when 
     needing the storage queue while downloading PX massive dsets.
     """
@@ -87,6 +96,8 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, size, sharename
         raise
     if os.path.getsize(dstfile) != size:
         print('Size of fn {} is not the same as source size {}'.format(dstfile, size))
+        taskfail_update_db(self.request.id)
+    if calc_sha1(dstfile) != shasum:
         taskfail_update_db(self.request.id)
     try:
         postdata['md5'] = calc_md5(dstfile)

@@ -1,6 +1,7 @@
 import os
 import requests
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse, urljoin
+import ftplib
 from datetime import datetime
 
 from rawstatus import tasks, models
@@ -158,7 +159,7 @@ class DownloadPXProject(BaseJob):
     """
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(rawfile_id__in=kwargs['rawfnids'], 
+        return models.StoredFile.objects.filter(rawfile_id__in=kwargs['shasums'], 
             checked=False).select_related('rawfile')
     
     def process(self, **kwargs):
@@ -170,7 +171,7 @@ class DownloadPXProject(BaseJob):
                 pxsf = px_stored[filename]
                 self.run_tasks.append(((
                     ftpurl.path, ftpurl.netloc, 
-                    pxsf.id, pxsf.rawfile_id, 
+                    pxsf.id, pxsf.rawfile_id, fn['sha1sum'],
                     fn['fileSize'], kwargs['sharename'], kwargs['dset_id']), {}))
 
 
@@ -199,5 +200,96 @@ def restore_file_pdc_runtask(sfile):
 
 
 def call_proteomexchange(pxacc):
-    prideurl = 'https://www.ebi.ac.uk/pride/ws/archive/file/list/project/{}'.format(pxacc)
-    return [x for x in requests.get(prideurl).json()['list'] if x['fileType'] == 'RAW']
+    # FIXME check SHA1SUM when getting this
+    accessions = {'expfn': 'PRIDE:0000584',
+            'ftp': 'PRIDE:0000469',
+            'raw': 'PRIDE:0000404',
+    }
+    inst_type_map = {
+        'MS:1001742': 'velos', # LTQ Orbitrap Velos 
+        #'MS:1001909': 'velos', # Velos plus
+        'MS:1001910': 'velos', # Orbitrap Elite
+        'MS:1002835': 'velos', # Orbitrap Classic
+        'MS:1001911': 'qe',  # Q Exactive
+        'MS:1002523': 'qe',  # Q Exactive HF
+        'MS:1002634': 'qe',  # Q Exactive plus
+        'MS:1002877': 'qe',  # Q Exactive HF-X
+        'MS:1002732': 'lumos',  # Orbitrap Fusion Lumos
+# FIXME more instruments
+# FIXME if we are trying to download OUR OWN data, we get problem with MD5 already existing
+# Possibly solve with "this is our data, please reactivate from PDC"
+    }
+    prideurl = 'https://www.ebi.ac.uk/pride/ws/archive/v2/'
+    # Get project instruments before files so we can assign instrument types to the files
+    project = requests.get(urljoin(prideurl, 'projects/{}'.format(pxacc)))
+    if project.status_code != 200:
+        raise RuntimeError(f'Connected to ProteomeXchange but could not get project information, '
+                'status code {project.status_code}')
+    try:
+        all_inst = project.json()['instruments']
+    except KeyError:
+        raise RuntimeError('Could not determine instruments from ProteomeXchange project "{pxacc}"')
+    try:
+        inst_types = {x['accession']: inst_type_map[x['accession']] for x in all_inst}
+    except KeyError:
+        fail_inst = ', '.join([x['accession'] for x in all_inst if x['accession'] not in inst_type_map])
+        raise RuntimeError(f'Not familiar with instrument type(s) {fail_inst}, please ask admin to upgrade Kantele')
+    amount_instruments = len(set(inst_types.values()))
+
+    # Now try to fetch the experiment design file if needed
+    allfiles = requests.get(urljoin(prideurl, 'files/byProject'), params={'accession': pxacc}).json()
+    fn_instr_map = {}
+    for fn in allfiles:
+        # first get experiment design file, if it exists
+        if fn['fileCategory']['accession'] == accessions['expfn']:
+            try:
+                ftpfn = [x for x in fn['publicFileLocations'] if x['accession'] == accessions['ftp']][0]['value']
+            except (KeyError, IndexError):
+                if amount_instruments > 1:
+                    raise RuntimeError('Cannot get FTP location for experiment design file')
+                else:
+                    print('Skipping experiment design file, cannot find it in file listing')
+            expfn = urlparse(ftpfn)
+            explines = []
+            try:
+                ftp = ftplib.FTP(expfn.netloc)
+                ftp.login()
+                ftp.retrlines(f'RETR {expfn.path}', lambda x: explines.append(x.strip().split('\t')))
+            except ftplib.all_errors as ftperr:
+                if amount_instruments > 1:
+                    raise RuntimeError(f'Could not download experiment design file {ftpfn}')
+                else:
+                    print(f'Skipping experiment design file {ftpfn}, errored upon downloading')
+            else:
+                instr_ix = explines[0].index('comment[instrument]')
+                fn_ix = explines[0].index('comment[data file]')
+                for line in explines[1:]:
+                    # parse e.g. "AC=MS:1002526;NT=Q Exactive Plus"
+                    instr_acc = [x.split('=')[1] for x in line[instr_ix].split(';') if x[:2] == 'AC'][0]
+                    fn_instr_map[line[fn_ix]] = inst_type_map[instr_acc]
+            break
+    if not fn_instr_map:
+        print('Could not find experiment design file')
+ 
+    fetchable_files = []
+    first_instrument = set(inst_types.values()).pop()
+    for fn in allfiles:
+        try:
+            ftype = fn['fileCategory']['accession']
+            shasum = fn['checksum']
+            dlink = [x for x in fn['publicFileLocations'] if x['accession'] == accessions['ftp']][0]['value']
+            filesize = fn['fileSizeBytes']
+            filename = fn['fileName']
+        except (KeyError, IndexError):
+            raise RuntimeError('Could not get download information for a file from ProteomeXchange')
+        if ftype == accessions['raw']:
+            if filename in fn_instr_map:
+                instr_type = fn_instr_map[filename]
+            elif amount_instruments == 1:
+                instr_type = first_instrument
+            else:
+                raise RuntimeError(f'Could not find instrument for file {filename} and '
+                        'more than 1 instrument type used in project')
+            fetchable_files.append({'fileSize': filesize, 'downloadLink': dlink,
+                'sha1sum': shasum, 'instr_type': instr_type})
+    return fetchable_files

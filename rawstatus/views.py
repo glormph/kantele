@@ -768,22 +768,34 @@ def download_px_project(request):
     # FIXME check if pxacc exists on pride and here, before creating dset
     # FIXME View checks project and returns maybe as a nicety how many files it will download.
     # FIXME if already exist, update experiment name in view
-    # get or create dataset
-    dset = dsviews.get_or_create_px_dset(request.POST['exp'], request.POST['px_acc'], request.POST['user_id'])
-    # get or create raw/storedfiles
+    try:
+        expname = request.POST['exp']
+        pxacc = request.POST['px_acc']
+    except KeyError:
+        return JsonResponse({'error': 'Invalid request'}, status=403)
+    # First check if we can get the dataset from PX at all
+    try:
+        px_files = rsjobs.call_proteomexchange(pxacc)
+    except RuntimeError as error:
+        return JsonResponse({'error': error}, status=500)
+    except requests.exceptions.ConnectionError:
+        return JsonResponse({'error': 'Could not connect to ProteomeXchange server, timed out'}, status=500)
+
+    # Now go through the files
     date = datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M')
     tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
-    raw_ids = []
-    extprod = Producer.objects.get(pk=settings.EXTERNAL_PRODUCER_ID)
-    for fn in rsjobs.call_proteomexchange(request.POST['px_acc']):
+    dset = dsviews.get_or_create_px_dset(expname, pxacc, request.POST['user_id'])
+    raw_ids, shasums = [], {}
+    extproducers = {x.msinstrument.instrumenttype.name: x for x in Producer.objects.filter(name__startswith='External')}
+    for fn in px_files:
         ftpurl = urlsplit(fn['downloadLink'])
         filename = os.path.split(ftpurl.path)[1]
         fakemd5 = md5()
         fakemd5.update(filename.encode('utf-8'))
         fakemd5 = fakemd5.hexdigest()
-        rawfn = get_or_create_rawfile(fakemd5, filename, extprod,
-                                      fn['fileSize'], date, {'claimed': True})
-        raw_ids.append(rawfn['file_id'])
+        rawfn = get_or_create_rawfile(fakemd5, filename, extproducers[fn['instr_type']],
+                                       fn['fileSize'], date, {'claimed': True})
+        shasums[rawfn['file_id']] = fn['sha1sum']
         if not rawfn['stored']:
             ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw').id
             sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=ftid,
@@ -791,6 +803,5 @@ def download_px_project(request):
                              filename=filename, md5='', checked=False)
             sfn.save()
     rsjob = jobutil.create_job(
-        'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], rawfnids=raw_ids,
-        sharename=settings.TMPSHARENAME)
+        'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], sharename=settings.TMPSHARENAME, shasums=shasums)
     return HttpResponse()
