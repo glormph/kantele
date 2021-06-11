@@ -274,15 +274,14 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
                 'remote_name': file_record.name, 'stored': False}
     else:
         stored = True if StoredFile.objects.select_related(
-            'rawfile').filter(rawfile__source_md5=md5).count() else False
+            'rawfile').filter(rawfile__source_md5=md5, checked=True).count() else False
         msg = ('File {} is already registered and has MD5 {}. It is {}'
                'stored'.format(existing_fn.name, existing_fn.source_md5,
                                '' if stored else 'not '))
-        response = {'stored': stored, 'md5': existing_fn.source_md5,
+        response = {'file_id': existing_fn.id, 'stored': stored,
+                'md5': existing_fn.source_md5,
                 'remote_name': existing_fn.name, 'msg': msg}
         response['state'] = 'registered' if stored else 'error'
-        if existing_fn.source_md5 == md5:
-            response['file_id'] = existing_fn.id
     return response
 
 
