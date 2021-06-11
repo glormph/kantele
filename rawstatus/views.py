@@ -309,8 +309,12 @@ def get_files_transferstate(request):
     rfn = rfn.get()
     if rfn.producer != producer:
         return JsonResponse({'error': 'File with ID {} is not from producer {}'.format(rfn.id, producer.name)}, status=403)
-    # TODO check if token is used
-    sfns = rfn.storedfile_set.filter(mzmlfile__isnull=True)
+    # TODO check if token is used, and if it is expired
+    # Can have filetype here, so we can find files derived from rawfile, eg mzML
+    if 'ftype_id' in data:
+        sfns = rfn.storedfile_set.filter(filetype_id=data['ftype_id'])
+    else:
+        sfns = rfn.storedfile_set.filter(mzmlfile__isnull=True)
     if not sfns.count():
         # has not been reported as transferred,
         tstate = 'transfer'
@@ -320,8 +324,11 @@ def get_files_transferstate(request):
         sfn = sfns.get()
         if sfn.checked:
             # File transfer finished
-            # NB: scp corrupt file, no reporting transferred, then this view -> problem
             tstate = 'done'
+            if (not AnalysisResultFile.objects.filter(sfile_id=sfn) and not
+                    PDCBackedupFile.objects.filter(storedfile_id=sfn.id)):
+                # No analysis result or PDC file, then do some processing work
+                process_file_confirmed_ready(sfn)
         elif sfn.filejob_set.filter(job__funcname='get_md5').exclude(job__state__in=jobutil.JOBSTATES_DONE):
             # File not checked, so either md5 check in progress, or it crashed
             tstate = 'wait'
@@ -330,6 +337,20 @@ def get_files_transferstate(request):
             jobutil.create_job('get_md5', source_md5=rfn.source_md5, sf_id=sfn.id)
             tstate = 'wait'
     return JsonResponse({'transferstate': tstate})
+
+
+def process_file_confirmed_ready(sfn):
+    """Processing of unzip, backup, QC after transfer has succeeded (MD5 checked)
+    for newly arrived MS other raw data files (not for analysis etc)"""
+    if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
+        jobutil.create_job('unzip_raw_datadir', sf_id=sfn.id)
+        ftype_isdir = True
+    else:
+        ftype_isdir = False
+    jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=ftype_isdir)
+    fn = sfn.filename
+    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(file_registered.producer, 'msinstrument'): 
+        singlefile_qc(sfn.rawfile, sfn)
 
 
 def file_transferred(request):
