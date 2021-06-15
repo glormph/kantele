@@ -328,7 +328,7 @@ def get_files_transferstate(request):
             if (not AnalysisResultFile.objects.filter(sfile_id=sfn) and not
                     PDCBackedupFile.objects.filter(storedfile_id=sfn.id)):
                 # No analysis result or PDC file, then do some processing work
-                process_file_confirmed_ready(sfn)
+                process_file_confirmed_ready(rfn, sfn)
         elif sfn.filejob_set.filter(job__funcname='get_md5').exclude(job__state__in=jobutil.JOBSTATES_DONE):
             # File not checked, so either md5 check in progress, or it crashed
             tstate = 'wait'
@@ -339,17 +339,17 @@ def get_files_transferstate(request):
     return JsonResponse({'transferstate': tstate})
 
 
-def process_file_confirmed_ready(sfn):
+def process_file_confirmed_ready(rfn, sfn):
     """Processing of unzip, backup, QC after transfer has succeeded (MD5 checked)
     for newly arrived MS other raw data files (not for analysis etc)"""
-    if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
+    if hasattr(rfn.producer, 'msinstrument') and rfn.producer.msinstrument.filetype.is_folder:
         jobutil.create_job('unzip_raw_datadir', sf_id=sfn.id)
         ftype_isdir = True
     else:
         ftype_isdir = False
     jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=ftype_isdir)
     fn = sfn.filename
-    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(file_registered.producer, 'msinstrument'): 
+    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(rfn.producer, 'msinstrument'): 
         singlefile_qc(sfn.rawfile, sfn)
 
 
