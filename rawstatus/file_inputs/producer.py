@@ -1,30 +1,59 @@
+'''
+Script to MD5, register, and upload files to Kantele system
+
+
+Usecases:
+    - Instrument auto upload using an API key
+        python upload.py --client abc123 --watch_folder /path/to/outbox
+    - User big file uploads -  python upload.py --token abc123 --file /path/to/file
+      - login, get token for upload, run script
+    - User lots of files - python upload.py --token abc123 --watch_folder /path/to/outbox
+    - Libfile uploads -  python upload.py --token abc123 --libfile /path/to/file
+      - as user big file
+      - gets turned into libfile
+    - Microscopy uploads (have a bat script for unknowing users) :
+      - python upload.py --client abc123 --watch_folder /path/to outbox
+      - as instrument only need backup
+    - Seq. backup bunch of FASTQ uploads, encrypt (login first for token, specify SENS, batch of files)
+      upload.py --token abc123 --watch_folder /path/to/outbox --keyfile .ssh/key 
+
+Views where you get token should be:
+    - showing the current uploads, i.e. admin page for file input
+    - instrument installation thing
+    - upload script install download
+    - browser upload, is_libfile, or get token
+'''
+
+
+
 import sys
 import logging
 import logging.handlers
 import os
+import argparse
 import json
 import hashlib
 import requests
 import subprocess
 import shutil
+from base64 import b64decode
 from urllib.parse import urljoin
 from time import sleep
 from multiprocessing import Process, Queue, set_start_method, TimeoutError
-from signal import SIGKILL
 from queue import Empty
 
 LEDGERFN = 'ledger.json'
-UPLOAD_FILETYPE_ID = os.environ.get('FILETYPE_ID')
-KANTELEHOST = os.environ.get('KANTELEHOST')
+# TODO change to find dynacmically?
 RAW_IS_FOLDER = int(os.environ.get('RAW_IS_FOLDER')) == 1
-OUTBOX = os.environ.get('OUTBOX', False)
-ZIPBOX = os.environ.get('ZIPBOX')
-DONEBOX = os.environ.get('DONEBOX')
-CLIENT_ID = os.environ.get('CLIENT_ID')
+
+STD_OUTBOX = os.environ.get('OUTBOX', False)
+STD_ZIPBOX = os.environ.get('ZIPBOX')
+STD_DONEBOX = os.environ.get('DONEBOX')
 KEYFILE = os.environ.get('KEYFILE')
 SCP_FULL = os.environ.get('SCP_FULL')
 HOSTNAME = os.environ.get('HOSTNAME')
-
+KANTELEHOST = os.environ.get('KANTELEHOST')
+UPLOAD_FILETYPE_ID = os.environ.get('FILETYPE_ID')
 
 def zipfolder(folder, arcname):
     print('zipping {} to {}'.format(folder, arcname))
@@ -39,13 +68,18 @@ def md5(fnpath):
     return hash_md5.hexdigest()
 
 
-def get_new_file_entry(fn):
+
+
+def get_new_file_entry(fn, ftype=False):
+    if not ftype and not UPLOAD_FILETYPE_ID:
+        print('Exiting, no file type was specified')
+        sys.exit(1)
     return {'fpath': fn, 'fname': os.path.basename(fn),
-            'md5': False, 'ftype_id': UPLOAD_FILETYPE_ID,
+            'md5': False, 'ftype_id': ftype or UPLOAD_FILETYPE_ID,
             'fn_id': False,
             'prod_date': str(os.path.getctime(fn)),
             'size': os.path.getsize(fn),
-            'is_dir': RAW_IS_FOLDER,
+            'is_dir': RAW_IS_FOLDER or os.path.isdir(fn),
             'transferred': False}
             #'remote_checking': False, 'remote_ok': False}
 
@@ -83,7 +117,8 @@ def get_fndata_id(fndata):
     return '{}__{}'.format(fndata['prod_date'], fndata['size'])
 
 
-def instrument_collector(regq, fndoneq, logq, ledger):
+def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox):
+    # FIXME stop watching if this is a token upload
     """Runs as process, periodically checks outbox,
     runs MD5 on newly discovered files,
     process own ledger is kept for new file adding,
@@ -92,13 +127,13 @@ def instrument_collector(regq, fndoneq, logq, ledger):
     proc_log_configure(logq)
     logger = logging.getLogger(f'{HOSTNAME}.producer.inboxcollect')
     while True:
-        logger.info('Checking new file inbox')
         while fndoneq.qsize():
             # These files will have been removed from outbox
             cts_id = fndoneq.get()
             if cts_id in ledger:
                 del(ledger[cts_id])
-        for fn in [os.path.join(OUTBOX, x) for x in os.listdir(OUTBOX)]:
+        logger.info(f'Checking for new files in {outbox}')
+        for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
             # create somewhat unique identifier to filter against existing entries
             fndata = get_new_file_entry(fn)
             ct_size = get_fndata_id(fndata)
@@ -108,7 +143,9 @@ def instrument_collector(regq, fndoneq, logq, ledger):
                 ledger[ct_size] = fndata
         for produced_fn in ledger.values():
             if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
-                zipname = os.path.join(ZIPBOX, os.path.basename(produced_fn['fpath']))
+                if not os.path.exists(zipbox):
+                    os.makedirs(zipbox)
+                zipname = os.path.join(zipbox, os.path.basename(produced_fn['fpath']))
                 produced_fn['nonzipped_path'] = produced_fn['fpath']
                 produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
             if not produced_fn['md5']:
@@ -119,20 +156,8 @@ def instrument_collector(regq, fndoneq, logq, ledger):
                     continue
                 else:
                     regq.put(produced_fn)
-        sleep(2)
+        sleep(5)
 
-
-def worker_watcher(mainq, pids):
-    """Future: use something like this in case you have more than one process and
-    a main, this kills all processes when a single non-alive is found"""
-    quit = False
-    while True:
-        try:
-            mainq.get(timeout=5)
-        except (TimeoutError, Empty, ValueError):
-            print('Main loop crashed, killing all processes')
-            [os.kill(pid, SIGKILL) for pid in pids]
-            break
 
 def proc_log_configure(queue):
     handler = logging.handlers.QueueHandler(queue)
@@ -162,7 +187,8 @@ def log_listener(log_q):
             logger.handle(logrec)
 
 
-def register_and_transfer(regq, regdoneq, logqueue, ledger):
+def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file_id, client_id):
+    # FIXME where to do library check? In register process I guess.
     '''This process does the registration and the transfer of files'''
     # Start getting the leftovers from previous run
     fnstate_url = urljoin(KANTELEHOST, 'files/transferstate/')
@@ -184,7 +210,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger):
             try:
                 resp = register_file(KANTELEHOST, 'files/register/', fndata['fname'],
                         fndata['md5'], fndata['size'], fndata['prod_date'], 
-                        CLIENT_ID, claimed=False)
+                        client_id, claimed=False)
             except requests.exceptions.ConnectionError:
                 logger.error('Cannot connect to kantele server')
                 # no server, try again later
@@ -196,15 +222,21 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger):
                     fndata['fn_id'] = resp_j['file_id']
                 else:
                     logger.error('Could not register file, error code {}, please check with admin'.format(resp.status_code))
-        # Persist state of MD5/fn_ids to disk
+        # Persist state of zipped/MD5/fn_ids to disk
         if newfns_found:
             save_ledger(ledger, LEDGERFN)
 
         # Now find what to do with all registered files and do it
         scpfns, ledgerchanged = [], False
-        for cts_id, fnid, fndata in [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]:
+        if single_file_id and ledger[single_file_id]['fn_id']:
+            to_process = [(single_file_id, ledger[single_file_id]['fn_id'], ledger[single_file_id])]
+        elif single_file_id:
+            to_process = []
+        else:
+            to_process = [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]
+        for cts_id, fnid, fndata in to_process:
             try:
-                resp = requests.post(fnstate_url, json={'fnid': fnid, 'client_id': CLIENT_ID})
+                resp = requests.post(fnstate_url, json={'fnid': fnid, 'client_id': client_id})
             except requests.exceptions.ConnectionError:
                 logger.error('Cannot connect to kantele server, will retry')
                 # try again later
@@ -227,16 +259,21 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger):
                     file_done = fndata['nonzipped_path']
                 else:
                     file_done = fndata['fpath']
-                donepath = os.path.join(DONEBOX, fndata['fname'])
-                try:
-                    shutil.move(file_done, donepath)
-                except FileNotFoundError:
-                    logger.warning(f'Could not move {file_done} from outbox to {donepath}')
-                    raise
-                finally:
-                    del(ledger[cts_id])
-                    regdoneq.put(cts_id)
+                if donebox:
+                    donepath = os.path.join(donebox, fndata['fname'])
+                    try:
+                        shutil.move(file_done, donepath)
+                    except FileNotFoundError:
+                        logger.warning(f'Could not move {file_done} from outbox to {donepath}')
+                        raise
+                    finally:
+                        regdoneq.put(cts_id)
+                del(ledger[cts_id])
                 ledgerchanged = True
+                if single_file_id:
+                    # Quit loop for single file
+                    # FIXME quit higher loop!
+                    break
             elif result['transferstate'] == 'transfer':
                 scpfns.append((cts_id, fndata))
             else:
@@ -263,7 +300,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger):
                         fndata['transferred'] = True
                         trf_data = {'fn_id': fndata['fn_id'],
                                 'filename': fndata['fname'],
-                                'client_id': CLIENT_ID,
+                                'client_id': client_id,
                                 'ftype_id': fndata['ftype_id'],
                                 }
                         resp = requests.post(url=trfed_url, data=trf_data)
@@ -295,60 +332,87 @@ def main():
     # in both main process and worker process.
     set_start_method('spawn')
 
+    # backup-only, sensitive data is specified by DB on the host when getting a token!
+    parser = argparse.ArgumentParser(description='File uploader')
+    parser.add_argument('--watch_folder', dest='outbox', default=False, type=str,
+            help='Outbox folder to watch if any')
+    parser.add_argument('--file', dest='file', default=False, type=str, help='File to upload')
+    parser.add_argument('--library_description', type=str, dest='libdesc', default=False,
+            help='In case you want a library file to be uploaded (will be shared for analysis), '
+            'provide its description here (in quotes)')
+    parser.add_argument('--client', type=str, dest='client_id', default=False,
+            help='Client ID for instrument')
+    args = parser.parse_args()
+    outbox = args.outbox or STD_OUTBOX
+
     mainq = Queue()
     regdoneq = Queue()
     regq = Queue()
     logqueue = Queue()
-    logproc = Process(target=log_listener, args=(logqueue,))
-    logproc.start()
+
     try:
         with open(LEDGERFN) as fp:
             ledger = json.load(fp)
     except IOError:
         ledger = {}
-    # FIXME no ledger for upload_libfile please, stateless is better there
-    # make sure this is passed to register_p i.e ledger = False
-    register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger))
-    register_p.start()
-    processes = [logproc, register_p]
-    # FIXME this is a bit clunky, outbox parametrization could be done on cmd line
-    # what if you hav it env specified but then want to upload a libfile?
-    if OUTBOX:
+    # FIXME no ledger for single file upload?
+    # stateless is better there in case of crash or something
+    # But say you have a single file big zip, and prefer not to re-zip after an SCP failure,
+    # then it is nice with a ledger
+
+    if not args.client_id:
+        webtoken = input('Please provide token from web interface: ').strip()
+        try:
+            token, filetype_id, kantelehost = b64decode(webtoken).decode('utf-8').split('|')
+        except ValueError:
+            print('Incorrect token')
+            sys.exit(1)
+
+    if outbox:
+        donebox = STD_DONEBOX or os.path.join(outbox, os.path.pardir, 'donebox')
+        zipbox = STD_ZIPBOX or os.path.join(outbox, os.path.pardir, 'zipbox')
+        single_file_id = False
         # for instruments, setup collection/MD5 process
         # otherwise we use a single shot MD5er
-        if not os.path.exists(OUTBOX):
-            os.makedirs(OUTBOX)
-        if not os.path.exists(DONEBOX):
-            os.makedirs(DONEBOX)
-        if ZIPBOX is not None and not os.path.exists(ZIPBOX):
-            os.makedirs(ZIPBOX)
-        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger))
-        processes.append(collect_p)
+        if not os.path.exists(outbox):
+            os.makedirs(outbox)
+        if not os.path.exists(donebox):
+            os.makedirs(donebox)
+        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger, outbox, zipbox))
+        processes = [collect_p]
         collect_p.start()
-    else:
-        # FIXME where to do library check? In register process I guess.
+    elif args.file:
         # Single file upload
-        fnpath = sys.argv[1]
-        description = sys.argv[2]
-        fndata = get_new_file_entry(fnpath)
-        if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
-            zipname = os.path.join(ZIPBOX, os.path.basename(produced_fn['fpath']))
-            produced_fn['nonzipped_path'] = produced_fn['fpath']
-            produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
-            if not produced_fn['md5']:
-                try:
-                    produced_fn['md5'] = md5(produced_fn['fpath'])
-                except FileNotFoundError:
-                    logger.warning('Could not find file specified to check MD5')
-                else:
-                    regq.put(produced_fn)
-    # Not sure if necessary, spawn method seems to kill processes when main goes down
-    # at least on linux, test on windows
-    watch_p = Process(target=worker_watcher, args=(mainq, [x.pid for x in processes]))
-    watch_p.start()
+        donebox = False
+        # check if it is in ledger, use that then
+        # TODO add question -- should we use ledger
+        fndata = get_new_file_entry(args.file)
+        single_file_id = get_fndata_id(fndata)
+        if single_file_id in ledger:
+            fndata = ledger[single_file_id]
+        if fndata['is_dir'] and 'nonzipped_path' not in fndata:
+            zipname = os.path.join(zipbox, os.path.basename(fndata['fpath']))
+            fndata['nonzipped_path'] = fndata['fpath']
+            fndata['fpath'] = zipfolder(fndata['fpath'], zipname)
+        if not fndata['md5']:
+            try:
+                fndata['md5'] = md5(fndata['fpath'])
+            except FileNotFoundError:
+                logger.warning('Could not find file specified to check MD5')
+            else:
+                regq.put(fndata)
+        processes = []
+    else:
+        print('No input files or outbox to watch was specified, exiting')
+        sys.exit(1)
+    register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger, donebox, single_file_id, args.client_id))
+    register_p.start()
+    logproc = Process(target=log_listener, args=(logqueue,))
+    logproc.start()
+    processes.extend([logproc, register_p])
     quit = False
     while True:
-        for p in processes + [watch_p]:
+        for p in processes:
             if not p.is_alive():
                 print(f'Crash detected in {p}, exiting')
                 quit = True
@@ -357,13 +421,9 @@ def main():
             break
         mainq.put('heartbeat')
         sleep(2)
-    for p in processes + [watch_p]:
+    for p in processes:
         p.terminate()
-    # Join the spawned processes before exit, possibly not needed?
-    logproc.join()
-    collect_p.join()
-    register_p.join()
-    watch_p.join()
+        p.join()
 
 
 if __name__ == '__main__':
