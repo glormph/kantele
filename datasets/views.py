@@ -422,22 +422,18 @@ def update_dataset(data):
             'prefractionationlength').get()
     except models.PrefractionationDataset.DoesNotExist:
         pfds = False
-    hrf_id, hiph_id = get_prefrac_ids()
-    if not pfds and not data['prefrac_id']:
-        pass
-    elif not pfds and data['prefrac_id']:
-        save_dataset_prefrac(dset.id, data, hrf_id)
+    if not pfds and data['prefrac_id']:
+        save_dataset_prefrac(dset.id, data)
     elif pfds and not data['prefrac_id']:
         models.PrefractionationDataset.objects.get(
             dataset_id=data['dataset_id']).delete()
-    else:
-        update_dataset_prefrac(pfds, data, hrf_id)
-    dtype = get_datatype(data['datatype_id'])
-    prefrac = get_prefrac(data['prefrac_id'])
-    qprot_id = get_quantprot_id()
-    new_storage_loc = get_storage_location(project, experiment, dset.runname,
-                                           qprot_id, hrf_id, dtype, prefrac,
-                                           data)
+    elif pfds and data['prefrac_id']:
+        update_dataset_prefrac(pfds, data)
+    dtype = models.Datatype.objects.get(pk=data['datatype_id'])
+    prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
+    hrrange = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
+    new_storage_loc = set_storage_location(project, experiment, dset.runname,
+                                           dtype, prefrac, hrrange)
     if (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
         create_job('rename_storage_loc', dset_id=dset.id, srcpath=dset.storage_loc,
@@ -476,29 +472,22 @@ def get_prefrac_ids():
             models.Prefractionation.objects.get(name__icontains='high_pH').id)
             
 
-
 def get_quantprot_id():
     return models.Datatype.objects.get(name__icontains='quantitative').id
 
 
-def get_prefrac(pfid):
-    if pfid:
-        return models.Prefractionation.objects.get(pk=pfid)
-    return False
-
-
-def get_datatype(dtype_id):
-    return models.Datatype.objects.get(pk=dtype_id)
-
-
-def get_storage_location(project, exp, runname, quantprot_id, hrf_id, dtype,
-                         prefrac, postdata):
+def set_storage_location(project, exp, runname, dtype, prefrac, hiriefrange_id):
+    """
+    Governs rules for storage path naming of datasets.
+    Project name is always top level, this is also used in jobs/views: renamed_project
+    """
+    quantprot_id = get_quantprot_id()
     subdir = ''
-    if postdata['datatype_id'] != quantprot_id:
+    if dtype.pk != quantprot_id:
         subdir = dtype.name
-    if prefrac and prefrac.id == hrf_id:
+    if prefrac and hiriefrange_id:
         subdir = os.path.join(subdir, models.HiriefRange.objects.get(
-            pk=postdata['hiriefrange']).get_path())
+            pk=hiriefrange_id).get_path())
     elif prefrac:
         subdir = os.path.join(prefrac.name)
     subdir = re.sub('[^a-zA-Z0-9_\-\/\.]', '_', subdir)
@@ -597,21 +586,19 @@ def get_or_create_qc_dataset(data):
 
 
 def save_new_dataset(data, project, experiment, runname, user_id):
-    hrf_id, hiph_id = get_prefrac_ids()
-    dtype = get_datatype(data['datatype_id'])
-    prefrac = get_prefrac(data['prefrac_id'])
-    qprot_id = get_quantprot_id()
+    dtype = models.Datatype.objects.get(pk=data['datatype_id'])
+    prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
+    hrrange = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
     dset = models.Dataset(date=timezone.now(),
                           runname_id=runname.id,
-                          storage_loc=get_storage_location(
-                              project, experiment, runname, qprot_id, hrf_id,
-                              dtype, prefrac, data),
+                          storage_loc=set_storage_location(
+                              project, experiment, runname, dtype, prefrac, hrrange),
                           datatype=dtype)
     dset.save()
     dsowner = models.DatasetOwner(dataset=dset, user_id=user_id)
     dsowner.save()
     if data['prefrac_id']:
-        save_dataset_prefrac(dset.id, data, hrf_id)
+        save_dataset_prefrac(dset.id, data)
     if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
         dset_mail = models.ExternalDatasetContact(dataset=dset,
                                                  email=data['externalcontact'])
@@ -897,7 +884,8 @@ def save_dataset(request):
     return JsonResponse({'dataset_id': dset.id})
 
 
-def save_dataset_prefrac(dset_id, data, hrf_id):
+def save_dataset_prefrac(dset_id, data):
+    hrf_id, hiph_id = get_prefrac_ids()
     pfds = models.PrefractionationDataset(
         dataset_id=dset_id, prefractionation_id=data['prefrac_id'])
     pfds.save()
@@ -915,7 +903,8 @@ def update_prefrac_len(pfds, data):
     pass
 
 
-def update_dataset_prefrac(pfds, data, hrf_id):
+def update_dataset_prefrac(pfds, data):
+    hrf_id, hiph_id = get_prefrac_ids()
     if pfds.prefractionation_id != data['prefrac_id']:
         if pfds.prefractionation_id == hrf_id:
             models.HiriefDataset.objects.filter(pfdataset=pfds).delete()
