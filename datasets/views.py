@@ -865,7 +865,7 @@ def save_dataset(request):
             except models.Experiment.DoesNotExist:
                 experiment = models.Experiment(name=settings.LCEXPNAME, project=project)
                 experiment.save()
-            runname = models.RunName(name=settings.LCEXPNAME, experiment=experiment)
+            runname = models.RunName(name=data['runname'], experiment=experiment)
         else:
             if 'newexperimentname' in data:
                 experiment = models.Experiment(name=data['newexperimentname'],
