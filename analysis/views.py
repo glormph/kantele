@@ -543,15 +543,18 @@ def store_analysis(request):
 
     # store parameter files
     # TODO remove single/multifiles distinction when no longer in use in home etc
+    # Delete multifiles from old analysis and any old params that are not in request
     am.AnalysisFileParam.objects.filter(analysis=analysis).exclude(
-            param_id__in={**req['singlefiles'], **req['multifiles']}).delete()
+            param_id__in=req['singlefiles']).delete()
     for pid, sfid in req['singlefiles'].items():
         afp, created = am.AnalysisFileParam.objects.update_or_create(defaults={'sfile_id': sfid}, analysis=analysis, param_id=pid)
         jobinputs['singlefiles'][afp.param.nfparam] = sfid
+    # Re-create multifiles, they cannot be updated since all files map to analysis/param_id
+    # resulting in only a single row in DB
     for pid, sfids in req['multifiles'].items():
         for sfid in sfids:
-            afp, created = am.AnalysisFileParam.objects.update_or_create(
-                    defaults={'sfile_id': sfid}, analysis=analysis, param_id=pid)
+            afp = am.AnalysisFileParam.objects.create(sfile_id=sfid,
+                    analysis=analysis, param_id=pid)
             try:
                 jobinputs['multifiles'][afp.param.nfparam].append(sfid)
             except KeyError:
