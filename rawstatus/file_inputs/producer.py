@@ -299,7 +299,9 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file
                     else:
                         fndata['transferred'] = True
                         trf_data = {'fn_id': fndata['fn_id'],
-                                'filename': fndata['fname'],
+                                # use fpath/basename instead of fname, to get the
+                                # zipped file name if needed, instead of the normal fn 
+                                'filename': os.path.basename(fndata['fpath']),
                                 'client_id': client_id,
                                 'ftype_id': fndata['ftype_id'],
                                 }
