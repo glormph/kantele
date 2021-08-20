@@ -96,20 +96,19 @@ onMount(async() => {
 
     <div class="content">
       <p class="has-text-weight-bold">Input files</p>
-      {#each analysis.invocation.files as {param, fn, fnid, desc, parentanalysis, anid}}
-        {#if parentanalysis}
-        <p><code>{param}</code> from <a target="_blank" href={`#/analyses?ids=${anid}`}>{parentanalysis}</a> ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )</p>
-        {:else}
-        <p><code>{param}</code> {desc} ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )</p>
-        {/if}
-      {/each}
-      {#each analysis.invocation.multifiles as multif}
-      <div>
-        <code>{multif[0]}</code> 
-        {#each multif[1] as {fn, fnid, desc, parentanalysis, anid}}
-        <div>{desc} ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )</div>
+      {#each analysis.invocation.files as {param, multif}}
+      <p>
+        <code>{param}</code> 
+        {#each multif as {fn, fnid, desc, parentanalysis, anid}}
+        <div>
+          {#if parentanalysis}
+          from <a target="_blank" href={`#/analyses?ids=${anid}`}>{parentanalysis}</a> ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )
+          {:else}
+          {desc} ( <a href={`#/files?ids=${fnid}`}>{fn}</a> )
+          {/if}
+        </div>
         {/each}
-      </div>
+      </p>
       {/each}
     </div>
 

@@ -30,6 +30,7 @@ from analysis.models import (Analysis, LibraryFile, AnalysisResultFile, Nextflow
 from datasets import views as dsviews
 from datasets import models as dsmodels
 from dashboard import models as dashmodels
+from jobs import models as jm
 from jobs import jobs as jobutil
 
 
@@ -323,13 +324,25 @@ def get_files_transferstate(request):
     else:
         sfn = sfns.get()
         if sfn.checked:
-            # File transfer finished
+            # File transfer and check finished
             tstate = 'done'
             if (not AnalysisResultFile.objects.filter(sfile_id=sfn) and not
                     PDCBackedupFile.objects.filter(storedfile_id=sfn.id)):
                 # No analysis result or PDC file, then do some processing work
                 process_file_confirmed_ready(rfn, sfn)
-        elif sfn.filejob_set.filter(job__funcname='get_md5').exclude(job__state__in=jobutil.JOBSTATES_DONE):
+        # elif sfn.filejob_set.filter(job__funcname='get_md5').exclude(job__state__in=jobutil.JOBSTATES_DONE):
+        # FIXME this is too hardcoded data model which will be changed one day,
+        # needs to be in Job class abstraction!
+        elif jm.Job.object.filter(funcname='get_md5', kwargs={'sf_id': sfn.pk,
+                'source_md5': rfn.source_md5}):
+            # this did not work when doing filejob_set.filter (above) ?
+            # A second call to this route would fire the md5 again,
+            # until the file was checked. But in theory it'd work, and by hand too.
+            # Maybe a DB or cache thing, however 3seconds between calls should be enough?
+            # Maybe NGINX caches stuff, add some sort of no-cache into the header of request in client producer.py
+            # auto update producer would be nice, when it calls server at intervals, then downloads_automaticlly
+            # a new version of itself?
+
             # File not checked, so either md5 check in progress, or it crashed
             tstate = 'wait'
         else:

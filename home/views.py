@@ -519,10 +519,7 @@ def get_analysis_invocation(ana):
             fnmap[x['param__nfparam']] = [fninfo]
     invoc = {'files': [], 'multifiles': [], 'params': []}
     for param, fninfos in fnmap.items():
-        if len(fninfos) == 1:
-            invoc['files'].append({'param': param, **fninfos[0]})
-        else:
-            invoc['multifiles'].append([{'param': param, **fninfo} for fninfo in fninfos])
+        invoc['files'].append({'param': param, 'multif': fninfos})
     allp_options = {}
     for x in anmodels.Param.objects.filter(ptype='multi'):
         for opt in x.paramoption_set.all():
