@@ -705,6 +705,7 @@ def download_instrument_package(request):
         'host': settings.KANTELEHOST,
         'key': settings.TMP_STORAGE_KEYFILE,
         'scp_full': settings.TMP_SCP_PATH,
+        'producerhostname': prod.name,
         })
 
     if 'configonly' in request.POST and request.POST['configonly'] == 'true':
