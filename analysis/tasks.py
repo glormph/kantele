@@ -173,6 +173,7 @@ def stage_files(stagedir, stagefiles, params=False):
         stagefiledir = os.path.join(stagedir, flag.replace('--', ''))
         if not os.path.exists(stagefiledir):
             os.makedirs(stagefiledir)
+        not_needed_files = set(os.listdir(stagefiledir))
         if len(files) > 1:
             dst = os.path.join(stagefiledir, '*')
         else:
@@ -183,6 +184,10 @@ def stage_files(stagedir, stagefiles, params=False):
         for fdata in files:
             fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
             fdst = os.path.join(stagefiledir, fdata[2])
+            try:
+                not_needed_files.pop(fdata[2])
+            except KeyError:
+                pass
             if os.path.exists(fdst) and not os.path.isdir(fpath) and os.path.getsize(fdst) == os.path.getsize(fpath):
                 # file already there
                 continue
@@ -196,6 +201,13 @@ def stage_files(stagedir, stagefiles, params=False):
                 shutil.copytree(fpath, fdst)
             else:
                 shutil.copy(fpath, fdst)
+        # Remove obsolete files from stage-file-dir
+        for fn in not_needed_files:
+            fpath = os.path.join(stagefiledir, fn)
+            if os.path.isdir(fpath):
+                shutil.rmtree(fpath)
+            else:
+                shutil.remove(fpath)
     return params
 
 
