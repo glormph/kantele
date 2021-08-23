@@ -12,7 +12,7 @@ class PrincipalInvestigator(models.Model):
 
 
 class Project(models.Model):
-    name = models.TextField()
+    name = models.TextField(unique=True)
     pi = models.ForeignKey(PrincipalInvestigator, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
     registered = models.DateTimeField(auto_now_add=True)
