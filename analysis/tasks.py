@@ -185,7 +185,7 @@ def stage_files(stagedir, stagefiles, params=False):
             fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
             fdst = os.path.join(stagefiledir, fdata[2])
             try:
-                not_needed_files.pop(fdata[2])
+                not_needed_files.remove(fdata[2])
             except KeyError:
                 pass
             if os.path.exists(fdst) and not os.path.isdir(fpath) and os.path.getsize(fdst) == os.path.getsize(fpath):
