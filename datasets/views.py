@@ -650,6 +650,89 @@ def move_project_cold(request):
 
 
 @login_required
+@require_POST
+def merge_projects(request):
+    """
+    Takes list of projects and:
+    - check if datasets are owned by user
+    - check if no name collisions in experiments
+      - if yes, check if no name collisions in experiment__runname
+    - queue job to merge projects to the earliest/oldest project
+    """
+    data = json.loads(request.body.decode('utf-8'))
+    if 'projids' not in data:
+        return JsonResponse({'error': 'Incorrect request'}, status=400)
+    if len(data['projids']) < 2:
+        return JsonResponse({'error': 'Must select multiple projects to merge'}, status=400)
+    projs = models.Project.objects.filter(pk__in=data['projids']).order_by('registered')
+    for proj in projs[1:]:
+        # Refresh oldexps with every merged project
+        oldexps = {x.name: x for x in projs[0].experiment_set.all()}
+        dsets = models.Dataset.objects.filter(runname__experiment__project=proj)
+        if not all(check_ownership(request.user, ds) for ds in dsets):
+            return JsonResponse({'error': f'You do not have the rights to move all datasets in project {proj.name}'}, status=403)
+        for exp in proj.experiment_set.all():
+            runnames_pks = [x.pk for x in exp.runname_set.all()]
+            runnames = models.RunName.objects.filter(pk__in=runnames_pks)
+            try:
+                if exp.name not in oldexps:
+                    exp.project = projs[0]
+                    exp.save()
+                    print(f'Experiment {exp.pk} moved to project {projs[0].pk} from project {proj.pk}')
+                else:
+                    runnames.update(experiment=oldexps[exp.name])
+                    print(f'Runnames of experiment {exp.pk} moved to exp. {oldexps[exp.name].pk}')
+                    exp.delete()
+                    exp = oldexps[exp.name]
+            except IntegrityError:
+                # Unique indexes exist for project, experiment, runnames
+                msg = 'Experiments/runnames collisions within merge'
+                return JsonResponse({'error': msg}, status=500)
+            # Update dset storage_loc field in DB
+            for runname in runnames:
+                dset = runname.dataset
+                pfds = dset.prefractionationdataset if hasattr(dset, 'prefractionationdataset') else False
+                prefrac = pfds.prefractionation if pfds else False
+                hrrange = pfds.hiriefdataset.hirief if hasattr(pfds, 'hiriefdataset') else False
+                new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange)
+                create_job('rename_storage_loc', dset_id=dset.id,
+                        srcpath=dset.storage_loc, dstpath=new_storage_loc)
+                dset.storage_loc = new_storage_loc
+                dset.save()
+            # Also, should we possibly NOT chaneg anything here but only check pre the job, then merge after job complete?
+            # In case of waiting times, job problems, etc? Prob doesnt matter much.
+    return JsonResponse({})
+
+
+@login_required
+@require_POST
+def rename_project(request):
+    """
+    Rename project in database, jobs queued to move all data to new name
+    """
+    data = json.loads(request.body.decode('utf-8'))
+    try:
+        proj = models.Project.objects.get(pk=data['projid'])
+    except models.Project.DoesNotExist:
+        return JsonResponse({'error': f'Project with that ID does not exist in DB'}, status=404)
+    # check if new project not already exist, and user have permission for all dsets
+    proj_exist = models.Project.objects.filter(name=data['newname'])
+    if proj_exist.count():
+        if proj_exist.get().id == proj.id:
+            return JsonResponse({'error': f'Cannot change name to existing name for project {proj.name}'}, status=403)
+        else:
+            return JsonResponse({'error': f'There is already a project by that name {data["newname"]}'}, status=403)
+    dsets = models.Dataset.objects.filter(runname__experiment__project=proj)
+    if not all(check_ownership(request.user, ds) for ds in dsets):
+        return JsonResponse({'error': f'You do not have the rights to change all datasets in this project'}, status=403)
+    # queue jobs to rename project, update project name after that since it is needed in job for path
+    create_job('rename_top_lvl_projectdir', srcname=proj.name, newname=data['newname'], proj_id=data['projid'])
+    proj.name = data['newname']
+    proj.save()
+    return JsonResponse({})
+
+
+@login_required
 def move_project_active(request):
     data = json.loads(request.body.decode('utf-8'))
     if 'item_id' not in data or not data['item_id']:
