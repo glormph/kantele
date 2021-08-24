@@ -3,6 +3,7 @@ import re
 import os
 from datetime import datetime, timedelta
 from django.shortcuts import render
+from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.decorators import login_required
 from django.http import (JsonResponse, HttpResponse, HttpResponseNotFound,
                          HttpResponseForbidden)
@@ -44,6 +45,7 @@ def show_dataset(request, dataset_id):
 
 
 @login_required
+@require_GET
 def get_species(request):
     if 'q' in request.GET:
         query = Q(popname__icontains=request.GET['q'])
@@ -1075,6 +1077,7 @@ def empty_acquisition_json():
 
 
 @login_required
+@require_GET
 def find_files(request):
     searchterms = [x for x in request.GET['q'].split(',') if x != '']
     query = Q(name__icontains=searchterms[0])

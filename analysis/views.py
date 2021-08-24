@@ -5,9 +5,11 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from django.utils import timezone
-from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse, HttpResponseNotFound, HttpResponseNotAllowed)
+from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse,
+        HttpResponseNotFound)
 from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_GET, require_POST
 from django.shortcuts import render
 from django.db.models import Q
 
@@ -23,6 +25,7 @@ from jobs import models as jm
 
 
 @login_required
+@require_GET
 def get_analysis_init(request):
     dsids = request.GET['dsids'].split(',')
     try:
@@ -199,6 +202,7 @@ def get_analysis(request, anid):
     return render(request, 'analysis/analysis.html', context)
 
 
+@require_GET
 def check_fasta_release(request):
     dbmods = {'ensembl': am.EnsemblFasta, 'uniprot': am.UniProtFasta}
     dbstates = []
@@ -238,6 +242,7 @@ def set_protein_database_lib(request):
 
 
 @login_required
+@require_GET
 def get_allwfs(request):
     #dsids = request.GET['dsids'].split(',')
     allwfs = [{
@@ -269,6 +274,7 @@ def get_dataset_files(dsid, use_refined):
 
 
 @login_required
+@require_GET
 def get_base_analyses(request):
     if 'q' in request.GET:
         query = Q()
@@ -288,6 +294,7 @@ def get_base_analyses(request):
 
 
 @login_required
+@require_GET
 def get_datasets(request):
     """Fetches datasets to analysis"""
     dsids = request.GET['dsids'].split(',')
@@ -360,6 +367,7 @@ def get_datasets(request):
 
 
 @login_required
+@require_GET
 def get_workflow_versioned(request):
     try:
         wf = am.NextflowWfVersion.objects.get(pk=request.GET['wfvid'])
@@ -431,10 +439,9 @@ def show_analysis_log(request, nfs_id):
 
 
 @login_required
+@require_POST
 def store_analysis(request):
     """Edits or stores a new analysis"""
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     req = json.loads(request.body.decode('utf-8'))
     dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related('prefractionationdataset__prefractionation')
     if dsetquery.filter(deleted=True).exists():

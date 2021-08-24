@@ -4,6 +4,7 @@ from celery import states as tstates
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_GET
 from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.db.models import Q, Sum, Max, Count
@@ -25,6 +26,7 @@ from jobs import models as jm
 
 
 @login_required
+@require_GET
 def home(request):
     """Returns home view with Vue apps that will separately request"""
     context = {'tab': request.GET['tab'] if 'tab' in request.GET else 'datasets',
@@ -37,6 +39,7 @@ def home(request):
 
 
 @login_required
+@require_GET
 def find_projects(request):
     searchterms = [x for x in request.GET['q'].split(',') if x != '']
     dsquery = Q(runname__name__icontains=searchterms[0])
@@ -60,6 +63,7 @@ def find_projects(request):
 
 
 @login_required
+@require_GET
 def find_datasets(request):
     """Loop through comma-separated q-param in GET, do a lot of OR queries on
     datasets to find matches. String GET-derived q-params by AND."""
@@ -98,6 +102,7 @@ def find_datasets(request):
 
 
 @login_required
+@require_GET
 def find_analysis(request):
     """Loop through comma-separated q-param in GET, do a lot of OR queries on
     analysis to find matches. String GET-derived q-params by AND."""
@@ -118,6 +123,7 @@ def find_analysis(request):
 
 
 @login_required
+@require_GET
 def show_analyses(request):
     if 'ids' in request.GET:
         ids = request.GET['ids'].split(',')
@@ -138,6 +144,7 @@ def show_analyses(request):
 
 
 @login_required
+@require_GET
 def show_projects(request):
     if 'ids' in request.GET:
         pids = request.GET['ids'].split(',')
@@ -156,6 +163,7 @@ def show_projects(request):
 
 
 @login_required
+@require_GET
 def show_datasets(request):
     if 'ids' in request.GET:
         dsids = request.GET['ids'].split(',')
@@ -169,6 +177,7 @@ def show_datasets(request):
 
 
 @login_required
+@require_GET
 def find_files(request):
     """Loop through comma-separated q-param in GET, do a lot of OR queries on
     datasets to find matches. String GET-derived q-params by AND."""
@@ -190,6 +199,7 @@ def find_files(request):
 
 
 @login_required
+@require_GET
 def show_files(request):
     if 'ids' in request.GET:
         fnids = request.GET['ids'].split(',')
@@ -276,6 +286,7 @@ def get_ds_jobs(dbdsets):
 
 
 @login_required
+@require_GET
 def show_jobs(request):
     items = {}
     order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR, jj.Jobstates.REVOKING] + jj.JOBSTATES_DONE},

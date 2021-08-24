@@ -1,8 +1,9 @@
 from django.http import (JsonResponse, HttpResponseForbidden, FileResponse,
-                         HttpResponse, HttpResponseNotAllowed)
+                         HttpResponse)
 from django.shortcuts import render
 from django.template import loader
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
@@ -104,9 +105,8 @@ def import_external_data(request):
 
 @login_required
 @staff_member_required
+@require_GET
 def scan_raws_tmp(request):
-    if request.method != 'GET':
-        return JsonResponse({'error': 'Must use GET'}, status=405)
     if 'dirname' not in request.GET:
         return JsonResponse({'shares': [{'id': x.id, 'name': x.name} 
             for x in ServerShare.objects.filter(name='tmp')]})
@@ -120,6 +120,7 @@ def scan_raws_tmp(request):
     return JsonResponse({'dirsfound': result, 'instruments': [(ep.id, ep.name) for ep in exprods]})
 
 
+@require_POST
 def register_file(request):
     """Treats POST requests with:
         - client_id
@@ -127,31 +128,28 @@ def register_file(request):
         - md5
         - date of production/acquisition
     """
-    if request.method == 'POST':
-        try:
-            client_id = request.POST['client_id']
-            fn, size, md5, filedate_raw = get_registration_postdetails(request.POST)
-        except KeyError as error:
-            print('POST request to register_file with missing parameter, '
-                  '{}'.format(error))
-            return HttpResponseForbidden()
-        try:
-            producer = check_producer(client_id)
-        except Producer.DoesNotExist:
-            print('POST request with incorrect client id '
-                  '{}'.format(request.POST['client_id']))
-            return HttpResponseForbidden()
-        try:
-            file_date = datetime.strftime(
-                datetime.fromtimestamp(float(filedate_raw)), '%Y-%m-%d %H:%M')
-        except ValueError as error:
-            print('POST request to register_file with incorrect formatted '
-                  'date parameter {}'.format(error))
-            return HttpResponseForbidden()
-        response = get_or_create_rawfile(md5, fn, producer, size, file_date, request.POST)
-        return JsonResponse(response)
-    else:
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    try:
+        client_id = request.POST['client_id']
+        fn, size, md5, filedate_raw = get_registration_postdetails(request.POST)
+    except KeyError as error:
+        print('POST request to register_file with missing parameter, '
+              '{}'.format(error))
+        return HttpResponseForbidden()
+    try:
+        producer = check_producer(client_id)
+    except Producer.DoesNotExist:
+        print('POST request with incorrect client id '
+              '{}'.format(request.POST['client_id']))
+        return HttpResponseForbidden()
+    try:
+        file_date = datetime.strftime(
+            datetime.fromtimestamp(float(filedate_raw)), '%Y-%m-%d %H:%M')
+    except ValueError as error:
+        print('POST request to register_file with incorrect formatted '
+              'date parameter {}'.format(error))
+        return HttpResponseForbidden()
+    response = get_or_create_rawfile(md5, fn, producer, size, file_date, request.POST)
+    return JsonResponse(response)
 
 
 def get_registration_postdetails(postdata):
@@ -209,9 +207,8 @@ def browser_userupload(request):
 
     
 @login_required
+@require_POST
 def request_token_userupload(request):
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     data = json.loads(request.body.decode('utf-8'))
     token, expiry, ufu = store_userfileupload(data['ftype_id'], request.user)
     return JsonResponse({'token': token, 'expires': expiry})
@@ -225,9 +222,8 @@ def store_userfileupload(ftype_id, user):
     return token, expiry, uupload
 
 
+@require_POST
 def register_userupload(request):
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     try:
         fn, size, md5, filedate_raw = get_registration_postdetails(request.POST)
         desc = request.POST['description']
@@ -295,7 +291,7 @@ def get_files_transferstate(request):
         fnid = data['fnid']
         client_id = data['client_id']
     except KeyError as error:
-        print('GET request to get transferstate with missing parameter, '
+        print('Request to get transferstate with missing parameter, '
               '{}'.format(error))
         return JsonResponse({'error': 'Bad request'}, status=400)
 
@@ -420,9 +416,8 @@ def file_transferred(request):
         return JsonResponse({'error': 'Bad request, must POST'}, status=400)
 
 
+@require_POST
 def upload_userfile_token(request):
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     try:
         ufile = UserFile.objects.select_related('sfile__servershare', 'sfile__rawfile', 'upload').get(
             upload__token=request.POST['token'])
@@ -453,9 +448,8 @@ def move_uploaded_file(ufile, tmpfp):
             fp.write(chunk)
 
 
+@require_GET
 def check_md5_success(request):
-    if not request.method == 'GET':
-        return HttpResponseNotAllowed(permitted_methods=['GET'])
     try:
         fn_id = request.GET['fn_id']
         ftype_id = request.GET['ftype_id']
@@ -476,9 +470,8 @@ def check_md5_success(request):
         return do_md5_check(file_transferred)
 
 
+@require_GET
 def check_md5_success_userfile(request):
-    if not request.method == 'GET':
-        return HttpResponseNotAllowed(permitted_methods=['GET'])
     try:
         fn_id = request.GET['fn_id']
         token = request.GET['token']
@@ -627,9 +620,10 @@ def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id, params):
                             params=params)
 
 
+@require_POST
 def set_libraryfile(request):
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    '''Transforms a file into a library file and queues job to move it
+    to library location (from e.g. tmp location)'''
     try:
         client_id = request.POST['client_id']
         fn_id = request.POST['fn_id']
@@ -665,9 +659,9 @@ def set_libraryfile(request):
     return JsonResponse(response)
 
 
+@require_GET
 def check_libraryfile_ready(request):
-    if not request.method == 'GET':
-        return HttpResponseNotAllowed(permitted_methods=['GET'])
+    '''Checks if libfile has been transferred to library location by a job'''
     try:
         libfn = LibraryFile.objects.select_related('sfile__servershare').get(
             sfile__rawfile_id=request.GET['fn_id'])
@@ -734,9 +728,8 @@ def getxbytes(bytes, op=50):
 
 
 @login_required
+@require_POST
 def cleanup_old_files(request):
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     if not request.user.is_staff:
         return JsonResponse({'state': 'error', 'error': 'User has no permission to retire this project, does not own all datasets in project'}, status=403)
     data = json.loads(request.body.decode('utf-8'))

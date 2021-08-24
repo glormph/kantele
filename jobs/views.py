@@ -3,9 +3,9 @@ import requests
 from datetime import datetime 
 
 from celery import states
-from django.http import (HttpResponseForbidden, HttpResponse,
-                         HttpResponseNotAllowed, JsonResponse)
+from django.http import HttpResponseForbidden, HttpResponse, JsonResponse
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from jobs import models
 from jobs.jobs import Jobstates, create_job, send_slack_message
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
@@ -30,9 +30,8 @@ def taskclient_authorized(client_id, possible_ids):
     return client_id in possible_ids
 
 
+@require_POST
 def task_failed(request):
-    if not request.method == 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     data = json.loads(request.body.decode('utf-8'))
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], settings.CLIENT_APIKEYS):
@@ -82,9 +81,8 @@ def set_md5(request):
 
 
 @login_required
+@require_POST
 def pause_job(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
         job = models.Job.objects.get(pk=req['item_id'])
@@ -107,9 +105,8 @@ def pause_job(request):
     
 
 @login_required
+@require_POST
 def resume_job(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
         job = models.Job.objects.get(pk=req['item_id'])
@@ -140,13 +137,13 @@ def revoke_job(jobid, request):
 
 
 @login_required
+@require_POST
 def delete_job(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     return revoke_job(req['item_id'], request)
 
 
+@require_POST
 def purge_storedfile(request):
     """Ran after a job has deleted a file from the filesystem, sets
     file DB entry to purged"""
@@ -163,6 +160,7 @@ def purge_storedfile(request):
     return HttpResponse()
 
 
+@require_POST
 def removed_emptydir(request):
     """Ran after a job has deleted an empty dir from the filesystem"""
     data = request.POST
@@ -175,12 +173,11 @@ def removed_emptydir(request):
     return HttpResponse()
 
 
+@require_POST
 def register_external_file(request):
     """Storedfile and rawfn update proper md5 and set checked
     Creates job to add file to dset to move file to storage.
     """
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     data = json.loads(request.body.decode('utf-8'))
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
@@ -200,6 +197,7 @@ def register_external_file(request):
     return HttpResponse()
 
 
+@require_POST
 def unzipped_folder(request):
     """Changes file name in DB after having completed unzip (remove .zip)"""
     data = request.POST
@@ -214,6 +212,7 @@ def unzipped_folder(request):
     return HttpResponse()
 
 
+@require_POST
 def created_pdc_archive(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
@@ -226,6 +225,7 @@ def created_pdc_archive(request):
     return HttpResponse()
 
 
+@require_POST
 def restored_archive_file(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
@@ -238,6 +238,7 @@ def restored_archive_file(request):
     return HttpResponse()
 
 
+@require_POST
 def created_swestore_backup(request):
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
@@ -250,7 +251,9 @@ def created_swestore_backup(request):
     return HttpResponse()
 
 
+@require_POST
 def created_mzml(request):
+    """For the three step windows convert tasks"""
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.MZMLCLIENT_APIKEY]):
@@ -264,7 +267,9 @@ def created_mzml(request):
     return HttpResponse()
 
 
+@require_POST
 def scp_mzml(request):
+    """For the three step windows convert tasks, next step is MD5"""
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.MZMLCLIENT_APIKEY]):
@@ -274,22 +279,21 @@ def scp_mzml(request):
     return HttpResponse()
 
 
+@require_POST
 def analysis_run_done(request):
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-        if ('client_id' not in data or
-                data['client_id'] not in settings.CLIENT_APIKEYS):
-            return HttpResponseForbidden()
-        if 'log' in data:
-            write_analysis_log(data['log'], data['analysis_id'])
-        if 'task' in data:
-            set_task_done(data['task'])
-        send_slack_message('{}: Analysis of {} is now finished'.format(data['user'], data['name']), 'general')
-        return HttpResponse()
-    else:
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+    data = json.loads(request.body.decode('utf-8'))
+    if ('client_id' not in data or
+            data['client_id'] not in settings.CLIENT_APIKEYS):
+        return HttpResponseForbidden()
+    if 'log' in data:
+        write_analysis_log(data['log'], data['analysis_id'])
+    if 'task' in data:
+        set_task_done(data['task'])
+    send_slack_message('{}: Analysis of {} is now finished'.format(data['user'], data['name']), 'general')
+    return HttpResponse()
 
 
+@require_POST
 def mzml_convert_or_refine_file_done(request):
     """Converted/Refined mzML file already copied to analysis result storage 
     server with MD5, fn, path. This function then queues a job to move it to 
@@ -311,29 +315,26 @@ def mzml_convert_or_refine_file_done(request):
     return HttpResponse()
 
 
+@require_POST
 def store_longitudinal_qc(request):
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-        if ('client_id' not in data or
-                data['client_id'] not in settings.CLIENT_APIKEYS):
-            return HttpResponseForbidden()
-        elif data['state'] == 'error':
-            dashviews.fail_longitudinal_qc(data)
-        else:
-            dashviews.store_longitudinal_qc(data)
-            send_slack_message('QC run for {} is now finished: {}'.format(data['instrument'], data['filename']), 'lab')
-        if 'task' in data:
-            set_task_done(data['task'])
-        return HttpResponse()
+    data = json.loads(request.body.decode('utf-8'))
+    if ('client_id' not in data or
+            data['client_id'] not in settings.CLIENT_APIKEYS):
+        return HttpResponseForbidden()
+    elif data['state'] == 'error':
+        dashviews.fail_longitudinal_qc(data)
     else:
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
+        dashviews.store_longitudinal_qc(data)
+        send_slack_message('QC run for {} is now finished: {}'.format(data['instrument'], data['filename']), 'lab')
+    if 'task' in data:
+        set_task_done(data['task'])
+    return HttpResponse()
 
 
+@require_POST
 def store_analysis_result(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(permitted_methods=['POST'])
     data = request.POST
     # create analysis file
     if ('client_id' not in data or
