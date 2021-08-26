@@ -1,8 +1,10 @@
 import os
+import json
 from datetime import datetime
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
 
+from kantele import settings
 from datasets import models as dm
 from jobs import models as jm
 
@@ -51,10 +53,13 @@ class RenameProjectTest(BaseDatasetTest):
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projid': self.p1.pk, 'newname': self.p1.name})
         self.assertEqual(resp.status_code, 403)
-        print(resp.content)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projid': self.p1.pk+1000, 'newname': 'testnewname'})
         self.assertEqual(resp.status_code, 404)
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'projid': self.p1.pk, 'newname': 'testnewname with spaces'})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn(f'cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}', json.loads(resp.content)['error'])
 
     def test_rename_ok(self):
         newname = 'testnewname'

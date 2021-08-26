@@ -99,6 +99,10 @@ LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID').split(',')]
 # local datasets
 LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID'))
 
+# Allowed characters for runs, project, experiment names
+# formatted for use in regexp 
+ALLOWED_PROJEXPRUN_CHARS = 'A-Za-z0-9-_'
+
 # external datasets
 ENSEMBL_API = 'https://rest.ensembl.org/info/software'
 # human, canonical/isoform, only swiss

@@ -348,6 +348,8 @@ def update_dataset(data):
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related(
         'runname__experiment', 'datatype').get()
     if 'newprojectname' in data:
+        if is_invalid_proj_exp_runnames(data['newprojectname']):
+            return JsonResponse({'error': f'New project name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
         project = newproject_save(data)
     else:
         project = models.Project.objects.get(pk=data['project_id'])
@@ -384,6 +386,8 @@ def update_dataset(data):
 
     newexp = False
     if 'newexperimentname' in data:
+        if is_invalid_proj_exp_runnames(data['newexperimentname']):
+            return JsonResponse({'error': f'Experiment name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
         experiment = models.Experiment(name=data['newexperimentname'],
                                        project=project)
         experiment.save()
@@ -398,8 +402,9 @@ def update_dataset(data):
             newexp = True
             dset.runname.experiment = experiment
     if data['runname'] != dset.runname.name or newexp:
+        if is_invalid_proj_exp_runnames(data['runname']):
+            return JsonResponse({'error': f'Run name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
         # Save if new experiment AND/OR new name Runname coupled 1-1 to dataset
-        print('Update data')
         dset.runname.name = data['runname']
         dset.runname.save()
     if dset.datatype_id != data['datatype_id']:
@@ -722,6 +727,8 @@ def rename_project(request):
             return JsonResponse({'error': f'Cannot change name to existing name for project {proj.name}'}, status=403)
         else:
             return JsonResponse({'error': f'There is already a project by that name {data["newname"]}'}, status=403)
+    if is_invalid_proj_exp_runnames(data['newname']):
+        return JsonResponse({'error': f'Project name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
     dsets = models.Dataset.objects.filter(runname__experiment__project=proj)
     if not all(check_ownership(request.user, ds) for ds in dsets):
         return JsonResponse({'error': f'You do not have the rights to change all datasets in this project'}, status=403)
@@ -926,6 +933,11 @@ def purge_dataset(request):
         return JsonResponse(purgemsg)
 
 
+def is_invalid_proj_exp_runnames(name):
+    """Validates any project/experiment/run names for datasets"""
+    return re.search(f'[^{settings.ALLOWED_PROJEXPRUN_CHARS}]', name)
+
+
 @login_required
 def save_dataset(request):
     data = json.loads(request.body.decode('utf-8'))
@@ -936,7 +948,11 @@ def save_dataset(request):
         print('Updating')
         return update_dataset(data)
     else:
+        if is_invalid_proj_exp_runnames(data['runname']):
+            return JsonResponse({'error': f'Run name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
         if 'newprojectname' in data:
+            if is_invalid_proj_exp_runnames(data['newprojectname']):
+                return JsonResponse({'error': f'New project name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
             project = newproject_save(data)
         else:
             try:
@@ -953,6 +969,10 @@ def save_dataset(request):
             runname = models.RunName(name=data['runname'], experiment=experiment)
         else:
             if 'newexperimentname' in data:
+                if is_invalid_proj_exp_runnames(data['newexperimentname']):
+                    return JsonResponse({
+                        'error': f'Experiment name cannot contain characters '
+                        'except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
                 experiment = models.Experiment(name=data['newexperimentname'],
                                                project_id=project.id)
                 experiment.save()
