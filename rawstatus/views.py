@@ -329,7 +329,7 @@ def get_files_transferstate(request):
         # elif sfn.filejob_set.filter(job__funcname='get_md5').exclude(job__state__in=jobutil.JOBSTATES_DONE):
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
-        elif jm.Job.object.filter(funcname='get_md5', kwargs={'sf_id': sfn.pk,
+        elif jm.Job.objects.filter(funcname='get_md5', kwargs={'sf_id': sfn.pk,
                 'source_md5': rfn.source_md5}):
             # this did not work when doing filejob_set.filter (above) ?
             # A second call to this route would fire the md5 again,
@@ -499,13 +499,14 @@ def do_md5_check(file_transferred):
             file_transferred.save()
         if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and not
                 PDCBackedupFile.objects.filter(storedfile_id=file_transferred.id)):
-            fn = file_transferred.filename
+            # Backup after transfer has succeeded (MD5 checked)
             if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
                 jobutil.create_job('unzip_raw_datadir', sf_id=file_transferred.id)
                 ftype_isdir = True
             else:
                 ftype_isdir = False
             jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id, isdir=ftype_isdir)
+            fn = file_transferred.filename
             if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(file_registered.producer, 'msinstrument'): 
                 singlefile_qc(file_transferred.rawfile, file_transferred)
         return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
