@@ -66,6 +66,32 @@ def update_storagepath_file(request):
     return HttpResponse()
 
 
+@require_POST
+def renamed_project(request):
+    """
+    After project renaming on disk, we need to set all paths of the storedfile objects
+    to the new path name, and rename the project in the DB as well.
+    """
+    data = json.loads(request.body.decode('utf-8'))
+    print('Updating storage task finished')
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.STORAGECLIENT_APIKEY, settings.ANALYSISCLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    try:
+        job = models.Job.objects.get(task__asyncid=data['task'])
+    except models.Job.DoesNotExist:
+        return HttpResponseForbidden()
+    projid, oldname, newname = job.kwargs['proj_id'], job.kwargs['srcname'], job.kwargs['newname']
+    sfs = StoredFile.objects.filter(
+            rawfile__datasetrawfile__dataset__runname__experiment__project_id=projid)
+    for sfile in sfs:
+        sfile.path = dsviews.rename_storage_loc_toplvl(newname, sfile.path)
+        sfile.save()
+    set_task_done(data['task'])
+    return HttpResponse()
+
+
+@require_POST
 def set_md5(request):
     if 'client_id' not in request.POST or not taskclient_authorized(
             request.POST['client_id'], [settings.STORAGECLIENT_APIKEY]):

@@ -7,6 +7,7 @@ urlpatterns = [
     url(r'^taskfail/$', views.task_failed, name='taskfail'),
     url(r'^retry/$', views.retry_job, name='retry'),
     url(r'^set/storagepath/$', views.update_storagepath_file, name='updatestorage'),
+    url(r'^set/projectname/$', views.renamed_project, name='renameproject'),
     url(r'^set/md5/$', views.set_md5, name='setmd5'),
     url(r'^unzipped/$', views.unzipped_folder, name='unzipped'),
     url(r'^delete/$', views.delete_job, name='deletejob'),
