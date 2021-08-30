@@ -62,7 +62,7 @@ def run_convert_mzml_nf(self, run, params, raws, **kwargs):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def rename_storage_location(self, srcpath, dstpath, sf_ids):
+def rename_dset_storage_location(self, srcpath, dstpath, dset_id, sf_ids):
     """This expects one dataset per dir, as it will rename the whole dir"""
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
     try:
@@ -81,11 +81,15 @@ def rename_storage_location(self, srcpath, dstpath, sf_ids):
             except:
                 taskfail_update_db(self.request.id)
                 raise
-    postdata = {'fn_ids': sf_ids, 'dst_path': dstpath,
-                'task': self.request.id, 'client_id': settings.APIKEY}
-    url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
+    fn_postdata = {'fn_ids': sf_ids, 'dst_path': dstpath, 
+            'client_id': settings.APIKEY}
+    ds_postdata = {'storage_loc': dstpath, 'dset_id': dset_id, 
+            'task': self.request.id, 'client_id': settings.APIKEY}
+    fnurl = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
+    dsurl = urljoin(settings.KANTELEHOST, reverse('jobs:update_ds_storage'))
     try:
-        update_db(url, json=postdata)
+        update_db(fnurl, json=fn_postdata)
+        update_db(dsurl, json=ds_postdata)
     except RuntimeError:
         # FIXME cannot move back shutil.move(dst, src)
         raise

@@ -443,11 +443,7 @@ def update_dataset(data):
                                            dtype, prefrac, hrrange)
     if (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
-        create_job('rename_storage_loc', dset_id=dset.id, srcpath=dset.storage_loc,
-                           dstpath=new_storage_loc)
-        dset.storage_loc = new_storage_loc
-    elif new_storage_loc != dset.storage_loc:
-        dset.storage_loc = new_storage_loc
+        create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
     dset.save()
     if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
         try:
@@ -483,10 +479,21 @@ def get_quantprot_id():
     return models.Datatype.objects.get(name__icontains='quantitative').id
 
 
+def rename_storage_loc_toplvl(newprojname, oldpath):
+    """Put this method here, used in post-job view renamed_project.
+    This is a good place since its functionality is tied to
+    the set_storage_location method
+    """
+    # Using .split(pathsep) because os.path.split only removes leaf,
+    # we need the first/root dir of the path
+    return os.path.join(newprojname, *oldpath.split(os.path.sep)[1:])
+
+
 def set_storage_location(project, exp, runname, dtype, prefrac, hiriefrange_id):
     """
     Governs rules for storage path naming of datasets.
-    Project name is always top level, this is also used in jobs/views: renamed_project
+    Project name is always top level, this is also used in 
+    rename_storage_loc_toplvl
     """
     quantprot_id = get_quantprot_id()
     subdir = ''
@@ -700,10 +707,8 @@ def merge_projects(request):
                 prefrac = pfds.prefractionation if pfds else False
                 hrrange = pfds.hiriefdataset.hirief if hasattr(pfds, 'hiriefdataset') else False
                 new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange)
-                create_job('rename_storage_loc', dset_id=dset.id,
-                        srcpath=dset.storage_loc, dstpath=new_storage_loc)
-                dset.storage_loc = new_storage_loc
-                dset.save()
+                create_job('rename_dset_storage_loc', dset_id=dset.id,
+                        dstpath=new_storage_loc)
             # Also, should we possibly NOT chaneg anything here but only check pre the job, then merge after job complete?
             # In case of waiting times, job problems, etc? Prob doesnt matter much.
     return JsonResponse({})
@@ -733,7 +738,7 @@ def rename_project(request):
     if not all(check_ownership(request.user, ds) for ds in dsets):
         return JsonResponse({'error': f'You do not have the rights to change all datasets in this project'}, status=403)
     # queue jobs to rename project, update project name after that since it is needed in job for path
-    create_job('rename_top_lvl_projectdir', srcname=proj.name, newname=data['newname'], proj_id=data['projid'])
+    create_job('rename_top_lvl_projectdir', newname=data['newname'], proj_id=data['projid'])
     proj.name = data['newname']
     proj.save()
     return JsonResponse({})

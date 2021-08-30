@@ -18,20 +18,20 @@ from rawstatus import jobs as rsjobs
 
 
 class RenameDatasetStorageLoc(DatasetJob):
-    refname = 'rename_storage_loc'
-    task = tasks.rename_storage_location
+    refname = 'rename_dset_storage_loc'
+    task = tasks.rename_dset_storage_location
     retryable = False
-    #print('Renaming dataset storage location job')
 
     def process(self, **kwargs):
-        """Just passthrough of arguments to task"""
-        self.run_tasks = [((kwargs['srcpath'], kwargs['dstpath'], [x.id for x in self.getfiles_query(**kwargs)]), {})]
+        """Fetch fresh storage_loc src dir here, then queue for move from there"""
+        dset = Dataset.objects.get(pk=kwargs['dset_id'])
+        if dset.storage_loc != kwargs['dstpath']:
+            self.run_tasks = [((dset.storage_loc, kwargs['dstpath'], kwargs['dset_id'], [x.id for x in self.getfiles_query(**kwargs)]), {})]
 
 
 class MoveFilesToStorage(DatasetJob):
     refname = 'move_files_storage'
     task = tasks.move_file_storage
-    #print('Moving dataset files to storage')
 
     def getfiles_query(self, **kwargs):
         return StoredFile.objects.filter(
@@ -51,12 +51,13 @@ class MoveFilesToStorage(DatasetJob):
                 'registered as transferred yet, or have non-matching MD5 sums '
                 'between their registration and after transfer from input source. '
                 'Holding this job, you may retry it when files have arrived')
+        dstpath = Dataset.objects.get(pk=kwargs['dset_id']).storage_loc
         for fn in dset_files:
             # TODO check for diff os.path.join(sevrershare, dst_path), not just
-            # path?
-            if fn.path != kwargs['dst_path']:
+            # path? Only relevant in case of cross-share moves.
+            if fn.path != dstpath:
                 self.run_tasks.append(
-                        ((fn.rawfile.name, fn.servershare.name, fn.path, kwargs['dst_path'], fn.id), {})
+                        ((fn.rawfile.name, fn.servershare.name, fn.path, dstpath, fn.id), {})
                         )
 
 

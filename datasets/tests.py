@@ -29,7 +29,7 @@ class BaseDatasetTest(TestCase):
         self.exp1 = dm.Experiment.objects.create(name='e1', project=self.p1)
         self.run1 = dm.RunName.objects.create(name='run1', experiment=self.exp1)
         self.ds1 = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run1,
-                datatype=self.dtype, storage_loc='testloc1')
+                datatype=self.dtype, storage_loc='testloc1/path/to/file')
         own1 = dm.DatasetOwner.objects.create(dataset=self.ds1, user=self.user)
 
 
@@ -67,7 +67,7 @@ class RenameProjectTest(BaseDatasetTest):
                 data={'projid': self.p1.pk, 'newname': newname})
         self.assertEqual(resp.status_code, 200)
         renamejobs = jm.Job.objects.filter(funcname='rename_top_lvl_projectdir',
-                kwargs={'proj_id': self.p1.pk, 'newname': newname, 'srcname': self.p1.name}) 
+                kwargs={'proj_id': self.p1.pk, 'newname': newname}) 
         self.assertEqual(renamejobs.count(), 1)
         self.p1.refresh_from_db()
         self.assertEqual(self.p1.name, newname)
@@ -130,13 +130,13 @@ class MergeProjectsTest(BaseDatasetTest):
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
         self.assertEqual(resp.status_code, 200)
+        oldstorloc = ds2.storage_loc
         ds2.refresh_from_db()
         self.assertEqual(ds2.runname.experiment.project, self.ds1.runname.experiment.project)
-        self.assertEqual(ds2.storage_loc,
-                os.path.join(self.p1.name, self.exp2.name, self.dtype.name, run2.name))
-        renamejobs = jm.Job.objects.filter(funcname='rename_storage_loc') 
-        ds2jobs = renamejobs.filter(kwargs={'dset_id': ds2.pk, 'srcpath': oldstorloc,
-            'dstpath': ds2.storage_loc})
+        self.assertEqual(ds2.storage_loc, oldstorloc)
+        renamejobs = jm.Job.objects.filter(funcname='rename_dset_storage_loc') 
+        ds2jobs = renamejobs.filter(kwargs={'dset_id': ds2.pk,
+            'dstpath': os.path.join(self.p1.name, self.exp2.name, self.dtype.name, run2.name)})
         self.assertEqual(ds2jobs.count(), 1)
         self.assertEqual(renamejobs.count(), 1)
 
@@ -146,7 +146,7 @@ class MergeProjectsTest(BaseDatasetTest):
         assert storage loc has been changed
         assert old exp has been deleted
         """
-        exp3 = dm.Experiment.objects.create(name='e1', project=self.p2)
+        exp3 = dm.Experiment.objects.create(name=self.exp1.name, project=self.p2)
         run3 = dm.RunName.objects.create(name='run3', experiment=exp3)
         oldstorloc = 'testloc3'
         ds3 = dm.Dataset.objects.create(date=self.p2.registered, runname=run3,
@@ -154,14 +154,13 @@ class MergeProjectsTest(BaseDatasetTest):
         own3 = dm.DatasetOwner.objects.create(dataset=ds3, user=self.user)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
+        oldstorloc = ds3.storage_loc
         ds3.refresh_from_db()
         self.assertEqual(ds3.runname.experiment, self.ds1.runname.experiment)
         self.assertEqual(dm.Experiment.objects.filter(pk=exp3.pk).count(), 0)
-        self.assertEqual(ds3.storage_loc,
-                os.path.join(self.p1.name, self.exp1.name, self.dtype.name, run3.name))
-
-        renamejobs = jm.Job.objects.filter(funcname='rename_storage_loc') 
-        ds3jobs = renamejobs.filter(kwargs={'dset_id': ds3.pk, 'srcpath': oldstorloc,
-            'dstpath': ds3.storage_loc})
+        self.assertEqual(ds3.storage_loc, oldstorloc)
+        renamejobs = jm.Job.objects.filter(funcname='rename_dset_storage_loc') 
+        ds3jobs = renamejobs.filter(kwargs={'dset_id': ds3.pk, 
+            'dstpath': os.path.join(self.p1.name, self.exp1.name, self.dtype.name, run3.name)})
         self.assertEqual(ds3jobs.count(), 1)
         self.assertEqual(renamejobs.count(), 1)

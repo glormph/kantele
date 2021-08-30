@@ -14,7 +14,7 @@ from analysis.models import AnalysisResultFile, NextflowSearch
 from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
-from datasets.models import DatasetRawFile
+from datasets.models import DatasetRawFile, Dataset
 from kantele import settings
 from jobs.tasks import jobmap
 
@@ -45,7 +45,22 @@ def task_failed(request):
     return HttpResponse()
 
 
+@require_POST
+def update_storage_loc_dset(request):
+    """Updates storage_loc on dset after a dset update storage job"""
+    data = json.loads(request.body.decode('utf-8'))
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    Dataset.objects.filter(pk=data['dset_id']).update(storage_loc=data['storage_loc'])
+    if 'task' in data:
+        set_task_done(data['task'])
+    return HttpResponse()
+
+
+@require_POST
 def update_storagepath_file(request):
+    # FIXME tests!
     data = json.loads(request.body.decode('utf-8'))
     print('Updating storage task finished')
     if 'client_id' not in data or not taskclient_authorized(
@@ -77,16 +92,12 @@ def renamed_project(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY, settings.ANALYSISCLIENT_APIKEY]):
         return HttpResponseForbidden()
-    try:
-        job = models.Job.objects.get(task__asyncid=data['task'])
-    except models.Job.DoesNotExist:
-        return HttpResponseForbidden()
-    projid, oldname, newname = job.kwargs['proj_id'], job.kwargs['srcname'], job.kwargs['newname']
-    sfs = StoredFile.objects.filter(
-            rawfile__datasetrawfile__dataset__runname__experiment__project_id=projid)
-    for sfile in sfs:
-        sfile.path = dsviews.rename_storage_loc_toplvl(newname, sfile.path)
-        sfile.save()
+    # TODO this updates also deleted files? Good maybe in case restoring backup?
+    for dset in Dataset.objects.filter(runname__experiment__project_id=data['proj_id']):
+        newstorloc = dsviews.rename_storage_loc_toplvl(data['newname'], dset.storage_loc)
+        dset.storage_loc = newstorloc
+        dset.save()
+        StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset).update(path=newstorloc)
     set_task_done(data['task'])
     return HttpResponse()
 
