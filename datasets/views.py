@@ -711,6 +711,7 @@ def merge_projects(request):
                         dstpath=new_storage_loc)
             # Also, should we possibly NOT chaneg anything here but only check pre the job, then merge after job complete?
             # In case of waiting times, job problems, etc? Prob doesnt matter much.
+        proj.delete()
     return JsonResponse({})
 
 

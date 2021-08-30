@@ -139,6 +139,7 @@ class MergeProjectsTest(BaseDatasetTest):
             'dstpath': os.path.join(self.p1.name, self.exp2.name, self.dtype.name, run2.name)})
         self.assertEqual(ds2jobs.count(), 1)
         self.assertEqual(renamejobs.count(), 1)
+        self.assertEqual(dm.Project.objects.filter(pk=self.p2.pk).count(), 0)
 
     def test_merge_identical_expnames(self):
         """
@@ -164,3 +165,4 @@ class MergeProjectsTest(BaseDatasetTest):
             'dstpath': os.path.join(self.p1.name, self.exp1.name, self.dtype.name, run3.name)})
         self.assertEqual(ds3jobs.count(), 1)
         self.assertEqual(renamejobs.count(), 1)
+        self.assertEqual(dm.Project.objects.filter(pk=self.p2.pk).count(), 0)
