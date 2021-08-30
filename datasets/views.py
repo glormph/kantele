@@ -438,9 +438,9 @@ def update_dataset(data):
         update_dataset_prefrac(pfds, data)
     dtype = models.Datatype.objects.get(pk=data['datatype_id'])
     prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
-    hrrange = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
+    hrrange_id = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
     new_storage_loc = set_storage_location(project, experiment, dset.runname,
-                                           dtype, prefrac, hrrange)
+                                           dtype, prefrac, hrrange_id)
     if (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
         create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
@@ -602,11 +602,11 @@ def get_or_create_qc_dataset(data):
 def save_new_dataset(data, project, experiment, runname, user_id):
     dtype = models.Datatype.objects.get(pk=data['datatype_id'])
     prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
-    hrrange = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
+    hrrange_id = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
     dset = models.Dataset(date=timezone.now(),
                           runname_id=runname.id,
                           storage_loc=set_storage_location(
-                              project, experiment, runname, dtype, prefrac, hrrange),
+                              project, experiment, runname, dtype, prefrac, hrrange_id),
                           datatype=dtype)
     dset.save()
     dsowner = models.DatasetOwner(dataset=dset, user_id=user_id)
@@ -705,8 +705,8 @@ def merge_projects(request):
                 dset = runname.dataset
                 pfds = dset.prefractionationdataset if hasattr(dset, 'prefractionationdataset') else False
                 prefrac = pfds.prefractionation if pfds else False
-                hrrange = pfds.hiriefdataset.hirief if hasattr(pfds, 'hiriefdataset') else False
-                new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange)
+                hrrange_id = pfds.hiriefdataset.hirief_id if hasattr(pfds, 'hiriefdataset') else False
+                new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange_id)
                 create_job('rename_dset_storage_loc', dset_id=dset.id,
                         dstpath=new_storage_loc)
             # Also, should we possibly NOT chaneg anything here but only check pre the job, then merge after job complete?
