@@ -403,20 +403,26 @@ def populate_analysis(nfsearches, user):
 
 @login_required
 def get_proj_info(request, proj_id):
+    proj = dsmodels.Project.objects.filter(pk=proj_id).select_related('projtype__ptype', 'pi').get()
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'filetype').filter(
-        rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id)
+        rawfile__datasetrawfile__dataset__runname__experiment__project=proj)
     sfiles = {}
     for sfile in files:
         try:
             sfiles[sfile.filetype.name].append(sfile)
         except KeyError:
             sfiles[sfile.filetype.name] = [sfile]
-    dsowners = dsmodels.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=proj_id).distinct()
-    info = {'owners': {x.user_id: x.user.username for x in dsowners},
+    dsets = dsmodels.Dataset.objects.filter(runname__experiment__project=proj)
+    #dsowners = dsmodels.DatasetOwner.objects.filter(dataset__runname__experiment__project_id=proj_id).distinct()
+    info = {'owners': [x['datasetowner__user__username'] for x in dsets.values('datasetowner__user__username').distinct()],
             'stored_total_xbytes': rv.getxbytes(files.aggregate(Sum('rawfile__size'))['rawfile__size__sum']),
-            'stored_bytes': {ft: rv.getxbytes(sum([fn.rawfile.size for fn in fns])) for ft, fns in sfiles.items()},
             'nrstoredfiles': {ft: len([fn for fn in fns]) for ft, fns in sfiles.items()},
+            'name': proj.name,
+            'pi': proj.pi.name,
+            'regdate': datetime.strftime(proj.registered, '%Y-%m-%d %H:%M'),
+            'type': proj.projtype.ptype.name,
             'instruments': list(set([x.rawfile.producer.name for x in files])),
+            'nrdsets': dsets.count(),
             'nrbackupfiles': filemodels.SwestoreBackedupFile.objects.filter(
                 storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count() + filemodels.PDCBackedupFile.objects.filter(
                     storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project_id=proj_id).count(),
@@ -435,11 +441,11 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
             'id': proj.id,
             'name': proj.name,
             'inactive': proj.active == False,
-            'start': proj.registered,
+            'start': datetime.strftime(proj.registered, '%Y-%m-%d %H:%M'),
             'ptype': proj.projtype.ptype.name,
             'details': False,
             'selected': False,
-            'lastactive': proj.greatdate or '-',
+            'lastactive': datetime.strftime(proj.greatdate, '%Y-%m-%d %H:%M') if proj.greatdate else '-',
         }
     return projs, order
 

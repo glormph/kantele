@@ -62,6 +62,32 @@ def run_convert_mzml_nf(self, run, params, raws, **kwargs):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
+def rename_top_level_project_storage_dir(self, srcname, newname, proj_id):
+    """Renames a project, including the below experiments/datasets"""
+    msg = False
+    srcpath = os.path.join(settings.STORAGESHARE, srcname)
+    dstpath = os.path.join(settings.STORAGESHARE, newname)
+    if not os.path.exists(path):
+        msg = f'Cannot move project name {srcname} to {newname}, does not exist'
+    elif not os.path.isdir(path):
+        msg = f'Cannot move project name {srcname} to {newname}, {srcname} is not a directory'
+    elif os.path.exists(dstpath):
+        msg = f'Cannot move project name {srcname} to {newname}, already exists'
+    if msg:
+        taskfail_update_db(self.request.id, msg)
+        raise RuntimeError(msg)
+    try:
+        shutil.move(srcpath, dstpath)
+    except Exception:
+        taskfail_update_db(self.request.id, msg='Failed renaming project for unknown reason')
+        raise
+    postdata = {'proj_id': proj_id, 'newname': newname,
+            'task': self.request.id, 'client_id': settings.APIKEY}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:renameproject'))
+    update_db(url, json=postdata)
+
+
+@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def rename_dset_storage_location(self, srcpath, dstpath, dset_id, sf_ids):
     """This expects one dataset per dir, as it will rename the whole dir"""
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))

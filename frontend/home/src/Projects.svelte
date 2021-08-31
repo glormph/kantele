@@ -1,9 +1,10 @@
 <script>
 
 import {querystring, push} from 'svelte-spa-router';
-import { getJSON } from '../../datasets/src/funcJSON.js'
+import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
+import Details from './ProjectDetails.svelte'
 import { flashtime } from '../../util.js'
 
 const inactive = ['inactive'];
@@ -58,7 +59,7 @@ async function getProjDetails(projid) {
 	const resp = await getJSON(`/show/project/${projid}`);
   return `
     <p><span class="has-text-weight-bold">Storage amount:</span> ${resp.stored_total_xbytes}</p>
-    <p><span class="has-text-weight-bold">Owners:</span> ${Object.values(resp.owners).join(', ')}</p>
+    <p><span class="has-text-weight-bold">Owners:</span> ${resp.owners.join(', ')}</p>
     <hr>
     ${Object.entries(resp.nrstoredfiles).map(x => {return `<div>${x[1]} stored files of type ${x[0]}</div>`;}).join('')}
     <div>Instrument(s) used: <b>${resp.instruments.join(', ')}</b></div>
@@ -80,6 +81,21 @@ function purgeProject() {
   treatItems('datasets/purge/project/', 'project', 'purging', callback, selectedProjs);
 }
 
+async function mergeProjects() {
+  const resp = await postJSON('datasets/merge/projects/', {
+    projids: selectedProjs,
+  });
+  if (!resp.ok) {
+    const msg = `Something went wrong trying to rename the file: ${resp.error}`;
+    notif.errors[msg] = 1;
+    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+  } else {
+    items[fnid].filename = newname;
+    const msg = `Queued file for renaming to ${newname}`;
+    notif.messages[msg] = 1;
+    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
+  }
+}
 
 </script>
 
@@ -93,10 +109,20 @@ function purgeProject() {
   {:else}
   <a class="button" title="PERMANENTLY delete projects from active and cold storage" on:click={setConfirm}>Purge projects</a>
   {/if}
+  {#if selectedProjs.length>1}
+  <a class="button" title="Merge projects to sinlge (earliest) project" on:click={mergeProjects}>Merge projects</a>
+  {:else}
+  <a class="button" title="Merge projects to single (earliest) project" disabled>Merge projects</a>
+  {/if}
 {:else}
 <a class="button" title="Move projects to cold storage (delete)" disabled>Retire projects</a>
 <a class="button" title="Move projects to active storage (undelete)" disabled>Reactivate projects</a>
 <a class="button" title="PERMANENTLY delete projects from active and cold storage" disabled>Purge projects</a>
+<a class="button" title="Merge projects to single (earliest) project" disabled>Merge projects</a>
 {/if}
 
-<Table tab="Projects" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedProjs} fetchUrl="/show/projects" findUrl="/find/projects" getdetails={getProjDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview="" />
+<Table tab="Projects" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedProjs} fetchUrl="/show/projects" findUrl="/find/projects" getdetails={getProjDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview={showDetails} />
+
+{#if detailsVisible}
+<Details closeWindow={() => {detailsVisible = false}} projId={detailsVisible} />
+{/if}

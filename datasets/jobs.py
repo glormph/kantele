@@ -7,14 +7,29 @@ from celery import chain
 
 from kantele import settings
 from rawstatus.models import StoredFile, ServerShare, StoredFileType
-from datasets.models import Dataset, DatasetRawFile
+from datasets.models import Dataset, DatasetRawFile, Project
 from analysis.models import Proteowizard, MzmlFile, NextflowWfVersion
 from datasets import tasks
 from rawstatus import tasks as filetasks
 from jobs.models import TaskChain
 from jobs.jobs import BaseJob, DatasetJob, create_job
-# FIXME backup jobs need doing
 from rawstatus import jobs as rsjobs
+
+
+class RenameProject(BaseJob):
+    refname = 'rename_top_lvl_projectdir'
+    task = tasks.rename_top_level_project_storage_dir
+    retryable = False
+
+    def get_sf_ids_jobrunner(self, **kwargs):
+        """Get all sf ids in project to mark them as not using pre-this-job"""
+        return [x.pk for x in StoredFile.objects.filter(rawfile__datasetrawfile__dataset__runname__experiment__project_id=kwargs['proj_id'])]
+
+    def process(self, **kwargs):
+        """Fetch fresh project name here, then queue for move from there"""
+        proj = Project.objects.get(pk=kwargs['proj_id'])
+        if kwargs['newname'] != proj.name:
+            self.run_tasks = [((proj.name, kwargs['newname'], kwargs['proj_id']), {})]
 
 
 class RenameDatasetStorageLoc(DatasetJob):

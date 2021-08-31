@@ -30,6 +30,8 @@ urlpatterns = [
     path('save/pooledlc/', views.save_pooled_lc),
     path('save/owner/', views.change_owners, name="changeowner"),
     path('save/projsample/', views.save_projsample),
+    path('rename/project/', views.rename_project),
+    path('merge/projects/', views.merge_projects),
     path('archive/dataset/', views.move_dataset_cold),
     path('archive/project/', views.move_project_cold),
     path('undelete/dataset/', views.move_dataset_active),
