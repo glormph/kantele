@@ -677,6 +677,11 @@ def merge_projects(request):
     if len(data['projids']) < 2:
         return JsonResponse({'error': 'Must select multiple projects to merge'}, status=400)
     projs = models.Project.objects.filter(pk__in=data['projids']).order_by('registered')
+    if projs.count() != len(data['projids']):
+        return JsonResponse({'error': 'Only {projs.count()} of the {len(data["projids"])}'
+            'project(s) you have passed exist in the system, possibly project ' 
+            'input is out of date?'}, status=400)
+
     for proj in projs[1:]:
         # Refresh oldexps with every merged project
         oldexps = {x.name: x for x in projs[0].experiment_set.all()}

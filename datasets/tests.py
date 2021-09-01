@@ -130,6 +130,11 @@ class MergeProjectsTest(BaseDatasetTest):
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
         self.assertEqual(resp.status_code, 200)
+        # Press merge button twice
+        resp2 = self.cl.post(self.url, content_type='application/json',
+                data={'projids': [self.p1.pk, self.p2.pk]})
+        self.assertEqual(resp2.status_code, 400)
+        
         oldstorloc = ds2.storage_loc
         ds2.refresh_from_db()
         self.assertEqual(ds2.runname.experiment.project, self.ds1.runname.experiment.project)
