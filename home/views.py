@@ -55,8 +55,8 @@ def find_projects(request):
         dsquery &= dssubquery
     dbdsets = dsmodels.Dataset.objects.filter(dsquery).select_related('runname__experiment__project').values('runname__experiment__project').distinct()
     query |= Q(pk__in=dbdsets)
-    dbprojects = dsmodels.Project.objects.filter(query )
-    if request.GET.get('inactive') == 'false':
+    dbprojects = dsmodels.Project.objects.filter(query)
+    if request.GET.get('deleted') in ['false', 'False', False]:
         dbprojects = dbprojects.filter(active=True)
     items, order = populate_proj(dbprojects, request.user)
     return JsonResponse({'items': items, 'order': order})
@@ -156,8 +156,6 @@ def show_projects(request):
     else:
         # all active projects
         dbprojects = dsmodels.Project.objects.all()
-    if request.GET.get('showinactive') not in ['true', 'True', True]:
-        dbprojects = dbprojects.filter(active=True)
     items, order = populate_proj(dbprojects, request.user)
     return JsonResponse({'items': items, 'order': order})
 
