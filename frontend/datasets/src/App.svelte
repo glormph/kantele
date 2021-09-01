@@ -210,7 +210,7 @@ async function save() {
     if (dsinfo.ptype_id !== pdata.local_ptype_id) {
       postdata.externalcontact = dsinfo.externalcontactmail;
     }
-    const response = await postJSON('/datasets/save/project/', postdata);
+    const response = await postJSON('/datasets/save/dataset/', postdata);
     if ('error' in response) {
       saveerrors.basics = [response.error, ...saveerrors.basics];
     } else {

@@ -22,7 +22,7 @@ urlpatterns = [
     path('show/acquisition/', views.dataset_acquisition_nods),
     path('show/components/<int:datatype_id>/', views.get_datatype_components),
     path('show/species/', views.get_species),
-    path('save/project/', views.save_dataset, name="saveproject"),
+    path('save/dataset/', views.save_dataset, name="savedset"),
     path('save/files/', views.save_files, name="savefiles"),
     path('save/acquisition/', views.save_acquisition, name="saveacqui"),
     path('save/sampleprep/', views.save_sampleprep, name="saveprep"),
