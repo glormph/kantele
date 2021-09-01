@@ -11,7 +11,6 @@ def merge_dupes(apps, sch_ed):
     Proj = apps.get_model('datasets', 'Project')
     Experiment = apps.get_model('datasets', 'Experiment')
     RunName = apps.get_model('datasets', 'RunName')
-    # FIXME  RunN
     print('Merging project duplicates')
     dupes_names = Proj.objects.values('name').annotate(co=models.Count('id')).filter(co__gt=1)
     for x in dupes_names:
@@ -47,7 +46,7 @@ def merge_dupes(apps, sch_ed):
                 else:
                     raise RuntimeError('Cannot merge projects, collisions in experiment/runnames names')
             if proj.experiment_set.count():
-                raise('Problem, proje not empty')
+                raise('Problem, project not empty, cannot delete, are all experiments moved?')
             else:
                 proj.delete()
 
@@ -71,7 +70,7 @@ def merge_dupes(apps, sch_ed):
         
     print('Splitting runname duplicates')
     # Do not want to merge, since then you cant analyze datasets indep of eachother
-    # FIXME need to move ds to appropriate location or not?
+    # Not moving dsets to other location though
     dupes_names_run = RunName.objects.values('name', 'experiment').annotate(co=models.Count('id')).filter(co__gt=1)
     for rname in dupes_names_run:
         rncount = 1
