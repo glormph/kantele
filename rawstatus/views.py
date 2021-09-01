@@ -362,52 +362,50 @@ def process_file_confirmed_ready(rfn, sfn):
         singlefile_qc(sfn.rawfile, sfn)
 
 
+@require_POST
 def file_transferred(request):
     """Treats POST requests with:
         - fn_id
     Starts checking file MD5 in background
     """
-    if request.method == 'POST':
-        try:
-            fn_id = request.POST['fn_id']
-            client_id = request.POST['client_id']
-            ftype_id = request.POST['ftype_id']
-            fname = request.POST['filename']
-        except KeyError as error:
-            print('POST request to file_transferred with missing parameter, '
-                  '{}'.format(error))
-            return JsonResponse({'error': 'Bad request'}, status=400)
-        try:
-            check_producer(client_id)
-        except Producer.DoesNotExist:
-            return JsonResponse({'error': 'Forbidden'}, status=403)
-        tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
-        try:
-            rawfn = RawFile.objects.get(pk=fn_id)
-        except RawFile.DoesNotExist:
-            errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
-            print(errmsg)
-            return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
-        try:
-            ftype_id = StoredFileType.objects.get(pk=ftype_id).id
-        except StoredFileType.DoesNotExist:
-            return JsonResponse({'error': 'File type does not exist'}, status=400)
-        file_trf, created = StoredFile.objects.get_or_create(rawfile_id=fn_id, filetype_id=ftype_id,
-                servershare=tmpshare, path='', defaults={'filename': fname, 'md5': '', 'checked': False})
-        if created:
-            print('File already registered as transferred, rerunning MD5 check in case new '
-                    'file arrived')
-            # Ensure any new MD5 job gets clean slate so no checks before it finishes are 
-            # returning OLD md5 value
-            file_trf.md5 = ''
-            file_trf.checked = False
-            file_trf.save()
-        # if re-transfer happens and second time it is corrupt, overwriting old file
-        # then we have a problem! So always fire MD5 job, not only on new files
-        jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
-        return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
-    else:
-        return JsonResponse({'error': 'Bad request, must POST'}, status=400)
+    try:
+        fn_id = request.POST['fn_id']
+        client_id = request.POST['client_id']
+        ftype_id = request.POST['ftype_id']
+        fname = request.POST['filename']
+    except KeyError as error:
+        print('POST request to file_transferred with missing parameter, '
+              '{}'.format(error))
+        return JsonResponse({'error': 'Bad request'}, status=400)
+    try:
+        check_producer(client_id)
+    except Producer.DoesNotExist:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+    try:
+        rawfn = RawFile.objects.get(pk=fn_id)
+    except RawFile.DoesNotExist:
+        errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
+        print(errmsg)
+        return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
+    try:
+        ftype_id = StoredFileType.objects.get(pk=ftype_id).id
+    except StoredFileType.DoesNotExist:
+        return JsonResponse({'error': 'File type does not exist'}, status=400)
+    file_trf, created = StoredFile.objects.get_or_create(rawfile_id=fn_id, filetype_id=ftype_id,
+            servershare=tmpshare, path='', defaults={'filename': fname, 'md5': '', 'checked': False})
+    if created:
+        print('File already registered as transferred, rerunning MD5 check in case new '
+                'file arrived')
+        # Ensure any new MD5 job gets clean slate so no checks before it finishes are 
+        # returning OLD md5 value
+        file_trf.md5 = ''
+        file_trf.checked = False
+        file_trf.save()
+    # if re-transfer happens and second time it is corrupt, overwriting old file
+    # then we have a problem! So always fire MD5 job, not only on new files
+    jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
+    return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
 @require_POST
