@@ -1,10 +1,8 @@
-Django==3.1.8
+Django==3.2.7
 celery==4.4.7
 django-celery-beat==2.1.0
 psycopg2==2.8.6
-pytz==2017.2
-requests>=2.24.0
+requests==2.26.0
 uWSGI==2.0.19.1
-urllib3>=1.23
-dulwich==0.20.6
-biopython==1.78
+dulwich==0.20.25
+biopython==1.79
