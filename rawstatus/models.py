@@ -75,6 +75,9 @@ class StoredFile(models.Model):
     def __str__(self):
         return self.rawfile.name
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['rawfile', 'filetype', 'servershare', 'path'], name='uni_storedfile')]
+
 
 class UserFileUpload(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

@@ -392,25 +392,19 @@ def file_transferred(request):
             ftype_id = StoredFileType.objects.get(pk=ftype_id).id
         except StoredFileType.DoesNotExist:
             return JsonResponse({'error': 'File type does not exist'}, status=400)
-        try:
-            file_transferred = StoredFile.objects.get(rawfile_id=fn_id,
-                                                      filetype_id=ftype_id)
-        except StoredFile.DoesNotExist:
-            print('New transfer registered, fn_id {}'.format(fn_id))
-            file_transferred = StoredFile(rawfile_id=fn_id, filetype_id=ftype_id,
-                                          servershare=tmpshare, path='',
-                                          filename=fname, md5='', checked=False)
-        else:
+        file_trf, created = StoredFile.objects.get_or_create(rawfile_id=fn_id, filetype_id=ftype_id,
+                servershare=tmpshare, path='', defaults={'filename': fname, 'md5': '', 'checked': False})
+        if created:
             print('File already registered as transferred, rerunning MD5 check in case new '
                     'file arrived')
             # Ensure any new MD5 job gets clean slate so no checks before it finishes are 
             # returning OLD md5 value
-            file_transferred.md5 = ''
-            file_transferred.checked = False
-        file_transferred.save()
+            file_trf.md5 = ''
+            file_trf.checked = False
+            file_trf.save()
         # if re-transfer happens and second time it is corrupt, overwriting old file
         # then we have a problem! So always fire MD5 job, not only on new files
-        jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_transferred.id)
+        jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
         return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
     else:
         return JsonResponse({'error': 'Bad request, must POST'}, status=400)
