@@ -18,6 +18,7 @@ const tablefields = [
   {id: 'name', name: 'Name', type: 'str', multi: false},
 //  {id: 'storestate', name: 'Stored', type: 'tag', multi: false, links: 'fn_ids', linkroute: '#/files/'},
 //  {id: 'jobstates', name: '__hourglass-half', type: 'state', multi: true, links: 'jobids', linkroute: '#/jobs'},
+  {id: 'datasets', name: '', help: 'Datasets', type: 'icon', icon: 'clipboard-list', multi: false, links: 'dset_ids', linkroute: '#/datasets'},
   {id: 'ptype', name: 'Type', type: 'str', multi: false},
   {id: 'start', name: 'Registered', type: 'str', multi: false},
   {id: 'lastactive', name: 'Last active', type: 'str', multi: false},

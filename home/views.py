@@ -441,6 +441,7 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
             'inactive': proj.active == False,
             'start': datetime.strftime(proj.registered, '%Y-%m-%d %H:%M'),
             'ptype': proj.projtype.ptype.name,
+            'dset_ids': [x.dataset.pk for y in proj.experiment_set.all() for x in y.runname_set.all() if hasattr(x, 'dataset')],
             'details': False,
             'selected': False,
             'lastactive': datetime.strftime(proj.greatdate, '%Y-%m-%d %H:%M') if proj.greatdate else '-',
