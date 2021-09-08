@@ -248,37 +248,30 @@ def register_userupload(request):
         return HttpResponseForbidden()
     response = get_or_create_rawfile(md5, fn, producer, size, file_date, {'claimed': True})
     raw = RawFile.objects.get(pk=response['file_id'])
-    sfile = StoredFile(rawfile_id=response['file_id'], 
-                       filename='userfile_{}_{}'.format(raw.id, raw.name), md5='',
+    sfile = StoredFile.objects.create(rawfile_id=response['file_id'], 
+                       filename='userfile_{}_{}'.format(raw.id, raw.name), md5=md5,
                        checked=False, filetype=upload.filetype,
                        path=settings.UPLOADDIR,
                        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-    sfile.save()
     ufile = UserFile(sfile=sfile, description=desc, upload=upload)
     ufile.save()
     return JsonResponse(response)
 
 
 def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
-    try:
-        existing_fn = RawFile.objects.get(source_md5=md5)
-    except RawFile.DoesNotExist:
-        claim = 'claimed' in postdata and postdata['claimed']
-        file_record = RawFile(name=fn, producer=producer, source_md5=md5,
-                              size=size, date=file_date, claimed=claim)
-        file_record.save()
-        response = {'file_id': file_record.id, 'state': 'registered',
-                'remote_name': file_record.name, 'stored': False}
+    rawfn, created = RawFile.objects.get_or_create(source_md5=md5, defaults={
+        'name': fn, 'producer': producer, 'size': size, 'date': file_date,
+        'claimed': postdata.get('claimed', False)})
+    if not created:
+        nrsfn = StoredFile.objects.filter(md5=md5, checked=True).count()
+        stored = True if nrsfn else False
+        state = 'registered' if nrsfn else 'error'
+        msg = (f'File {rawfn.name} is already registered and has MD5 '
+                '{rawfn.source_md5}. Already stored = {stored}')
     else:
-        stored = True if StoredFile.objects.select_related(
-            'rawfile').filter(rawfile__source_md5=md5, checked=True).count() else False
-        msg = ('File {} is already registered and has MD5 {}. It is {}'
-               'stored'.format(existing_fn.name, existing_fn.source_md5,
-                               '' if stored else 'not '))
-        response = {'file_id': existing_fn.id, 'stored': stored,
-                'md5': existing_fn.source_md5,
-                'remote_name': existing_fn.name, 'msg': msg}
-        response['state'] = 'registered' if stored else 'error'
+        stored, state, msg = False, 'registered', False
+    response = {'file_id': rawfn.id, 'state': state, 'stored': stored, 
+            'remote_name': file_record.name, 'msg': msg}
     return response
 
 
@@ -326,12 +319,11 @@ def get_files_transferstate(request):
                     PDCBackedupFile.objects.filter(storedfile_id=sfn.id)):
                 # No analysis result or PDC file, then do some processing work
                 process_file_confirmed_ready(rfn, sfn)
-        # elif sfn.filejob_set.filter(job__funcname='get_md5').exclude(job__state__in=jobutil.JOBSTATES_DONE):
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
-        elif jm.Job.objects.filter(funcname='get_md5', kwargs={'sf_id': sfn.pk,
-                'source_md5': rfn.source_md5}):
-            # this did not work when doing filejob_set.filter (above) ?
+        elif jm.Job.objects.filter(funcname='get_md5', kwargs={'sf_id': sfn.pk, 
+            'source_md5': rfn.source_md5}).exclude(state__in=jobutil.JOBSTATES_DONE):
+            # this did not work when doing filejob_set.filter ?
             # A second call to this route would fire the md5 again,
             # until the file was checked. But in theory it'd work, and by hand too.
             # Maybe a DB or cache thing, however 3seconds between calls should be enough?
@@ -341,6 +333,11 @@ def get_files_transferstate(request):
 
             # File not checked, so either md5 check in progress, or it crashed
             tstate = 'wait'
+        elif sfn.md5 != rfn.source_md5:
+            # MD5 on disk is not same as registered MD5, corrupted transfer
+            # Worst case here'd be file changed on disk at producer, after 
+            # registering, will give infinite loop
+            tstate = 'transfer'
         else:
             # No MD5 job exists for file, fire one, do not report back
             jobutil.create_job('get_md5', source_md5=rfn.source_md5, sf_id=sfn.id)
@@ -392,14 +389,14 @@ def file_transferred(request):
         ftype_id = StoredFileType.objects.get(pk=ftype_id).id
     except StoredFileType.DoesNotExist:
         return JsonResponse({'error': 'File type does not exist'}, status=400)
-    file_trf, created = StoredFile.objects.get_or_create(rawfile_id=fn_id, filetype_id=ftype_id,
-            servershare=tmpshare, path='', defaults={'filename': fname, 'md5': '', 'checked': False})
-    if created:
+    file_trf, created = StoredFile.objects.get_or_create(
+            rawfile=rawfile, filetype_id=ftype_id,
+            md5=rawfn.source_md5,
+            defaults={'servershare': tmpshare, 'path': '',
+                'filename': fname, 'checked': False})
+    if not created:
         print('File already registered as transferred, rerunning MD5 check in case new '
                 'file arrived')
-        # Ensure any new MD5 job gets clean slate so no checks before it finishes are 
-        # returning OLD md5 value
-        file_trf.md5 = ''
         file_trf.checked = False
         file_trf.save()
     # if re-transfer happens and second time it is corrupt, overwriting old file

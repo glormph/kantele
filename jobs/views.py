@@ -377,27 +377,22 @@ def store_analysis_result(request):
     if ('client_id' not in data or
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
-    # FIXME nextflow to file this, then poll rawstatus/md5success
-    # before deleting rundir etc, or report taskfail
-    # Reruns lead to trying to store files multiple times, avoid that:
     anashare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
     try:
         ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[data['ftype']]
     except KeyError:
         return HttpResponseForbidden('File type does not exist')
-    try:
-        sfile = StoredFile.objects.select_related('rawfile').get(rawfile_id=data['fn_id'], filetype_id=ftypeid)
-    except StoredFile.DoesNotExist:
-        print('New transfer registered, fn_id {}'.format(data['fn_id']))
-        sfile = StoredFile(rawfile_id=data['fn_id'], filetype_id=ftypeid,
-                           servershare=anashare, path=data['outdir'],
-                           filename=data['filename'], md5='', checked=False)
-        sfile.save()
+
+    # Reruns lead to trying to store files multiple times, avoid that here:
+    sfile, created  = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
+            md5=data['md5'],
+            defaults={'filetype_id': ftypeid, 'servershare': anashare, 
+                'path': data['outdir'], 'checked': True, 'filename': data['filename']})
+    if created:
         AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)
     else:
-        print('Analysis result already registered as transfer, client asks for new '
-              'MD5 check after a possible rerun. Running MD5 check.')
-    create_job('get_md5', source_md5=sfile.rawfile.source_md5, sf_id=sfile.id)
+        # FIXME if file already stored, what happens? message?
+        pass
     return HttpResponse()
 
 

@@ -65,7 +65,7 @@ class StoredFile(models.Model):
     servershare = models.ForeignKey(ServerShare, on_delete=models.CASCADE)
     path = models.TextField()
     regdate = models.DateTimeField(auto_now_add=True)
-    md5 = models.CharField(max_length=32)
+    md5 = models.CharField(max_length=32, unique=True)
     checked = models.BooleanField()
     # TODO put filetype on the RawFile instead of storedfile? Possible?
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
@@ -74,9 +74,6 @@ class StoredFile(models.Model):
 
     def __str__(self):
         return self.rawfile.name
-
-    class Meta:
-        constraints = [models.UniqueConstraint(fields=['rawfile', 'filetype', 'servershare', 'path'], name='uni_storedfile')]
 
 
 class UserFileUpload(models.Model):
