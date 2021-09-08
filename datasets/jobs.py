@@ -295,16 +295,13 @@ class DeleteDatasetPDCBackup(BaseJob):
 def get_or_create_mzmlentry(fn, pwiz, refined=False, servershare_id=False):
     if not servershare_id:
         servershare_id = fn.servershare_id
-    try:
-        mzsf = StoredFile.objects.select_related('mzmlfile').get(rawfile_id=fn.rawfile_id, 
-                mzmlfile__isnull=False, mzmlfile__pwiz=pwiz, mzmlfile__refined=refined)
-    except StoredFile.DoesNotExist:
-        mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-        mzsf = StoredFile.objects.create(rawfile_id=fn.rawfile_id, filetype_id=fn.filetype_id,
-                          path=fn.rawfile.datasetrawfile.dataset.storage_loc,
-                          servershare_id=servershare_id,
-                          filename=mzmlfilename, md5='', checked=False)
-        mzml = MzmlFile.objects.create(sfile=mzsf, pwiz=pwiz, refined=refined)
-    else:
-        mzml = mzsf.mzmlfile
+    mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
+    mzsf, cr = StoredFile.objects.filter(mzmlfile__pwiz=pwiz,
+            mzmlfile__refined=refined).get_or_create(rawfile_id=fn.rawfile_id,
+                    defaults={'filetype_id': fn.filetype_id, 'checked': False,
+                        'md5': f'mzml_{fn.rawfile.source_md5[5:]}',
+                        'servershare_id': servershare_id, 'filename': mzmlfilename, 
+                        'path': fn.rawfile.datasetrawfile.dataset.storage_loc})
+    if cr:
+        MzmlFile.objects.create(sfile=mzsf, pwiz=pwiz, refined=refined)
     return mzsf
