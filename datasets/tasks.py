@@ -67,9 +67,9 @@ def rename_top_level_project_storage_dir(self, srcname, newname, proj_id):
     msg = False
     srcpath = os.path.join(settings.STORAGESHARE, srcname)
     dstpath = os.path.join(settings.STORAGESHARE, newname)
-    if not os.path.exists(path):
+    if not os.path.exists(srcpath):
         msg = f'Cannot move project name {srcname} to {newname}, does not exist'
-    elif not os.path.isdir(path):
+    elif not os.path.isdir(srcpath):
         msg = f'Cannot move project name {srcname} to {newname}, {srcname} is not a directory'
     elif os.path.exists(dstpath):
         msg = f'Cannot move project name {srcname} to {newname}, already exists'

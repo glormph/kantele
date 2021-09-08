@@ -30,6 +30,7 @@ alljobs = [
         dsjobs.BackupPDCDataset,
         dsjobs.ReactivateDeletedDataset,
         dsjobs.DeleteDatasetPDCBackup,
+        dsjobs.RenameProject,
         rsjobs.GetMD5,
         rsjobs.CreatePDCArchive,
         rsjobs.RestoreFromPDC,

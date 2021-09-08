@@ -27,9 +27,16 @@ class RenameProject(BaseJob):
 
     def process(self, **kwargs):
         """Fetch fresh project name here, then queue for move from there"""
-        proj = Project.objects.get(pk=kwargs['proj_id'])
-        if kwargs['newname'] != proj.name:
-            self.run_tasks = [((proj.name, kwargs['newname'], kwargs['proj_id']), {})]
+        new_is_oldname = True
+        for ds in Dataset.objects.filter(runname__experiment__project_id=kwargs['proj_id']):
+            dstoploc = ds.storage_loc.split(os.path.sep)[0]
+            if dstoploc != kwargs['newname']:
+                new_is_oldname = False
+                break
+        if not new_is_oldname:
+            self.run_tasks = [((dstoploc, kwargs['newname'], kwargs['proj_id']), {})]
+            print('heres the tasks', self.run_tasks)
+        print(self.run_tasks)
 
 
 class RenameDatasetStorageLoc(DatasetJob):
