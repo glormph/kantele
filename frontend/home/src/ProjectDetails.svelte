@@ -16,25 +16,22 @@ $: {
   cleanFetchDetails(projId);
 }
 
-/*
 async function renameProject(newname, projid) {
-  if (newname !== items[fnid].filename) {
-    const resp = await postJSON('/projects/rename/', {
-      newname: newname,
-      sf_id: fnid});
-    if (!resp.ok) {
-      const msg = `Something went wrong trying to rename the file: ${resp.error}`;
-      notif.errors[msg] = 1;
-      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
-    } else {
-      items[fnid].filename = newname;
-      const msg = `Queued file for renaming to ${newname}`;
-      notif.messages[msg] = 1;
-      setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
-    }
+  const resp = await postJSON('/datasets/rename/project/', {
+    newname: newname,
+    projid: projid});
+  if (!resp.ok) {
+    const msg = `Something went wrong trying to rename the project: ${resp.error}`;
+    notif.errors[msg] = 1;
+    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+  } else {
+    const msg = `Queued project for renaming to ${newname}`;
+    notif.messages[msg] = 1;
+    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
+    // FIXME Should fix update in table as well
   }
+  
 }
-*/
 
 // This function seems general, but I'm not sure, you could put specific stuff in it
 // maybe with a callback
@@ -67,7 +64,7 @@ onMount(async() => {
 </script>
 
 <DetailBox notif={notif} closeWindow={closeWindow}>
-  {#each Object.entries(items) as [fnid, proj]}
+  {#each Object.entries(items) as [projid, proj]}
   <p><span class="has-text-weight-bold">Name:</span>{proj.name}</p>
   <p><span class="has-text-weight-bold">Type:</span>{proj.type}</p>
   <p><span class="has-text-weight-bold">Registered:</span>{proj.regdate}</p>
