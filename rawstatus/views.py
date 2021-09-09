@@ -390,7 +390,7 @@ def file_transferred(request):
     except StoredFileType.DoesNotExist:
         return JsonResponse({'error': 'File type does not exist'}, status=400)
     file_trf, created = StoredFile.objects.get_or_create(
-            rawfile=rawfile, filetype_id=ftype_id,
+            rawfile=rawfn, filetype_id=ftype_id,
             md5=rawfn.source_md5,
             defaults={'servershare': tmpshare, 'path': '',
                 'filename': fname, 'checked': False})
