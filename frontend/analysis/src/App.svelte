@@ -751,7 +751,7 @@ onMount(async() => {
   </div>
   {/if}
 
-  {#if wf.multicheck.length + wf.numparams.length + wf.flags.length}
+  {#if wf.multicheck.length + wf.numparams.length + wf.flags.length + wf.textparams.length}
   <div class="box">
     <div class="title is-5">Workflow parameters</div>
     {#each wf.multicheck as {nf, id, name, opts}}
@@ -763,6 +763,13 @@ onMount(async() => {
         <label class="checkbox">{opt[1]}</label>
       </div>
       {/each}
+    </div>
+    {/each}
+
+    {#each wf.textparams as {nf, id, name, type}}
+    <div class="field">
+      <label class="label">{name} <code>{nf}</code></label> 
+      <input type="text" class="input" bind:value={config.inputparams[id]}>
     </div>
     {/each}
 

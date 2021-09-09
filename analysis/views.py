@@ -76,6 +76,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
             analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
         elif ap.param.ptype == 'number':
             analysis['inputparams'][ap.param_id] = ap.value
+        elif ap.param.ptype == 'text':
+            analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
     for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
@@ -140,6 +142,8 @@ def get_analysis(request, anid):
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == 'multi':
             analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
+        elif ap.param.ptype == 'text':
+            analysis['inputparams'][ap.param_id] = ap.value
         elif ap.param.ptype == 'number':
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
@@ -393,6 +397,8 @@ def get_workflow_versioned(request):
                 for f in params.filter(param__ptype='flag', param__visible=True)],
             'numparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name}
                 for p in params.filter(param__ptype='number')],
+            'textparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name}
+                for p in params.filter(param__ptype='text')],
             'multicheck': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
                 'opts': {po.pk: po.name for po in p.param.paramoption_set.all()}}
                 for p in params.filter(param__ptype='multi', param__visible=True)],
