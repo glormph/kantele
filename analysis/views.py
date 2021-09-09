@@ -2,6 +2,7 @@ import re
 import os
 import json
 from datetime import datetime, timedelta
+from collections import defaultdict
 from uuid import uuid4
 
 from django.utils import timezone
@@ -538,21 +539,21 @@ def store_analysis(request):
     data_args['setnames'].update({sfid: sample for sfid, sample in req['fnsetnames'].items()})
 
     # Store params
-    jobparams = {}
+    jobparams = defaultdict(list)
     passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams'], **req['params']['multicheck']}
     am.AnalysisParam.objects.filter(analysis=analysis).exclude(param_id__in=passedparams_exdelete).delete()
     paramopts = {po.pk: po.value for po in am.ParamOption.objects.all()}
     for pid, valueids in req['params']['multicheck'].items():
         ap, created = am.AnalysisParam.objects.update_or_create(param_id=pid, analysis=analysis,
                 value=[int(x) for x in valueids])
-        jobparams[ap.param.nfparam] = [paramopts[x] for x in ap.value]
+        jobparams[ap.param.nfparam].extend([paramopts[x] for x in ap.value])
     for pid in req['params']['flags'].keys():
         ap, created = am.AnalysisParam.objects.update_or_create(analysis=analysis, param_id=pid, value=True)
         jobparams[ap.param.nfparam] = ['']
     for pid, value in req['params']['inputparams'].items():
         ap, created = am.AnalysisParam.objects.update_or_create(
             defaults={'value': value}, analysis=analysis, param_id=pid)
-        jobparams[ap.param.nfparam] = [ap.value]
+        jobparams[ap.param.nfparam].append(ap.value)
 
     # store parameter files
     # TODO remove single/multifiles distinction when no longer in use in home etc
