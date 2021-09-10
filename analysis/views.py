@@ -396,21 +396,23 @@ def get_workflow_versioned(request):
             'analysisapi': wf.kanteleanalysis_version,
             'components': {psc.component.name: psc.component.value for psc in 
                 wf.paramset.psetcomponent_set.all()},
-            'flags': [{'nf': f.param.nfparam, 'id': f.param.pk, 'name': f.param.name} 
+            'flags': [{'nf': f.param.nfparam, 'id': f.param.pk, 'name': f.param.name,
+                'help': f.param.help or False}
                 for f in params.filter(param__ptype='flag', param__visible=True)],
-            'numparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name}
-                for p in params.filter(param__ptype='number')],
-            'textparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name}
-                for p in params.filter(param__ptype='text')],
+            'numparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
+                'help': p.param.help or False} for p in params.filter(param__ptype='number')],
+            'textparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
+                'help': p.param.help or False} for p in params.filter(param__ptype='text')],
             'multicheck': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
-                'opts': {po.pk: po.name for po in p.param.paramoption_set.all()}}
+                'opts': {po.pk: po.name for po in p.param.paramoption_set.all()},
+                'help': p.param.help or False}
                 for p in params.filter(param__ptype='multi', param__visible=True)],
             'fileparams': [{'name': f.param.name, 'id': f.param.pk, 'nf': f.param.nfparam,
-                'ftype': f.param.filetype_id, 
-                'allow_resultfile': f.allow_resultfiles} for f in files],
+                'ftype': f.param.filetype_id, 'allow_resultfile': f.allow_resultfiles,
+                'help': f.param.help or False} for f in files],
             'multifileparams': [{'name': f.param.name, 'id': f.param.pk, 'nf': f.param.nfparam,
-                'ftype': f.param.filetype_id, 
-                'allow_resultfile': f.allow_resultfiles} for f in multifiles],
+                'ftype': f.param.filetype_id, 'allow_resultfile': f.allow_resultfiles,
+                'help': f.param.help or False} for f in multifiles],
             'fixedfileparams': [{'name': f.param.name, 'id': f.param.pk, 'nf': f.param.nfparam,
                 'fn': f.libfile.sfile.filename,
                 'sfid': f.libfile.sfile.id,

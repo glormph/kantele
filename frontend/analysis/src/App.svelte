@@ -754,9 +754,13 @@ onMount(async() => {
   {#if wf.multicheck.length + wf.numparams.length + wf.flags.length + wf.textparams.length}
   <div class="box">
     <div class="title is-5">Workflow parameters</div>
-    {#each wf.multicheck as {nf, id, name, opts}}
+    {#each wf.multicheck as {nf, id, name, opts, help}}
     <div class="field">
-      <label class="label">{name} <code>{nf}</code></label> 
+      <label class="label">{name} 
+        {#if help}
+          <a title={help}><i class="fa fa-question-circle"></i></a>
+        {/if}
+        <code>{nf}</code></label> 
       {#each Object.entries(opts) as opt}
       <div>
         <input value={`${id}___${opt[0]}`} bind:group={config.multicheck} type="checkbox">
@@ -766,25 +770,37 @@ onMount(async() => {
     </div>
     {/each}
 
-    {#each wf.textparams as {nf, id, name, type}}
+    {#each wf.textparams as {nf, id, name, type, help}}
     <div class="field">
-      <label class="label">{name} <code>{nf}</code></label> 
+      <label class="label">{name} 
+        {#if help}
+          <a title={help}><i class="fa fa-question-circle"></i></a>
+        {/if}
+        <code>{nf}</code>
+      </label> 
       <input type="text" class="input" bind:value={config.inputparams[id]}>
     </div>
     {/each}
 
-    {#each wf.numparams as {nf, id, name, type}}
+    {#each wf.numparams as {nf, id, name, type, help}}
     <div class="field">
-      <label class="label">{name} <code>{nf}</code></label> 
+      <label class="label">{name} 
+        {#if help}
+          <a title={help}><i class="fa fa-question-circle"></i></a>
+        {/if}
+        <code>{nf}</code></label> 
       <input type="number" class="input" bind:value={config.inputparams[id]}>
     </div>
     {/each}
 
     <label class="label">Config flags</label>
-    {#each wf.flags as {nf, id, name}}
+    {#each wf.flags as {nf, id, name, help}}
     <div>
       <input value={id} bind:group={config.flags} type="checkbox">
-      <label class="checkbox">{name}</label>: <code>{nf}</code>
+      <label class="checkbox">{name}</label>: <code>{nf}</code> 
+        {#if help}
+          <a title={help}><i class="fa fa-question-circle"></i></a>
+        {/if}
     </div>
     {/each}
 	</div>
@@ -807,10 +823,11 @@ onMount(async() => {
     </div>
 
     {#each wf.multifileparams as filep}
-      <label class="label">{filep.name}
-        <span class="icon is-small">
+      <label class="label">{filep.name} 
           <a on:click={e => addMultifile(filep.id)} title="Add another file"><i class="fa fa-plus-square"></i></a>
-        </span>
+          {#if filep.help}
+            <a title={filep.help}><i class="fa fa-question-circle"></i></a>
+          {/if}
       </label>
       {#each Object.keys(config.multifileparams[filep.id]) as mfpkey}
       <label class="label is-small">
@@ -832,7 +849,12 @@ onMount(async() => {
 
     {#each wf.fileparams as filep}
     <div class="field">
-      <label class="label">{filep.name}</label>
+      <label class="label">
+        {filep.name} 
+        {#if filep.help}
+          <a title={filep.help}><i class="fa fa-question-circle"></i></a>
+        {/if}
+      </label>
       {#if !filep.allow_resultfile}
       <DynamicSelect intext={getIntextFileName(config.fileparams[filep.id], libfiles[filep.ftype])} bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
       {:else}
