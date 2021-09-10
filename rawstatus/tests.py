@@ -30,11 +30,11 @@ class TransferStateTest(BaseFilesTest):
         self.multifileraw = rm.RawFile.objects.create(name='filemulti', producer=self.prod, source_md5='jsldjak8',
                 size=100, date=datetime.now(), claimed=False)
         self.trfsf = rm.StoredFile.objects.create(rawfile=self.trfraw, filename=self.trfraw.name, servershare_id=self.ss.id,
-                path='', md5='', checked=False, filetype_id=self.ft.id)
+                path='', md5=self.trfraw.source_md5, checked=False, filetype_id=self.ft.id)
         self.donesf = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name, servershare_id=self.ss.id,
-                path='', md5='jklmnop123', checked=True, filetype_id=self.ft.id)
+                path='', md5=self.doneraw.source_md5, checked=True, filetype_id=self.ft.id)
         self.multisf1 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, servershare_id=self.ss.id,
-                path='', md5='', checked=False, filetype_id=self.ft.id)
+                path='', md5=self.multifileraw.source_md5, checked=False, filetype_id=self.ft.id)
         ft2 = rm.StoredFileType.objects.create(name='testft2', filetype='tst')
         multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, 
                 servershare_id=self.ss.id, path='', md5='', checked=False, filetype_id=ft2.pk)
@@ -109,7 +109,7 @@ class TestFileTransferred(BaseFilesTest):
         jobs = jm.Job.objects.filter(funcname='get_md5', kwargs={'source_md5': self.newraw.source_md5,
             'sf_id': sf.pk})
         self.assertEqual(jobs.count(), 1)
-        self.assertEqual(sf.md5, '')
+        self.assertEqual(sf.md5, self.newraw.source_md5)
         resp2 = self.cl.post(self.url, data={'fn_id': self.newraw.pk, 'filename': self.newraw.name,
             'client_id': self.clientid, 'ftype_id': self.ft.pk})
         self.assertEqual(jm.Job.objects.count(), 2)
