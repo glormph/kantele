@@ -468,7 +468,7 @@ def register_resultfiles(outfiles):
         # check md5 of file so we can skip already transferred files in reruns
         if not check_md5(rj['file_id'], settings.ANALYSISOUT_FTID) == 'ok':
             outfiles_db[fn] = resp.json()
-            outfiles_db[fn]['newname'] = fname
+            outfiles_db[fn].update({'newname': fname, 'md5': postdata['md5']})
     return outfiles_db
 
 
