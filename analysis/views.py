@@ -168,7 +168,8 @@ def get_analysis(request, anid):
     # Parse input files, files from other analysis may need that other analysis included
     dsids = [dss.dataset_id for dss in ana.datasetsearch_set.all()]
     superset_analysis = am.DatasetSearch.objects.filter(analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values('analysis')
-    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids).exclude(pk__in=superset_analysis)
+    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids,
+            deleted=False).exclude(pk__in=superset_analysis)
     for dsid in dsids:
         qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
     prev_resultfiles = {x.sfile_id for x in am.AnalysisResultFile.objects.filter(
@@ -289,7 +290,8 @@ def get_base_analyses(request):
             subquery |= Q(nextflowsearch__workflow__shortname__name__icontains=st)
             query &= subquery
         resp = {}
-        for x in am.Analysis.objects.select_related('nextflowsearch').filter(query, nextflowsearch__isnull=False, deleted=False):
+        for x in am.Analysis.objects.select_related('nextflowsearch').filter(query,
+                nextflowsearch__isnull=False, deleted=False):
             resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(x),
                 x.nextflowsearch.workflow.name, x.nextflowsearch.nfworkflow.update,
                 x.user.username, datetime.strftime(x.date, '%Y%m%d'))}
@@ -425,7 +427,8 @@ def get_workflow_versioned(request):
     #    - analysis that have a subset of datasets
     dsids = [int(x) for x in request.GET['dsids'].split(',')]
     superset_analysis = am.DatasetSearch.objects.filter(analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values('analysis')
-    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids).exclude(pk__in=superset_analysis)
+    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids,
+            deleted=False).exclude(pk__in=superset_analysis)
     for dsid in dsids:
         qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
     resp['prev_resultfiles'] = [{'id': x.sfile.id, #'name': x.sfile.filename, 
