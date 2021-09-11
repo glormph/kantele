@@ -271,7 +271,7 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
     else:
         stored, state, msg = False, 'registered', False
     response = {'file_id': rawfn.id, 'state': state, 'stored': stored, 
-            'remote_name': file_record.name, 'msg': msg}
+            'remote_name': rawfn.name, 'msg': msg}
     return response
 
 
