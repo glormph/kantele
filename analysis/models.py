@@ -25,6 +25,7 @@ class FileParam(models.Model):
     name = models.TextField()
     nfparam = models.TextField()
     filetype = models.ForeignKey(filemodels.StoredFileType, on_delete=models.CASCADE)
+    help = models.TextField()
 
     def __str__(self):
         return self.name
@@ -45,6 +46,7 @@ class Param(models.Model):
     nfparam = models.TextField()
     ptype = models.TextField()  # multi (options), number, flag or ...
     visible = models.BooleanField(default=True)
+    help = models.TextField()
 
     def __str__(self):
         return self.name
