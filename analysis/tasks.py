@@ -65,9 +65,7 @@ def check_ensembl_uniprot_fasta_download(self):
         regresp = resp.json()
         # edgecase: if we already have this file due to parallel download, dont proceed.
         # otherwise, copy it to tmp
-        already_downloaded = check_md5(regresp['file_id'], settings.DATABASE_FTID, settings.ADMIN_APIKEY) == 'ok'
-        print('File already downloaded? {}'.format(already_downloaded))
-        if not already_downloaded:
+        if not regresp['stored']:
             shutil.copy(wfp.name, os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], dstfn))
             os.chmod(os.path.join(settings.SHAREMAP[settings.TMPSHARENAME], dstfn), 0o640)
         return regresp
@@ -263,7 +261,6 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_ver
     outfiles_db = register_resultfiles(outfiles)
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
     fn_ids = transfer_resultfiles((settings.ANALYSISSHARENAME, run['outdir']), rundir, outfiles_db, fileurl, self.request.id, run['analysis_id'])
-    check_rawfile_resultfiles_match(fn_ids, self.request.id)
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
@@ -431,15 +428,6 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
     return run
 
 
-def check_md5(fn_id, ftype_id, apikey=False):
-    if not apikey:
-        apikey = settings.APIKEY
-    checkurl = urljoin(settings.KANTELEHOST, reverse('files:md5check'))
-    params = {'client_id': apikey, 'fn_id': fn_id, 'ftype_id': ftype_id}
-    resp = requests.get(url=checkurl, params=params, verify=settings.CERTFILE)
-    return resp.json()['md5_state']
-
-
 def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     print('Reporting and cleaning up after workflow in {}'.format(rundir))
     # If deletion fails, rerunning will be a problem? TODO wrap in a try/taskfail block
@@ -465,8 +453,7 @@ def register_resultfiles(outfiles):
         resp = requests.post(url=reg_url, data=postdata, verify=settings.CERTFILE)
         resp.raise_for_status()
         rj = resp.json()
-        # check md5 of file so we can skip already transferred files in reruns
-        if not check_md5(rj['file_id'], settings.ANALYSISOUT_FTID) == 'ok':
+        if not rj['stored']:
             outfiles_db[fn] = resp.json()
             outfiles_db[fn].update({'newname': fname, 'md5': postdata['md5']})
     return outfiles_db
@@ -490,27 +477,16 @@ def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analys
         except:
             taskfail_update_db(task_id, 'Errored when trying to copy files to analysis result destination')
             raise
-        if 'md5' in outfiles_db[fn] and calc_md5(dst) != outfiles_db[fn]['md5']:
+        postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
+                    'outdir': outpath, 'filename': outfiles_db[fn]['newname']}
+        if calc_md5(dst) != outfiles_db[fn]['md5']:
             msg = 'Copying error, MD5 of src and dst are different'
             taskfail_update_db(task_id, msg)
             raise RuntimeError(msg)
-        postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
-                    'outdir': outpath, 'filename': outfiles_db[fn]['newname']}
+        else:
+            postdata['md5'] = outfiles_db[fn]['md5']
         if analysis_id:
             postdata.update({'ftype': 'analysis_output', 'analysis_id': analysis_id})
-        if 'md5' in outfiles_db[fn]:
-            postdata['md5'] = outfiles_db[fn]['md5']
         response = update_db(url, form=postdata)
         response.raise_for_status()
     return {x['file_id']: False for x in outfiles_db.values()}
-
-
-def check_rawfile_resultfiles_match(fn_ids, task_id):
-    while False in fn_ids.values():
-        for fn_id, checked in fn_ids.items():
-            if not checked:
-                fn_ids[fn_id] = check_md5(fn_id, settings.ANALYSISOUT_FTID)
-                if fn_ids[fn_id] == 'error':
-                    taskfail_update_db(task_id)
-                    raise RuntimeError
-        sleep(30)
