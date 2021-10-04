@@ -387,7 +387,8 @@ def populate_analysis(nfsearches, user):
                 'wflink': nfs.nfworkflow.nfworkflow.repo,
                 'deleted': nfs.analysis.deleted,
                 'purged': nfs.analysis.purged,
-                'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets],
+                'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets
+                    if hasattr(x.storedfile.rawfile, 'datasetrawfile')],
                 'fn_ids': [x.storedfile_id for x in fjobs],
                 'actions': get_ana_actions(nfs, user),
             }
