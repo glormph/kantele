@@ -220,6 +220,33 @@ class RunNextflowWorkflow(BaseJob):
             for sf_id in sf_ids:
                 sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
+        # re-filter mzML files in case files are removed or added to dataset
+        # between a stop/error and rerun of job
+        job = analysis.nextflowsearch.job
+        dss = analysis.datasetsearch_set.all()
+        # First new files included:
+        # NB including new files leads to problems with e.g. fraction regex
+        # if they are somehow strange
+        newfns = rm.StoredFile.objects.filter(mzmlfile__isnull=False,
+            rawfile__datasetrawfile__dataset__datasetsearch__in=dss).exclude(
+            pk__in=kwargs['fractions'].keys())
+        if newfns.count():
+            raise RuntimeError('Could not rerun job, there are files added to '
+                'a dataset, please edit the analysis so it is still correct, '
+                'save, and re-queue the job')
+
+        # Now remove obsolete deleted files (e.g. corrupt, empty, etc)
+        obsolete = self.getfiles_query(**kwargs).exclude(rawfile__datasetrawfile__dataset__datasetsearch__in=dss)
+        analysis.analysisdsinputfile_set.filter(sfile__in=obsolete).delete()
+        analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
+        rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
+        for del_sf in obsolete:
+            kwargs['setnames'].pop(str(del_sf.pk))
+            kwargs['fractions'].pop(str(del_sf.pk))
+        if obsolete:
+            job.kwargs = kwargs
+            job = job.save()
+
         mzmldef_fields = False
         if kwargs['inputs']['components']['mzmldef']:
             mzmldef_fields = models.WFInputComponent.objects.get(name='mzmldef').value[kwargs['inputs']['components']['mzmldef']]
