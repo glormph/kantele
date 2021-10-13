@@ -253,14 +253,14 @@ class RunNextflowWorkflow(BaseJob):
         mzmls = [{
             'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
             'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
-            'plate': kwargs['platenames'][str(x.rawfile.datasetrawfile.dataset_id)] if 'plate' in mzmldef_fields else False,
+            'plate': kwargs['platenames'].get(str(x.rawfile.datasetrawfile.dataset_id), False) if 'plate' in mzmldef_fields else False,
             'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name if 'channel' in mzmldef_fields else False,
             'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if 'sample' in mzmldef_fields else False,
             'fraction': kwargs['fractions'].get(str(x.id), False) if 'fractions' in kwargs else False,
             'instrument': x.rawfile.producer.msinstrument.instrumenttype.name if 'instrument' in mzmldef_fields else False,
             } for x in self.getfiles_query(**kwargs)]
         if mzmldef_fields:
-            mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields]), **{k: x[k] for k in ['servershare', 'path', 'fn']}}
+            mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields if x[key]]), **{k: x[k] for k in ['servershare', 'path', 'fn']}}
                 for x in mzmls]
         # token is unique per job run:
         analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
