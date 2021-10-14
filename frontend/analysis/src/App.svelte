@@ -119,7 +119,7 @@ function validate() {
 		}
 	});
   Object.entries(config.isoquants).forEach(([sname, isoq]) => {
-    if (!isoq.report_intensity && !isoq.sweep && !Object.values(isoq.denoms).filter(x => x).length) {
+    if (!('labelcheck' in wf.components) && !isoq.report_intensity && !isoq.sweep && !Object.values(isoq.denoms).filter(x => x).length) {
       notif.errors[`No denominator, sweep or intensity values are filled in for set ${sname}`] = 1;
     }
     Object.entries(isoq.samplegroups).forEach(([ch, sgroup]) => {
@@ -714,14 +714,13 @@ onMount(async() => {
               {/if}
               <th>Channel</th>
               <th>Sample name</th>
-              {/if}
-            {#if !('labelcheck' in wf.components)}
               <th>Sample group 
                 <span class="icon is-small">
                   <a title="For DEqMS and PCA plots"><i class="fa fa-question-circle"></i></a>
                 </span>
-                LEAVE EMPTY FOR INTERNAL STANDARDS!</th>
-              {/if}
+                LEAVE EMPTY FOR INTERNAL STANDARDS!
+              </th>
+            {/if}
       		  </tr>
           </thead>
           <tbody>
