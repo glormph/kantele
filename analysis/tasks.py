@@ -194,7 +194,7 @@ def stage_files(stagedir, stagefiles, params=False):
                 continue
             elif os.path.exists(fdst):
                 # file/dir exists but is not correct, delete first
-                shutil.remove(fdst)
+                os.remove(fdst)
             if os.path.isdir(fpath):
                 shutil.copytree(fpath, fdst)
             else:
@@ -205,7 +205,7 @@ def stage_files(stagedir, stagefiles, params=False):
             if os.path.isdir(fpath):
                 shutil.rmtree(fpath)
             else:
-                shutil.remove(fpath)
+                os.remove(fpath)
     return params
 
 
