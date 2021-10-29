@@ -27,6 +27,7 @@ let resultfnorder = [];
 
 let base_analysis = {
   isComplement: false,
+  dsets_identical: false,
   selected: false,
   typedname: '',
   fetched: {},
@@ -347,7 +348,11 @@ function removeAnalysisResults(anaid) {
 
 
 async function loadBaseAnalysis() {
-  let url = `/analysis/baseanalysis/load/${config.wfversion.id}/${base_analysis.selected}/`;
+  /*
+    Load fresh base analysis (resetting its isComplement/runFromPSM also)
+    */
+  const dsids = Object.keys(dsets).join(',');
+  let url = `/analysis/baseanalysis/load/${config.wfversion.id}/${base_analysis.selected}/?dsids=${dsids}`;
   const result = await getJSON(url);
   if ('error' in result) {
     const msg = `While fetching base analysis, encountered: ${result.error}`;
@@ -355,6 +360,11 @@ async function loadBaseAnalysis() {
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
     base_analysis.resultfiles = result.resultfiles;
+    base_analysis.dsets_identical = result.base_analysis.dsets_identical;
+    for (const key of ['runFromPSM', 'isComplement']) {
+      base_analysis[key] = false;
+    }
+    base_analysis = base_analysis;
     let overlapping_setnames = new Set();
     for (const dsid in result.datasets) {
       if (dsid in dsets) {
@@ -372,6 +382,7 @@ async function loadBaseAnalysis() {
       config[key] = result.base_analysis[key];
     }
     Object.assign(config.multifileparams, result.base_analysis.multifileparams);
+    config = config;
   }
 }
 
@@ -573,13 +584,21 @@ onMount(async() => {
 
   <div class="box">
     <div class="title is-5">Fetch settings/files from a previous analysis</div>
-    {#if wf && 'complement_analysis' in wf.components}
+    {#if wf && 'complement_analysis' in wf.components && base_analysis.selected}
     <div class="checkbox">
+      {#if base_analysis.dsets_identical}
+      <input type="checkbox" bind:checked={base_analysis.runFromPSM}>
+      <label class="checkbox">
+        Re-analyze previous analysis from PSM table, skipping identification steps
+      </label>
+      <a title="For output changes post-PSM table, e.g. for changes in quantification only. Any changes to fractions, input datasets, modifications etc will be ignored. For this to work you may not change set names."><i class="fa fa-question-circle"></i></a>
+      {:else}
       <input type="checkbox" bind:checked={base_analysis.isComplement}>
       <label class="checkbox">
         Complement previous analysis with new or re-run sets (with replaced or extra raw data)
       </label>
       <a title="Skips parts of analysis already run, faster output"><i class="fa fa-question-circle"></i></a>
+      {/if}
     </div>
     {/if}
     <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={base_analysis.fetched} />
@@ -590,7 +609,7 @@ onMount(async() => {
   <div class="field">
     <div class="select">
       <select bind:value={config.mzmldef}>
-        <option>Please select one</option>
+        <option value={false}>Please select one</option>
         {#each Object.keys(wf.components.mzmldef) as comp}
         <option value={comp}>{comp.split(' ').map(x => `${x[0].toUpperCase()}${x.slice(1).toLowerCase()}`).join(' ')} ({wf.components.mzmldef[comp].join(', ')})</option>
         {/each}

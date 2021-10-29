@@ -4,6 +4,7 @@ import os
 from uuid import uuid4
 
 from django.utils import timezone
+from django.db.models import Q
 
 from kantele import settings
 from analysis import tasks, models
@@ -247,21 +248,6 @@ class RunNextflowWorkflow(BaseJob):
             job.kwargs = kwargs
             job = job.save()
 
-        mzmldef_fields = False
-        if kwargs['inputs']['components']['mzmldef']:
-            mzmldef_fields = models.WFInputComponent.objects.get(name='mzmldef').value[kwargs['inputs']['components']['mzmldef']]
-        mzmls = [{
-            'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
-            'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
-            'plate': kwargs['platenames'].get(str(x.rawfile.datasetrawfile.dataset_id), False) if 'plate' in mzmldef_fields else False,
-            'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name if 'channel' in mzmldef_fields else False,
-            'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if 'sample' in mzmldef_fields else False,
-            'fraction': kwargs['fractions'].get(str(x.id), False) if 'fractions' in kwargs else False,
-            'instrument': x.rawfile.producer.msinstrument.instrumenttype.name if 'instrument' in mzmldef_fields else False,
-            } for x in self.getfiles_query(**kwargs)]
-        if mzmldef_fields:
-            mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields if x[key]]), **{k: x[k] for k in ['servershare', 'path', 'fn']}}
-                for x in mzmls]
         # token is unique per job run:
         analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
         analysis.nextflowsearch.save()
@@ -274,21 +260,48 @@ class RunNextflowWorkflow(BaseJob):
                'name': get_ana_fullname(analysis),
                'outdir': analysis.user.username,
                'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger',
+               'mzmls': [],
                'old_mzmls': False,
                }
         
-        # Add base analysis stuff if it is complement and fractionated
+        # Gather mzML input
+        if kwargs['inputs']['components']['mzmldef']:
+            mzmldef_fields = models.WFInputComponent.objects.get(name='mzmldef').value[kwargs['inputs']['components']['mzmldef']]
+            mzmls = [{
+                'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
+                'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
+                'plate': kwargs['platenames'].get(str(x.rawfile.datasetrawfile.dataset_id), False) 
+                if 'plate' in mzmldef_fields else False,
+                'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
+                if 'channel' in mzmldef_fields else False,
+                'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
+                if 'sample' in mzmldef_fields else False,
+                'fraction': kwargs['fractions'].get(str(x.id), False) 
+                if 'fractions' in kwargs else False,
+                'instrument': x.rawfile.producer.msinstrument.instrumenttype.name 
+                if 'instrument' in mzmldef_fields else False,
+                } for x in self.getfiles_query(**kwargs)]
+            mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields if x[key]]), **{k: x[k] 
+                for k in ['servershare', 'path', 'fn']}} for x in mzmls]
+
+        # Add base analysis stuff if it is complement and fractionated (if not it has only been used
+        # for fetching parameter values and can be ignored in the job)
+        ana_baserec = models.AnalysisBaseanalysis.objects.select_related('base_analysis').filter(analysis_id=analysis.id)
         try:
-            ana_baserec = models.AnalysisBaseanalysis.objects.select_related('base_analysis').get(is_complement=True, analysis_id=analysis.id)
+            ana_baserec = ana_baserec.get(Q(is_complement=True) | Q(rerun_from_psms=True))
         except models.AnalysisBaseanalysis.DoesNotExist:
-            pass
+            # Run with normal mzmldef input
+            run['mzmls'] = mzmls
         else:
             if hasattr(ana_baserec.base_analysis, 'analysismzmldef') and ana_baserec.base_analysis.analysismzmldef.mzmldef == 'fractionated':
-                # complement runs with fractionaded base analysis need --oldmzmldef parameter
+                # rerun/complement runs with fractionated base analysis need --oldmzmldef parameter
                 old_mzmls, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
                 oldmz_fields = models.WFInputComponent.objects.get(name='mzmldef').value['fractionated']
                 run['old_mzmls'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in oldmz_fields]))
                         for setmzmls in old_mzmls.values() for x in setmzmls]
+            if not ana_baserec.rerun_from_psms:
+                # Only mzmldef input if not doing a rerun
+                run['mzmls'] = mzmls
 
         profiles = ['standard', 'docker', 'lehtio']
         params = [str(x) for x in kwargs['inputs']['params']]
@@ -296,7 +309,7 @@ class RunNextflowWorkflow(BaseJob):
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
         if kwargs['inputs']['components']['sampletable']:
             params.extend(['SAMPLETABLE', kwargs['inputs']['components']['sampletable']])
-        self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
+        self.run_tasks.append(((run, params, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()
 

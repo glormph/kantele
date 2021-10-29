@@ -61,6 +61,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis = {
             'analysis_id': ana.pk,
+            'dsets_identical': set(dss.dataset_id for dss in ana.datasetsearch_set.all()) == set(dsids),
             'mzmldef': False,
             'flags': [],
             'multicheck': [],
@@ -150,10 +151,12 @@ def get_analysis(request, anid):
     pset = ana.nextflowsearch.nfworkflow.paramset
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
 
+    dsids = [x.dataset_id for x in ana.datasetsearch_set.all()]
     # Parse base analysis if any
     ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch').filter(analysis_id=ana.id)
     if ana_base.exists():
         ana_base = ana_base.get()
+        base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetsearch_set.all()]
         analysis['base_analysis'] = {
                 'resultfiles':  [{'id': x.sfile_id, 'name': x.sfile.filename} for x in ana_base.base_analysis.analysisresultfile_set.all()],
                 'selected': ana_base.base_analysis_id,
@@ -161,12 +164,13 @@ def get_analysis(request, anid):
                 ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
                 ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
                 'isComplement': ana_base.is_complement,
+                'runFromPSM': ana_base.rerun_from_psms,
+                'dsets_identical': set(base_dsids) == set(dsids),
                 }
         ana_base_resfiles = {x['id'] for x in analysis['base_analysis']['resultfiles']}
     else:
         ana_base_resfiles = set()
     # Parse input files, files from other analysis may need that other analysis included
-    dsids = [dss.dataset_id for dss in ana.datasetsearch_set.all()]
     superset_analysis = am.DatasetSearch.objects.filter(analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values('analysis')
     qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids,
             deleted=False).exclude(pk__in=superset_analysis)
@@ -637,6 +641,7 @@ def store_analysis(request):
                     analysis=analysis, dataset_id=dsid) 
         base_def = {'base_analysis': base_ana,
                 'is_complement': req['base_analysis']['isComplement'],
+                'rerun_from_psms': req['base_analysis']['runFromPSM'],
                 'shadow_isoquants': shadow_isoquants,
                 'shadow_dssetnames': shadow_dss,
                 }

@@ -215,7 +215,7 @@ def log_analysis(analysis_id, message):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_version):
+def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     print('Got message to run nextflow workflow, preparing')
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
@@ -232,7 +232,8 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_ver
         params = params[0:st_ix] + params[st_ix + 2:]
         print('Sampletable found')
     # stage files, create dirs etc
-    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
+    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles,
+            run['mzmls'], params)
     if sampletable:
         sampletable_fn = os.path.join(rundir, 'sampletable.txt')
         with open(sampletable_fn, 'w') as fp:
@@ -241,14 +242,14 @@ def run_nextflow_workflow(self, run, params, mzmls, stagefiles, profiles, nf_ver
                 fp.write('\n')
         params.extend(['--sampletable', sampletable_fn])
     # create input file of filenames
-    # FIXME depends on mzmldef component, which is always in our dda but maybe not in later
-    # pipelines
-    with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
-        for fn in mzmls:
-            fnpath = os.path.join(stagedir, 'mzmls', fn['fn'])
-            mzstr = '{}\t{}\n'.format(fnpath, fn['mzmldef'])
-            fp.write(mzstr)
-    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
+    # depends on mzmldef component, which is always in our dda but maybe not in other pipelines
+    if len(run['mzmls']):
+        with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
+            for fn in run['mzmls']:
+                fnpath = os.path.join(stagedir, 'mzmls', fn['fn'])
+                mzstr = '{}\t{}\n'.format(fnpath, fn['mzmldef'])
+                fp.write(mzstr)
+        params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     if run['old_mzmls']:
         with open(os.path.join(rundir, 'oldmzmldef.txt'), 'w') as fp:
             for fn in run['old_mzmls']:
