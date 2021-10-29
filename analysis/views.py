@@ -51,6 +51,14 @@ def load_analysis_resultfiles(request, anid):
 
 @login_required
 def load_base_analysis(request, wfversion_id, baseanid):
+    """Find analysis to base current analysis on, for either copying parameters,
+    complementing with new sample sets, or a rerun from PSM table.
+
+    FIXME: This method, and the belonging DB model for base analysis is coupled to the DDA
+    MS proteomics pipeline, and therefore not very general, due to the complement and rerun
+    functionality. Maybe find a way around that, breaking those off from regular base analysis.
+    """
+    dsids = [int(x) for x in request.GET['dsids'].split(',')]
     try:
         new_pset_id = am.NextflowWfVersion.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
     except am.NextflowWfVersion.DoesNotExist:
