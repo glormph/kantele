@@ -12,6 +12,7 @@ let notif = {errors: {}, messages: {}};
 let detailsVisible = false;
 let cleanupsize = false;
 let fetchingCleanup = false;
+let treatItems;
 
 const tablefields = [
   {id: 'jobs', name: '__hourglass-half', type: 'state', multi: true, links: 'job_ids', linkroute: '#/jobs'},
@@ -47,6 +48,22 @@ async function getFileDetails(fnId) {
     <p><span class="has-text-weight-bold">Storage location:</span> <span class="has-text-primary">${resp.server}</span> / ${resp.path}</p>
     ${resp.description ? `<p><span class="has-text-weight-bold">Description:</span> ${resp.description}</p>` : ''}
     `;
+}
+
+
+function reactivateFiles() {
+  const callback = (file) => {file.deleted = false; }
+  treatItems('files/undelete/', 'file','reactivating', callback, selectedFiles);
+}
+
+
+function archiveFiles() {
+  const callback = (file) => {file.deleted = true; }
+  treatItems('files/archive/', 'file','archiving', callback, selectedFiles);
+}
+
+
+function purgeFiles() {
 }
 
 
@@ -103,10 +120,15 @@ async function fetchCleanup() {
 {/if}
 
 {#if selectedFiles.length}
-<!-- buttons -->
+<a class="button" title="Move deleted files to active storage (admins only)" on:click={reactivateFiles}>Undelete files</a>
+<a class="button" title="Move files to cold storage (admins only)" on:click={archiveFiles}>Archive files</a>
+{:else}
+<a class="button" title="Move deleted files to active storage (admins only)" disabled>Undelete files</a>
+<a class="button" title="Move files to cold storage (admins only)" disabled>Archive files</a>
+<a class="button" title="PERMANENTLY delete files from active and cold storage (admins only)" disabled>Purge files</a>
 {/if}
   
-<Table tab="Files" bind:notif={notif} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:detailview={showDetails} />
+<Table tab="Files" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:detailview={showDetails} />
 
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} fnIds={detailsVisible} />

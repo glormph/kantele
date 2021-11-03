@@ -39,7 +39,7 @@ class RestoreFromPDC(SingleFileJob):
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         self.run_tasks.append((restore_file_pdc_runtask(sfile), {}))
-        print('PDC archival task queued')
+        print('PDC restore task queued')
 
 
 class UnzipRawFolder(SingleFileJob):

@@ -822,3 +822,51 @@ def download_px_project(request):
     rsjob = jobutil.create_job(
         'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], sharename=settings.TMPSHARENAME, shasums=shasums)
     return HttpResponse()
+
+
+@login_required
+@require_POST
+def restore_file_from_cold(request):
+    '''Single file function for restoring archived files, for cases where files are not in dataset,
+    e.g. on tmp storage only'''
+    data = json.loads(request.body.decode('utf-8'))
+    try:
+        sfile = StoredFile.objects.select_related('rawfile__datasetrawfile', 'mzmlfile', 'pdcbackedupfile').get(pk=data['item_id'])
+    except StoredFile.DoesNotExist:
+        return JsonResponse({'error': 'File does not exist'}, status=403)
+    if not sfile.purged or not sfile.deleted:
+        return JsonResponse({'error': 'File is not currently marked as deleted, will not undelete'}, status=403)
+    elif hasattr(sfile.rawfile, 'datasetrawfile'):
+        return JsonResponse({'error': 'File is in a dataset, please restore entire set'}, status=403)
+    elif not hasattr(sfile, 'pdcbackedupfile'):
+        return JsonResponse({'error': 'File has no archived copy in PDC backup registered in Kantele, can not restore'}, status=403)
+    elif not sfile.pdcbackedupfile.success or sfile.pdcbackedupfile.deleted:
+        return JsonResponse({'error': 'Archived copy exists but cannot be restored from, check with admin'}, status=403)
+    elif hasattr(sfile, 'mzmlfile'):
+        return JsonResponse({'error': 'mzML derived files are not archived, please regenerate it from RAW data'}, status=403)
+    # File is set to deleted, purged = False, False in the post-job-view
+    create_job('restore_from_pdc_archive', sf_id=sfile.pk)
+
+
+@login_required
+@require_POST
+def archive_file(request):
+    '''Single file function for archiving files, for cases where files are not in dataset,
+    e.g. on tmp storage only'''
+    data = json.loads(request.body.decode('utf-8'))
+    try:
+        sfile = StoredFile.objects.select_related('rawfile__datasetrawfile', 'filetype', 'rawfile__producer').get(pk=data['item_id'])
+    except StoredFile.DoesNotExist:
+        return JsonResponse({'error': 'File does not exist'}, status=403)
+    if sfile.purged or sfile.deleted:
+        return JsonResponse({'error': 'File is currently marked as deleted, can not archive'}, status=403)
+    elif hasattr(sfile.rawfile, 'datasetrawfile'):
+        return JsonResponse({'error': 'File is in a dataset, please archive entire set or remove it from dataset first'}, status=403)
+    elif hasattr(sfile, 'pdcbackedupfile') and sfile.pdcbackedupfile.success == True and sfile.pdcbackedupfile.deleted == False:
+        return JsonResponse({'error': 'File is already archived'}, status=403)
+    elif hasattr(sfile, 'mzmlfile'):
+        return JsonResponse({'error': 'Derived mzML files are not archived, they can be regenerated from RAW data'}, status=403)
+    elif sfile.rawfile.producer.client_id in [settings.ANALYSISCLIENT_APIKEY]:
+        return JsonResponse({'error': 'Analysis result files are not archived, they can be regenerated from RAW data'}, status=403)
+    # File is set to deleted,purged=True,True in the post-job-view
+    create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)

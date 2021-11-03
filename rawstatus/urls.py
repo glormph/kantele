@@ -22,4 +22,7 @@ urlpatterns = [
    path('cleanup/', views.cleanup_old_files),
    path('external/scan/', views.scan_raws_tmp),
    path('external/import/', views.import_external_data),
+   path('archive/', views.archive_file),
+   path('undelete/', views.restore_file_from_cold),
+   path('purge/', views.delete_file_from_cold),
 ]
