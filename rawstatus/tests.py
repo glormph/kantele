@@ -1,8 +1,10 @@
 from datetime import datetime
 from django.test import TestCase, Client
+from django.contrib.auth.models import User
 
 from kantele import settings
 from rawstatus import models as rm
+from analysis import models as am
 from jobs import models as jm
 
 
@@ -114,3 +116,89 @@ class TestFileTransferred(BaseFilesTest):
             'client_id': self.clientid, 'ftype_id': self.ft.pk})
         self.assertEqual(jm.Job.objects.count(), 2)
         self.assertEqual(jobs.all().count(), 2)
+
+
+class TestArchiveFile(BaseFilesTest):
+    url = '/files/archive/'
+
+    def setUp(self):
+        super().setUp()
+        username='testuser'
+        email = 'test@test.com'
+        password='12345'
+        self.user = User(username=username, email=email)
+        self.user.set_password(password)
+        self.user.save() 
+        login = self.cl.login(username=username, password=password)
+        self.sfile = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.ss.id,
+                path='', md5=self.newraw.source_md5, checked=False, filetype_id=self.ft.id)
+
+    def test_get(self):
+        resp = self.cl.get(self.url)
+        self.assertEqual(resp.status_code, 405)
+
+    def test_wrong_params(self):
+        resp = self.cl.post(self.url, content_type='application/json', data={'hello': 'test'})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_wrong_id(self):
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': -1})
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()['error'], 'File does not exist')
+
+    def test_claimed_file(self):
+        dset_raw = rm.RawFile.objects.create(name='dset_file', producer=self.prod, source_md5='kjlmnop1234',
+                size=100, date=datetime.now(), claimed=True)
+        sfile = rm.StoredFile.objects.create(rawfile=dset_raw, filename=dset_raw.name, servershare_id=self.ss.id,
+                path='', md5=dset_raw.source_md5, checked=False, filetype_id=self.ft.id)
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('File is in a dataset', resp.json()['error'])
+
+    def test_already_archived(self):
+        rm.PDCBackedupFile.objects.create(success=True, storedfile=self.sfile, pdcpath='')
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.sfile.pk})
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.json()['error'], 'File is already archived')
+
+    def test_deleted_file(self):
+        sfile1 = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.ss.id,
+                path='', md5='deletedmd5', checked=False, filetype_id=self.ft.id,
+                deleted=True)
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile1.pk})
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.json()['error'], 'File is currently marked as deleted, can not archive')
+        # purged file to also test the check for it. Unrealistic to have it deleted but
+        # not purged obviously
+        sfile2 = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, 
+                servershare_id=self.ss.id, path='', md5='deletedmd5_2', checked=False, 
+                filetype_id=self.ft.id, deleted=False, purged=True)
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile2.pk})
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.json()['error'], 'File is currently marked as deleted, can not archive')
+
+    def test_mzmlfile(self):
+        pset = am.ParameterSet.objects.create(name='')
+        nfw = am.NextflowWorkflow.objects.create(description='', repo='')
+        wfv = am.NextflowWfVersion.objects.create(update='', commit='', filename='', nfworkflow=nfw,
+                paramset=pset, kanteleanalysis_version=1, nfversion='')
+        pwiz = am.Proteowizard.objects.create(version_description='', container_version='', nf_version=wfv)
+        am.MzmlFile.objects.create(sfile=self.sfile, pwiz=pwiz)
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.sfile.pk})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('Derived mzML files are not archived', resp.json()['error'])
+
+    def test_analysisfile(self):
+        prod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
+        ana_raw = rm.RawFile.objects.create(name='ana_file', producer=prod, source_md5='kjlmnop1234',
+                size=100, date=datetime.now(), claimed=True)
+        sfile = rm.StoredFile.objects.create(rawfile=ana_raw, filename=ana_raw.name, servershare_id=self.ss.id,
+                path='', md5=ana_raw.source_md5, checked=False, filetype_id=self.ft.id)
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('Analysis files are not archived', resp.json()['error'])
+
+    def test_ok(self):
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.sfile.pk})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {'state': 'ok'})

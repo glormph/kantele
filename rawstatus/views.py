@@ -845,7 +845,8 @@ def restore_file_from_cold(request):
     elif hasattr(sfile, 'mzmlfile'):
         return JsonResponse({'error': 'mzML derived files are not archived, please regenerate it from RAW data'}, status=403)
     # File is set to deleted, purged = False, False in the post-job-view
-    create_job('restore_from_pdc_archive', sf_id=sfile.pk)
+    jobutil.create_job('restore_from_pdc_archive', sf_id=sfile.pk)
+    return JsonResponse({'state': 'ok'})
 
 
 @login_required
@@ -857,10 +858,12 @@ def archive_file(request):
     try:
         sfile = StoredFile.objects.select_related('rawfile__datasetrawfile', 'filetype', 'rawfile__producer').get(pk=data['item_id'])
     except StoredFile.DoesNotExist:
-        return JsonResponse({'error': 'File does not exist'}, status=403)
+        return JsonResponse({'error': 'File does not exist'}, status=404)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request'}, status=400)
     if sfile.purged or sfile.deleted:
         return JsonResponse({'error': 'File is currently marked as deleted, can not archive'}, status=403)
-    elif hasattr(sfile.rawfile, 'datasetrawfile'):
+    elif sfile.rawfile.claimed or hasattr(sfile.rawfile, 'datasetrawfile'):
         return JsonResponse({'error': 'File is in a dataset, please archive entire set or remove it from dataset first'}, status=403)
     elif hasattr(sfile, 'pdcbackedupfile') and sfile.pdcbackedupfile.success == True and sfile.pdcbackedupfile.deleted == False:
         return JsonResponse({'error': 'File is already archived'}, status=403)
@@ -869,4 +872,5 @@ def archive_file(request):
     elif sfile.rawfile.producer.client_id in [settings.ANALYSISCLIENT_APIKEY]:
         return JsonResponse({'error': 'Analysis result files are not archived, they can be regenerated from RAW data'}, status=403)
     # File is set to deleted,purged=True,True in the post-job-view
-    create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)
+    jobutil.create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)
+    return JsonResponse({'state': 'ok'})
