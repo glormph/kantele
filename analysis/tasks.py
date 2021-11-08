@@ -396,7 +396,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
     # dont forget to update the nf_version in teh DB before deleting this!
     if '--raw' in stagefiles:
         nf_version = '19.10.0' 
-        profiles = 'qc,docker'
+        profiles = 'qc,docker,lehtio'
     else:
         nf_version = False
         profiles = 'qc'
