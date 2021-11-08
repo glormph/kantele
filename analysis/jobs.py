@@ -56,7 +56,8 @@ class RefineMzmls(DatasetJob):
                'name': analysis.name,
                'outdir': analysis.user.username,
                }
-        self.run_tasks.append(((run, params, mzmls, stagefiles, nfwf.nfversion), {}))
+        profiles = ['standard', 'docker']
+        self.run_tasks.append(((run, params, mzmls, stagefiles, profiles, nfwf.nfversion), {}))
         # TODO replace this for general logging anyway, not necessary to keep queueing in analysis log
         analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
         analysis.save()

@@ -257,7 +257,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
                 fp.write(mzstr)
         params.extend(['--oldmzmldef', os.path.join(rundir, 'oldmzmldef.txt')])
     params = [x if x != 'RUNNAME__PLACEHOLDER' else run['runname'] for x in params]
-    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles=profiles)
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
     postdata.update({'state': 'ok'})
     outfiles_db = register_resultfiles(outfiles)
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
@@ -268,7 +268,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def refine_mzmls(self, run, params, mzmls, stagefiles, nf_version):
+def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     print('Got message to run mzRefine workflow, preparing')
     rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
@@ -278,7 +278,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, nf_version):
             mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, 'mzmls', fn['fn']), refined_sfid=fn['sfid'])
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
-    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version)
+    outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
     # TODO ideally do this:
     # stage mzML with {dbid}___{filename}.mzML
     # This keeps dbid / ___ split out of the NF workflow 
@@ -358,7 +358,7 @@ def process_error_from_nf_log(logfile):
         return '\n'.join(errorlines)
 
 
-def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profiles=False):
+def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profiles):
     log_analysis(run['analysis_id'], 'Staging files finished, starting analysis')
     if not profiles:
         profiles = 'standard'
