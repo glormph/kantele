@@ -196,7 +196,7 @@ class TestArchiveFile(BaseFilesTest):
                 path='', md5=ana_raw.source_md5, checked=False, filetype_id=self.ft.id)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
         self.assertEqual(resp.status_code, 403)
-        self.assertIn('Analysis files are not archived', resp.json()['error'])
+        self.assertIn('Analysis result files are not archived', resp.json()['error'])
 
     def test_ok(self):
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.sfile.pk})
