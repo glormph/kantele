@@ -43,17 +43,6 @@ from multiprocessing import Process, Queue, set_start_method, TimeoutError
 from queue import Empty
 
 LEDGERFN = 'ledger.json'
-# TODO change to find dynacmically?
-RAW_IS_FOLDER = int(os.environ.get('RAW_IS_FOLDER')) == 1
-
-STD_OUTBOX = os.environ.get('OUTBOX', False)
-STD_ZIPBOX = os.environ.get('ZIPBOX')
-STD_DONEBOX = os.environ.get('DONEBOX')
-KEYFILE = os.environ.get('KEYFILE')
-SCP_FULL = os.environ.get('SCP_FULL')
-HOSTNAME = os.environ.get('HOSTNAME')
-KANTELEHOST = os.environ.get('KANTELEHOST')
-UPLOAD_FILETYPE_ID = os.environ.get('FILETYPE_ID')
 
 def zipfolder(folder, arcname):
     print('zipping {} to {}'.format(folder, arcname))
@@ -70,16 +59,18 @@ def md5(fnpath):
 
 
 
-def get_new_file_entry(fn, ftype=False):
-    if not ftype and not UPLOAD_FILETYPE_ID:
-        print('Exiting, no file type was specified')
-        sys.exit(1)
+def get_new_file_entry(fn, ftype, raw_is_folder):
+    if raw_is_folder or os.path.isdir(fn):
+        size = sum(os.path.getsize(os.path.join(wpath, subfile))
+            for wpath, subdirs, files in os.walk(fn) for subfile in files if subfile)
+    else:
+        size = os.path.getsize(fn)
     return {'fpath': fn, 'fname': os.path.basename(fn),
-            'md5': False, 'ftype_id': ftype or UPLOAD_FILETYPE_ID,
+            'md5': False, 'ftype_id': ftype,
             'fn_id': False,
             'prod_date': str(os.path.getctime(fn)),
-            'size': os.path.getsize(fn),
-            'is_dir': RAW_IS_FOLDER or os.path.isdir(fn),
+            'size': size,
+            'is_dir': raw_is_folder or os.path.isdir(fn),
             'transferred': False}
             #'remote_checking': False, 'remote_ok': False}
 
@@ -117,7 +108,7 @@ def get_fndata_id(fndata):
     return '{}__{}'.format(fndata['prod_date'], fndata['size'])
 
 
-def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox):
+def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, filetype, raw_is_folder, md5_stable_fns):
     # FIXME stop watching if this is a token upload
     """Runs as process, periodically checks outbox,
     runs MD5 on newly discovered files,
@@ -125,7 +116,7 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox):
     and a queue is used to get updates that remove files.
     """
     proc_log_configure(logq)
-    logger = logging.getLogger(f'{HOSTNAME}.producer.inboxcollect')
+    logger = logging.getLogger(f'{hostname}.producer.inboxcollect')
     while True:
         while fndoneq.qsize():
             # These files will have been removed from outbox
@@ -135,20 +126,24 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox):
         logger.info(f'Checking for new files in {outbox}')
         for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
             # create somewhat unique identifier to filter against existing entries
-            fndata = get_new_file_entry(fn)
+            fndata = get_new_file_entry(fn, filetype, raw_is_folder)
             ct_size = get_fndata_id(fndata)
             if ct_size not in ledger:
                 prod_date = fndata['prod_date']
                 logger.info('Found new file: {} produced {}'.format(fn, prod_date))
                 ledger[ct_size] = fndata
         for produced_fn in ledger.values():
-            if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
-                if not os.path.exists(zipbox):
-                    os.makedirs(zipbox)
-                zipname = os.path.join(zipbox, os.path.basename(produced_fn['fpath']))
-                produced_fn['nonzipped_path'] = produced_fn['fpath']
-                produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
             if not produced_fn['md5']:
+                if produced_fn['is_dir']:
+                    try:
+                        stable_fn = [x for x in md5_stable_fns 
+                                if os.path.exists(os.path.join(produced_fn['fpath'], x))][0]
+                    except IndexError:
+                        logger.warning('This file is a directory, but we could not find a designated stable file inside it')
+                        continue
+                    md5path = os.path.join(produced_fn['fpath'], stable_fn)
+                else:
+                    md5path = produced_fn['fpath']
                 try:
                     produced_fn['md5'] = md5(produced_fn['fpath'])
                 except FileNotFoundError:
@@ -156,6 +151,12 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox):
                     continue
                 else:
                     regq.put(produced_fn)
+            if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
+                if not os.path.exists(zipbox):
+                    os.makedirs(zipbox)
+                zipname = os.path.join(zipbox, os.path.basename(produced_fn['fpath']))
+                produced_fn['nonzipped_path'] = produced_fn['fpath']
+                produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
         sleep(5)
 
 
@@ -187,15 +188,15 @@ def log_listener(log_q):
             logger.handle(logrec)
 
 
-def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file_id, client_id):
+def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file_id, client_id, kantelehost, clientname, scp_full, keyfile):
     # FIXME where to do library check? In register process I guess.
     '''This process does the registration and the transfer of files'''
     # Start getting the leftovers from previous run
-    fnstate_url = urljoin(KANTELEHOST, 'files/transferstate/')
-    trfed_url = urljoin(KANTELEHOST, 'files/transferred/')
+    fnstate_url = urljoin(kantelehost, 'files/transferstate/')
+    trfed_url = urljoin(kantelehost, 'files/transferred/')
     newfns_found = False
     proc_log_configure(logqueue)
-    logger = logging.getLogger(f'{HOSTNAME}.producer.main')
+    logger = logging.getLogger(f'{clientname}.producer.main')
     while True:
         for fndata in [x for x in ledger.values() if not x['fn_id']]:
             # In case new files are found but registration failed for some 
@@ -208,7 +209,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file
             # update ledger in case new MD5 calculated
             ledger[ct_size] = fndata
             try:
-                resp = register_file(KANTELEHOST, 'files/register/', fndata['fname'],
+                resp = register_file(kantelehost, 'files/register/', fndata['fname'],
                         fndata['md5'], fndata['size'], fndata['prod_date'], 
                         client_id, claimed=False)
             except requests.exceptions.ConnectionError:
@@ -292,7 +293,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file
                     # local state on produced fns so we dont retransfer
                     # if no MD5 is validated on server yet
                     try:
-                        transfer_file(fndata['fpath'], SCP_FULL, KEYFILE)
+                        transfer_file(fndata['fpath'], scp_full, keyfile)
                     except subprocess.CalledProcessError:
                         logger.warning('Could not transfer {}'.format(
                             fndata['fpath']))
@@ -339,13 +340,18 @@ def main():
     parser.add_argument('--watch_folder', dest='outbox', default=False, type=str,
             help='Outbox folder to watch if any')
     parser.add_argument('--file', dest='file', default=False, type=str, help='File to upload')
+    parser.add_argument('--config', dest='configfn', default=False, type=str, help='Config file if any')
     parser.add_argument('--library_description', type=str, dest='libdesc', default=False,
             help='In case you want a library file to be uploaded (will be shared for analysis), '
             'provide its description here (in quotes)')
     parser.add_argument('--client', type=str, dest='client_id', default=False,
             help='Client ID for instrument')
     args = parser.parse_args()
-    outbox = args.outbox or STD_OUTBOX
+
+    # Load settings if any
+    if args.configfn:
+        with open(args.configfn) as fp:
+            config = json.load(fp)
 
     mainq = Queue()
     regdoneq = Queue()
@@ -370,9 +376,10 @@ def main():
             print('Incorrect token')
             sys.exit(1)
 
+    outbox = args.outbox or config.get('outbox')
     if outbox:
-        donebox = STD_DONEBOX or os.path.join(outbox, os.path.pardir, 'donebox')
-        zipbox = STD_ZIPBOX or os.path.join(outbox, os.path.pardir, 'zipbox')
+        donebox = config.get('donebox') or os.path.join(outbox, os.path.pardir, 'donebox')
+        zipbox = config.get('zipbox') or os.path.join(outbox, os.path.pardir, 'zipbox')
         single_file_id = False
         # for instruments, setup collection/MD5 process
         # otherwise we use a single shot MD5er
@@ -380,7 +387,7 @@ def main():
             os.makedirs(outbox)
         if not os.path.exists(donebox):
             os.makedirs(donebox)
-        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger, outbox, zipbox))
+        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger, outbox, zipbox, config.get('hostname')))
         processes = [collect_p]
         collect_p.start()
     elif args.file:
@@ -388,7 +395,9 @@ def main():
         donebox = False
         # check if it is in ledger, use that then
         # TODO add question -- should we use ledger
-        fndata = get_new_file_entry(args.file)
+        # FIXME filetype and raw_is_folder should be dynamic
+        # maybe raw_is_folder ALWAYS dynamic
+        fndata = get_new_file_entry(args.file, config.get('filetype_id'), config.get('raw_is_folder'))
         single_file_id = get_fndata_id(fndata)
         if single_file_id in ledger:
             fndata = ledger[single_file_id]

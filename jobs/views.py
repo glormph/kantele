@@ -241,9 +241,10 @@ def unzipped_folder(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
-    storedfile.filename = storedfile.filename.rstrip('.zip')
-    storedfile.save()
+    StoredFile.objects.filter(pk=request.POST['sfid']).update(
+            filename=storedfile.filename.rstrip('.zip'), md5=request.POST['md5'],
+            checked=request.POST['source_md5'] == request.POST['md5'])
+    print('Stored file MD5 checked and saved')
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
     return HttpResponse()

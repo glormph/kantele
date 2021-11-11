@@ -43,14 +43,14 @@ class RestoreFromPDC(SingleFileJob):
 
 
 class UnzipRawFolder(SingleFileJob):
-    refname = 'unzip_raw_datadir'
-    task = tasks.unzip_folder
+    refname = 'unzip_raw_datadir_md5check'
+    task = tasks.unzip_folder_check_md5
 
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         fnpath = os.path.join(sfile.path, sfile.filename)
-        self.run_tasks.append(((sfile.servershare.name, fnpath, sfile.id), {}))
-        print('Unzip task queued')
+        self.run_tasks.append(((sfile.servershare.name, fnpath, sfile.id, kwargs['source_md5']), {}))
+        print('Unzip/MD5 task queued')
 
 
 class RenameFile(SingleFileJob):

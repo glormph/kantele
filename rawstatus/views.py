@@ -7,6 +7,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Q
 
 from datetime import timedelta, datetime
 import os
@@ -311,7 +312,8 @@ def get_files_transferstate(request):
     elif sfns.count() > 1:
         return JsonResponse({'error': 'Problem, there are multiple stored files with that raw file ID'}, status=409)
     else:
-        sfn = sfns.get()
+        # need to unzip, then MD5 check, then backup
+        sfn = sfns.select_related('filetype').get()
         if sfn.checked:
             # File transfer and check finished
             tstate = 'done'
@@ -321,8 +323,10 @@ def get_files_transferstate(request):
                 process_file_confirmed_ready(rfn, sfn)
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
-        elif jm.Job.objects.filter(funcname='get_md5', kwargs={'sf_id': sfn.pk, 
-            'source_md5': rfn.source_md5}).exclude(state__in=jobutil.JOBSTATES_DONE):
+
+        elif jm.Job.objects.filter(Q(funcname='get_md5') | Q(funcname='unzip_raw_datadir'),
+                kwargs={'sf_id': sfn.pk, 'source_md5': rfn.source_md5}).exclude(
+                state__in=jobutil.JOBSTATES_DONE):
             # this did not work when doing filejob_set.filter ?
             # A second call to this route would fire the md5 again,
             # until the file was checked. But in theory it'd work, and by hand too.
@@ -333,14 +337,19 @@ def get_files_transferstate(request):
 
             # File not checked, so either md5 check in progress, or it crashed
             tstate = 'wait'
+
         elif sfn.md5 != rfn.source_md5:
             # MD5 on disk is not same as registered MD5, corrupted transfer
             # Worst case here'd be file changed on disk at producer, after 
             # registering, will give infinite loop
             tstate = 'transfer'
+
         else:
             # No MD5 job exists for file, fire one, do not report back
-            jobutil.create_job('get_md5', source_md5=rfn.source_md5, sf_id=sfn.id)
+            if sfn.filetype.is_folder:
+                jobutil.create_job('unzip_raw_datadir_md5check', source_md5=rfn.source_md5, sf_id=sfn.id)
+            else:
+                jobutil.create_job('get_md5', source_md5=rfn.source_md5, sf_id=sfn.id)
             tstate = 'wait'
     return JsonResponse({'transferstate': tstate})
 
@@ -681,7 +690,8 @@ def download_instrument_package(request):
         prod = Producer.objects.select_related('msinstrument').get(pk=request.POST['prod_id'])
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
-    runtransferfile = loader.render_to_string('rawstatus/producer.bat', {
+    
+    runtransferfile = json.dumps({
         'datadisk': datadisk,
         'client_id': prod.client_id,
         'filetype_id': prod.msinstrument.filetype_id,
@@ -690,11 +700,12 @@ def download_instrument_package(request):
         'key': settings.TMP_STORAGE_KEYFILE,
         'scp_full': settings.TMP_SCP_PATH,
         'producerhostname': prod.name,
+        'md5_stable_fns': settings.MD5_STABLE_FILES,
         })
 
     if 'configonly' in request.POST and request.POST['configonly'] == 'true':
-        resp = HttpResponse(runtransferfile, content_type='application/bat')
-        resp['Content-Disposition'] = 'attachment; filename="transfer.bat"'
+        resp = HttpResponse(runtransferfile, content_type='application/json')
+        resp['Content-Disposition'] = 'attachment; filename="transfer_config.json"'
         return resp
     else:
         # create zip file
@@ -702,7 +713,7 @@ def download_instrument_package(request):
         shutil.copy('rawstatus/templates/rawstatus/producer.zip', zipfilename)
         with zipfile.ZipFile(zipfilename, 'a') as zipfp:
             zipfp.write('rawstatus/file_inputs/producer.py', 'producer.py')
-            zipfp.writestr('transfer.bat', runtransferfile)
+            zipfp.writestr('transfer_config.json', runtransferfile)
         resp = FileResponse(open(zipfilename, 'rb'))
         resp['Content-Disposition'] = 'attachment; filename="{}_filetransfer.zip"'.format(prod.name)
     return resp
