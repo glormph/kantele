@@ -4,7 +4,7 @@ from rawstatus import views
 
 app_name = 'files'
 urlpatterns = [
-   path('', views.show_files, name='latestfiles'),
+   path('', views.show_inflow, name='inflow'),
    path('instruments/', views.instrument_page, name='instruments'),
    path('instruments/download/', views.download_instrument_package),
    path('register/', views.register_file, name='register'),

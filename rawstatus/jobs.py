@@ -45,6 +45,7 @@ class RestoreFromPDC(SingleFileJob):
 class UnzipRawFolder(SingleFileJob):
     refname = 'unzip_raw_datadir_md5check'
     task = tasks.unzip_folder_check_md5
+    retryable = False
 
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)

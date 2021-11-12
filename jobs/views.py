@@ -6,6 +6,8 @@ from celery import states
 from django.http import HttpResponseForbidden, HttpResponse, JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
+from django.db.models import F
+
 from jobs import models
 from jobs.jobs import Jobstates, create_job, send_slack_message
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
@@ -241,9 +243,11 @@ def unzipped_folder(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    StoredFile.objects.filter(pk=request.POST['sfid']).update(
-            filename=storedfile.filename.rstrip('.zip'), md5=request.POST['md5'],
-            checked=request.POST['source_md5'] == request.POST['md5'])
+    sfile = StoredFile.objects.get(pk=request.POST['sfid'])
+    sfile.md5 = request.POST['md5']
+    sfile.checked = request.POST['source_md5'] == request.POST['md5']
+    sfile.filename = sfile.filename.rstrip('.zip')
+    sfile.save()
     print('Stored file MD5 checked and saved')
     if 'task' in request.POST:
         set_task_done(request.POST['task'])

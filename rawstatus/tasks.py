@@ -215,7 +215,7 @@ def delete_empty_dir(self, servershare, directory):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def unzip_folder_check_md5(self, servershare, fnpath, sf_id):
+def unzip_folder_check_md5(self, servershare, fnpath, sf_id, source_md5):
     print('Unzipping {} on {} to a folder'.format(fnpath, servershare))
     # first unzip
     zipped_fn = os.path.join(settings.SHAREMAP[servershare], fnpath)

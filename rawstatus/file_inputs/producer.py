@@ -145,18 +145,17 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
                 else:
                     md5path = produced_fn['fpath']
                 try:
-                    produced_fn['md5'] = md5(produced_fn['fpath'])
+                    produced_fn['md5'] = md5(md5path)
                 except FileNotFoundError:
                     logger.warning('Could not find file in outbox to check MD5')
                     continue
-                else:
-                    regq.put(produced_fn)
             if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
                 if not os.path.exists(zipbox):
                     os.makedirs(zipbox)
                 zipname = os.path.join(zipbox, os.path.basename(produced_fn['fpath']))
                 produced_fn['nonzipped_path'] = produced_fn['fpath']
                 produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
+            regq.put(produced_fn)
         sleep(5)
 
 
@@ -289,40 +288,37 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file
                 if cts_id not in ledger:
                     logger.warning('Could not find file with ID {} locally'.format(fndata['fn_id']))
                     continue
-                if not fndata['transferred']:
-                    # local state on produced fns so we dont retransfer
-                    # if no MD5 is validated on server yet
-                    try:
-                        transfer_file(fndata['fpath'], scp_full, keyfile)
-                    except subprocess.CalledProcessError:
-                        logger.warning('Could not transfer {}'.format(
-                            fndata['fpath']))
+                try:
+                    transfer_file(fndata['fpath'], scp_full, keyfile)
+                except subprocess.CalledProcessError:
+                    logger.warning('Could not transfer {}'.format(
+                        fndata['fpath']))
+                else:
+                    fndata['transferred'] = True
+                    trf_data = {'fn_id': fndata['fn_id'],
+                            # use fpath/basename instead of fname, to get the
+                            # zipped file name if needed, instead of the normal fn 
+                            'filename': os.path.basename(fndata['fpath']),
+                            'client_id': client_id,
+                            'ftype_id': fndata['ftype_id'],
+                            }
+                    resp = requests.post(url=trfed_url, data=trf_data)
+                    if resp.status_code == 500:
+                        logger.error('Kantele server error when getting file state, please contact administrator')
                     else:
-                        fndata['transferred'] = True
-                        trf_data = {'fn_id': fndata['fn_id'],
-                                # use fpath/basename instead of fname, to get the
-                                # zipped file name if needed, instead of the normal fn 
-                                'filename': os.path.basename(fndata['fpath']),
-                                'client_id': client_id,
-                                'ftype_id': fndata['ftype_id'],
-                                }
-                        resp = requests.post(url=trfed_url, data=trf_data)
-                        if resp.status_code == 500:
-                            logger.error('Kantele server error when getting file state, please contact administrator')
+                        result = resp.json()
+                        if resp.status_code != 200:
+                            logger.error(result['error'])
+                            if 'problem' in result and result['problem'] == 'NOT_REGISTERED':
+                                fndata.update({
+                                    'md5': False, 'registered': False,
+                                    'transferred': False,
+                                    'remote_checking': False,
+                                    'remote_ok': False})
                         else:
-                            result = resp.json()
-                            if resp.status_code != 200:
-                                logger.error(result['error'])
-                                if 'problem' in result and result['problem'] == 'NOT_REGISTERED':
-                                    fndata.update({
-                                        'md5': False, 'registered': False,
-                                        'transferred': False,
-                                        'remote_checking': False,
-                                        'remote_ok': False})
-                            else:
-                                logger.info('Registered transfer of file '
-                                 '{}'.format(fndata['fpath']))
-                        ledgerchanged = True
+                            logger.info('Registered transfer of file '
+                             '{}'.format(fndata['fpath']))
+                    ledgerchanged = True
             if ledgerchanged:
                 save_ledger(ledger, LEDGERFN)
         sleep(3)
@@ -387,7 +383,7 @@ def main():
             os.makedirs(outbox)
         if not os.path.exists(donebox):
             os.makedirs(donebox)
-        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger, outbox, zipbox, config.get('hostname')))
+        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger, outbox, zipbox, config.get('hostname'), config.get('filetype_id'), config.get('raw_is_folder'), config.get('md5_stable_fns')))
         processes = [collect_p]
         collect_p.start()
     elif args.file:
@@ -416,7 +412,9 @@ def main():
     else:
         print('No input files or outbox to watch was specified, exiting')
         sys.exit(1)
-    register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger, donebox, single_file_id, args.client_id))
+    register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger,
+        donebox, single_file_id, args.client_id, config.get('host'), config.get('hostname'),
+        config.get('scp_full'), config.get('key')))
     register_p.start()
     logproc = Process(target=log_listener, args=(logqueue,))
     logproc.start()

@@ -324,7 +324,7 @@ def get_files_transferstate(request):
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
 
-        elif jm.Job.objects.filter(Q(funcname='get_md5') | Q(funcname='unzip_raw_datadir'),
+        elif jm.Job.objects.filter(Q(funcname='get_md5') | Q(funcname='unzip_raw_datadir_md5check'),
                 kwargs={'sf_id': sfn.pk, 'source_md5': rfn.source_md5}).exclude(
                 state__in=jobutil.JOBSTATES_DONE):
             # this did not work when doing filejob_set.filter ?
@@ -340,12 +340,15 @@ def get_files_transferstate(request):
 
         elif sfn.md5 != rfn.source_md5:
             # MD5 on disk is not same as registered MD5, corrupted transfer
-            # Worst case here'd be file changed on disk at producer, after 
-            # registering, will give infinite loop
+            # reset MD5 on stored file to make sure no NEW stored files are created
+            # basically setting its state to pre-transfer state
+            sfn.md5 = rfn.source_md5
+            sfn.save()
             tstate = 'transfer'
 
         else:
-            # No MD5 job exists for file, fire one, do not report back
+            # No MD5 job exists for file, fire one, do not report back. Unlikely to happen often
+            # since MD5 is checked in transferred-view
             if sfn.filetype.is_folder:
                 jobutil.create_job('unzip_raw_datadir_md5check', source_md5=rfn.source_md5, sf_id=sfn.id)
             else:
@@ -357,11 +360,7 @@ def get_files_transferstate(request):
 def process_file_confirmed_ready(rfn, sfn):
     """Processing of unzip, backup, QC after transfer has succeeded (MD5 checked)
     for newly arrived MS other raw data files (not for analysis etc)"""
-    if hasattr(rfn.producer, 'msinstrument') and rfn.producer.msinstrument.filetype.is_folder:
-        jobutil.create_job('unzip_raw_datadir', sf_id=sfn.id)
-        ftype_isdir = True
-    else:
-        ftype_isdir = False
+    ftype_isdir = hasattr(rfn.producer, 'msinstrument') and rfn.producer.msinstrument.filetype.is_folder
     jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=ftype_isdir)
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(rfn.producer, 'msinstrument'): 
@@ -410,7 +409,10 @@ def file_transferred(request):
         file_trf.save()
     # if re-transfer happens and second time it is corrupt, overwriting old file
     # then we have a problem! So always fire MD5 job, not only on new files
-    jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
+    if file_trf.filetype.is_folder:
+        jobutil.create_job('unzip_raw_datadir_md5check', source_md5=rawfn.source_md5, sf_id=file_trf.id)
+    else:
+        jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
@@ -691,8 +693,11 @@ def download_instrument_package(request):
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
     
+    transferbat = loader.render_to_string('rawstatus/producer.bat', {'client_id': prod.client_id})
     runtransferfile = json.dumps({
-        'datadisk': datadisk,
+        'outbox': f'{datadisk}\outbox',
+        'zipbox': f'{datadisk}\zipbox',
+        'donebox': f'{datadisk}\donebox',
         'client_id': prod.client_id,
         'filetype_id': prod.msinstrument.filetype_id,
         'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
@@ -713,6 +718,7 @@ def download_instrument_package(request):
         shutil.copy('rawstatus/templates/rawstatus/producer.zip', zipfilename)
         with zipfile.ZipFile(zipfilename, 'a') as zipfp:
             zipfp.write('rawstatus/file_inputs/producer.py', 'producer.py')
+            zipfp.writestr('transfer.bat', transferbat)
             zipfp.writestr('transfer_config.json', runtransferfile)
         resp = FileResponse(open(zipfilename, 'rb'))
         resp['Content-Disposition'] = 'attachment; filename="{}_filetransfer.zip"'.format(prod.name)
