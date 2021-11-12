@@ -109,10 +109,8 @@ def set_md5(request):
     if 'client_id' not in request.POST or not taskclient_authorized(
             request.POST['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
-    storedfile.md5 = request.POST['md5']
-    storedfile.checked = request.POST['source_md5'] == request.POST['md5']
-    storedfile.save()
+    StoredFile.objects.filter(pk=request.POST['sfid']).update(md5=request.POST['md5'],
+            checked=request.POST['source_md5'] == request.POST['md5'])
     print('Stored file MD5 checked and saved')
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
@@ -223,13 +221,8 @@ def register_external_file(request):
         return HttpResponseForbidden()
     dataset = {'dataset_id': data['dset_id'], 'removed_files': {},
                'added_files': {1: {'id': data['raw_id']}}}
-    sf = StoredFile.objects.get(pk=data['sf_id']) 
-    raw = RawFile.objects.get(pk=data['raw_id'])
-    sf.md5 = data['md5']
-    sf.checked = True
-    raw.source_md5 = data['md5']
-    sf.save()
-    raw.save()
+    StoredFile.objects.filter(pk=data['sf_id']).update(md5=data['md5'], checked=True)
+    RawFile.objects.filter(pk=data['raw_id']).update(source_md5=data['md5'])
     dsviews.save_or_update_files(dataset)
     if 'task' in data:
         set_task_done(data['task'])

@@ -193,12 +193,11 @@ def browser_userupload(request):
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
         # never check browser-userfiles, MD5 is checked on delivery so, just assume checked = True
-        sfile = StoredFile(rawfile_id=raw['file_id'], 
+        sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
                        filename='userfile_{}_{}'.format(raw['file_id'], upfile.name), md5=dighash,
                        checked=True, filetype=upload.filetype,
                        path=settings.UPLOADDIR,
                        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-        sfile.save()
         ufile = UserFile(sfile=sfile, description=desc, upload=upload)
         ufile.save()
         dst = os.path.join(settings.SHAREMAP[sfile.servershare.name], sfile.path,
