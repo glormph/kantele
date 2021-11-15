@@ -279,48 +279,47 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, donebox, single_file
             else:
                 logger.info('State for file {} with ID {} was: {}'.format(fndata['fname'], fnid, result['transferstate']))
 
-            # Now transfer registered files (TODO put in mp Process/Q? ledger?)
-            # In MP case you will need to also report start of transfer so
-            # it wont queue for SCP multiple times etc? Maybe queued could
-            # re-check state on server before doing the SCP
-
-            for cts_id, fndata in scpfns:
-                if cts_id not in ledger:
-                    logger.warning('Could not find file with ID {} locally'.format(fndata['fn_id']))
-                    continue
-                try:
-                    transfer_file(fndata['fpath'], scp_full, keyfile)
-                except subprocess.CalledProcessError:
-                    logger.warning('Could not transfer {}'.format(
-                        fndata['fpath']))
+        # Now transfer registered files (TODO put in mp Process/Q? ledger?)
+        # In MP case you will need to also report start of transfer so
+        # it wont queue for SCP multiple times etc? Maybe queued could
+        # re-check state on server before doing the SCP
+        for cts_id, fndata in scpfns:
+            if cts_id not in ledger:
+                logger.warning('Could not find file with ID {} locally'.format(fndata['fn_id']))
+                continue
+            try:
+                transfer_file(fndata['fpath'], scp_full, keyfile)
+            except subprocess.CalledProcessError:
+                logger.warning('Could not transfer {}'.format(
+                    fndata['fpath']))
+            else:
+                fndata['transferred'] = True
+                trf_data = {'fn_id': fndata['fn_id'],
+                        # use fpath/basename instead of fname, to get the
+                        # zipped file name if needed, instead of the normal fn
+                        'filename': os.path.basename(fndata['fpath']),
+                        'client_id': client_id,
+                        'ftype_id': fndata['ftype_id'],
+                        }
+                resp = requests.post(url=trfed_url, data=trf_data)
+                if resp.status_code == 500:
+                    logger.error('Kantele server error when getting file state, please contact administrator')
                 else:
-                    fndata['transferred'] = True
-                    trf_data = {'fn_id': fndata['fn_id'],
-                            # use fpath/basename instead of fname, to get the
-                            # zipped file name if needed, instead of the normal fn 
-                            'filename': os.path.basename(fndata['fpath']),
-                            'client_id': client_id,
-                            'ftype_id': fndata['ftype_id'],
-                            }
-                    resp = requests.post(url=trfed_url, data=trf_data)
-                    if resp.status_code == 500:
-                        logger.error('Kantele server error when getting file state, please contact administrator')
+                    result = resp.json()
+                    if resp.status_code != 200:
+                        logger.error(result['error'])
+                        if 'problem' in result and result['problem'] == 'NOT_REGISTERED':
+                            fndata.update({
+                                'md5': False, 'registered': False,
+                                'transferred': False,
+                                'remote_checking': False,
+                                'remote_ok': False})
                     else:
-                        result = resp.json()
-                        if resp.status_code != 200:
-                            logger.error(result['error'])
-                            if 'problem' in result and result['problem'] == 'NOT_REGISTERED':
-                                fndata.update({
-                                    'md5': False, 'registered': False,
-                                    'transferred': False,
-                                    'remote_checking': False,
-                                    'remote_ok': False})
-                        else:
-                            logger.info('Registered transfer of file '
-                             '{}'.format(fndata['fpath']))
-                    ledgerchanged = True
-            if ledgerchanged:
-                save_ledger(ledger, LEDGERFN)
+                        logger.info('Registered transfer of file '
+                         '{}'.format(fndata['fpath']))
+                ledgerchanged = True
+        if ledgerchanged:
+            save_ledger(ledger, LEDGERFN)
         sleep(3)
 
 
