@@ -353,7 +353,9 @@ def get_datasets(request):
             dsfiles = get_dataset_files(dsid, use_refined=True)
     # FIXME default to refined mzmls if exist, now we enforce if exist for simplicity, make optional
     # FIXME if refined have been deleted, state it, maybe old auto-deleted and need to remake
+            sample_error = False
             if dsfiles.count() != nrneededfiles:
+                sample_error = True
                 response['error'] = True
                 response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
             dsdetails['channels'] = {}
@@ -367,14 +369,25 @@ def get_datasets(request):
                         'projsample', 'channel__channel').filter(dataset_id=dsid)}
 
             else:
+                qsf_error = False
                 for fn in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
-                    dsdetails['files'][fn.id]['sample'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
+                    try:
+                        qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
+                    except dm.QuantSampleFile.DoesNotExist:
+                        qsf_error = True
+                    else:
+                        dsdetails['files'][fn.id]['sample'] = qsf_sample
+                if qsf_error:
+                    response['error'] = True
+                    response['errmsg'].append('File(s) in the dataset do '
+                        'not have a sample annotation, please edit the dataset first')
+
             # Add stored analysis file-setnames if any:
             if anid:
                 for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
                     dsdetails['files'][afs.sfile_id]['setname'] = afs.sample
                 dsdetails['filesaresets'] = any((x['setname'] != '' for x in dsdetails['files'].values()))
-            else:
+            elif not qsf_error and not sample_error:
                 [x.update({'setname': x['sample'] if x['setname'] == '' else x['setname']})
                         for x in dsdetails['files'].values()]
                 dsdetails['filesaresets'] = False

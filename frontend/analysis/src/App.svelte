@@ -105,6 +105,9 @@ function validate() {
   if (!config.wfversion) {
 		notif.errors['You must select a workflow version'] = 1;
 	}
+  if (!Object.keys(dsets).length) {
+    notif.errors['No datasets are in this analysis, maybe they need some editing'] = 1;
+  }
   if ('mzmldef' in wf.components && !config.mzmldef) {
 		notif.errors['You must select a mzml definition file'] = 1;
   }
@@ -289,7 +292,7 @@ async function fetchDatasetDetails(fetchdsids) {
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   if (result.error) {
-    const msg = result.errmsg;
+    const msg = result.errmsg.join('<br>');
     notif.errors[msg] = 1;
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
