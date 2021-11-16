@@ -188,8 +188,9 @@ def dataset_sampleprep(request, dataset_id):
                 response_json['labelfree_singlesample']['model'] = str(qfiles[0].projsample_id)
             else:
                 response_json['labelfree_multisample'] = True
-            response_json['samples'] = {fn.rawfile_id: {'model': str(fn.projsample_id), 'newprojsample': ''}
-                                        for fn in qfiles}
+            response_json['samples'].update(
+                    {fn.rawfile_id: {'model': str(fn.projsample_id), 'newprojsample': ''}
+                        for fn in qfiles})
         else:
             response_json['quants'][qtid]['chans'] = [] # resetting from empty sampleprep to re-populate
             for qsc in models.QuantChannelSample.objects.filter(
