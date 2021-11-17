@@ -198,7 +198,7 @@ async function storeAnalysis() {
       return a[0].replace('N', 'A') > b[0].replace('N', 'A')
       })
     );
-    post.components.sampletable = sampletable.map(row => row.slice(0, 3).concat(row[3] ? row[3] : 'X__POOL'));
+    post.components.sampletable = sampletable;
   }
    
   // Post the payload

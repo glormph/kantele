@@ -694,8 +694,10 @@ def store_analysis(request):
         if req['base_analysis']['isComplement']:
             for sname, isoq in shadow_isoquants.items():
                 for ch, (sample, chid) in isoq['channels'].items():
-                    sampletable.append([ch, sname, sample, isoq['samplegroups'][ch] or 'X__POOL'])
-        jobinputs['components']['sampletable'] = components['sampletable']
+                    sampletable.append([ch, sname, sample, isoq['samplegroups'][ch]])
+        # strip empty last-fields (for no-group analysis)
+        sampletable = [[f for f in row if f] for row in sampletable]
+        jobinputs['components']['sampletable'] = sampletable
     else:
         jobinputs['components']['sampletable'] = False
         am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
@@ -727,7 +729,7 @@ def get_isoquants(analysis, sampletables):
         isoquants[aiq.setname.setname] = {
                 'chemistry': qtypename,
                 'channels': {name: (qcsamples[chid], chid) for name, chid in channels.items()},
-                'samplegroups': {samch[0]: samch[3] if samch[3] != 'X__POOL' else '' for samch in sampletables if samch[1] == aiq.setname.setname},
+                'samplegroups': {samch[0]: samch[3] for samch in sampletables if samch[1] == aiq.setname.setname},
                 'denoms': aiq.value['denoms'],
                 'report_intensity': aiq.value['report_intensity'],
                 'sweep': aiq.value['sweep'],
