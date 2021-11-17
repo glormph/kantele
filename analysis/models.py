@@ -183,6 +183,7 @@ class Proteowizard(models.Model):
     date_added = models.DateTimeField(auto_now_add=True)
     is_docker = models.BooleanField(default=False)
     nf_version = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
+    active = models.BooleanField(default=True)
 
 
 class MzmlFile(models.Model):
