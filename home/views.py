@@ -735,12 +735,13 @@ def get_file_info(request, file_id):
 
 def parse_mzml_pwiz(pwiz_sets, qset, numname):
     for pw in qset.annotate(nummz=Count('mzmlfile'), date=Trunc('mzmlfile__sfile__regdate', 'day')
-            ).values('pk', 'mzmlfile__refined', 'version_description', 'nummz', 'date'):
+            ).values('pk', 'active', 'mzmlfile__refined', 'version_description', 'nummz', 'date'):
         pwset_id = '{}_{}'.format(pw['pk'], pw['mzmlfile__refined'])
         try:
             pwset = pwiz_sets[pwset_id]
         except KeyError:
             pwset = {'pws_id': pwset_id, 
+                    'active': pw['active'],
                     'notcreated': 0,
                     'deleted': 0,
                     'existing': 0,
@@ -814,7 +815,8 @@ def fetch_dset_details(dset):
                 state = 'No mzmls'
             pws['state'] = state
         info['pwiz_sets'] = [x for x in pw_sets.values()]
-        info['pwiz_versions'] =  {x.id: x.version_description for x in anmodels.Proteowizard.objects.exclude(pk__in=[x['id'] for x in info['pwiz_sets']])}
+        info['pwiz_versions'] =  {x.id: x.version_description for x in anmodels.Proteowizard.objects.exclude(
+            pk__in=[x['id'] for x in info['pwiz_sets']]).exclude(active=False)}
     else:
         nrstoredfiles = {nonms_dtypes[dset.datatype_id]: rawfiles.count()}
     info['nrstoredfiles'] = nrstoredfiles
