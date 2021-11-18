@@ -360,6 +360,7 @@ def get_datasets(request):
                 response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
             dsdetails['channels'] = {}
             dsdetails['files'] = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''} for x in dsfiles}
+            qsf_error = False
             if 'lex' in dset.quantdataset.quanttype.name:
                 for fn in dsfiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
                     dsdetails['files'][fn.id]['sample'] = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if hasattr(fn.rawfile.datasetrawfile, 'quantfilechannelsample') else ''
@@ -369,7 +370,6 @@ def get_datasets(request):
                         'projsample', 'channel__channel').filter(dataset_id=dsid)}
 
             else:
-                qsf_error = False
                 for fn in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
                     try:
                         qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
