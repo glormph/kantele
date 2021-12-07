@@ -238,7 +238,8 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
         sampletable_fn = os.path.join(rundir, 'sampletable.txt')
         with open(sampletable_fn, 'w') as fp:
             for sample in sampletable:
-                fp.write('\t'.join(sample))
+                # FIXME remove the replace after dda pipeline is updated to 2.7 (added FS to awk in commit Nov.15 2021)
+                fp.write('\t'.join(sample).replace(' ', '_'))
                 fp.write('\n')
         params.extend(['--sampletable', sampletable_fn])
     # create input file of filenames
@@ -347,8 +348,9 @@ def process_error_from_nf_log(logfile):
             errorlines = tracelines[:]
         else:
             for line in fp:
-                if line.startswith('  ') and part_of_error and line.strip() != nf_swap_err:
-                    errorlines.append(line.strip())
+                if line.startswith('  ') and part_of_error:
+                    if line.strip() != nf_swap_err:
+                        errorlines.append(line.strip())
                 elif line.strip() == 'Command error:':
                     part_of_error = True
                 elif line[:5] == 'Tip: ':
