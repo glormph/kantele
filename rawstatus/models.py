@@ -24,6 +24,7 @@ class Producer(models.Model):
     name = models.TextField()
     client_id = models.TextField()
     shortname = models.TextField()
+    internal = models.BooleanField(default=False, help_text='Internal instrument with own raw file upload client')
 
     def __str__(self):
         return self.name
@@ -76,19 +77,22 @@ class StoredFile(models.Model):
         return self.rawfile.name
 
 
-class UserFileUpload(models.Model):
+class UploadToken(models.Model):
+    """A token to upload a specific file type for a specified time"""
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     token = models.CharField(max_length=36, unique=True) # UUID keys
     timestamp = models.DateTimeField(auto_now=True) # this can be updated
     expires = models.DateTimeField()
-    finished = models.BooleanField(default=False)
+    expired = models.BooleanField()
+    pubkey = models.TextField()
+    producer = models.ForeignKey(Producer, on_delete=models.CASCADE)
+    filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
 
 
 class UserFile(models.Model):
     sfile = models.OneToOneField(StoredFile, on_delete=models.CASCADE)
     description = models.TextField()
-    upload = models.OneToOneField(UserFileUpload, on_delete=models.CASCADE)
+    upload = models.OneToOneField(UploadToken, on_delete=models.CASCADE)
 
 
 class PDCBackedupFile(models.Model):
