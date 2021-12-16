@@ -84,7 +84,7 @@ class UploadToken(models.Model):
     timestamp = models.DateTimeField(auto_now=True) # this can be updated
     expires = models.DateTimeField()
     expired = models.BooleanField()
-    pubkey = models.TextField()
+    #pubkey = models.TextField()
     producer = models.ForeignKey(Producer, on_delete=models.CASCADE)
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
 
