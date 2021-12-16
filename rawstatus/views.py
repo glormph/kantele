@@ -17,6 +17,7 @@ import shutil
 import zipfile
 from tempfile import NamedTemporaryFile, mkstemp
 from uuid import uuid4
+from base64 import b64encode
 import requests
 from hashlib import md5
 from urllib.parse import urlsplit
@@ -223,13 +224,10 @@ def request_token_userupload(request):
         producer = Producer.objects.get(pk=data['producer_id'])
     except Producer.DoesNotExist:
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
-    if producer.internal:
-        return JsonResponse({'error': True, 'error': 'Cannot use internal file producer for own uploads'}, status=403)
-    else:
-        ufu = store_userfileupload(data['ftype_id'], request.user, producer)
-        # token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
-        return JsonResponse({'token': ufu.token, #token_ft_host_b64.decode('utf-8'),
-            'expires': ufu.expires})
+    ufu = store_userfileupload(data['ftype_id'], request.user, producer)
+    token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
+    return JsonResponse({'token': ufu.token,
+        'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
 
 def store_userfileupload(ftype_id, user, producer):
