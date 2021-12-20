@@ -38,7 +38,7 @@ async function uploadFile() {
   } else {
     resp = await resp.json();
   }
-  if ('error' in resp) {
+  if (resp.error) {
     uploadRunning = uploadSuccess = false;
     uploadError = resp.error;
   } else {
@@ -130,6 +130,8 @@ onMount(async() => {
       
       {#if uploadError}
       <div class="has-text-danger">{uploadError}</div>
+      {:else if uploadSuccess}
+      <div class="has-text-success">{uploadSuccess}</div>
       {/if}
       {#if selectedFile.length && uploaddesc && upload_ftypeid}
       <a class="button is-small" on:click={uploadFile}>Upload file</a>
