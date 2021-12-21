@@ -124,39 +124,29 @@ def scan_raws_tmp(request):
 
 @require_POST
 def register_file(request):
-    """Treats POST requests with:
-        - client_id
-        - filename
-        - md5
-        - date of production/acquisition
+    """New files are registered in the system on this view, where producer 
+    or user passes info on file (name, md5, date, etc). Auth is done 
+    via a token either from web console or CLI script.
     """
+    data = json.loads(request.body.decode('utf-8'))
     try:
-        data = json.loads(request.body.decode('utf-8'))
         token = data['token']
-    except json.decoder.JSONDecodeError:
-        data = request.POST
-        token = False
-    try:
-        client_id = data['client_id']
         fn, size, md5, filedate_raw = get_registration_postdetails(data)
     except KeyError as error:
         print('POST request to register_file with missing parameter, '
               '{}'.format(error))
-        return JsonResponse({'error': 'Data load for URL incorrect'}, status=403)
-    producer, upload = get_producer_and_userupload(client_id, token)
-    if not any([producer, upload]):
-        return JsonResponse({'error': 'Could not verify access'}, status=403)
-    elif upload:
-        # Upload contains producer, generated when requesting an upload token
-        producer = upload.producer
+        return JsonResponse({'error': 'Data passed to registration incorrect'}, status=400)
+    upload = validate_token(token)
+    if not upload:
+        return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     try:
         file_date = datetime.strftime(
             datetime.fromtimestamp(float(filedate_raw)), '%Y-%m-%d %H:%M')
     except ValueError as error:
         print('POST request to register_file with incorrect formatted '
               'date parameter {}'.format(error))
-        return JsonResponse({'error': 'Data load for URL incorrect'}, status=403)
-    response = get_or_create_rawfile(md5, fn, producer, size, file_date, data)
+        return JsonResponse({'error': 'Date passed to registration incorrectly formatted'}, status=400)
+    response = get_or_create_rawfile(md5, fn, upload.producer, size, file_date, data)
     return JsonResponse(response)
 
 
@@ -169,14 +159,16 @@ def browser_userupload(request):
     if request.method != 'POST':
         uploadable_filetypes = StoredFileType.objects.filter(name__in=['database'])
         return JsonResponse({'upload_ftypes': {ft.id: ft.filetype for ft in uploadable_filetypes}})
-    err_resp = {'error': 'File is not correct FASTA', 'success': False}
     data = request.POST
     # create userfileupload model (incl. fake token)
     try:
         int(data['ftype_id'])
     except ValueError:
-        return JsonResponse({'success': False, 'error': 'Please select a file type'})
-    token, expiry, upload = store_userfileupload(data['ftype_id'], request.user)
+        return JsonResponse({'success': False, 'error': 'Please select a file type '
+        f'{data["ftype_id"]}'})
+    # TODO pick producer_id in frontend for browser uploads?
+    producer = Producer.objects.get(client_id=settings.ADMIN_APIKEY)
+    upload = create_upload_token(data['ftype_id'], request.user, producer)
     # tmp write file 
     upfile = request.FILES['file']
     dighash = md5()
@@ -215,70 +207,59 @@ def browser_userupload(request):
     
 # TODO view for asking tokens or put it in the fasta upload view
 
-
-@login_required
 @require_POST
-def request_token_userupload(request):
+def instrument_check_in(request):
+    data = json.loads(request.body.decode('utf-8'))
+    response = {'newtoken': False}
+    if not data.get('token') or not data.get('client_id'):
+        return JsonResponse({'error': 'Bad request'}, status=400)
+    upload = validate_token(data['token'])
+    if not upload or upload.producer.client_id != data['client_id']:
+        return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
+                status=403)
+    elif upload.expires < timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
+        upload.expired = True
+        upload.save()
+        newtoken = create_upload_token(upload.filetype_id, upload.user, upload.producer)
+        response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
+    return JsonResponse(response)
+
+ 
+from functools import wraps
+def login_required_403_json(view_func):
+    """
+    Modified django's login_required to return a JsonResponse with
+    403 instead of a redirect to the log-in page.
+    """
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return view_func(request, *args, **kwargs)
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    return _wrapped_view
+
+
+@login_required_403_json
+@require_POST
+def request_upload_token(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
-        producer = Producer.objects.get(pk=data['producer_id'])
+        producer = Producer.objects.get(client_id=data['producer_id'])
     except Producer.DoesNotExist:
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
-    ufu = store_userfileupload(data['ftype_id'], request.user, producer)
+    ufu = create_upload_token(data['ftype_id'], request.user, producer)
     token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
     return JsonResponse({'token': ufu.token,
         'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
 
-def store_userfileupload(ftype_id, user, producer):
+def create_upload_token(ftype_id, user, producer):
+    '''Generates a new UploadToken for a producer and stores it in DB'''
     token = str(uuid4())
-    expiry = timezone.now() + timedelta(0.33)  # 8h expiry for big files
-    uupload = UploadToken.objects.create(token=token, user=user, expired=False,
+    expi_sec = settings.MAX_TIME_PROD_TOKEN if producer.internal else settings.MAX_TIME_UPLOADTOKEN
+    expiry = timezone.now() + timedelta(seconds=expi_sec)
+    return UploadToken.objects.create(token=token, user=user, expired=False,
             expires=expiry, filetype_id=ftype_id, producer=producer)
-    return uupload
-
-
-@require_POST
-def register_public_key_tmp_upload(request):
-    # FIXME
-    data = json.loads(request.body.decode('utf-8'))
-#    try:
-#        check_token
-
-#@require_POST
-#def register_userupload(request):
-#    try:
-#        fn, size, md5, filedate_raw = get_registration_postdetails(request.POST)
-#        desc = request.POST['description']
-#    except KeyError as error:
-#        print('POST request to register_file with missing parameter, '
-#              '{}'.format(error))
-#        return HttpResponseForbidden()
-#    try:
-#        file_date = datetime.strftime(
-#            datetime.fromtimestamp(float(filedate_raw)), '%Y-%m-%d %H:%M')
-#    except ValueError as error:
-#        print('POST request to register_file with incorrect formatted '
-#              'date parameter {}'.format(error))
-#        return HttpResponseForbidden()
-#    producer = Producer.objects.get(shortname='admin')
-#    try:
-#        upload = UserFileUpload.objects.get(token=request.POST['token'])
-#    except (KeyError, UserFileUpload.DoesNotExist):
-#        return HttpResponseForbidden()
-#    if UserFile.objects.filter(upload=upload).count():
-#        print('This token {} is already active for another upload'.format(request.POST['token']))
-#        return HttpResponseForbidden()
-#    response = get_or_create_rawfile(md5, fn, producer, size, file_date, {'claimed': True})
-#    raw = RawFile.objects.get(pk=response['file_id'])
-#    sfile = StoredFile.objects.create(rawfile_id=response['file_id'], 
-#                       filename='userfile_{}_{}'.format(raw.id, raw.name), md5=md5,
-#                       checked=False, filetype=upload.filetype,
-#                       path=settings.UPLOADDIR,
-#                       servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-#    ufile = UserFile(sfile=sfile, description=desc, upload=upload)
-#    ufile.save()
-#    return JsonResponse(response)
 
 
 def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
@@ -293,81 +274,62 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
                 '{rawfn.source_md5}. Already stored = {stored}')
     else:
         stored, state, msg = False, 'registered', False
-    response = {'file_id': rawfn.id, 'state': state, 'stored': stored, 
+    return {'file_id': rawfn.id, 'state': state, 'stored': stored, 
             'remote_name': rawfn.name, 'msg': msg}
-    return response
 
 
-def get_producer_and_userupload(client_id, token):
-    # FIXME need to remove client_id and only go with token
-    producer, upload = False, False
-    if client_id:
-        try:
-            producer = check_producer(client_id)
-        except Producer.DoesNotExist:
-            print('POST request with incorrect client id '
-                  '{}'.format(client_id))
-    elif token:
-        try:
-            upload = UploadToken.objects.get(token=token)
-        except UploadToken.DoesNotExist as e:
-            print('Token for user upload does not exist')
-            pass
-        else:
-            if upload.expires < timezone.now():
-                upload = False
-                print('Token expired')
-    return producer, upload
+def validate_token(token):
+    try:
+        upload = UploadToken.objects.select_related('filetype', 'producer').get(
+                token=token, expired=False)
+    except UploadToken.DoesNotExist as e:
+        print('Token for user upload does not exist')
+        return False
+    else:
+        if upload.expires < timezone.now():
+            print('Token expired')
+            upload.expired = True
+            upload.save()
+            return False
+        elif upload.expired:
+            print('Token expired')
+            return False
+        return upload
 
 
 # /files/transferstate
-# FIXME move to libfile path POST ok tfstate
+@require_POST
 def get_files_transferstate(request):
-    if not request.method == 'POST':
-        return JsonResponse({'error': 'Must use POST'}, status=405)
     data =  json.loads(request.body.decode('utf-8'))
-    # FIXME remove after full transition
     try:
-        token = data['token']
-    except KeyError:
-        token = False
-    try:
-        fnid = data['fnid']
-        client_id = data['client_id']
+        token, fnid = data['token'], data['fnid']
     except KeyError as error:
-        print('Request to get transferstate with missing parameter, '
-              '{}'.format(error))
+        print(f'Request to get transferstate with missing parameter, {error}')
         return JsonResponse({'error': 'Bad request'}, status=400)
 
-    producer, upload = get_producer_and_userupload(client_id, token)
-    if not any([producer, upload]):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+    upload = validate_token(token)
+    if not upload:
+        return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     # Also do registration here? if MD5? prob not.
     rfn = RawFile.objects.filter(pk=fnid)
     if not rfn.count():
-        return JsonResponse({'error': 'File with ID {} cannot be found in system'.format(fnid)}, status=404)
+        return JsonResponse({'error': f'File with ID {fnid} cannot be found in system'}, status=404)
     rfn = rfn.get()
-    if producer and rfn.producer != producer:
+    if rfn.producer != upload.producer:
         # In case the file has been moved to another instrument or the instrument API key
         # is wrong here (unlikely right?)
-        return JsonResponse({'error': 'File with ID {} is not from producer {}'.format(rfn.id, producer.name)}, status=403)
-    # FIXME if really bad timing, there will be multiple sfns
-    # FIXME filetype here, so we can find files derived from rawfile, eg mzML
-    # but since mzML also is filetype raw we should be able to use filetype on raw
-    if 'ftype_id' in data:
-        sfns = rfn.storedfile_set.filter(filetype_id=data['ftype_id'])
-    elif upload:
-        sfns = rfn.storedfile_set.filter(filetype=upload.filetype)
-    else:
-        # Only get the files which are not derived for uploads
-        sfns = rfn.storedfile_set.filter(mzmlfile__isnull=True)
+        return JsonResponse({'error': f'File with ID {rfn.id} is not from producer  {upload.producer.name}'}, status=403)
+    # FIXME if somehow really bad timing, there will be multiple sfns?
+    sfns = rfn.storedfile_set.filter(filetype=upload.filetype, mzmlfile__isnull=True)
     if not sfns.count():
         # has not been reported as transferred,
         tstate = 'transfer'
     elif sfns.count() > 1:
         # Now behaviour specifies there can only be one copy of a raw file
         # What happens if there is a copy e.g. on a different server?
-        return JsonResponse({'error': 'Problem, there are multiple stored files with that raw file ID'}, status=409)
+        errmsg = 'Problem, there are multiple stored files with that raw file ID'
+        logger.error(errmsg)
+        return JsonResponse({'error': errmsg}, status=409)
     else:
         # need to unzip, then MD5 check, then backup
         sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').get()
@@ -440,31 +402,20 @@ def file_transferred(request):
         - fn_id
     Starts checking file MD5 in background
     """
-    # FIXME remove this after we've gone to full JSON also in producer instruments
+    data = json.loads(request.body.decode('utf-8'))
     try:
-        data = json.loads(request.body.decode('utf-8'))
         token = data['token']
-        libdesc, userdesc = data['libdesc'], data['userdesc']
-    except json.decoder.JSONDecodeError:
-        data = request.POST
-        token = False
-        libdesc, userdesc = False, False
-    try:
         fn_id = data['fn_id']
-        client_id = data['client_id']
         fname = data['filename']
+        libdesc, userdesc = data['libdesc'], data['userdesc']
     except KeyError as error:
         print('POST request to file_transferred with missing parameter, '
               '{}'.format(error))
         print(1)
         return JsonResponse({'error': 'Bad request'}, status=400)
-    producer, upload = get_producer_and_userupload(client_id, token)
-    if not any([producer, upload]):
-        return JsonResponse({'error': 'Could not verify access'}, status=403)
-    # FIXME only uploadtoken.filetype_id after fixing producer instruments
-    ftype_id = data['ftype_id'] if producer else upload.filetype_id
-    if not any([producer, upload]):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+    upload = validate_token(token)
+    if not upload:
+        return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
     try:
         rawfn = RawFile.objects.get(pk=fn_id)
@@ -472,12 +423,8 @@ def file_transferred(request):
         errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
         print(errmsg)
         return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
-    try:
-        ftype_id = StoredFileType.objects.get(pk=ftype_id).id
-    except StoredFileType.DoesNotExist:
-        return JsonResponse({'error': 'File type does not exist'}, status=400)
     file_trf, created = StoredFile.objects.get_or_create(
-            rawfile=rawfn, filetype_id=ftype_id,
+            rawfile=rawfn, filetype=upload.filetype,
             md5=rawfn.source_md5,
             defaults={'servershare': tmpshare, 'path': '',
                 'filename': fname, 'checked': False})
@@ -498,83 +445,6 @@ def file_transferred(request):
     else:
         jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
-
-
-#@require_POST
-#def upload_userfile_token(request):
-#    try:
-#        ufile = UserFile.objects.select_related('sfile__servershare', 'sfile__rawfile', 'upload').get(
-#            upload__token=request.POST['token'])
-#    except (KeyError, UserFileUpload.DoesNotExist) as e:
-#        print(e)
-#        return HttpResponseForbidden()
-#    else:
-#        if ufile.upload.expires < timezone.now():
-#            print('expired', ufile.upload.expires)
-#            return HttpResponseForbidden()
-#    move_uploaded_file(ufile, request.FILES['file'])
-#    jobutil.create_job('get_md5', source_md5=ufile.sfile.rawfile.source_md5, sf_id=ufile.sfile.id)
-#    return HttpResponse()
-
-
-#def move_uploaded_file(ufile, tmpfp):
-#    # FIXME chekc if only one FILE
-#    dstdir = os.path.join(settings.SHAREMAP[ufile.sfile.servershare.name], ufile.sfile.path) 
-#    try:
-#        os.makedirs(dstdir)
-#    except FileExistsError:
-#        pass
-#    except Exception:
-#        raise
-#    dst = os.path.join(dstdir, ufile.sfile.filename)
-#    with open(dst, 'wb') as fp:
-#        for chunk in tmpfp.chunks():
-#            fp.write(chunk)
-#
-
-## FIXME deprecate, is now get_trf_state
-## just fix in upload  libfiles
-#@require_GET
-#def check_md5_success(request):
-#    try:
-#        fn_id = request.GET['fn_id']
-#        ftype_id = request.GET['ftype_id']
-#        client_id = request.GET['client_id']
-#    except KeyError:
-#        return HttpResponseForbidden()
-#    try:
-#        check_producer(client_id)
-#    except Producer.DoesNotExist:
-#        return HttpResponseForbidden()
-#    print('Transfer state requested for fn_id {}, type {}'.format(fn_id, ftype_id))
-#    sfiles = StoredFile.objects.select_related('rawfile__producer__msinstrument__instrumenttype').filter(
-#            rawfile_id=fn_id, filetype_id=ftype_id)
-#    if not sfiles.count():
-#        return JsonResponse({'fn_id': fn_id, 'md5_state': False})
-#    else:
-#        file_transferred = sfiles.get(mzmlfile__isnull=True)
-#        return do_md5_check(file_transferred)
-
-
-## FIXME deprecate, is now get_trf_state
-## just fix in upload  libfiles
-#@require_GET
-#def check_md5_success_userfile(request):
-#    try:
-#        fn_id = request.GET['fn_id']
-#        token = request.GET['token']
-#    except KeyError:
-#        return HttpResponseForbidden()
-#    try:
-#        upload = UserFileUpload.objects.get(token=request.GET['token'], finished=False)
-#    except UserFileUpload.DoesNotExist:
-#        return HttpResponseForbidden()
-#    print('Transfer state requested for userfile fn_id {}'.format(fn_id))
-#    resp = do_md5_check(upload.userfile.sfile)
-#    if json.loads(resp.content)['md5_state']:
-#        upload.finished = True
-#        upload.save()
-#    return resp
 
 
 def do_md5_check(file_transferred):
@@ -709,63 +579,6 @@ def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id, params):
                             params=params)
 
 
-#@require_POST
-#def set_libraryfile(request):
-#    '''Transforms a file into a library file and queues job to move it
-#    to library location (from e.g. tmp location)'''
-#    try:
-#        client_id = request.POST['client_id']
-#        fn_id = request.POST['fn_id']
-#        desc = request.POST['desc']
-#    except KeyError as error:
-#        print('POST request to register_file with missing parameter, '
-#              '{}'.format(error))
-#        return HttpResponseForbidden()
-#    if client_id != settings.ADMIN_APIKEY:
-#        print('POST request with incorrect client id '
-#              '{}'.format(client_id))
-#        return HttpResponseForbidden()
-#    try:
-#        rawfn = RawFile.objects.get(pk=fn_id)
-#    except RawFile.DoesNotExist:
-#        print('POST request with incorrect fn id '
-#              '{}'.format(fn_id))
-#        return HttpResponseForbidden()
-#    else:
-#        sfile = StoredFile.objects.select_related('servershare').get(
-#            rawfile_id=fn_id)
-#        if LibraryFile.objects.filter(sfile__rawfile_id=fn_id):
-#            response = {'library': True, 'state': 'ok'}
-#        elif sfile.servershare.name == settings.TMPSHARENAME:
-#            libfn = LibraryFile.objects.create(sfile=sfile, description=desc)
-#            jobutil.create_job(
-#                'move_single_file', sf_id=sfile.id, dst_path=settings.LIBRARY_FILE_PATH,
-#                newname='libfile_{}_{}'.format(libfn.id, sfile.filename))
-#            response = {'library': True, 'state': 'ok'}
-#        else:
-#            LibraryFile.objects.create(sfile=sfile, description=desc)
-#            response = {'library': False, 'state': 'ok'}
-#    return JsonResponse(response)
-#
-#
-#@require_GET
-#def check_libraryfile_ready(request):
-#    '''Checks if libfile has been transferred to library location by a job'''
-#    try:
-#        libfn = LibraryFile.objects.select_related('sfile__servershare').get(
-#            sfile__rawfile_id=request.GET['fn_id'])
-#    except LibraryFile.DoesNotExist:
-#        print('request with incorrect fn id '
-#              '{}'.format(request.GET['fn_id']))
-#        return HttpResponseForbidden()
-#    else:
-#        if libfn.sfile.servershare.name == settings.STORAGESHARENAME and libfn.sfile.path == settings.LIBRARY_FILE_PATH:
-#            response = {'library': True, 'ready': True, 'state': 'ok'}
-#        else:
-#            response = {'library': True, 'ready': False, 'state': 'ok'}
-#        return JsonResponse(response)
-#
-
 @login_required
 @staff_member_required
 def instrument_page(request):
@@ -786,13 +599,13 @@ def download_instrument_package(request):
         'outbox': f'{datadisk}\outbox',
         'zipbox': f'{datadisk}\zipbox',
         'donebox': f'{datadisk}\donebox',
+        'producerhostname': prod.name,
         'client_id': prod.client_id,
         'filetype_id': prod.msinstrument.filetype_id,
         'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
         'host': settings.KANTELEHOST,
         'key': settings.TMP_STORAGE_KEYFILE,
         'scp_full': settings.TMP_SCP_PATH,
-        'producerhostname': prod.name,
         'md5_stable_fns': settings.MD5_STABLE_FILES,
         })
 

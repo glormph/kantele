@@ -92,6 +92,11 @@ except TypeError:
     # Job runner etc dont know these values, only main
     pass
 
+# Upload token lifespan
+MAX_TIME_UPLOADTOKEN = 8 * 3600 # for user uploads
+MAX_TIME_PROD_TOKEN = 30 * 24 * 3600 # for internal production instruments
+TOKEN_RENEWAL_WINDOW_DAYS = 7
+
 # Labelcheck experiment name
 LCEXPNAME = '__labelchecks'
 LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID').split(',')]
