@@ -176,6 +176,7 @@ def browser_userupload(request):
     desc = data['desc'].strip()
     if desc == '':
         return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+    err_resp = {'error': 'File is not correct FASTA', 'success': False}
     with NamedTemporaryFile(mode='w+') as fp:
         for chunk in upfile.chunks():
             try:
@@ -191,18 +192,28 @@ def browser_userupload(request):
             return JsonResponse(err_resp)
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
-        # never check browser-userfiles, MD5 is checked on delivery so, just assume checked = True
+
+        # we already have this file by MD5, get the stored files
+        sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
+        if sfns.count() == 1:
+            return JsonResponse({'error': 'This file is already in the '
+                f'system: {sfns.get().filename}'})
+        elif sfns.count():
+            return JsonResponse({'error': 'Multiple files already found, this '
+                'should not happen, please inform your administrator'})
+        # never MD5 check browser-userfiles, MD5 is checked on delivery so, just assume checked = True
         sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
-                       filename='userfile_{}_{}'.format(raw['file_id'], upfile.name), md5=dighash,
+                filename=f'userfile_{raw["file_id"]}_{upfile.name}',
                        checked=True, filetype=upload.filetype,
-                       path=settings.UPLOADDIR,
+                       md5=dighash, path=settings.UPLOADDIR,
                        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
         ufile = UserFile(sfile=sfile, description=desc, upload=upload)
         ufile.save()
         dst = os.path.join(settings.SHAREMAP[sfile.servershare.name], sfile.path,
             sfile.filename)
         shutil.copy(fp.name, dst)
-    return JsonResponse({'error': False, 'success': True})
+    return JsonResponse({'error': False, 'success': 'Succesfully uploaded file to '
+        f'become {sfile.filename}'})
 
     
 # TODO view for asking tokens or put it in the fasta upload view
