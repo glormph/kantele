@@ -131,7 +131,7 @@ def register_file(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
         token = data['token']
-        fn, size, md5, filedate_raw = get_registration_postdetails(data)
+        fn, size, md5, filedate_raw = data['fn'], data['size'], data['md5'], data['date']
     except KeyError as error:
         print('POST request to register_file with missing parameter, '
               '{}'.format(error))
@@ -148,10 +148,6 @@ def register_file(request):
         return JsonResponse({'error': 'Date passed to registration incorrectly formatted'}, status=400)
     response = get_or_create_rawfile(md5, fn, upload.producer, size, file_date, data)
     return JsonResponse(response)
-
-
-def get_registration_postdetails(postdata):
-    return postdata['fn'], postdata['size'], postdata['md5'], postdata['date'],
 
 
 @login_required

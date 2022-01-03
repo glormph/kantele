@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.utils import timezone
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
@@ -112,7 +112,63 @@ class TransferStateTest(BaseFilesTest):
 
 
 class TestFileRegistered(BaseFilesTest):
-    pass
+    url = '/files/register/'
+
+    def test_auth_etc_fails(self):
+        # GET
+        resp = self.cl.get(self.url)
+        self.assertEqual(resp.status_code, 405)
+        # No params
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'hello': 'test'})
+        self.assertEqual(resp.status_code, 400)
+        # Missing client ID /token (False)
+        stddata = {'fn': self.newraw.name, 'token': False, 'size': 200,
+                'date': 'fake', 'md5': 'fake'}
+        resp = self.cl.post(self.url, content_type='application/json',
+                data=stddata)
+        self.assertEqual(resp.status_code, 403)
+        # Wrong token
+        resp = self.cl.post(self.url, content_type='application/json',
+                data= {**stddata, 'token': self.nottoken})
+        self.assertEqual(resp.status_code, 403)
+        # expired token
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={**stddata, 'token': self.nottoken})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('invalid or expired', resp.json()['error'])
+        # Wrong date
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={**stddata, 'token': self.token})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_normal(self):
+        nowdate = timezone.now()
+        stddata = {'fn': self.newraw.name, 'token': self.token, 'size': 100,
+                'date': datetime.timestamp(nowdate), 'md5': 'fake'}
+        resp = self.cl.post(self.url, content_type='application/json',
+                data=stddata)
+        self.assertEqual(resp.status_code, 200)
+        newraws = rm.RawFile.objects.filter(source_md5='fake', #date=nowdate,
+                name=self.newraw.name, producer=self.prod, size=100) 
+        self.assertEqual(newraws.count(), 1)
+        self.assertTrue(nowdate - newraws.get().date < timedelta(seconds=60))
+
+    def test_register_again(self):
+        # create a rawfile
+        self.test_normal() 
+        # try one with same MD5, check if only one file is there
+        nowdate = timezone.now()
+        stddata = {'fn': self.newraw.name, 'token': self.token, 'size': 100,
+                'date': datetime.timestamp(nowdate), 'md5': 'fake'}
+        resp = self.cl.post(self.url, content_type='application/json',
+                data=stddata)
+        self.assertEqual(resp.status_code, 200)
+        newraws = rm.RawFile.objects.filter(source_md5='fake',
+                name=self.newraw.name, producer=self.prod, size=100) 
+        self.assertEqual(newraws.count(), 1)
+        self.assertEqual(resp.json()['state'], 'error')
+        self.assertIn('is already registered', resp.json()['msg'])
 
 
 class TestFileTransferred(BaseFilesTest):
