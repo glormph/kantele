@@ -339,7 +339,7 @@ def get_files_transferstate(request):
         # Now behaviour specifies there can only be one copy of a raw file
         # What happens if there is a copy e.g. on a different server?
         errmsg = 'Problem, there are multiple stored files with that raw file ID'
-        logger.error(errmsg)
+        print(errmsg)
         return JsonResponse({'error': errmsg}, status=409)
     else:
         # need to unzip, then MD5 check, then backup
@@ -417,12 +417,10 @@ def file_transferred(request):
     try:
         token = data['token']
         fn_id = data['fn_id']
-        fname = data['filename']
         libdesc, userdesc = data['libdesc'], data['userdesc']
     except KeyError as error:
         print('POST request to file_transferred with missing parameter, '
               '{}'.format(error))
-        print(1)
         return JsonResponse({'error': 'Bad request'}, status=400)
     upload = validate_token(token)
     if not upload:
@@ -438,7 +436,7 @@ def file_transferred(request):
             rawfile=rawfn, filetype=upload.filetype,
             md5=rawfn.source_md5,
             defaults={'servershare': tmpshare, 'path': '',
-                'filename': fname, 'checked': False})
+                'filename': rawfn.name, 'checked': False})
     if not created:
         print('File already registered as transferred, rerunning MD5 check in case new '
                 'file arrived')

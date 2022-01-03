@@ -1,23 +1,38 @@
-from datetime import datetime
+from datetime import timedelta
+from django.utils import timezone
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
 
 from kantele import settings
 from rawstatus import models as rm
 from analysis import models as am
+from analysis import models as am
 from jobs import models as jm
 
 
 class BaseFilesTest(TestCase):
     def setUp(self):
-        self.clientid = 'abcde'
-        self.notclientid = 'qwerty'
+        self.nottoken = 'blablabla'
+        self.token= 'fghihj'
         self.cl = Client()
         self.ss = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, uri='test.tmp', share='/home/testtmp')
         self.ft = rm.StoredFileType.objects.create(name='testft', filetype='tst')
-        self.prod = rm.Producer.objects.create(name='prod1', client_id=self.clientid, shortname='p1')
+        self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
         self.newraw = rm.RawFile.objects.create(name='file1', producer=self.prod, source_md5='abcde12345',
-                size=100, date=datetime.now(), claimed=False)
+                size=100, date=timezone.now(), claimed=False)
+        self.username='testuser'
+        email = 'test@test.com'
+        self.password='12345'
+        self.user = User(username=self.username, email=email)
+        self.user.set_password(self.password)
+        self.user.save() 
+        rm.UploadToken.objects.create(user=self.user, token=self.token,
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft)
+        # expired token
+        rm.UploadToken.objects.create(user=self.user, token=self.nottoken, 
+                expires=timezone.now() - timedelta(1), expired=False, 
+                producer=self.prod, filetype=self.ft)
 
 
 class TransferStateTest(BaseFilesTest):
@@ -26,36 +41,37 @@ class TransferStateTest(BaseFilesTest):
     def setUp(self):
         super().setUp()
         self.trfraw = rm.RawFile.objects.create(name='filetrf', producer=self.prod, source_md5='defghi123',
-                size=100, date=datetime.now(), claimed=False)
+                size=100, date=timezone.now(), claimed=False)
         self.doneraw = rm.RawFile.objects.create(name='filedone', producer=self.prod, source_md5='jklmnop123',
-                size=100, date=datetime.now(), claimed=False)
+                size=100, date=timezone.now(), claimed=False)
         self.multifileraw = rm.RawFile.objects.create(name='filemulti', producer=self.prod, source_md5='jsldjak8',
-                size=100, date=datetime.now(), claimed=False)
-        self.trfsf = rm.StoredFile.objects.create(rawfile=self.trfraw, filename=self.trfraw.name, servershare_id=self.ss.id,
-                path='', md5=self.trfraw.source_md5, checked=False, filetype_id=self.ft.id)
-        self.donesf = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name, servershare_id=self.ss.id,
-                path='', md5=self.doneraw.source_md5, checked=True, filetype_id=self.ft.id)
-        self.multisf1 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, servershare_id=self.ss.id,
-                path='', md5=self.multifileraw.source_md5, checked=False, filetype_id=self.ft.id)
-        ft2 = rm.StoredFileType.objects.create(name='testft2', filetype='tst')
+                size=100, date=timezone.now(), claimed=False)
+        self.trfsf = rm.StoredFile.objects.create(rawfile=self.trfraw, filename=self.trfraw.name, servershare=self.ss,
+                path='', md5=self.trfraw.source_md5, checked=False, filetype=self.ft)
+        self.donesf = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name, servershare=self.ss,
+                path='', md5=self.doneraw.source_md5, checked=True, filetype=self.ft)
+        self.multisf1 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, servershare=self.ss,
+                path='', md5=self.multifileraw.source_md5, checked=False, filetype=self.ft)
+        # ft2 = rm.StoredFileType.objects.create(name='testft2', filetype='tst')
+        # FIXME multisf with two diff filenames shouldnt be a problem right?
         multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, 
-                servershare_id=self.ss.id, path='', md5='', checked=False, filetype_id=ft2.pk)
+                servershare=self.ss, path='', md5='', checked=False, filetype=self.ft)
 
     def test_transferstate_done(self):
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'client_id': self.clientid, 'fnid': self.doneraw.id})
+                data={'token': self.token, 'fnid': self.doneraw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
 
     def test_transferstate_scp(self):
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'client_id': self.clientid, 'fnid': self.newraw.id})
+                data={'token': self.token, 'fnid': self.newraw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'transfer')
 
     def test_transferstate_wait(self):
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'client_id': self.clientid, 'fnid': self.trfraw.id})
+                data={'token': self.token, 'fnid': self.trfraw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'wait')
         job = jm.Job.objects.get()
@@ -69,53 +85,106 @@ class TransferStateTest(BaseFilesTest):
         resp = self.cl.post(self.url, content_type='application/json', data={'hello': 'test'})
         self.assertEqual(resp.status_code, 400)
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'client_id': 'wrongid', 'fnid': 1})
+                data={'token': 'wrongid', 'fnid': 1})
         self.assertEqual(resp.status_code, 403)
+        self.assertIn('invalid or expired', resp.json()['error'])
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'client_id': self.clientid, 'fnid': 99})
+                data={'token': self.token, 'fnid': 99})
         self.assertEqual(resp.status_code, 404)
+        # token expired
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'client_id': self.notclientid, 'fnid': 1})
+                data={'token': self.nottoken, 'fnid': 1})
         self.assertEqual(resp.status_code, 403)
+        self.assertIn('invalid or expired', resp.json()['error'])
+        # wrong producer
+        prod2 = rm.Producer.objects.create(name='prod2', client_id='secondproducer', shortname='p2')
+        p2raw = rm.RawFile.objects.create(name='p2file1', producer=prod2, source_md5='p2rawmd5',
+                size=100, date=timezone.now(), claimed=False)
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': self.token, 'fnid': p2raw.id})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('is not from producer', resp.json()['error'])
         # raw with multiple storedfiles -> conflict
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'client_id': self.clientid, 'fnid': self.multisf1.rawfile_id})
+                data={'token': self.token, 'fnid': self.multisf1.rawfile_id})
         self.assertEqual(resp.status_code, 409)
+        self.assertIn('there are multiple', resp.json()['error'])
+
+
+class TestFileRegistered(BaseFilesTest):
+    pass
 
 
 class TestFileTransferred(BaseFilesTest):
     url = '/files/transferred/'
 
-    def test_fails(self):
+    def test_fails_badreq_badauth(self):
+        # GET
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 405)
-        resp = self.cl.post(self.url, data={'hello': 'test'})
+        # No params
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'hello': 'test'})
         self.assertEqual(resp.status_code, 400)
-        resp = self.cl.post(self.url, data={'fn_id': self.newraw.pk, 'client_id': self.notclientid,
-            'ftype_id': self.ft.pk, 'filename': self.newraw.name})
+        # Missing client ID /token (False)
+        stddata = {'fn_id': self.newraw.pk, 'token': False,
+                'libdesc': False, 'userdesc': False}
+        resp = self.cl.post(self.url, content_type='application/json',
+                data=stddata)
         self.assertEqual(resp.status_code, 403)
-        resp = self.cl.post(self.url, data={'fn_id': self.newraw.pk + 1000, 'client_id': self.clientid,
-            'ftype_id': self.ft.pk, 'filename': self.newraw.name})
+        # Wrong token
+        resp = self.cl.post(self.url, content_type='application/json',
+                data= {**stddata, 'token': self.nottoken})
         self.assertEqual(resp.status_code, 403)
-        resp = self.cl.post(self.url, data={'fn_id': self.newraw.pk, 'client_id': self.clientid,
-            'ftype_id': self.ft.pk + 1000, 'filename': self.newraw.name})
-        self.assertEqual(resp.status_code, 400)
+        # Wrong fn_id
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={**stddata, 'fn_id': self.newraw.pk + 1000, 'token': self.token})
+        self.assertEqual(resp.status_code, 403)
+        # expired token
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={**stddata, 'token': self.nottoken})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('invalid or expired', resp.json()['error'])
         
-    def test_two_requests(self):
-        # FIXME how to do this async for checking if get_or_create is correct?
-        resp = self.cl.post(self.url, data={'fn_id': self.newraw.pk, 'filename': self.newraw.name,
-            'client_id': self.clientid, 'ftype_id': self.ft.pk})
+    def test_transferred(self, existing_file=False, libdesc=False, userdesc=False):
+        stddata = {'fn_id': self.newraw.pk, 'token': self.token,
+                'libdesc': libdesc, 'userdesc': userdesc}
+        resp = self.cl.post(self.url, content_type='application/json',
+                data=stddata)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(jm.Job.objects.count(), 1)
-        sf = self.newraw.storedfile_set.get()
-        jobs = jm.Job.objects.filter(funcname='get_md5', kwargs={'source_md5': self.newraw.source_md5,
-            'sf_id': sf.pk})
-        self.assertEqual(jobs.count(), 1)
+        self.assertEqual(resp.json(), {'state': 'ok', 'fn_id': self.newraw.pk})
+        sfns = rm.StoredFile.objects.filter(rawfile=self.newraw)
+        self.assertEqual(sfns.count(), 1)
+        sf = sfns.get()
         self.assertEqual(sf.md5, self.newraw.source_md5)
-        resp2 = self.cl.post(self.url, data={'fn_id': self.newraw.pk, 'filename': self.newraw.name,
-            'client_id': self.clientid, 'ftype_id': self.ft.pk})
-        self.assertEqual(jm.Job.objects.count(), 2)
-        self.assertEqual(jobs.all().count(), 2)
+        self.assertFalse(sf.checked)
+        jobs = jm.Job.objects.filter(funcname='get_md5', kwargs={
+            'source_md5': self.newraw.source_md5, 'sf_id': sf.pk})
+        self.assertEqual(jobs.count(), 1)
+        job = jobs.get()
+        # this may fail occasionally
+        timediff = 200 if existing_file else 10
+        self.assertTrue(sf.regdate + timedelta(milliseconds=timediff) > job.timestamp)
+
+    def test_transferred_again(self):
+        '''Transfer already existing file, e.g. overwrites of previously
+        found to be corrupt file'''
+        rm.StoredFile.objects.create(rawfile=self.newraw, filetype=self.ft,
+                md5=self.newraw.source_md5, servershare=self.ss, path='',
+                filename=self.newraw.name, checked=False)
+        self.test_transferred(existing_file=True)
+
+    def test_libfile(self):
+        self.test_transferred(libdesc='This is a libfile')
+        libs = am.LibraryFile.objects.filter(sfile__rawfile=self.newraw, description='This is a libfile')
+        self.assertEqual(libs.count(), 1)
+    
+    def test_userfile(self):
+        self.test_transferred(userdesc='This is a userfile')
+        ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.newraw,
+                description='This is a userfile', upload__token=self.token)
+        self.assertEqual(ufiles.count(), 1)
+    
 
 
 class TestArchiveFile(BaseFilesTest):
@@ -123,13 +192,7 @@ class TestArchiveFile(BaseFilesTest):
 
     def setUp(self):
         super().setUp()
-        username='testuser'
-        email = 'test@test.com'
-        password='12345'
-        self.user = User(username=username, email=email)
-        self.user.set_password(password)
-        self.user.save() 
-        login = self.cl.login(username=username, password=password)
+        login = self.cl.login(username=self.username, password=self.password)
         self.sfile = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.ss.id,
                 path='', md5=self.newraw.source_md5, checked=False, filetype_id=self.ft.id)
 
@@ -148,7 +211,7 @@ class TestArchiveFile(BaseFilesTest):
 
     def test_claimed_file(self):
         dset_raw = rm.RawFile.objects.create(name='dset_file', producer=self.prod, source_md5='kjlmnop1234',
-                size=100, date=datetime.now(), claimed=True)
+                size=100, date=timezone.now(), claimed=True)
         sfile = rm.StoredFile.objects.create(rawfile=dset_raw, filename=dset_raw.name, servershare_id=self.ss.id,
                 path='', md5=dset_raw.source_md5, checked=False, filetype_id=self.ft.id)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
@@ -191,7 +254,7 @@ class TestArchiveFile(BaseFilesTest):
     def test_analysisfile(self):
         prod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
         ana_raw = rm.RawFile.objects.create(name='ana_file', producer=prod, source_md5='kjlmnop1234',
-                size=100, date=datetime.now(), claimed=True)
+                size=100, date=timezone.now(), claimed=True)
         sfile = rm.StoredFile.objects.create(rawfile=ana_raw, filename=ana_raw.name, servershare_id=self.ss.id,
                 path='', md5=ana_raw.source_md5, checked=False, filetype_id=self.ft.id)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
