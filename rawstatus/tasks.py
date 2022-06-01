@@ -224,7 +224,19 @@ def unzip_folder_check_md5(self, servershare, fnpath, sf_id, source_md5):
         with zipfile.ZipFile(zipped_fn, 'r') as zipfp:
             zipfp.extractall(path=unzippath)
     except zipfile.BadZipFile:
-        taskfail_update_db(self.request.id, msg='Bad zip file exception')
+        # Re queue zip and transfer!
+        taskfail_update_db(self.request.id, msg='File to unzip had a problem and could be '
+        'corrupt or partially transferred, could not unzip it')
+        raise
+    except IsADirectoryError:
+        # file has already been transferred and we are instructed to re-unzip
+        # possibly there is another zipped file
+        taskfail_update_db(self.request.id, msg='File to unzip was a directory, has '
+                'likely already been unzipped and possibly been retransferred')
+        raise
+    except Exception:
+        taskfail_update_db(self.request.id, msg='Unknown problem happened during '
+                'unzipping')
         raise
     else:
         os.remove(zipped_fn)
