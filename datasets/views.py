@@ -541,6 +541,11 @@ def get_dataset_owners_ids(dset):
 
 
 def check_ownership(user, dset):
+    """
+    Ownership is OK if:
+    - User is staff OR
+    - dataset is not deleted AND (user is dset owner OR dset is CF and user has CF admin rights)
+    """
     pt_id = dset.runname.experiment.project.projtype.ptype_id 
     if dset.deleted and not user.is_staff:
         return False
@@ -854,6 +859,10 @@ def archive_dataset(dset):
 
 
 def reactivate_dataset(dset):
+    # FIXME if reactivated quickly after archiving, you get an error. Because archive job is queued and it will execute, 
+    # but that is not done yet, so we wont queue a reactivate job. Fine. But, if archive job is deleted, 
+    # the dataset is still marked as deleted. In that case, we could set undelete on dset here, but that is not correct
+    # when the dset is archived afterwards by said job. Solution -> delete/undelete ALSO in post-job view
     storestate = get_dset_storestate(dset)
     if storestate == 'purged':
         return {'state': 'error', 'error': 'Cannot reactivate purged dataset'}

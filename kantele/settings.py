@@ -19,6 +19,7 @@ CERTPASS = os.environ.get('CERTPASS')
 DSM_DIR = os.environ.get('DSM_DIR')
 
 # mzml converters
+# Deprecate
 PUTTYKEY = os.environ.get('PUTTYKEY')
 
 
@@ -81,7 +82,7 @@ except TypeError:
 
 ANALYSISOUT_FTID = int(os.environ.get('ANALYSISOUT_FTID'))
 DATABASE_FTID = int(os.environ.get('DATABASE_FTID'))
-MARTMAP_FTID = int(os.environ.get('MARTMAP_FTID')) # Deprecate when no longer needed in msstitch
+# MARTMAP_FTID = int(os.environ.get('MARTMAP_FTID')) # Deprecate when no longer needed in msstitch
 
 # Lifespan for mzMLs and Instrument-QC RAW files, in days
 try:
@@ -119,7 +120,8 @@ UP_ORGS = {'Homo sapiens': 9606, 'Mus musculus': 10090}
 ENSEMBL_DL_URL = 'ftp://ftp.ensembl.org/pub/release-{}/fasta/{}/pep/'
 BIOMART_URL = 'https://ensembl.org/biomart/martservice'
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
-EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')
+# multiple
+# EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')
 EXTERNAL_PRODUCER_IDS = [int(x) for x in os.environ.get('EXTERNAL_PRODUCER_IDS').split(',')]
 UPLOADDIR = 'uploadfiles'
 
@@ -186,7 +188,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    #'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

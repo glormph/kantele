@@ -37,33 +37,34 @@ from jobs import models as jm
 from jobs import jobs as jobutil
 
 
-def show_files(request):
-    files = []
-    for sfn in StoredFile.objects.filter(
-            filetype=settings.RAW_SFGROUP_ID, checked=False).select_related('rawfile'):
-        fn = sfn.rawfile
-        files.append({'name': fn.name, 'prod': fn.producer.name,
-                      'date': fn.date, 'backup': False,
-                      'size': round(fn.size / (2**20), 1), 'transfer': False})
-    for sfn in SwestoreBackedupFile.objects.select_related(
-            'storedfile__rawfile').filter(success=False):
-        fn  = sfn.storedfile.rawfile
-        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
-                      'size': round(fn.size / (2**20), 1), 'backup': False,
-                      'transfer': sfn.storedfile.checked})
-    for sfn in SwestoreBackedupFile.objects.order_by(
-            'storedfile__rawfile__date').select_related(
-            'storedfile__rawfile').filter(success=True).exclude(
-            storedfile__checked=False).reverse()[:100]:
-        fn  = sfn.storedfile.rawfile
-        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
-                      'size': round(fn.size / (2**20), 1), 'backup': True,
-                      'transfer': True})
-    return render(request, 'rawstatus/files.html', {'files': files})
+def show_inflow(request):
+    return render(request, 'rawstatus/inflow.html', {})
 
+#def show_files(request):
+#    files = []
+#    for sfn in StoredFile.objects.filter(
+#            filetype=settings.RAW_SFGROUP_ID, checked=False).select_related('rawfile'):
+#        fn = sfn.rawfile
+#        files.append({'name': fn.name, 'prod': fn.producer.name,
+#                      'date': fn.date, 'backup': False,
+#                      'size': round(fn.size / (2**20), 1), 'transfer': False})
+#    for sfn in SwestoreBackedupFile.objects.select_related(
+#            'storedfile__rawfile').filter(success=False):
+#        fn  = sfn.storedfile.rawfile
+#        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
+#                      'size': round(fn.size / (2**20), 1), 'backup': False,
+#                      'transfer': sfn.storedfile.checked})
+#    for sfn in SwestoreBackedupFile.objects.order_by(
+#            'storedfile__rawfile__date').select_related(
+#            'storedfile__rawfile').filter(success=True).exclude(
+#            storedfile__checked=False).reverse()[:100]:
+#        fn  = sfn.storedfile.rawfile
+#        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
+#                      'size': round(fn.size / (2**20), 1), 'backup': True,
+#                      'transfer': True})
+#    return render(request, 'rawstatus/files.html', {'files': files})
+#
 
-def check_producer(producer_id):
-    return Producer.objects.get(client_id=producer_id)
 
 @login_required
 @staff_member_required
@@ -124,6 +125,16 @@ def scan_raws_tmp(request):
 
 @require_POST
 def register_file(request):
+    # TODO return scp address to transfer file to
+    # Find out something for SSH key rotation (client creates new key and uploads pubkey)
+    # But how to know the client is the real client?
+    # Strong secret needed, although if the client computer is used
+    # By someone else we are fucked anyway
+    # Rotate SSH keys to remove the danger of SSH key leaking,
+    # And automate to not give the "lab laptop uploads" an actual SSH 
+    # key (else theyd have to get it from admin all the time, PITA!)
+    # Auto-Rotate key every sunday night or something on client (stop transferring, fix keys)
+    # User file uploads get key per upload (have to wait until it is installed on the data/server
     """New files are registered in the system on this view, where producer 
     or user passes info on file (name, md5, date, etc). Auth is done 
     via a token either from web console or CLI script.
@@ -212,7 +223,8 @@ def browser_userupload(request):
         f'become {sfile.filename}'})
 
     
-# TODO view for asking tokens or put it in the fasta upload view
+# TODO webGUI view for asking tokens or put it in the fasta upload view
+# TODO store heartbeat of instrument, deploy config, message from backend, etc
 
 @require_POST
 def instrument_check_in(request):
@@ -592,10 +604,16 @@ def instrument_page(request):
 
 
 @login_required
+@require_GET
 def download_instrument_package(request):
-    datadisk = '{}:'.format(request.POST['datadisk'][0])
+    # TODO instrument page with all instruments, which can have configs to be saved
+    # make new app for this in django
+    # configs will then be auto-downloaded when changing datadisk, outbox name,
+    # instrument name, etc
+    # and staff can create new instruments when they like
+    datadisk = '{}:'.format(request.GET['datadisk'][0]) # strip so only get first letter
     try:
-        prod = Producer.objects.select_related('msinstrument').get(pk=request.POST['prod_id'])
+        prod = Producer.objects.select_related('msinstrument').get(pk=request.GET['prod_id'])
     except Producer.DoesNotExist:
         return HttpResponseForbidden()
     
@@ -629,6 +647,13 @@ def download_instrument_package(request):
         resp = FileResponse(open(zipfilename, 'rb'))
         resp['Content-Disposition'] = 'attachment; filename="{}_filetransfer.zip"'.format(prod.name)
     return resp
+
+
+def show_old_new_projects(request):
+    maxtime_nonint = timezone.now() - timedelta(settings.MAX_MZML_STORAGE_TIME_POST_ANALYSIS)
+    allp = Project.objects.filter(active=True)
+    # make an aggregate for gt / lt  maxtime, or just filter stuff?
+    pass
 
 
 def getxbytes(bytes, op=50):

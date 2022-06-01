@@ -1,3 +1,5 @@
+# FIXME url is no longer supported in 4.0
+
 from django.conf.urls import url
 from django.urls import path
 from home import views

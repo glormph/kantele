@@ -1,5 +1,5 @@
 from django.contrib import admin
-from rawstatus.models import Producer, StoredFileType, MSInstrument, MSInstrumentType
+from rawstatus.models import (Producer, StoredFileType, MSInstrument, MSInstrumentType)
 
 # Register your models here.
 

@@ -672,6 +672,12 @@ def store_analysis(request):
             for setname, quants in shadow_isoquants.items():
                 vals, calc_psm = parse_isoquant(quants)
                 isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
+        # FIXME if fractionated, add the old mzmls for the plate QC count - yes that is necessary 
+        # because plate names are not stored in the SQLite - maybe it should?
+        # Options:
+        # - store in SQL (msstitch change or dirty in the pipeline with an extra table - rather not?)
+        # - pass old_mzmls to task in job, task with fn/instr/set/plate/fraction 
+        # - store mzmldef in results, pass it automatically - easiest?
             
     # Add isobaric quant (NB there may already be some in the job params from base analysis above
     # FIXME isobaric quant is API v1/v2 diff, fix it

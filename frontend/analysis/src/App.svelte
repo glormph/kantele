@@ -1,4 +1,10 @@
 <script>
+/* TODO
+- loadable/edit analysis
+- button store, button store+run
+- click-removable datasets ?
+- 
+*/
 
 import { onMount } from 'svelte';
 import { flashtime } from '../../util.js'
@@ -633,7 +639,7 @@ onMount(async() => {
 		  <div class="column">
         {#if !ds.prefrac}
         <input type="checkbox" bind:checked={ds.filesaresets}>
-				<label class="checkbox">Each file is a different sample</label>
+				<label class="checkbox">One sample - one file (non-fractionated, non-isobaric)</label>
         {/if}
         {#if !ds.filesaresets}
 			  <div class="field">

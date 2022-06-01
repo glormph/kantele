@@ -169,6 +169,7 @@ class DownloadPXProject(BaseJob):
             ftpurl = urlsplit(fn['downloadLink'])
             filename = os.path.split(ftpurl.path)[1]
             if filename in px_stored and fn['fileSize'] == px_stored[filename].rawfile.size:
+                # Only download non-checked (i.e. non-confirmed already downloaded) files
                 pxsf = px_stored[filename]
                 self.run_tasks.append(((
                     ftpurl.path, ftpurl.netloc, 
@@ -218,6 +219,7 @@ def call_proteomexchange(pxacc):
         'MS:1002732': 'lumos',  # Orbitrap Fusion Lumos
 # FIXME more instruments
 # FIXME if we are trying to download OUR OWN data, we get problem with MD5 already existing
+# ALso when re-queueing this job, there is a problem when MD5 is identical
 # Possibly solve with "this is our data, please reactivate from PDC"
     }
     prideurl = 'https://www.ebi.ac.uk/pride/ws/archive/v2/'

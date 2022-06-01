@@ -49,8 +49,8 @@ class BaseJob:
         pass
 
     def get_sf_ids_jobrunner(self, **kwargs):
-        """This is set before running job, and when discovering job by runner to estimate
-        if the job can be run yet (if files are in use by other job)"""
+        """This is run before running job, to define files used by
+        the job (so it cant run if if files are in use by other job)"""
         return [x.pk for x in self.getfiles_query(**kwargs)]
 
     def run(self, **kwargs):
@@ -138,6 +138,7 @@ def send_slack_message(text, channel):
         return
     url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, channelpath] for x in y.split('/')]))
     req = requests.post(url, json={'text': text})
+    # FIXME need to fix network outage (no raise_for_status
     try:
         req.raise_for_status()
     except Exception as error:

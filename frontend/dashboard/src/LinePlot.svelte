@@ -1,7 +1,7 @@
 <script>
 import { onMount } from 'svelte';
 import { axisBottom, axisLeft } from 'd3-axis';
-import { scaleLinear, scaleOrdinal, scaleTime } from 'd3-scale';
+import { scaleLinear, scaleOrdinal, scaleTime, scalePoint } from 'd3-scale';
 import { select } from 'd3-selection';
 import { extent, max, min} from 'd3-array';
 import { line } from 'd3';
@@ -28,6 +28,7 @@ export let xlab;
 const scaletypes = {
   time: scaleTime,
   linear: scaleLinear,
+  ordi: scaleOrdinal,
 }
 
 const xscale = scaletypes[xscaletype];
@@ -44,6 +45,10 @@ function startplot() {
   svg = select(svg)
     .attr('width', sizeconfig.width + margin.left + margin.right)
     .attr('height', sizeconfig.height + margin.t + margin.bottom);
+}
+
+function jitter(jitwidth) {
+  return Math.random() * jitwidth - 0.5 * jitwidth;
 }
 
 export async function plot() {

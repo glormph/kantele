@@ -214,6 +214,8 @@ def removed_emptydir(request):
 def register_external_file(request):
     """Storedfile and rawfn update proper md5 and set checked
     Creates job to add file to dset to move file to storage.
+    This is for when you download files from some repository and you 
+    thus do not know MD5 in advance, it is set on receival.
     """
     data = json.loads(request.body.decode('utf-8'))
     if 'client_id' not in data or not taskclient_authorized(

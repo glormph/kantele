@@ -218,6 +218,10 @@ class AnalysisParam(models.Model):
 class AnalysisSampletable(models.Model):
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
     samples = models.JSONField()
+    # could we instead do: four columns channel - set - sample - group ?
+    # Doesnt give a big improvement, if wf sampletable format will change, this DB table will change
+    # But then we can keep representation correct instead of leaving the JSON intact
+    # I don't see the JSON benefit except somewhat easier because it's passed around as JSON a lot
 
 
 class AnalysisMzmldef(models.Model):

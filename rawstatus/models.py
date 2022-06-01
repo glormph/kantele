@@ -22,6 +22,8 @@ class MSInstrumentType(models.Model):
 
 class Producer(models.Model):
     name = models.TextField()
+    # client_id is a hash, so users cant accidentally mess up the identifier when
+    # they edit transfer script, e.g. increment the client PK if that would be used
     client_id = models.TextField()
     shortname = models.TextField()
     internal = models.BooleanField(default=False, help_text='Internal instrument with own raw file upload client')
@@ -54,6 +56,7 @@ class RawFile(models.Model):
     size = models.BigIntegerField('size in bytes')
     date = models.DateTimeField('date/time created')
     claimed = models.BooleanField()
+    #is_sensitive = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -93,6 +96,8 @@ class UserFile(models.Model):
     sfile = models.OneToOneField(StoredFile, on_delete=models.CASCADE)
     description = models.TextField()
     upload = models.OneToOneField(UploadToken, on_delete=models.CASCADE)
+    # FIXME do we care about the upload token? In that case, should we care
+    # also for libfiles, or maybe even raw files? (mzml etc of course not)
 
 
 class PDCBackedupFile(models.Model):

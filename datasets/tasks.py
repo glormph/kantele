@@ -54,7 +54,10 @@ def run_convert_mzml_nf(self, run, params, raws, **kwargs):
         fname = os.path.splitext(raw[2])[0] + '.mzML'
         fpath = os.path.join(rundir, 'output', fname)
         resultfiles[fpath] = {'md5': calc_md5(fpath), 'file_id': raw[3], 'newname': fname}
+    # FIXME first check tstate so no dup transfers used?
     transfer_resultfiles((settings.ANALYSISSHARENAME, 'mzmls_in'), runname, resultfiles, transfer_url, self.request.id)
+    # TODO we're only reporting task finished in this POST call, but there is no specific route
+    # for that.
     url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     update_db(url, json=postdata)
     shutil.rmtree(rundir)

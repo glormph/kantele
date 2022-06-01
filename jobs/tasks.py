@@ -127,6 +127,7 @@ def process_job_file_activity(nonready_jobs):
             fjs = []
             jwrapper = jobmap[job.funcname](job.id) 
             for sf_id in jwrapper.get_sf_ids_jobrunner(**job.kwargs):
+                # FIXME create file job in job creation instead of here??
                 newfj = FileJob(storedfile_id=sf_id, job_id=job.id)
                 newfj.save()
                 fjs.append(newfj)
