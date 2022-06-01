@@ -17,8 +17,6 @@ $: {
 }
 
 async function renameFile(newname, fnid) {
-  console.log(items[fnid].filename);
-  console.log(newname);
   if (newname !== items[fnid].filename) {
     const resp = await postJSON('/files/rename/', {
       newname: newname,

@@ -1,7 +1,7 @@
 <script>
 
 import { onMount } from 'svelte';
-import { getJSON } from '../../datasets/src/funcJSON.js'
+import { getJSON, getCookie } from '../../datasets/src/funcJSON.js'
 
 export let toggleWindow;
 
@@ -27,10 +27,12 @@ async function uploadFile() {
   fdata.append('file', selectedFile[0]);
   fdata.append('desc', uploaddesc);
   fdata.append('ftype_id', upload_ftypeid);
+  const csrftoken = getCookie('csrftoken');
   let resp = await fetch('/files/upload/userfile/', {
     method: 'POST',
     body: fdata,
     credentials: 'same-origin',
+    headers: {'X-CSRFToken': csrftoken},
   })
   if (!resp.ok) {
     uploadError = 'Something went wrong trying to send file to server, contact admin';

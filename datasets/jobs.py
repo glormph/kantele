@@ -257,7 +257,7 @@ class DeleteActiveDataset(DatasetJob):
     task = filetasks.delete_file
 
     def process(self, **kwargs):
-        for fn in self.getfiles_query(**kwargs):
+        for fn in self.getfiles_query(**kwargs).filter(purged=False):
             fullpath = os.path.join(fn.path, fn.filename)
             print('Purging {} from dataset {}'.format(fullpath, kwargs['dset_id']))
             self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
