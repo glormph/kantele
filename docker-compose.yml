@@ -1,0 +1,35 @@
+version: "3.7"
+
+
+services:
+    web:
+        image: "kantele_web"
+        build:
+            context: .
+            dockerfile: ./docker/Dockerfile_web
+        ports:
+            - "8088:80"
+        env_file:
+            - ./docker/develop.env
+        volumes:
+            - ./src:/kantele
+        environment:
+            KANTELEHOST: web
+            DB_PASS: "${PG_KANTELE_PASSWORD}"
+            DB_USER: kanteleuser
+            DB_HOST: db
+            DB_NAME: "${KANTELE_DB_NAME}"
+            HOST_DOMAIN: "${HOST_FQDN}"
+    
+    db:
+        image: postgres:14.3
+        volumes:
+            - "${PG_DATA_PATH}:/var/lib/postgresql/data"
+            - "./data/db_init:/docker-entrypoint-initdb.d"
+            - "${BACKUP_PATH}:/backups"
+        user: "${DBUID:-0}:${DBGID:-0}"
+        environment:
+            POSTGRES_PASSWORD: "${PG_SUPERUSER_PASSWORD}"
+            KANTELE_PASSWORD: "${PG_KANTELE_PASSWORD}"
+            KANTELE_DB: "${KANTELE_DB_NAME}"
+            KANTELE_ROLE: kanteleuser

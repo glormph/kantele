@@ -147,7 +147,7 @@ MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
 NXF_VER = os.environ.get('NXF_VER')
 
 # django
-ALLOWED_HOSTS = [os.environ.get('KANTELEHOST').split(':')[0]]
+ALLOWED_HOSTS = [os.environ.get('HOST_DOMAIN')]
 SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = True
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -217,14 +217,18 @@ WSGI_APPLICATION = 'kantele.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
+DB_PASS = os.environ.get('DB_PASS')
+DB_USER = os.environ.get('DB_USER')
+DB_HOST = os.environ.get('DB_HOST')
+DB_NAME = os.environ.get('DB_NAME')
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'kanteledb',
-        'USER': 'kanteleuser',
-        'PASSWORD': os.environ.get('DB_PASS'),
-        'HOST': '127.0.0.1',
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASS,
+        'HOST': DB_HOST,
         'PORT': 5432,
         'ATOMIC_REQUESTS': True,
         'TEST': {'MIGRATE': False},
