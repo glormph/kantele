@@ -1,6 +1,5 @@
 version: "3.7"
 
-
 services:
     web:
         image: "kantele_web"
@@ -12,7 +11,7 @@ services:
         env_file:
             - ./docker/develop.env
         volumes:
-            - ./src:/kantele
+            - ./backend:/kantele
         environment:
             KANTELEHOST: web
             DB_PASS: "${PG_KANTELE_PASSWORD}"
@@ -27,6 +26,7 @@ services:
             - "${PG_DATA_PATH}:/var/lib/postgresql/data"
             - "./data/db_init:/docker-entrypoint-initdb.d"
             - "${BACKUP_PATH}:/backups"
+        ## Comment user: line on MacOS, not on linux
         user: "${DBUID:-0}:${DBGID:-0}"
         environment:
             POSTGRES_PASSWORD: "${PG_SUPERUSER_PASSWORD}"

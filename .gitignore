@@ -3,3 +3,5 @@ __pycache__
 */static/*/bundle.*
 
 .DS_Store
+
+data/db

@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y libpq-dev python3-psycopg2 nodejs nginx
 COPY docker/requirements.txt /
 RUN pip install -r requirements.txt
 
-COPY src /kantele
+COPY backend /kantele
 
 # FIXME add node compile of frontend
 
