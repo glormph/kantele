@@ -9,5 +9,6 @@ COPY backend /kantele
 
 # FIXME add node compile of frontend
 
-CMD cd /kantele && python manage.py runserver -v 3 0.0.0.0:80
+WORKDIR /kantele
+CMD python manage.py runserver -v 3 0.0.0.0:80
 # FIXME add nginx to here

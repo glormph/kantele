@@ -73,6 +73,8 @@ CELERY_BROKER_URL = 'amqp://{}:{}@{}:5672/{}'.format(RABBIT_USER, RABBIT_PASSWOR
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
+JOBRUNNER_INTERVAL = 5
+
 # datatypes
 try:
     RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID'))
@@ -173,7 +175,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django_celery_beat',
     'home.apps.HomeConfig',
     'datasets.apps.DatasetsConfig',
     'rawstatus.apps.RawstatusConfig',

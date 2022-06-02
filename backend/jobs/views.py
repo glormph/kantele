@@ -18,7 +18,40 @@ from dashboard import views as dashviews
 from datasets import views as dsviews
 from datasets.models import DatasetRawFile, Dataset
 from kantele import settings
-from jobs.tasks import jobmap
+
+from datasets import jobs as dsjobs
+from rawstatus import jobs as rsjobs
+from analysis import jobs as anjobs
+
+alljobs = [
+        dsjobs.RenameDatasetStorageLoc,
+        dsjobs.MoveFilesToStorage,
+        dsjobs.MoveFilesStorageTmp,
+        dsjobs.ConvertDatasetMzml,
+        dsjobs.ConvertFileMzml,
+        dsjobs.DeleteActiveDataset,
+        dsjobs.DeleteDatasetMzml,
+        dsjobs.BackupPDCDataset,
+        dsjobs.ReactivateDeletedDataset,
+        dsjobs.DeleteDatasetPDCBackup,
+        dsjobs.RenameProject,
+        rsjobs.GetMD5,
+        rsjobs.CreatePDCArchive,
+        rsjobs.RestoreFromPDC,
+        rsjobs.UnzipRawFolder,
+        rsjobs.RenameFile,
+        rsjobs.MoveSingleFile,
+        rsjobs.DeleteEmptyDirectory,
+        rsjobs.PurgeFiles,
+        rsjobs.DownloadPXProject,
+        rsjobs.RegisterExternalFile,
+        anjobs.RunLongitudinalQCWorkflow,
+        anjobs.RunNextflowWorkflow,
+        anjobs.RunLabelCheckNF,
+        anjobs.RefineMzmls,
+        anjobs.PurgeAnalysis,
+        ]
+jobmap = {job.refname: job for job in alljobs}
 
 
 def set_task_done(task_id):

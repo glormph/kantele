@@ -6,51 +6,28 @@ celery chains etc, Nextflow, or Galaxy or whatever one likes.
 Scheduler runs sequential and waits for each job that contains files running in another job
 """
 
-from celery import shared_task, states
+from celery import states
 from celery.result import AsyncResult
+from django.core.management.base import BaseCommand
+from time import sleep
 
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
 from jobs.jobs import Jobstates, send_slack_message
 from jobs import jobs as jj
 from rawstatus.models import FileJob
-from datasets import jobs as dsjobs
-from rawstatus import jobs as rsjobs
-from analysis import jobs as anjobs
+from jobs.views import jobmap
 
 
-alljobs = [
-        dsjobs.RenameDatasetStorageLoc,
-        dsjobs.MoveFilesToStorage,
-        dsjobs.MoveFilesStorageTmp,
-        dsjobs.ConvertDatasetMzml,
-        dsjobs.ConvertFileMzml,
-        dsjobs.DeleteActiveDataset,
-        dsjobs.DeleteDatasetMzml,
-        dsjobs.BackupPDCDataset,
-        dsjobs.ReactivateDeletedDataset,
-        dsjobs.DeleteDatasetPDCBackup,
-        dsjobs.RenameProject,
-        rsjobs.GetMD5,
-        rsjobs.CreatePDCArchive,
-        rsjobs.RestoreFromPDC,
-        rsjobs.UnzipRawFolder,
-        rsjobs.RenameFile,
-        rsjobs.MoveSingleFile,
-        rsjobs.DeleteEmptyDirectory,
-        rsjobs.PurgeFiles,
-        rsjobs.DownloadPXProject,
-        rsjobs.RegisterExternalFile,
-        anjobs.RunLongitudinalQCWorkflow,
-        anjobs.RunNextflowWorkflow,
-        anjobs.RunLabelCheckNF,
-        anjobs.RefineMzmls,
-        anjobs.PurgeAnalysis,
-        ]
-jobmap = {job.refname: job for job in alljobs}
+class Command(BaseCommand):
+    help = 'Run job runner until you terminate it'
+
+    def handle(self, *args, **options):
+        while True:
+            run_ready_jobs()
+            sleep(settings.JOBRUNNER_INTERVAL)
 
 
-@shared_task
 def run_ready_jobs():
     print('Checking job queue')
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(

@@ -2,7 +2,7 @@ version: "3.7"
 
 services:
     web:
-        image: "kantele_web"
+        image: kantele_web
         build:
             context: .
             dockerfile: ./docker/Dockerfile_web
@@ -19,6 +19,7 @@ services:
             DB_HOST: db
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
+            RABBITHOST: mq
     
     db:
         image: postgres:14.3
@@ -33,3 +34,23 @@ services:
             KANTELE_PASSWORD: "${PG_KANTELE_PASSWORD}"
             KANTELE_DB: "${KANTELE_DB_NAME}"
             KANTELE_ROLE: kanteleuser
+
+    mq:
+        image: rabbitmq:3.10
+        volumes:
+            - "./docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
+
+    jobrunner:
+        image: kantele_web
+        command: python manage.py runjobs
+        env_file:
+            - ./docker/stage.env
+        volumes:
+            - ./backend:/kantele
+        environment:
+            DB_PASS: "${PG_KANTELE_PASSWORD}"
+            DB_USER: kanteleuser
+            DB_HOST: db
+            DB_NAME: "${KANTELE_DB_NAME}"
+            HOST_DOMAIN: "${HOST_FQDN}"
+            RABBITHOST: mq
