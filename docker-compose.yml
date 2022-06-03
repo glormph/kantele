@@ -20,6 +20,8 @@ services:
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
             RABBITHOST: mq
+            RABBITUSER: "${RABBITUSER:-guest}"
+            RABBITPASS: "${RABBITPASS:-guest}"
     
     db:
         image: postgres:14.3
@@ -39,6 +41,9 @@ services:
         image: rabbitmq:3.10
         volumes:
             - "./docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
+        environment:
+            RABBITMQ_DEFAULT_USER: "${RABBITUSER:-guest}"
+            RABBITMQ_DEFAULT_PASS: "${RABBITPASS:-guest}"
 
     jobrunner:
         image: kantele_web
@@ -54,3 +59,5 @@ services:
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
             RABBITHOST: mq
+            RABBITUSER: "${RABBITUSER:-guest}"
+            RABBITPASS: "${RABBITPASS:-guest}"
