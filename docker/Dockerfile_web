@@ -10,5 +10,4 @@ COPY backend /kantele
 # FIXME add node compile of frontend
 
 WORKDIR /kantele
-CMD python manage.py runserver -v 3 0.0.0.0:80
-# FIXME add nginx to here
+CMD uwsgi --socket :8009 --processes 3 --module kantele.wsgi
