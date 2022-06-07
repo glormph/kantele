@@ -12,7 +12,7 @@ export default {
 		sourcemap: true,
 		format: 'iife',
 		name: 'app',
-		file: '../../analysis/static/analysis/bundle.js'
+		file: '../../static/analysis/bundle.js'
 	},
 	plugins: [
 		svelte({
@@ -21,7 +21,7 @@ export default {
 			// we'll extract any component CSS out into
 			// a separate file  better for performance
 			css: css => {
-				css.write('../../analysis/static/analysis/bundle.css');
+				css.write('../../static/analysis/bundle.css');
 			}
 		}),
 
@@ -38,7 +38,7 @@ export default {
 
 		// Watch the `public` directory and refresh the
 		// browser on changes when not in production
-		!production && livereload('../../analysis/static/analysis/base'),
+		!production && livereload('../../static/analysis/base'),
 
 		// If we're building for production (npm run build
 		// instead of npm run dev), minify

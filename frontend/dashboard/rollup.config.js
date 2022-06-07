@@ -12,7 +12,7 @@ export default {
 		sourcemap: true,
 		format: 'iife',
 		name: 'app',
-		file: '../../dashboard/static/dashboard/bundle.js'
+		file: '../../static/dashboard/bundle.js'
 	},
 	plugins: [
 		svelte({
@@ -21,7 +21,7 @@ export default {
 			// we'll extract any component CSS out into
 			// a separate file  better for performance
 			css: css => {
-				css.write('../../dashboard/static/dashboard/bundle.css');
+				css.write('../../static/dashboard/bundle.css');
 			}
 		}),
 
@@ -38,7 +38,7 @@ export default {
 
 		// Watch the `public` directory and refresh the
 		// browser on changes when not in production
-		!production && livereload('../../dashboard/static/dashboard/base'),
+		!production && livereload('../../static/dashboard/base'),
 
 		// If we're building for production (npm run build
 		// instead of npm run dev), minify
