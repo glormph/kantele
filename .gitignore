@@ -1,7 +1,15 @@
+# editors
 *.sw[poq]
-__pycache__
-*/static/*/bundle.*
 
+# run/build artefacts
+__pycache__
+src/static
+package-lock.json
+node_modules/
+
+# system
 .DS_Store
 
+# DB mount
 data/db
+
