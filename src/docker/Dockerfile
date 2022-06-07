@@ -12,9 +12,9 @@ RUN cd /frontend/home && npm run build
 # Django app
 FROM python:3.10.4 AS django
 RUN apt-get update && apt-get install -y libpq-dev python3-psycopg2
-COPY docker/requirements.txt /
-RUN pip install -r requirements.txt
+COPY backend /kantele
 WORKDIR /kantele
+RUN pip install -r requirements.txt
 CMD uwsgi --socket :8009 --processes 3 --module kantele.wsgi
 
 
@@ -22,3 +22,5 @@ CMD uwsgi --socket :8009 --processes 3 --module kantele.wsgi
 # Needs static things in here
 FROM nginx:1.21 AS nginx
 COPY --from=build_frontend /static /static
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+COPY docker/uwsgi_params /etc/nginx/uwsgi_params

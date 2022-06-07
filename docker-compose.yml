@@ -3,16 +3,18 @@ services:
         extends:
             file: docker-compose-prod.yml
             service: web
+        env_file:
+            - ./src/docker/stage.env
         volumes:
-          - ./backend:/kantele
+          - ./src/backend:/kantele
     
     nginx:
         extends:
             file: docker-compose-prod.yml
             service: nginx 
         volumes:
-            - ./docker/nginx.conf:/etc/nginx/nginx.conf
-            - ./docker/uwsgi_params:/etc/nginx/uwsgi_params
+            - ./src/docker/nginx.conf:/etc/nginx/nginx.conf
+            - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
             - ./static:/static
 
     db: 
@@ -21,7 +23,7 @@ services:
             service: db 
         volumes:
             - "${PG_DATA_PATH}:/var/lib/postgresql/data"
-            - "./docker/create_kantele_db.sh:/kantele_db_init/create_kantele_db.sh"
+            - "./src/docker/create_kantele_db.sh:/kantele_db_init/create_kantele_db.sh"
             - "${BACKUP_PATH}:/backups"
 
     mq:
@@ -29,11 +31,13 @@ services:
             file: docker-compose-prod.yml
             service: mq
         volumes:
-            - "./docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
+            - "./src/docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
 
     jobrunner:
         extends:
             file: docker-compose-prod.yml
             service: jobrunner
+        env_file:
+            - ./src/docker/stage.env
         volumes:
-            - ./backend:/kantele
+            - ./src/backend:/kantele

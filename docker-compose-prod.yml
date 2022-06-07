@@ -4,11 +4,11 @@ services:
         depends_on:
             - db
         build:
-            context: .
-            dockerfile: ./docker/Dockerfile_web
-            target: web_prod
+            context: src/
+            dockerfile: ./docker/Dockerfile
+            target: django
         env_file:
-            - ./docker/stage.env
+            - ./src/docker/prod.env
         environment:
             KANTELEHOST: web
             DB_PASS: "${PG_KANTELE_PASSWORD}"
@@ -23,8 +23,8 @@ services:
     nginx:
         image: kantele_nginx
         build:
-            context: ./
-            dockerfile: ./docker/Dockerfile_web
+            context: ./src
+            dockerfile: ./docker/Dockerfile
             target: nginx
         depends_on:
             - web
@@ -52,7 +52,7 @@ services:
             - web
         command: python manage.py runjobs
         env_file:
-            - ./docker/stage.env
+            - ./src/docker/prod.env
         environment:
             DB_PASS: "${PG_KANTELE_PASSWORD}"
             DB_USER: kanteleuser
