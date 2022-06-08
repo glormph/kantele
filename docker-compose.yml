@@ -13,7 +13,7 @@ services:
             file: docker-compose-prod.yml
             service: nginx 
         volumes:
-            - ./src/docker/nginx.conf:/etc/nginx/nginx.conf
+            - ./src/docker/nginx_stage.conf:/etc/nginx/nginx.conf
             - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
             - ./src/static:/static
 
