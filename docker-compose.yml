@@ -14,7 +14,6 @@ services:
             service: nginx 
         volumes:
             - ./src/docker/nginx_stage.conf:/etc/nginx/nginx.conf
-            - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
             - ./src/static:/static
 
     db: 

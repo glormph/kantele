@@ -30,6 +30,9 @@ services:
             - web
         ports:
             - 80:80
+        volumes:
+            - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
+            - ./src/docker/nginx_prod.conf:/etc/nginx/nginx.conf
     db:
         image: postgres:14.3
         ## Comment user: line on MacOS, not on linux
