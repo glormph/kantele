@@ -23,9 +23,13 @@ RUN python manage.py collectstatic
 
 
 # Nginx to serve static stuff, uploads etc
-# Needs static things in here
-FROM nginx:1.21 AS nginx
+# Needs static things in here, for stage only put the static file
+# in case developer has not built all NPM things
+FROM nginx:1.21 AS nginx_stage
 COPY --from=build_frontend /static /static
 COPY --from=django_static /kantele/static /static
-COPY docker/nginx.conf /etc/nginx/nginx.conf
+
+# For prod also copy in the relevant config files
+FROM nginx_stage AS nginx_prod
+COPY docker/nginx_prod.conf /etc/nginx/nginx.conf
 COPY docker/uwsgi_params /etc/nginx/uwsgi_params

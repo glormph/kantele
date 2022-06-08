@@ -9,10 +9,17 @@ services:
           - ./src/backend:/kantele
     
     nginx:
-        extends:
-            file: docker-compose-prod.yml
-            service: nginx 
+        image: kantele_nginx_stage
+        build:
+            context: ./src
+            dockerfile: ./docker/Dockerfile
+            target: nginx_stage
+        depends_on:
+            - web
+        ports:
+            - 80:80
         volumes:
+            - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
             - ./src/docker/nginx_stage.conf:/etc/nginx/nginx.conf
             - ./src/static:/static
 
@@ -21,15 +28,12 @@ services:
             file: docker-compose-prod.yml
             service: db 
         volumes:
-            - "${PG_DATA_PATH}:/var/lib/postgresql/data"
             - "./src/docker/create_kantele_db.sh:/kantele_db_init/create_kantele_db.sh"
 
     mq:
         extends:
             file: docker-compose-prod.yml
             service: mq
-        volumes:
-            - "./src/docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
 
     jobrunner:
         extends:

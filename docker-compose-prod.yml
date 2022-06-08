@@ -25,14 +25,12 @@ services:
         build:
             context: ./src
             dockerfile: ./docker/Dockerfile
-            target: nginx
+            target: nginx_prod
         depends_on:
             - web
         ports:
             - 80:80
-        volumes:
-            - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
-            - ./src/docker/nginx_prod.conf:/etc/nginx/nginx.conf
+
     db:
         image: postgres:14.3
         ## Comment user: line on MacOS, not on linux
@@ -42,12 +40,16 @@ services:
             KANTELE_PASSWORD: "${PG_KANTELE_PASSWORD}"
             KANTELE_DB: "${KANTELE_DB_NAME}"
             KANTELE_ROLE: kanteleuser
+        volumes:
+            - "${PG_DATA_PATH}:/var/lib/postgresql/data"
 
     mq:
         image: rabbitmq:3.10
         environment:
             RABBITMQ_DEFAULT_USER: "${RABBITUSER:-guest}"
             RABBITMQ_DEFAULT_PASS: "${RABBITPASS:-guest}"
+            #volumes:
+            #- "./src/docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
 
     jobrunner:
         image: kantele_web
