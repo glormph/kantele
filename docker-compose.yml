@@ -7,6 +7,8 @@ services:
             - ./src/docker/stage.env
         volumes:
           - ./src/backend:/kantele
+        environment:
+            PROTOCOL: http
     
     nginx:
         image: kantele_nginx_stage

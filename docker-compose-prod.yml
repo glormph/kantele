@@ -10,7 +10,8 @@ services:
         env_file:
             - ./src/docker/prod.env
         environment:
-            KANTELEHOST: web
+            KANTELEHOST: "${HOST_FQDN}"
+            PROTOCOL: https
             DB_PASS: "${PG_KANTELE_PASSWORD}"
             DB_USER: kanteleuser
             DB_HOST: db
