@@ -8,6 +8,7 @@ from ftplib import FTP
 from urllib.parse import urljoin
 from time import sleep
 from datetime import datetime
+from tempfile import NamedTemporaryFile
 
 from django.urls import reverse
 
@@ -32,6 +33,40 @@ def calc_md5(fnpath):
         for chunk in iter(lambda: fp.read(4096), b''):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+@shared_task(queue=settings.QUEUE_STORAGE, bind=True)
+def download_uploaded_file_to_storage(self, sf_id, sharename, path, fname, fn_md5):
+    postdata = {'client_id': settings.APIKEY, 'task': self.request.id, 'sf_id': sf_id}
+    joburl = urljoin(settings.KANTELEHOST, reverse('jobs:download_file'))
+    dst = os.path.join(settings.SHAREMAP[sharename], path, fname)
+    dighash = hashlib.md5()
+    dlurl = urljoin(settings.KANTELEHOST, f'{settings.UPLOAD_URL}/{sf_id}')
+    with requests.get(dlurl, stream=True) as req, NamedTemporaryFile(mode='wb+') as wfp:
+        for chunk in req.iter_content(chunk_size=8192):
+            if chunk:
+                wfp.write(chunk)
+                dighash.update(chunk)
+        if dighash.hexdigest() != fn_md5:
+            try:
+                self.retry(countdown=60)
+            except MaxRetriesExceededError:
+                update_db(joburl, postdata)
+                raise
+        # Without wfp.seek(0) we need an explicit flush
+        wfp.flush()
+        os.fsync(wfp.fileno())
+        # wfp.name contains absolute path
+        shutil.copy(wfp.name, dst)
+    # File downloaded, MD5 checked and copied, tempfile will be deleted automatically
+    try:
+        update_db(joburl, json=postdata)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            update_db(joburl, postdata)
+            raise
 
 
 @shared_task(queue=settings.QUEUE_SEARCH_INBOX)

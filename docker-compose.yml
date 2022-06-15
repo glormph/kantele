@@ -24,6 +24,7 @@ services:
             - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
             - ./src/docker/nginx_stage.conf:/etc/nginx/nginx.conf
             - ./src/static:/static
+            - ./data/uploads:/uploads
 
     db: 
         extends:
@@ -38,10 +39,37 @@ services:
             service: mq
 
     jobrunner:
-        extends:
-            file: docker-compose-prod.yml
-            service: jobrunner
+       extends:
+           file: docker-compose-prod.yml
+           service: jobrunner
+       env_file:
+           - ./src/docker/stage.env
+       volumes:
+           - ./src/backend:/kantele
+
+    storage:
+        image: kantele_web
+        depends_on:
+            - web
+        command: celery worker -A kantele -Q mv_md5_storage -n storage.%h --concurrency=1
         env_file:
             - ./src/docker/stage.env
         volumes:
+            - ./data/storage:/storage
             - ./src/backend:/kantele
+        environment:
+            APIKEY: "${APIKEY_STORAGE}"
+            KANTELEHOST: "${HOST_FQDN}"
+            PROTOCOL: http
+            DB_PASS: "${PG_KANTELE_PASSWORD}"
+            DB_USER: kanteleuser
+            DB_HOST: db
+            DB_NAME: "${KANTELE_DB_NAME}"
+            HOST_DOMAIN: "${HOST_FQDN}"
+            STORAGESHARE: '/storage/storage'
+            TMPSHARE: '/storage/tmp'
+            ANALYSISSHARE: '/storage/analysis'
+            RABBITHOST: mq
+            RABBITUSER: "${RABBITUSER:-guest}"
+            RABBITPASS: "${RABBITPASS:-guest}"
+

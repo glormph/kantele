@@ -20,6 +20,9 @@ services:
             RABBITHOST: mq
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
+            TMP_UPLOADPATH: "${CONTAINER_UPLOADPATH}"
+        volumes:
+            - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
     
     nginx:
         image: kantele_nginx
@@ -31,6 +34,8 @@ services:
             - web
         ports:
             - 80:80
+        volumes:
+            - "${UPLOADPATH}:/uploads"
 
     db:
         image: postgres:14.3

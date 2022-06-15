@@ -212,15 +212,17 @@ def browser_userupload(request):
         sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
                 filename=f'userfile_{raw["file_id"]}_{upfile.name}',
                        checked=True, filetype=upload.filetype,
-                       md5=dighash, path=settings.UPLOADDIR,
+                       md5=dighash, path=settings.USERFILEDIR,
                        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-        ufile = UserFile(sfile=sfile, description=desc, upload=upload)
-        ufile.save()
-        dst = os.path.join(settings.SHAREMAP[sfile.servershare.name], sfile.path,
-            sfile.filename)
+        ufile = UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
+        dst = os.path.join(settings.TMP_UPLOADPATH, str(sfile.id))
+        # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
+        os.chmod(dst, 0o644)
+    jobutil.create_job('download_file', sf_id=sfile.id)
+        
     return JsonResponse({'error': False, 'success': 'Succesfully uploaded file to '
-        f'become {sfile.filename}'})
+        f'become {sfile.filename}. File will be accessible on storage soon.'})
 
     
 # TODO webGUI view for asking tokens or put it in the fasta upload view
@@ -411,7 +413,7 @@ def process_file_confirmed_ready(rfn, sfn):
         jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
                 newname='libfile_{}_{}'.format(sfn.libraryfile.id, sfn.filename))
     elif hasattr(sfn, 'userfile'):
-        jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.UPLOADDIR,
+        jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
                 newname='userfile_{}_{}'.format(rfn.id, sfn.filename))
 
 

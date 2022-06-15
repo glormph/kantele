@@ -45,6 +45,7 @@ alljobs = [
         rsjobs.PurgeFiles,
         rsjobs.DownloadPXProject,
         rsjobs.RegisterExternalFile,
+        rsjobs.DownloadFile,
         anjobs.RunLongitudinalQCWorkflow,
         anjobs.RunNextflowWorkflow,
         anjobs.RunLabelCheckNF,
@@ -259,6 +260,21 @@ def register_external_file(request):
     StoredFile.objects.filter(pk=data['sf_id']).update(md5=data['md5'], checked=True)
     RawFile.objects.filter(pk=data['raw_id']).update(source_md5=data['md5'])
     dsviews.save_or_update_files(dataset)
+    if 'task' in data:
+        set_task_done(data['task'])
+    return HttpResponse()
+
+
+@require_POST
+def downloaded_file(request):
+    '''When files are downloaded in a job this can clean up afterwards
+    '''
+    # FIXME clean download area
+    data = json.loads(request.body.decode('utf-8'))
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
+        return HttpResponseForbidden()
+    sfile = StoredFile.objects.get(pk=data['sf_id'])
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()

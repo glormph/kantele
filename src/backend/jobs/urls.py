@@ -17,6 +17,7 @@ urlpatterns = [
     url(r'^deletefile/$', views.purge_storedfile, name='deletefile'),
     url(r'^deletedir/$', views.removed_emptydir, name='rmdir'),
     url(r'^set/external/$', views.register_external_file, name='register_external'),
+    url(r'^set/downloaded/$', views.downloaded_file, name='download_file'),
     url(r'^swestore/set/$', views.created_swestore_backup, name='createswestore'),
     url(r'^pdcarchive/set/$', views.created_pdc_archive, name='createpdcarchive'),
     url(r'^pdcrestore/set/$', views.restored_archive_file, name='restoredpdcarchive'),

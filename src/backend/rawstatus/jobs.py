@@ -152,6 +152,17 @@ class RegisterExternalFile(BaseJob):
                 fn.rawfile_id, kwargs['sharename'], kwargs['dset_id']), {}))
 
 
+class DownloadFile(SingleFileJob):
+    refname = 'download_file'
+    task = tasks.download_uploaded_file_to_storage
+
+    def process(self, **kwargs):
+        sfile = self.getfiles_query(**kwargs)
+        self.run_tasks.append(((sfile.id, sfile.servershare.name, sfile.path,
+            sfile.filename, sfile.md5), {}))
+        print('Download task queued')
+
+
 class DownloadPXProject(BaseJob):
     refname = 'download_px_data'
     task = tasks.download_px_file_raw

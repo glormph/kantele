@@ -15,6 +15,8 @@ CACERTLOC = os.environ.get('CACERTLOC')
 CERTLOC = os.environ.get('CERTLOC')
 CERTKEYLOC = os.environ.get('CERTKEYLOC')
 CERTPASS = os.environ.get('CERTPASS')
+# only used in web and nginx containers
+TMP_UPLOADPATH = os.environ.get('TMP_UPLOADPATH')
 
 DSM_DIR = os.environ.get('DSM_DIR')
 
@@ -45,6 +47,7 @@ QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out', 'pwiz_qc
 PROTOCOL = 'https://'
 CERTFILE = os.environ.get('KANTELECERT')
 KANTELEHOST = '{}{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
+UPLOAD_URL = 'uploads'
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
 ANALYSISSHARENAME = 'analysis'
