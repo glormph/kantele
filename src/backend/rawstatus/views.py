@@ -215,7 +215,7 @@ def browser_userupload(request):
                        md5=dighash, path=settings.USERFILEDIR,
                        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
         ufile = UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
-        dst = os.path.join(settings.TMP_UPLOADPATH, str(sfile.id))
+        dst = os.path.join(settings.TMP_UPLOADPATH, str(sfile.pk))
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)

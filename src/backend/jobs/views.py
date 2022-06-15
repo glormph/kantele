@@ -1,3 +1,4 @@
+import os
 import json
 import requests
 from datetime import datetime 
@@ -275,6 +276,9 @@ def downloaded_file(request):
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.get(pk=data['sf_id'])
+    # Delete file in tmp download area
+    fpath = os.path.join(settings.TMP_UPLOADPATH, str(sfile.pk))
+    os.unlink(fpath)
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
