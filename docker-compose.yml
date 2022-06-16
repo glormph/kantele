@@ -24,7 +24,6 @@ services:
             - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
             - ./src/docker/nginx_stage.conf:/etc/nginx/nginx.conf
             - ./src/static:/static
-            - ./data/uploads:/uploads
 
     db: 
         extends:

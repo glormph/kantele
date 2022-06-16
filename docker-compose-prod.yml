@@ -21,8 +21,10 @@ services:
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
             TMP_UPLOADPATH: "${CONTAINER_UPLOADPATH}"
+            SERVABLE_FILE_PATH: "${CONTAINER_ANALYSISPATH}"
         volumes:
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
+            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
     
     nginx:
         image: kantele_nginx
@@ -35,7 +37,8 @@ services:
         ports:
             - 80:80
         volumes:
-            - "${UPLOADPATH}:/uploads"
+            - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
+            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
 
     db:
         image: postgres:14.3

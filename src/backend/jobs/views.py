@@ -443,9 +443,23 @@ def store_analysis_result(request):
                 'path': data['outdir'], 'checked': True, 'filename': data['filename']})
     if created:
         AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)
-    else:
-        # FIXME if file already stored, what happens? message?
-        pass
+    # Also store any potential servable file on share on web server
+    if data['filename'] in settings.SERVABLE_FILENAMES and request.FILES:
+        print('File found')
+        webshare = ServerShare.objects.get(name=settings.WEBSHARENAME)
+        srvfile, srvcreated  = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
+                md5=data['md5'], defaults={'filetype_id': ftypeid,
+                    'servershare': webshare, 'path': sfile.regdate.year,
+                    'checked': True, 'filename': f'{sfile.pk}_{data["filename"]}'})
+        if srvcreated:
+            AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=srvfile)
+        srvdst = os.path.join(settings.WEBSHARE, srvfile.path, srvfile.filename)
+        with NamedTemporaryFile(mode='wb+') as fp:
+            for chunk in request.FILES['ana_file']:
+                fp.write(chunk)
+            fp.flush()
+            os.fsync(fp.fileno())
+            shutil.copy(fp.name, srvdst)
     return HttpResponse()
 
 

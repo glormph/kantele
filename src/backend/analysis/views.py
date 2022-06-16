@@ -804,6 +804,11 @@ def purge_analysis(request):
         return JsonResponse({'error': 'Analysis is not deleted, cannot purge'}, status=403)
     analysis.purged = True
     analysis.save()
+    webshare = ServerShare.objects.get(name=settings.WEBSHARENAME)
+    # Delete files on web share here since the job tasks run on storage cannot do that
+    for webfile in rm.StoredFile.objects.filter(analysisresultfile__analysis__id=analysis.pk, servershare_id=webshare.pk):
+        fpath = os.path.join(settings.WEBSHARE, webfile.path, webfile.filename)
+        os.unlink(fpath)
     jj.create_job('purge_analysis', analysis_id=analysis.id)
     jj.create_job('delete_empty_directory',
             sf_ids=[x.sfile_id for x in analysis.analysisresultfile_set.all()])
@@ -852,6 +857,20 @@ def serve_analysis_file(request, file_id):
     resp = HttpResponse()
     resp['X-Accel-Redirect'] = os.path.join(settings.NGINX_ANALYSIS_REDIRECT, sf.sfile.path, sf.sfile.filename)
     return resp
+
+
+@require_POST
+def upload_servable_file(request):
+    data = request.POST
+    if 'client_id' not in data or data['client_id'] !=settings.ANALYSISCLIENT_APIKEY:
+        return JsonResponse({'msg': 'Forbidden'}, status=403)
+    elif 'rawid' not in data or 'md5' not in data:
+        return JsonResponse({'msg': 'Need to specify rawfile ID and MD5'})
+    elif 'fname' not in data or data['fname'] not in settings.SERVABLE_FILENAMES:
+        return JsonResponse({'msg': 'File is not servable'}, status=406)
+    else:
+        print('Ready to upload')
+        return JsonResponse({'msg': 'File can be uploaded and served'}, status=200)
 
 
 def get_servable_files(resultfiles):

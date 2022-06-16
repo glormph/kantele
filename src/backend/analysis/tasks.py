@@ -479,8 +479,9 @@ def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analys
         except:
             taskfail_update_db(task_id, 'Errored when trying to copy files to analysis result destination')
             raise
+        fname = outfiles_db[fn]['newname']
         postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
-                    'outdir': outpath, 'filename': outfiles_db[fn]['newname']}
+                'outdir': outpath, 'filename': fname}
         if calc_md5(dst) != outfiles_db[fn]['md5']:
             msg = 'Copying error, MD5 of src and dst are different'
             taskfail_update_db(task_id, msg)
@@ -488,7 +489,18 @@ def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analys
         else:
             postdata['md5'] = outfiles_db[fn]['md5']
         if analysis_id:
+            # Not for refine mzMLs
             postdata.update({'ftype': 'analysis_output', 'analysis_id': analysis_id})
-        response = update_db(url, form=postdata)
+            # first check if upload file is OK:
+            checksrvurl = urljoin(settings.KANTELEHOST, reverse('analysis:checkfileupload'))
+            resp = requests.post(checksrvurl, data={'fname': fname,
+                'client_id': settings.APIKEY})
+            if resp.status_code == 200:
+                # Servable file found, upload also to web server
+                response = requests.post(url, files={'ana_file': open(fn, 'rb')}, data=postdata)
+            else:
+                response = update_db(url, form=postdata)
+        else:
+            response = update_db(url, form=postdata)
         response.raise_for_status()
     return {x['file_id']: False for x in outfiles_db.values()}

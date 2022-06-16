@@ -20,6 +20,7 @@ urlpatterns = [
     path('workflows/', views.get_allwfs),
     path('logappend/', views.append_analysis_log, name='appendlog'),
     path('nflogappend/', views.nextflow_analysis_log, name='nflog'),
+    path('upload/', views.upload_servable_file, name='checkfileupload'),
     path('log/<int:nfs_id>', views.show_analysis_log),
     path('showfile/<int:file_id>', views.serve_analysis_file),
     path('fastarelease/check/', views.check_fasta_release, name='checkfastarelease'),

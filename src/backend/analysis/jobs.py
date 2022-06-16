@@ -325,7 +325,10 @@ class PurgeAnalysis(BaseJob):
         return rm.StoredFile.objects.filter(analysisresultfile__analysis__id=kwargs['analysis_id'])
 
     def process(self, **kwargs):
+        webshare = ServerShare.objects.get(name=settings.WEBSHARENAME)
         for fn in self.getfiles_query(**kwargs):
             fullpath = os.path.join(fn.path, fn.filename)
             print('Purging {} from analysis {}'.format(fullpath, kwargs['analysis_id']))
-            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
+            if fn.servershare_id != webshare.pk:
+                # Files on web share live locally, deleted by the purge view itself
+                self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))

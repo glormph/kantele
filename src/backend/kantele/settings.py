@@ -3,6 +3,8 @@ import os
 
 # local box setup
 APIKEY = os.environ.get('APIKEY')
+
+# File storage of raw files/analysis results
 STORAGESHARE = os.environ.get('STORAGESHARE')
 ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
 TMPSHARE = os.environ.get('TMPSHARE', False)
@@ -15,7 +17,11 @@ CACERTLOC = os.environ.get('CACERTLOC')
 CERTLOC = os.environ.get('CERTLOC')
 CERTKEYLOC = os.environ.get('CERTKEYLOC')
 CERTPASS = os.environ.get('CERTPASS')
-# only used in web and nginx containers
+# File storage only used in web and nginx containers
+# which is where uploaded result files live for web access (HTML reports)
+WEBSHARE = os.environ.get('SERVABLE_FILE_PATH')
+
+# Tmp file storage for uploaded files to be transported to storage
 TMP_UPLOADPATH = os.environ.get('TMP_UPLOADPATH')
 
 DSM_DIR = os.environ.get('DSM_DIR')
@@ -51,6 +57,7 @@ UPLOAD_URL = 'uploads'
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
 ANALYSISSHARENAME = 'analysis'
+WEBSHARENAME = 'web'
 
 TMP_STORAGE_KEYFILE = os.environ.get('STORAGE_KEYFILE')
 STORAGE_USER = os.environ.get('STORAGE_USER')
@@ -60,6 +67,7 @@ TMP_SCP_PATH = '{}@{}:{}'.format(STORAGE_USER, STORAGE_HOST, TMPSHARE)
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
             STORAGESHARENAME: STORAGESHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
+            WEBSHARENAME: WEBSHARE,
             }
 NGINX_ANALYSIS_REDIRECT = '/analysisfiles'
 SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html']
