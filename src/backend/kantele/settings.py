@@ -147,6 +147,7 @@ INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
 INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
 
 # nextflow
+NXF_COMMAND = os.environ.get('NXF_COMMAND', 'nextflow')
 LIBRARY_FILE_PATH = 'databases'
 ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE')
 SMALL_NFRUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
