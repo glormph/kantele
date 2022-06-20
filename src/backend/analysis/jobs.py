@@ -266,6 +266,7 @@ class RunNextflowWorkflow(BaseJob):
                }
         
         # Gather mzML input
+        mzmls = []
         if kwargs['inputs']['components']['mzmldef']:
             mzmldef_fields = models.WFInputComponent.objects.get(name='mzmldef').value[kwargs['inputs']['components']['mzmldef']]
             mzmls = [{
