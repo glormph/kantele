@@ -121,7 +121,7 @@ def check_in_instrument(config, configfn, logger):
             password = getpass.getpass('Kantele password: ')
             init_resp = session.get(loginurl)
             loginresp = session.post(loginurl,
-                    data={'username': 'jorrit', 'password': password},
+                    data={'username': username, 'password': password},
                     headers=get_csrf(session.cookies))
             tokenresp = session.post(urljoin(kantelehost, 'files/token/'),
                     headers=get_csrf(session.cookies),
