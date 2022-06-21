@@ -194,6 +194,9 @@ def browser_userupload(request):
                 fp.write(text)
             dighash.update(chunk)
         # check if it is correct FASTA (maybe add more parsing later)
+        # Flush it to disk just in case, but seek is usually enough
+        fp.flush()
+        os.fsync(fp.fileno())
         fp.seek(0)
         if not any(SeqIO.parse(fp, 'fasta')):
             return JsonResponse(err_resp)
