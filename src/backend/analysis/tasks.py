@@ -158,7 +158,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
     subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
-    return rundir
+    return outdir
 
 
 def get_dir_content_size(fpath):
@@ -364,7 +364,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
     if not profiles:
         profiles = 'standard'
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
+        outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError as e:
         errmsg = process_error_from_nf_log(os.path.join(gitwfdir, '.nextflow.log'))
         log_analysis(run['analysis_id'], 'Workflow crashed, reporting errors')
@@ -376,7 +376,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
                  ' cleaning. Full NF trace log: \n{}'.format(nflog))
-    outfiles = [os.path.join(rundir, 'output', x) for x in os.listdir(os.path.join(rundir, 'output'))]
+    outfiles = [os.path.join(outdir, x) for x in os.listdir(outdir)]
     outfiles = [x for x in outfiles if not os.path.isdir(x)]
     reportfile = os.path.join(rundir, 'output', 'Documentation', 'pipeline_report.html')
     if os.path.exists(reportfile):
@@ -402,7 +402,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
         nf_version = False
         profiles = 'qc'
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
+        outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError:
         errmsg = process_error_from_nf_log(os.path.join(gitwfdir, '.nextflow.log'))
         log_analysis(run['analysis_id'], 'QC Workflow crashed')
@@ -422,7 +422,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
         taskfail_update_db(self.request.id, errmsg)
         raise RuntimeError('Error occurred running QC workflow '
                            '{}'.format(rundir))
-    with open(os.path.join(rundir, 'output', 'qc.json')) as fp:
+    with open(os.path.join(outdir, 'qc.json')) as fp:
         qcreport = json.load(fp)
     log_analysis(run['analysis_id'], 'QC Workflow finished')
     postdata.update({'state': 'ok', 'plots': qcreport})
