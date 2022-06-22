@@ -259,10 +259,27 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     params = [x if x != 'RUNNAME__PLACEHOLDER' else run['runname'] for x in params]
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
     postdata.update({'state': 'ok'})
-    outfiles_db = register_resultfiles(outfiles)
+
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisfile'))
-    fn_ids = transfer_resultfiles((settings.ANALYSISSHARENAME, run['outdir']), rundir, outfiles_db, fileurl, self.request.id, run['analysis_id'])
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
+    checksrvurl = urljoin(settings.KANTELEHOST, reverse('analysis:checkfileupload'))
+
+    outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])
+    outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME], outpath)
+    try:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+    except (OSError, PermissionError):
+        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
+        raise
+    token = False
+    for ofile in outfiles:
+        token = check_in_transfer_client(self.request.id, token, 'analysis_output')
+        regfile = register_resultfile(ofile, token)
+        if not regfile:
+            continue
+        transfer_resultfile(outdir, outpath, ofile, regfile, fileurl, checksrvurl, 
+                token, self.request.id, run['analysis_id'])
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
@@ -283,11 +300,15 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     # stage mzML with {dbid}___{filename}.mzML
     # This keeps dbid / ___ split out of the NF workflow 
     outfiles_db = {}
-    for fn in outfiles:
-        sf_id, newname = os.path.basename(fn).split('___')
-        outfiles_db[fn] = {'file_id': sf_id, 'newname': newname, 'md5': calc_md5(fn)}
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
-    fn_ids = transfer_resultfiles((settings.ANALYSISSHARENAME, run['outdir']), rundir, outfiles_db, fileurl, self.request.id, run['analysis_id'])
+    outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])
+    outfullpath = os.path.join(settings.ANALYSISSHARENAME, outpath)
+    for fn in outfiles:
+        token = check_in_transfer_client(self.request.id, token, 'analysis_output')
+        sf_id, newname = os.path.basename(fn).split('___')
+        fdata = {'file_id': sf_id, 'newname': newname, 'md5': calc_md5(fn)}
+        transfer_resultfile(outfullpath, outpath, fn, fdata, fileurl, False, token,
+                self.request.id)
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY, 'analysis_id': run['analysis_id'],
             'task': self.request.id, 'name': run['name'], 'user': run['outdir'], 'state': 'ok'}
@@ -439,68 +460,74 @@ def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     shutil.rmtree(stagedir)
 
 
-def register_resultfiles(outfiles):
-    # First register files, check md5, prune those
+def check_in_transfer_client(task_id, token, filetype):
+    url = urljoin(settings.KANTELEHOST, reverse('files:check_in'))
+    resp = requests.post(url, json={'client_id': settings.APIKEY, 'token': token,
+        'task_id': task_id, 'ftype': filetype})
+    resp.raise_for_status()
+    response = resp.json()
+    print(response)
+    if response.get('newtoken', False):
+        return response['newtoken']
+    else:
+        return token
+
+
+def register_resultfile(fn, token):
     reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
-    outfiles_db = {}
-    for fn in outfiles:
-        fname = os.path.basename(fn)
-        postdata = {'fn': fname,
-                    'client_id': settings.APIKEY,
-                    'md5': calc_md5(fn),
-                    'size': os.path.getsize(fn),
-                    'date': str(os.path.getctime(fn)),
-                    'claimed': True,
-                    }
-        resp = requests.post(url=reg_url, data=postdata, verify=settings.CERTFILE)
-        resp.raise_for_status()
-        rj = resp.json()
-        if not rj['stored']:
-            outfiles_db[fn] = resp.json()
-            outfiles_db[fn].update({'newname': fname, 'md5': postdata['md5']})
-    return outfiles_db
+    fname = os.path.basename(fn)
+    postdata = {'fn': fname,
+                'client_id': settings.APIKEY,
+                'md5': calc_md5(fn),
+                'size': os.path.getsize(fn),
+                'date': str(os.path.getctime(fn)),
+                'claimed': True,
+                'token': token,
+                }
+    resp = requests.post(url=reg_url, json=postdata)
+    resp.raise_for_status()
+    rj = resp.json()
+    if not rj['stored']:
+        outfile = resp.json()
+        outfile.update({'newname': fname, 'md5': postdata['md5']})
+        return outfile
+    else:
+        return False
 
 
-def transfer_resultfiles(baselocation, rundir, outfiles_db, url, task_id, analysis_id=False):
-    """Copies analysis results to data server, calculates MD5 on destination. After that
-    URL is called which"""
-    outpath = os.path.join(baselocation[1], os.path.split(rundir)[-1])
-    outdir = os.path.join(settings.SHAREMAP[baselocation[0]], outpath)
+def transfer_resultfile(outfullpath, outpath, fn, regfile, url, checksrvurl, token, task_id, analysis_id=False):
+    '''Copies files from analyses to outdir on result storage.
+    outfullpath is absolute destination dir for file
+    outpath is the path stored in Kantele DB (for users on the share of outfullpath)
+    fn is absolute path to src file
+    regfile is dict of registered file with md5, newname, fn_id
+    '''
+    fname = regfile['newname']
+    dst = os.path.join(outfullpath, fname)
     try:
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
-    except (OSError, PermissionError):
-        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
+        shutil.copy(fn, dst)
+    except:
+        taskfail_update_db(task_id, 'Errored when trying to copy files to analysis result destination')
         raise
-    for fn in outfiles_db:
-        dst = os.path.join(outdir, outfiles_db[fn]['newname'])
-        try:
-            shutil.copy(fn, dst)
-        except:
-            taskfail_update_db(task_id, 'Errored when trying to copy files to analysis result destination')
-            raise
-        fname = outfiles_db[fn]['newname']
-        postdata = {'client_id': settings.APIKEY, 'fn_id': outfiles_db[fn]['file_id'],
-                'outdir': outpath, 'filename': fname}
-        if calc_md5(dst) != outfiles_db[fn]['md5']:
-            msg = 'Copying error, MD5 of src and dst are different'
-            taskfail_update_db(task_id, msg)
-            raise RuntimeError(msg)
-        else:
-            postdata['md5'] = outfiles_db[fn]['md5']
-        if analysis_id:
-            # Not for refine mzMLs
-            postdata.update({'ftype': 'analysis_output', 'analysis_id': analysis_id})
-            # first check if upload file is OK:
-            checksrvurl = urljoin(settings.KANTELEHOST, reverse('analysis:checkfileupload'))
-            resp = requests.post(checksrvurl, data={'fname': fname,
-                'client_id': settings.APIKEY})
-            if resp.status_code == 200:
-                # Servable file found, upload also to web server
-                response = requests.post(url, files={'ana_file': open(fn, 'rb')}, data=postdata)
-            else:
-                response = update_db(url, form=postdata)
+    postdata = {'client_id': settings.APIKEY, 'fn_id': regfile['file_id'],
+            'outdir': outpath, 'filename': fname, 'token': token}
+    if calc_md5(dst) != regfile['md5']:
+        msg = 'Copying error, MD5 of src and dst are different'
+        taskfail_update_db(task_id, msg)
+        raise RuntimeError(msg)
+    else:
+        postdata['md5'] = regfile['md5']
+    if analysis_id:
+        # Not for refine mzMLs
+        postdata.update({'ftype': 'analysis_output', 'analysis_id': analysis_id})
+        # first check if upload file is OK:
+        resp = requests.post(checksrvurl, data={'fname': fname,
+            'client_id': settings.APIKEY})
+        if resp.status_code == 200:
+            # Servable file found, upload also to web server
+            response = requests.post(url, files={'ana_file': open(fn, 'rb')}, data=postdata)
         else:
             response = update_db(url, form=postdata)
-        response.raise_for_status()
-    return {x['file_id']: False for x in outfiles_db.values()}
+    else:
+        response = update_db(url, form=postdata)
+    response.raise_for_status()

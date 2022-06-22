@@ -1,7 +1,9 @@
 import os
 import json
 import requests
+import shutil
 from datetime import datetime 
+from tempfile import NamedTemporaryFile
 
 from celery import states
 from django.http import HttpResponseForbidden, HttpResponse, JsonResponse
