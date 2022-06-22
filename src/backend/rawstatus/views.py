@@ -173,13 +173,11 @@ def browser_userupload(request):
     except ValueError:
         return JsonResponse({'success': False, 'error': 'Please select a file type '
         f'{data["ftype_id"]}'})
-    # TODO pick producer_id in frontend for browser uploads?
-    producer = Producer.objects.get(client_id=settings.ADMIN_APIKEY)
-    upload = create_upload_token(data['ftype_id'], request.user, producer)
+    producer = Producer.objects.get(shortname='admin')
+    upload = create_upload_token(data['ftype_id'], request.user.id, producer)
     # tmp write file 
     upfile = request.FILES['file']
     dighash = md5()
-    producer = Producer.objects.get(shortname='admin')
     desc = data['desc'].strip()
     if desc == '':
         return JsonResponse({'success': False, 'error': 'A description for this file is required'})
@@ -233,18 +231,44 @@ def browser_userupload(request):
 
 @require_POST
 def instrument_check_in(request):
+    '''Returns 200 at correct token or expiring token, in which case a new token
+    will be issued'''
     data = json.loads(request.body.decode('utf-8'))
     response = {'newtoken': False}
-    if not data.get('token') or not data.get('client_id'):
+    token = data.get('token', False)
+    taskid = data.get('task_id', False)
+    if not data.get('client_id', False):
         return JsonResponse({'error': 'Bad request'}, status=400)
-    upload = validate_token(data['token'])
-    if not upload or upload.producer.client_id != data['client_id']:
+    elif not any([token, taskid]):
+        return JsonResponse({'error': 'Bad request'}, status=400)
+    elif taskid and not data.get('ftype', False):
+        return JsonResponse({'error': 'Bad request'}, status=400)
+
+    upload = validate_token(token) if token else False
+    task = jm.Task.objects.filter(asyncid=taskid).exclude(state__in=jobutil.JOBSTATES_DONE)
+
+    if upload and upload.producer.client_id != data['client_id']:
+        # Keep the token bound to a client instrument
+        return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
+                status=403)
+    elif not upload and task.count():
+        # Token for a client on a controlled system like analysis server:
+        # auth by client ID and task ID knowledge
+        producer = Producer.objects.get(client_id=data['client_id'])
+        try:
+            ftype = StoredFileType.objects.get(name=data['ftype'])
+        except StoredFileType.DoesNotExist:
+            return JsonResponse({'error': 'File type does not exist'}, status=403)
+        print('New token issued for a valid task ID without a token')
+        newtoken = create_upload_token(ftype.pk, settings.QC_USER_ID, producer)
+        response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
+    elif not upload:
         return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
                 status=403)
     elif upload.expires < timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
         upload.expired = True
         upload.save()
-        newtoken = create_upload_token(upload.filetype_id, upload.user, upload.producer)
+        newtoken = create_upload_token(upload.filetype_id, upload.user_id, upload.producer)
         response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
     return JsonResponse(response)
 
@@ -271,18 +295,18 @@ def request_upload_token(request):
         producer = Producer.objects.get(client_id=data['producer_id'])
     except Producer.DoesNotExist:
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
-    ufu = create_upload_token(data['ftype_id'], request.user, producer)
+    ufu = create_upload_token(data['ftype_id'], request.user.id, producer)
     token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
     return JsonResponse({'token': ufu.token,
         'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
 
-def create_upload_token(ftype_id, user, producer):
+def create_upload_token(ftype_id, user_id, producer):
     '''Generates a new UploadToken for a producer and stores it in DB'''
     token = str(uuid4())
     expi_sec = settings.MAX_TIME_PROD_TOKEN if producer.internal else settings.MAX_TIME_UPLOADTOKEN
     expiry = timezone.now() + timedelta(seconds=expi_sec)
-    return UploadToken.objects.create(token=token, user=user, expired=False,
+    return UploadToken.objects.create(token=token, user_id=user_id, expired=False,
             expires=expiry, filetype_id=ftype_id, producer=producer)
 
 
