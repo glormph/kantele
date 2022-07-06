@@ -56,7 +56,10 @@ class RefineMzmls(DatasetJob):
                'name': analysis.name,
                'outdir': analysis.user.username,
                }
-        profiles = ['standard', 'docker', 'lehtio']
+        if not len(nfwf.profiles):
+            profiles = ['standard', 'docker', 'lehtio']
+        else:
+            profiles = nfwf.profiles
         self.run_tasks.append(((run, params, mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         # TODO replace this for general logging anyway, not necessary to keep queueing in analysis log
         analysis.log = ['[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S'))]
@@ -96,7 +99,10 @@ class RunLabelCheckNF(MultiDatasetJob):
                'outdir': analysis.user.username,
                'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger'
                }
-        profiles = ['standard', 'docker', 'lehtio']
+        if not len(nfwf.profiles):
+            profiles = ['standard', 'docker', 'lehtio']
+        else:
+            profiles = nfwf.profiles
         kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
         self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
@@ -305,7 +311,10 @@ class RunNextflowWorkflow(BaseJob):
                 # Only mzmldef input if not doing a rerun
                 run['mzmls'] = mzmls
 
-        profiles = ['standard', 'docker', 'lehtio']
+        if not len(nfwf.profiles):
+            profiles = ['standard', 'docker', 'lehtio']
+        else:
+            profiles = nfwf.profiles
         params = [str(x) for x in kwargs['inputs']['params']]
         # Runname defined when run executed (FIXME can be removed, no reason to not do that here)
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])

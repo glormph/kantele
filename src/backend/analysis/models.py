@@ -90,6 +90,7 @@ class NextflowWfVersion(models.Model):
     update = models.TextField(help_text='Description of workflow update')
     commit = models.CharField(max_length=50)
     filename = models.TextField()
+    profiles = models.JSONField(default=list)
     nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
     paramset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
     date = models.DateTimeField(auto_now=True)
