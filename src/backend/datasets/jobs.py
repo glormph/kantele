@@ -119,7 +119,7 @@ class ConvertDatasetMzml(BaseJob):
         return StoredFile.objects.filter(
             rawfile__datasetrawfile__dataset_id=kwargs['dset_id']).exclude(
             mzmlfile__isnull=False).select_related(
-            'servershare', 'rawfile__datasetrawfile__dataset')
+            'servershare', 'rawfile__datasetrawfile__dataset', 'filetype')
 
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
@@ -152,6 +152,9 @@ class ConvertDatasetMzml(BaseJob):
             mzsf.save()
             nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
             win_mzmls.append((fn, mzsf))
+        # FIXME last file filetype decides mzml input filetype, we should enforce
+        # same filetype files in a dataset if possible
+        ftype = mzsf.filetype.name
         if pwiz.is_docker and len(nf_raws):
             print('Queuing {} raw files for conversion'.format(len(nf_raws)))
             nfwf = NextflowWfVersion.objects.select_related('nfworkflow').get(
@@ -167,7 +170,11 @@ class ConvertDatasetMzml(BaseJob):
                 p2parse = kwargs.get(pname, [])
                 if len(p2parse):
                     params.extend(['--{}'.format(pname), ';'.join(p2parse)])
-            self.run_tasks.append(((run, params, nf_raws), {'pwiz_id': pwiz.id}))
+            if not len(nfwf.profiles):
+                profiles = 'docker,lehtio' # TODO put in deploy/settings
+            else:
+                profiles = ','.join(nfwf.profiles)
+            self.run_tasks.append(((run, params, nf_raws, ftype, nfwf.nfversion, profiles), {'pwiz_id': pwiz.id}))
         elif not pwiz.is_docker and len(win_mzmls):
             options = ['--{}'.format(x) for x in kwargs.get('options', [])]
             filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]

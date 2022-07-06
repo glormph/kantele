@@ -8,7 +8,7 @@ from celery import shared_task
 
 from kantele import settings
 from jobs.post import update_db, taskfail_update_db
-from analysis.tasks import prepare_nextflow_run, run_nextflow, transfer_resultfiles
+from analysis.tasks import create_runname_dir, prepare_nextflow_run, run_nextflow, transfer_resultfile, check_in_transfer_client
 from rawstatus.tasks import calc_md5
 
 # Updating stuff in tasks happens over the API, assume no DB is touched. This
@@ -32,16 +32,12 @@ def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failu
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
-def run_convert_mzml_nf(self, run, params, raws, **kwargs):
+def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profiles, **kwargs):
     postdata = {'client_id': settings.APIKEY, 'task': self.request.id}
-    runname = '{}_convert_mzml_{}'.format(run['dset_id'], run['timestamp'])
-    run['runname'] = runname
-    baserundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
-    rundir = os.path.join(baserundir, runname).replace(' ', '_')
+    rundir = create_runname_dir(run, run['dset_id'], 'convert_mzml', run['timestamp'])
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, {'--raws': raws}, [], params)
-    profiles = 'docker,lehtio' # TODO put in deploy/settings
     try:
-        run_nextflow(run, params, rundir, gitwfdir, profiles, '20.01.0')
+        run_outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError as e:
         # FIXME report stderr with e
         errmsg = 'OUTPUT:\n{}\nERROR:\n{}'.format(e.stdout, e.stderr)
@@ -50,12 +46,21 @@ def run_convert_mzml_nf(self, run, params, raws, **kwargs):
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
     transfer_url = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
     resultfiles = {}
+    outpath = os.path.join('mzml_in', os.path.split(rundir)[-1])
+    outfullpath = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME], outpath)
+    try:
+        os.makedirs(outfullpath, exist_ok=True)
+    except (OSError, PermissionError):
+        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
+        raise
+    token = False
     for raw in raws:
+        token = check_in_transfer_client(self.request.id, token, ftype_name)
         fname = os.path.splitext(raw[2])[0] + '.mzML'
-        fpath = os.path.join(rundir, 'output', fname)
-        resultfiles[fpath] = {'md5': calc_md5(fpath), 'file_id': raw[3], 'newname': fname}
+        srcpath = os.path.join(run_outdir, fname)
+        fdata = {'md5': calc_md5(srcpath), 'file_id': raw[3], 'newname': fname}
+        transfer_resultfile(outfullpath, outpath, srcpath, fdata, transfer_url, False, token, self.request.id)
     # FIXME first check tstate so no dup transfers used?
-    transfer_resultfiles((settings.ANALYSISSHARENAME, 'mzmls_in'), runname, resultfiles, transfer_url, self.request.id)
     # TODO we're only reporting task finished in this POST call, but there is no specific route
     # for that.
     url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))

@@ -219,7 +219,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'name': run['name'], 'user': run['outdir']}
-    rundir = create_runname_dir(run)
+    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
     # write sampletable if it is present
     sampletable = False
     try:
@@ -287,7 +287,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     print('Got message to run mzRefine workflow, preparing')
-    rundir = create_runname_dir(run)
+    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
@@ -316,8 +316,8 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     return run
 
 
-def create_runname_dir(run):
-    runname = '{}_{}_{}'.format(run['analysis_id'], run['name'], run['timestamp'])
+def create_runname_dir(run, run_id, in_name, timestamp):
+    runname = f'{run_id}_{in_name}_{timestamp}'
     run['runname'] = runname
     rundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
     return os.path.join(rundir, runname).replace(' ', '_')
@@ -412,7 +412,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'instrument': run['instrument'], 'filename': run['filename']}
-    rundir = create_runname_dir(run)
+    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
     # FIXME temp code tmp to remove when all QC is run in new QC WF (almost)
     # dont forget to update the nf_version in teh DB before deleting this!
