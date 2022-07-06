@@ -455,7 +455,12 @@ def store_analysis_result(request):
                     'checked': True, 'filename': f'{sfile.pk}_{data["filename"]}'})
         if srvcreated:
             AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=srvfile)
-        srvdst = os.path.join(settings.WEBSHARE, srvfile.path, srvfile.filename)
+        srvpath = os.path.join(settings.WEBSHARE, srvfile.path)
+        srvdst = os.path.join(srvpath, srvfile.filename)
+        try:
+            os.makedirs(srvpath, exist_ok=True)
+        except FileExistsError:
+            pass
         with NamedTemporaryFile(mode='wb+') as fp:
             for chunk in request.FILES['ana_file']:
                 fp.write(chunk)
