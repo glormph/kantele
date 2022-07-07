@@ -302,7 +302,13 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     outfiles_db = {}
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
     outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])
-    outfullpath = os.path.join(settings.ANALYSISSHARENAME, outpath)
+    outfullpath = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME], outpath)
+    try:
+        os.makedirs(outfullpath, exist_ok=True)
+    except (OSError, PermissionError):
+        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
+        raise
+    token = False
     for fn in outfiles:
         token = check_in_transfer_client(self.request.id, token, 'analysis_output')
         sf_id, newname = os.path.basename(fn).split('___')
