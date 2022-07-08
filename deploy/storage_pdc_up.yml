@@ -1,0 +1,17 @@
+---
+# Playbook for starting PDC archive services on storage servers (kalevala, totoro)
+
+- hosts: storage
+  become_user: '{{ storage_user }}'
+  become: yes
+  tasks:
+      - name: Transfer start script
+        template:
+            src: storage_pdc.j2
+            dest: "{{ kanteledir }}/storage_pdc.sh"
+
+      - name: Start celery download queue worker
+        command: "scl enable rh-python36 rh-postgresql12 -- bash {{ kanteledir }}/storage_pdc.sh"
+        args:
+            chdir: "{{ kanteledir }}"
+        environment: "{{ storage_env }}"

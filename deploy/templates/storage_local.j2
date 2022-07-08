@@ -1,0 +1,1 @@
+ps ax | grep mv_md5_storage | grep -v grep || nohup {{ kantelevenv }}/bin/celery worker -A kantele -Q mv_md5_storage -n mvjobs.% --concurrency=4 &>> {{ kanteledir }}/nohup.out &

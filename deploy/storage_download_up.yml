@@ -1,0 +1,17 @@
+---
+# Playbook for starting download (PX, Ensembl, Uniprot) services on storage servers (kalevala, totoro)
+
+- hosts: storage
+  become: yes
+  become_user: '{{ storage_user }}'
+  tasks:
+      - name: Transfer start script
+        template:
+            src: storage_dl.j2
+            dest: "{{ kanteledir }}/storage_dl.sh"
+
+      - name: Start celery download queue worker
+        command: "scl enable rh-python36 rh-postgresql12 -- bash {{ kanteledir }}/storage_dl.sh"
+        args:
+            chdir: "{{ kanteledir }}"
+        environment: "{{ storage_env }}"

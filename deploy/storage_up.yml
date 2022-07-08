@@ -1,0 +1,25 @@
+---
+# Playbook for starting all services on storage servers (kalevala, totoro)
+
+- hosts: storage
+  become: yes
+  become_user: "{{ storage_user }}"
+  tasks:
+      - name: Transfer start scripts
+        template:
+            src: "{{ item }}.j2"
+            dest: "{{ kanteledir }}/{{ item }}.sh"
+        loop:
+            - storage_local
+            - storage_dl
+            - storage_pdc
+
+      - name: Start celery queue workers
+        command: "scl enable rh-python36 rh-postgresql12 -- bash {{ kanteledir }}/{{ item }}.sh"
+        args:
+            chdir: "{{ kanteledir }}"
+        environment: "{{ storage_env }}"
+        loop:
+            - storage_local
+            - storage_dl
+            - storage_pdc

@@ -1,0 +1,28 @@
+CELERYD_NODES="analysisworker qcworker"
+CELERY_BIN="{{ kanteledir }}/venv/bin/celery"
+CELERYD_MULTI="multi"
+CELERY_APP="kantele"
+CELERYD_OPTS="-c:analysisworker 3 -c:qcworker 2 -Q:analysisworker {{ analysis_queue }} -Q:qcworker {{ qc_queue }} --statedb={{ kantelelogdir }}/%n%I.state"
+CELERYD_LOG_LEVEL="INFO"
+CELERYD_LOG_FILE="{{ kantelelogdir }}/%n%I.log"
+CELERYD_PID_FILE="{{ kantelelogdir }}/%n%I.pid"
+CELERYD_USER="{{ kanteleuser }}"
+CELERYD_GROUP="{{ kantelegroup }}"
+CELERY_CREATE_DIRS=1
+KANTELEHOST={{ kantele_host }}
+RABBITHOST={{ rabbithost }}
+RABBIT_VHOST={{ mq_vhost }}
+AMQPASS={{ amqppass }}
+
+LOCAL_PTYPE_ID={{ local_ptype_id }}
+LC_DTYPE_ID={{ lc_dtype_id }}
+ANALYSISOUT_FTID={{ analysisout_ftid}}
+DATABASE_FTID={{ database_ftid }}
+EXTERNAL_PRODUCER_IDS="{{ external_producer_ids }}"
+SECRET_KEY={{ secret_key }}
+APIKEY={{ analyis_apikey }}
+NEXTFLOW_RUNDIR="{{ baserun_dir }}"
+LARGER_NFRUNDIR="{{ larger_rundir }}"
+STORAGESHARE={{ storage_share }}
+ANALYSISSHARE={{ analysis_share }}
+STAGESHARE={{ stage_dir }}

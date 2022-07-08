@@ -1,0 +1,67 @@
+--- 
+
+# Prepare server for Kantele on Ubuntu 20.04 LTS
+# TODO: 22.04.1 is out in Aug 2022, then we can use docker-compose 1.29 and better spec of compose.yml
+# TODO BACKUP needs cron job, and a way to export backup result
+# TODO: configure rsyslog to listen on TCP/UDP
+
+- hosts: kantele
+  become: yes
+  tasks:
+      - name: Package install
+        ansible.builtin.apt:
+            update_cache: yes
+            name: "{{ item }}"
+            state: present
+        loop:
+            - docker.io
+            - docker-compose
+            - ufw # uncomplicated firewall
+            - acl # permissions management for ansible user-switching
+
+      - name: UFW firewall Allow SSH for admins
+        community.general.ufw:
+            rule: allow
+            name: OpenSSH
+            src: "{{ item }}"
+        loop: "{{ adminhosts }}"
+
+      - name: UFW allow web traffic from user subnets 
+        community.general.ufw:
+            rule: allow
+            src: '{{ item[0] }}'
+            port: '{{ item[1] }}'
+        loop: '{{ webuser_subnets | product(["http", "https"]) }}'
+
+      - name: UFW allow message queue traffic from instruments/analysis/storage
+        community.general.ufw:
+            rule: allow
+            src: "{{ item[0] }}"
+            port: "{{ item[1] }}"
+        loop: "{{ mq_subnets | product(['amqp', 'epmd', '25672']) }}"
+
+        ## ssh rapunzel, ping rapunzel/gauss, 
+      - name: Set last rule to deny all and reload UFW firewall
+        community.general.ufw:
+            policy: deny
+            direction: incoming
+            state: enabled
+
+      - name: Create kantele group
+        ansible.builtin.group:
+            name: '{{ kantelegroup }}'
+
+      - name: Create admin users
+        ansible.builtin.user:
+            name: '{{ item }}'
+            shell: /bin/bash
+            append: yes
+            groups: '{{ kantelegroup }}'
+        loop: '{{ adminusers }}'
+
+      - name: Create user
+        ansible.builtin.user:
+            name: '{{ kanteleuser }}'
+            shell: /bin/bash
+            append: yes
+            groups: '{{ kantelegroup }}'

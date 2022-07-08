@@ -7,8 +7,6 @@ services:
             context: src/
             dockerfile: ./docker/Dockerfile
             target: django
-        env_file:
-            - ./src/docker/prod.env
         environment:
             KANTELEHOST: "${HOST_FQDN}"
             PROTOCOL: https
@@ -18,6 +16,7 @@ services:
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
             RABBITHOST: mq
+            RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
             TMP_UPLOADPATH: "${CONTAINER_UPLOADPATH}"
@@ -46,9 +45,6 @@ services:
         user: "${DBUID:-0}:${DBGID:-0}"
         environment:
             POSTGRES_PASSWORD: "${PG_SUPERUSER_PASSWORD}"
-            KANTELE_PASSWORD: "${PG_KANTELE_PASSWORD}"
-            KANTELE_DB: "${KANTELE_DB_NAME}"
-            KANTELE_ROLE: kanteleuser
         volumes:
             - "${PG_DATA_PATH}:/var/lib/postgresql/data"
 
@@ -57,6 +53,7 @@ services:
         environment:
             RABBITMQ_DEFAULT_USER: "${RABBITUSER:-guest}"
             RABBITMQ_DEFAULT_PASS: "${RABBITPASS:-guest}"
+            RABBITMQ_DEFAULT_VHOST: "${RABBIT_VHOST}"
             #volumes:
             #- "./src/docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
 
@@ -65,8 +62,6 @@ services:
         depends_on:
             - web
         command: python manage.py runjobs
-        env_file:
-            - ./src/docker/prod.env
         environment:
             DB_PASS: "${PG_KANTELE_PASSWORD}"
             DB_USER: kanteleuser
@@ -74,5 +69,6 @@ services:
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
             RABBITHOST: mq
+            RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"

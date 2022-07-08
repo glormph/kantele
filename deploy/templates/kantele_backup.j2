@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Makes a postgres dump of the database
+# Copies it to backup folder 
+# checks MD5 match, if not good, retry
+srcdir="{{ kanteledir }}/backups"
+dt="$(date -I)"
+cd "$srcdir"
+su - postgres -c "source /opt/rh/rh-postgresql12/enable && pg_dump -c {{ kanteledb }}"  > pgbackup_"$dt"
+i="1"
+while [ $i -gt 0 ]
+do
+# create md5 output file
+md5sum pgbackup_"$dt" > pgbmd5
+# copy to destination
+cp pgbackup_"$dt" "$1"/pgbackup_"$dt"
+cd "$1"
+md5sum -c "$srcdir"/pgbmd5
+i="$(echo $?)"
+cd "$srcdir"
+done

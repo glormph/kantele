@@ -1,0 +1,49 @@
+## Application wide stuff
+## django
+SECRET_KEY={{ secret_key }}
+
+# DB IDs
+# FIXME File types (are int(x) in settings so need to be everywhere, fix that
+DATABASE_FTID={{ database_ftid }}
+
+# Webserver only file types
+LC_DTYPE_ID={{ lc_dtype_id }}
+LOCAL_PTYPE_ID={{ local_ptype_id }}
+## external datasets
+PX_PROJECT_ID={{ px_proj_id }}
+EXTERNAL_PRODUCER_IDS={{ external_producer_ids }}
+RAW_SF_GROUP_ID={{ raw_sfgroup_id }}
+
+# long QC IDs in DB, user_id corefac user, also for transfer etc
+QC_USER_ID={{ qc_user_id }}
+QC_DATATYPE={{ qc_dtype_id }}
+QC_ORGANISM={{ qc_organism_id }}
+INSTRUMENT_QC_PROJECT={{ qc_proj_id }}
+INSTRUMENT_QC_EXP={{ qc_exp_id }}
+INSTRUMENT_QC_RUNNAME={{ qc_run_id }}
+LONGQC_DBID={{ qc_dbfa_id }}
+
+## nextflow DB IDs
+REFINE_MZML_WFVID={{ refine_mzml_wfv_id }}
+REFINE_MZML_DBID={{ refine_mzml_dbfa_id }}
+
+# For verification of clients
+STORAGECLIENT_APIKEY={{ storage_apikey }}
+ANALYSISCLIENT_APIKEY={{ analyis_apikey }}
+ADMIN_APIKEY={{ admin_apikey }}
+
+# For config of storage
+# FIXME deprecate this, we should create a new solution here
+STORAGE_KEYFILE={{ storage_keyfile }}
+STORAGE_USER={{ storage_user }}
+STORAGE_HOST={{ store_server }}
+
+# Slack
+SLACK_WORKSPACE={{ slack_workspace }}
+SLACK_HOOK_GENERAL={{ slack_hook_general }}
+SLACK_HOOK_LAB={{ slack_hook_lab }}
+SLACK_HOOK_KANTELE={{ slack_hook_kantele }}
+
+## Lifespan for mzMLs and Instrument-QC RAW files, in days
+MAX_MZML_STORAGE_TIME_POST_ANALYSIS={{ max_mzml_storage_analysis }}
+MAX_MZML_LC_STORAGE_TIME={{ max_mzml_storage_lc }}

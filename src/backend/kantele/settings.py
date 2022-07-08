@@ -77,7 +77,7 @@ SLACK_WORKSPACE = os.environ.get('SLACK_WORKSPACE')
 SLACK_HOOKS = {k.replace('SLACK_HOOK_', ''): v for k,v in os.environ.items() if k.startswith('SLACK_HOOK_')}
 # message queue
 RABBIT_HOST = os.environ.get('RABBITHOST')
-RABBIT_VHOST = 'kantele_vhost'
+RABBIT_VHOST = os.environ.get('RABBIT_VHOST')
 RABBIT_USER = os.environ.get('RABBITUSER')
 RABBIT_PASSWORD = os.environ.get('RABBITPASS')
 CELERY_BROKER_URL = 'amqp://{}:{}@{}:5672/{}'.format(RABBIT_USER, RABBIT_PASSWORD, RABBIT_HOST, RABBIT_VHOST)

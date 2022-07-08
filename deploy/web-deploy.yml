@@ -1,0 +1,36 @@
+--- 
+# Deploy kantele web system
+
+- hosts: kantele
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  tasks:
+      - name: Clone repo
+        ansible.builtin.git:
+            repo: '{{ kantele_repo }}'
+            dest: '{{ kanteledir }}'
+
+      - name: Deploy templates with env variables for compose script and container insides
+        ansible.builtin.template:
+            src: '{{ item[0] }}'
+            dest: '{{ item[1] }}'
+        loop:
+            - ['.compose.prod.env.j2', '{{ kanteledir }}/.compose.prod.env']
+            - ['container_env_vars.j2', '{{ kanteledir }}/prod-container.env']
+
+      - name: Remove running docker containers
+        community.docker.docker_compose:
+            project_src: '{{ kanteledir }}'
+            files:
+                - docker-compose-prod.yml
+            state: absent
+
+      - name: Build and start production docker containers
+        community.docker.docker_compose:
+            project_src: '{{ kanteledir }}'
+            files:
+                - docker-compose-prod.yml
+                - docker-compose-logging.yml
+            env_file: '.compose.prod.env'
+            build: yes
+            state: present
