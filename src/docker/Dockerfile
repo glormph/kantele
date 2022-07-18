@@ -11,10 +11,16 @@ RUN cd /frontend/home && npm run build
 
 # Django app
 FROM python:3.10.4 AS django
+ARG USER_ID
+ARG GROUP_ID
+RUN addgroup --system --gid $GROUP_ID kantele
+RUN adduser --system --uid $USER_ID --gid $GROUP_ID kantele
 RUN apt-get update && apt-get install -y libpq-dev python3-psycopg2
-COPY backend /kantele
-WORKDIR /kantele
+COPY backend/requirements.txt /
 RUN pip install -r requirements.txt
+USER kantele
+COPY --chown=kantele backend /kantele
+WORKDIR /kantele
 CMD uwsgi --socket :8009 --processes 3 --module kantele.wsgi
 
 FROM django AS django_static
