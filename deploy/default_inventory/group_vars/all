@@ -1,0 +1,40 @@
+---
+kantele_repo: https://github.com/glormph/kantele
+qc_queue: qc_nextflow
+analysis_queue: nextflow
+mq_vhost: kantele_vhost
+rabbituser: kantele
+
+kanteledb: kanteledb
+kanteledbuser: kanteleuser
+
+tls_cert: server.crt
+tls_cert_key: server.key
+
+container_uploadpath: /uploads
+container_analysispath: /analysisfiles
+host_uploadpath: {{ kanteledir }}/uploads
+
+backup_path: {{ storage_share }}/backups
+
+analysis_path_url: analysisfiles
+upload_path_url: uploads
+upload_url: https://{{ kantele_host }}/{{ upload_path_url }}
+
+storage_env:
+    SECRET_KEY: "{{ secret_key }}"
+    KANTELEHOST: "{{ kantele_host }}"
+    RABBITHOST: "{{ kantele_host }}"
+    RABBIT_VHOST: '{{ mq_vhost }}'
+    AMQPASS: "{{ amqppass }}"
+    APIKEY: {{ storage_apikey }}
+    ADMIN_APIKEY: {{ admin_apikey }}
+    STORAGESHARE: {{ storage_share }}
+    ANALYSISSHARE: {{ analysis_share }}
+    TMPSHARE: {{ tmp_share }}
+    DSM_DIR: {{ dsm_dir }}
+    EXTERNAL_PRODUCER_IDS: "{{ external_producer_ids }}"
+    LOCAL_PTYPE_ID: "{{ local_ptype_id }}"
+    LC_DTYPE_ID: "{{ lc_dtype_id }}"
+    ANALYSISOUT_FTID: "{{ analysisout_ftid }}"
+    DATABASE_FTID: "{{ database_ftid }}"
