@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# On crontab, run this from e.g. 3AM until 6AM to download backup
+
+set -euo pipefail
+
+cd "{{ backup_path }}"
+
+dt="$(date -I)"
+dstfile="pgbackup_${dt}"
+tmpfile="tmp_${dstfile}"
+
+# Only run if no finished backup yet
+if [[ -e $dstfile ]]
+then
+    exit 0
+fi
+
+
+# First move yesterdays
+yesterday="pgbackup_$(date -I -d yesterday)"
+if [[ -e "$yesterday" ]]
+then
+    mv "$yesterday" pgbackup.yesterday
+fi
+
+# Remove all tmpfiles
+rm tmp_pgbackup_*
+
+curl "{{ upload_url }}/${dstfile}" > "$tmpfile"
+
+mdexpect=$(head -n1 "$tmpfile" | cut -f1 -d' ')
+mdtest=$(grep -v "-- MD5SUM-backup" "$tmpfile" | md5sum | cut -f1 -d' ')
+
+if [[ $mdexpect == $mdtest ]]
+then
+    mv "$tmpfile" "{{ backup_path }}/$dstfile"
+else
+    exit 1
+fi
+

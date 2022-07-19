@@ -13,6 +13,24 @@
             dest: "{{ kanteledir }}"
             version: master
   
+      - name: Backup download -- create folder for backups
+        ansible.builtin.file:
+            path: "{{ backup_path }}"
+            state: directory
+
+      - name: Backup download -- template out backup script
+        ansible.builtin.template:
+            src: "download_backup.j2"
+            dest: "{{ kanteledir }}/download_backup.sh"
+
+      - name: Backup download -- crontab setup 
+        # FIXME how to error report?
+        ansible.builtin.cron:
+            name: Download kantele DB dump backup
+            hour: "3"
+            minute: "*/5"
+            job: "bash {{ kanteledir }}/download_backup.sh"
+
       - name: Update virtualenv on storage (SCL, so use shell script)
         become: yes
         become_user: "{{ kanteleuser }}"

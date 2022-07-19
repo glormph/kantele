@@ -1,21 +1,36 @@
-#!/bin/bash
+!/bin/bash
+set -euo pipefail
 
 # Makes a postgres dump of the database
-# Copies it to backup folder 
-# checks MD5 match, if not good, retry
-srcdir="{{ kanteledir }}/backups"
+# Adds a comment on first line containing the files MD5 sum
+
+cd "{{ host_uploadpath }}"
 dt="$(date -I)"
-cd "$srcdir"
-su - postgres -c "source /opt/rh/rh-postgresql12/enable && pg_dump -c {{ kanteledb }}"  > pgbackup_"$dt"
-i="1"
-while [ $i -gt 0 ]
-do
-# create md5 output file
-md5sum pgbackup_"$dt" > pgbmd5
-# copy to destination
-cp pgbackup_"$dt" "$1"/pgbackup_"$dt"
-cd "$1"
-md5sum -c "$srcdir"/pgbmd5
-i="$(echo $?)"
-cd "$srcdir"
-done
+dstfile="pgbackup_${dt}"
+tmpfile="tmp_${dstfile}"
+
+# Only run if no finished backup yet
+if [[ -e $dstfile ]]
+then
+    exit 0
+fi
+
+# Remove tmp files, move yesterdays backup
+rm tmp_pgbackup_*
+rm md5_tmp_pgbackup_*
+yesterday="pgbackup_$(date -I -d yesterday)"
+if [[ -e "$yesterday" ]]
+then
+    mv "$yesterday" pgbackup.yesterday
+fi
+
+# dump data from DB to file
+docker-compose exec db pg_dump -U postgres {{ kanteledb }} > "$tmpfile"
+
+# Check MD5 of file and add it on first line
+# the comment sign in SQL is --
+mdfile="md5_${tmpfile}"
+cat <(echo "-- MD5SUM-backup $(md5sum "$tmpfile")") "$tmpfile" > "$mdfile"
+
+# If not failing, move file to correct output
+mv "$mdfile" "$dstfile"

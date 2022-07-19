@@ -1,8 +1,8 @@
 --- 
 
 # Prepare server for Kantele on Ubuntu 20.04 LTS
+# FIXME BACKUP needs cron job, and a way to export backup result
 # TODO: 22.04.1 is out in Aug 2022, then we can use docker-compose 1.29 and better spec of compose.yml
-# TODO BACKUP needs cron job, and a way to export backup result
 # TODO: configure rsyslog to listen on TCP/UDP
 
 - hosts: kantele
@@ -65,3 +65,20 @@
             shell: /bin/bash
             append: yes
             groups: '{{ kantelegroup }}'
+
+      - name: Backup of SQL -- template out backup script
+        ansible.builtin.template:
+            src: "sql_dump_backup.j2"
+            dest: "{{ kanteledir }}/backup_db.sh"
+            owner: "{{ kanteleuser }}"
+            group: "{{ kantelegroup }}"
+
+      - name: Backup of SQL -- crontab setup 
+        # FIXME how to error report? Log to syslog on web?
+        become: yes
+        become_user: "{{ kanteleuser }}"
+        ansible.builtin.cron:
+            name: Kantele DB dump backup
+            hour: "2"
+            minute: "*/5"
+            job: "bash {{ kanteledir }}/backup_db.sh"
