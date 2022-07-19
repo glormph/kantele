@@ -66,6 +66,29 @@
             append: yes
             groups: '{{ kantelegroup }}'
 
+      - name: TLS certificate directory exists
+        ansible.builtin.file:
+            path: "{{ tls_path }}"
+            state: directory
+            owner: root
+            group: root
+
+      - name: Install TLS certificate
+        ansible.builtin.copy:
+            src: 'tls_server.crt'
+            dest: "{{ tls_path }}/{{ tls_cert }}"
+            owner: root
+            group: root
+            mode: 0644
+
+      - name: Install TLS certificate key
+        ansible.builtin.copy:
+            src: 'tls_server.key'
+            dest: "{{ tls_path }}/{{ tls_cert_key }}"
+            owner: root
+            group: root
+            mode: 0600
+
       - name: Backup of SQL -- template out backup script
         ansible.builtin.template:
             src: "sql_dump_backup.j2"
