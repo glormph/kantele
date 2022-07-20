@@ -66,6 +66,16 @@ def show_inflow(request):
 #
 
 
+def download_backup(request, filename):
+    '''Temporary solution to download backup DB dumps, until we start
+    to push them to a store instead'''
+    if request.META['REMOTE_ADDR'] != settings.BACKUP_DL_IP:
+        return HttpResponseForbidden()
+    resp = HttpResponse()
+    resp['X-Accel-Redirect'] = os.path.join(settings.NGINX_BACKUP_REDIRECT, filename)
+    return resp
+
+
 @login_required
 @staff_member_required
 def import_external_data(request):

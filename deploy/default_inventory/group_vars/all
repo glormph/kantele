@@ -11,15 +11,22 @@ kanteledbuser: kanteleuser
 tls_cert: server.crt
 tls_cert_key: server.key
 
+# Upload paths in nginx container
 container_uploadpath: /uploads
-container_analysispath: /analysisfiles
 host_uploadpath: {{ kanteledir }}/uploads
+upload_path_url: /uploads
 
-backup_path: {{ storage_share }}/backups
+# Analysis paths in nginx container
+container_analysispath: /analysisfiles
+host_analysispath: {{ kanteledir }}/srv_analysis
+analysis_path_url: /analysisfiles
 
-analysis_path_url: analysisfiles
-upload_path_url: uploads
-upload_url: https://{{ kantele_host }}/{{ upload_path_url }}
+# DEPRECATE if not used in backup DL script
+web_backupfolder: backups
+backup_dl_url: https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupfolder }}
+
+# Path to backups on storage
+storage_backup_path: {{ storage_share }}/backups
 
 storage_env:
     SECRET_KEY: "{{ secret_key }}"

@@ -15,7 +15,7 @@
   
       - name: Backup download -- create folder for backups
         ansible.builtin.file:
-            path: "{{ backup_path }}"
+            path: "{{ storage_backup_path }}"
             state: directory
 
       - name: Backup download -- template out backup script

@@ -2,6 +2,9 @@
 ## django
 SECRET_KEY={{ secret_key }}
 
+NGINX_ANALYSIS_REDIRECT={{ analysis_path_url }}
+NGINX_BACKUP_REDIRECT={{ analysis_path_url }}/{{ web_backupfolder }}
+
 # DB IDs
 # FIXME File types (are int(x) in settings so need to be everywhere, fix that
 DATABASE_FTID={{ database_ftid }}
@@ -47,3 +50,6 @@ SLACK_HOOK_KANTELE={{ slack_hook_kantele }}
 ## Lifespan for mzMLs and Instrument-QC RAW files, in days
 MAX_MZML_STORAGE_TIME_POST_ANALYSIS={{ max_mzml_storage_analysis }}
 MAX_MZML_LC_STORAGE_TIME={{ max_mzml_storage_lc }}
+
+# Backup download IP restriction (deprecate when not pulling backups like this)
+BACKUP_DL_IP={{ backup_store_dl_ip }}

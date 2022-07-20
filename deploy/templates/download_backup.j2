@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-cd "{{ backup_path }}"
+cd "{{ storage_backup_path }}"
 
 dt="$(date -I)"
 dstfile="pgbackup_${dt}"
@@ -27,14 +27,14 @@ fi
 # Remove all tmpfiles
 rm tmp_pgbackup_*
 
-curl "{{ upload_url }}/${dstfile}" > "$tmpfile"
+curl "{{ backup_dl_url }}/${dstfile}" > "$tmpfile"
 
 mdexpect=$(head -n1 "$tmpfile" | cut -f1 -d' ')
 mdtest=$(grep -v "-- MD5SUM-backup" "$tmpfile" | md5sum | cut -f1 -d' ')
 
 if [[ $mdexpect == $mdtest ]]
 then
-    mv "$tmpfile" "{{ backup_path }}/$dstfile"
+    mv "$tmpfile" "$dstfile"
 else
     exit 1
 fi

@@ -4,6 +4,11 @@ import os
 # local box setup
 APIKEY = os.environ.get('APIKEY')
 
+# Server to allow backup downloads from
+# TODO create better solution, push backups
+BACKUP_DL_IP = os.environ.get('BACKUP_DL_IP')
+NGINX_BACKUP_REDIRECT = os.environ.get('NGINX_BACKUP_REDIRECT')
+
 # File storage of raw files/analysis results
 STORAGESHARE = os.environ.get('STORAGESHARE')
 ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
@@ -69,7 +74,7 @@ SHAREMAP = {TMPSHARENAME: TMPSHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
             WEBSHARENAME: WEBSHARE,
             }
-NGINX_ANALYSIS_REDIRECT = '/analysisfiles'
+NGINX_ANALYSIS_REDIRECT = os.environ.get('NGINX_ANALYSIS_REDIRECT')
 SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html']
 
 SLACK_BASE = 'https://hooks.slack.com/services/'

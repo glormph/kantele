@@ -89,6 +89,13 @@
             group: root
             mode: 0600
 
+      - name: Backup of SQL -- create backup folder on web server container host
+        ansible.builtin.file:
+            path: "{{ host_analysispath }}/{{ web_backupfolder }}"
+            state: directory
+            owner: "{{ kanteleuser }}"
+            group: "{{ kantelegroup }}"
+
       - name: Backup of SQL -- template out backup script
         ansible.builtin.template:
             src: "sql_dump_backup.j2"

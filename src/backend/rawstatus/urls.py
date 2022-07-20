@@ -18,4 +18,5 @@ urlpatterns = [
    path('external/import/', views.import_external_data),
    path('archive/', views.archive_file),
    path('undelete/', views.restore_file_from_cold),
+   path('backup/<str:filename>', views.download_backup),
 ]

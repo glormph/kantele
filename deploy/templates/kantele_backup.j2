@@ -4,7 +4,7 @@ set -euo pipefail
 # Makes a postgres dump of the database
 # Adds a comment on first line containing the files MD5 sum
 
-cd "{{ host_uploadpath }}"
+cd "{{ host_analysispath }}/{{ web_backupfolder }}"
 dt="$(date -I)"
 dstfile="pgbackup_${dt}"
 tmpfile="tmp_${dstfile}"
