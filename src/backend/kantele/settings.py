@@ -29,12 +29,8 @@ WEBSHARE = os.environ.get('SERVABLE_FILE_PATH')
 # Tmp file storage for uploaded files to be transported to storage
 TMP_UPLOADPATH = os.environ.get('TMP_UPLOADPATH')
 
+# DSM backups to tape
 DSM_DIR = os.environ.get('DSM_DIR')
-
-# mzml converters
-# Deprecate
-PUTTYKEY = os.environ.get('PUTTYKEY')
-
 
 # site infra
 SWESTORECLIENT_APIKEY = os.environ.get('SWESTORECLIENT_APIKEY')
@@ -55,9 +51,9 @@ QUEUE_SEARCH_INBOX = 'scaninbox'
 QUEUES_PWIZ = ['pwiz2'] #, 'pwiz1']
 QUEUE_QCPWIZ = 'pwiz_qc'
 QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out', 'pwiz_qc': 'proteowiz2_out'}
-PROTOCOL = 'https://'
 CERTFILE = os.environ.get('KANTELECERT')
-KANTELEHOST = '{}{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
+PROTOCOL = os.environ.get('PROTOCOL')
+KANTELEHOST = '{}://{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
 UPLOAD_URL = 'uploads'
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
@@ -92,24 +88,15 @@ CELERY_RESULT_BACKEND = 'rpc'
 JOBRUNNER_INTERVAL = 5
 
 # datatypes
-try:
-    RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID'))
-except TypeError:
-    # Tasks have no notion of these IDs so they will error
-    pass
+RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID', -1))
 
-ANALYSISOUT_FTID = int(os.environ.get('ANALYSISOUT_FTID'))
-DATABASE_FTID = int(os.environ.get('DATABASE_FTID'))
-# MARTMAP_FTID = int(os.environ.get('MARTMAP_FTID')) # Deprecate when no longer needed in msstitch
+# DB FTID also used in worker, make sure it exists
+DATABASE_FTID = int(os.environ.get('DATABASE_FTID', -1))
 
 # Lifespan for mzMLs and Instrument-QC RAW files, in days
-try:
-    MAX_MZML_STORAGE_TIME_POST_ANALYSIS = int(os.environ.get('MAX_MZML_STORAGE_TIME_POST_ANALYSIS'))
-    MAX_MZML_LC_STORAGE_TIME = int(os.environ.get('MAX_MZML_LC_STORAGE_TIME'))
-    MAX_MZML_QC_STORAGE_TIME = int(os.environ.get('MAX_MZML_QC_STORAGE_TIME'))
-except TypeError:
-    # Job runner etc dont know these values, only main
-    pass
+MAX_MZML_STORAGE_TIME_POST_ANALYSIS = int(os.environ.get('MAX_MZML_STORAGE_TIME_POST_ANALYSIS', -1))
+MAX_MZML_LC_STORAGE_TIME = int(os.environ.get('MAX_MZML_LC_STORAGE_TIME', -1))
+MAX_MZML_QC_STORAGE_TIME = int(os.environ.get('MAX_MZML_QC_STORAGE_TIME', -1))
 
 # Upload token lifespan
 MAX_TIME_UPLOADTOKEN = 8 * 3600 # for user uploads
@@ -118,13 +105,13 @@ TOKEN_RENEWAL_WINDOW_DAYS = 7
 
 # Labelcheck experiment name
 LCEXPNAME = '__labelchecks'
-LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID').split(',')]
+LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID', '-1').split(',')]
 
 # Files to MD5 check in case of a raw file being a folder (e.g. Bruker .d)
 MD5_STABLE_FILES = ['analysis.tdf_bin']
 
 # local datasets 
-LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID'))
+LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID', -1))
 
 # Allowed characters for runs, project, experiment names
 # formatted for use in regexp 
@@ -139,13 +126,12 @@ ENSEMBL_DL_URL = 'ftp://ftp.ensembl.org/pub/release-{}/fasta/{}/pep/'
 BIOMART_URL = 'https://ensembl.org/biomart/martservice'
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 # multiple
-# EXTERNAL_PRODUCER_ID = os.environ.get('EXTERNAL_PRODUCER_ID')
-EXTERNAL_PRODUCER_IDS = [int(x) for x in os.environ.get('EXTERNAL_PRODUCER_IDS').split(',')]
-UPLOADDIR = 'uploadfiles'
+EXTERNAL_PRODUCER_IDS = [int(x) for x in os.environ.get('EXTERNAL_PRODUCER_IDS', '-1').split(',')]
+USERFILEDIR = 'uploadfiles'
 
 # qc datasets
 QC_USER_ID = os.environ.get('QC_USER_ID')
-QC_DATATYPE = int(os.environ.get('QC_DATATYPE', 0))
+QC_DATATYPE = int(os.environ.get('QC_DATATYPE', -1))
 QC_ORGANISM = os.environ.get('QC_ORGANISM')
 INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
 INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
@@ -171,7 +157,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = True
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-#CSRF_COOKIE_SECURE = False
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+CSRF_COOKIE_SECURE = False # enforces HTTPS on cookie
 #SESSION_COOKIE_SECURE = True
 #X_FRAME_OPTIONS = 'DENY'
 #SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -206,7 +193,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    #'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
