@@ -2,11 +2,11 @@ FROM node:18 AS build_frontend
 
 # Compile node stuff
 COPY frontend /frontend
-RUN cd /frontend/analysis && npm run build
-RUN cd /frontend/dashboard && npm run build
-RUN cd /frontend/datasets && npm run build
-RUN cd /frontend/file-inflow && npm run build
-RUN cd /frontend/home && npm run build
+RUN cd /frontend/analysis && npm install && npm run build
+RUN cd /frontend/dashboard && npm install && npm run build
+RUN cd /frontend/datasets && npm install && npm run build
+RUN cd /frontend/file-inflow && npm install && npm run build
+RUN cd /frontend/home && npm install && npm run build
 
 
 # Django app
