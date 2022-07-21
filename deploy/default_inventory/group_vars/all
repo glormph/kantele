@@ -13,20 +13,20 @@ tls_cert_key: server.key
 
 # Upload paths in nginx container
 container_uploadpath: /uploads
-host_uploadpath: {{ kanteledir }}/uploads
+host_uploadpath: "{{ kanteledir }}/uploads"
 upload_path_url: /uploads
 
 # Analysis paths in nginx container
 container_analysispath: /analysisfiles
-host_analysispath: {{ kanteledir }}/srv_analysis
+host_analysispath: "{{ kanteledir }}/srv_analysis"
 analysis_path_url: /analysisfiles
 
 # DEPRECATE if not used in backup DL script
 web_backupfolder: backups
-backup_dl_url: https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupfolder }}
+backup_dl_url: "https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupfolder }}"
 
 # Path to backups on storage
-storage_backup_path: {{ storage_share }}/backups
+storage_backup_path: "{{ storage_share }}/backups"
 
 storage_env:
     SECRET_KEY: "{{ secret_key }}"
@@ -34,12 +34,12 @@ storage_env:
     RABBITHOST: "{{ kantele_host }}"
     RABBIT_VHOST: '{{ mq_vhost }}'
     AMQPASS: "{{ amqppass }}"
-    APIKEY: {{ storage_apikey }}
-    ADMIN_APIKEY: {{ admin_apikey }}
-    STORAGESHARE: {{ storage_share }}
-    ANALYSISSHARE: {{ analysis_share }}
-    TMPSHARE: {{ tmp_share }}
-    DSM_DIR: {{ dsm_dir }}
+    APIKEY: "{{ storage_apikey }}"
+    ADMIN_APIKEY: "{{ admin_apikey }}"
+    STORAGESHARE: "{{ storage_share }}"
+    ANALYSISSHARE: "{{ analysis_share }}"
+    TMPSHARE: "{{ tmp_share }}"
+    DSM_DIR: "{{ dsm_dir }}"
     EXTERNAL_PRODUCER_IDS: "{{ external_producer_ids }}"
     LOCAL_PTYPE_ID: "{{ local_ptype_id }}"
     LC_DTYPE_ID: "{{ lc_dtype_id }}"
