@@ -18,12 +18,9 @@ urlpatterns = [
     url(r'^deletedir/$', views.removed_emptydir, name='rmdir'),
     url(r'^set/external/$', views.register_external_file, name='register_external'),
     url(r'^set/downloaded/$', views.downloaded_file, name='download_file'),
-    url(r'^swestore/set/$', views.created_swestore_backup, name='createswestore'),
     url(r'^pdcarchive/set/$', views.created_pdc_archive, name='createpdcarchive'),
     url(r'^pdcrestore/set/$', views.restored_archive_file, name='restoredpdcarchive'),
     # deprecate when stopped using, this is from old pwiz windows
-    url(r'^set/mzmlcreate/$', views.created_mzml, name='createmzml'),
-    url(r'^set/mzmldone/$', views.scp_mzml, name='scpmzml'),
     url(r'^set/longqc/$', views.store_longitudinal_qc, name='storelongqc'),
     url(r'^set/analysis/$', views.analysis_run_done, name='analysisdone'),
     url(r'^set/mzmlfile/$', views.mzml_convert_or_refine_file_done, name='mzmlfiledone'),

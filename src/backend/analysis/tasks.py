@@ -117,18 +117,6 @@ def check_ensembl_uniprot_fasta_download(self):
                     regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
             register_transfer_libfile(regresp, dstfn, 'ENSEMBL {} release {} pep.all fasta'.format(dbstate['organism'], dbstate['version']),
                     settings.DATABASE_FTID)
-        # Download biomart for ENSEMBL
-#        martxml = '<?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE Query> <Query  header="1" completionStamp="1" virtualSchemaName = "default" formatter = "TSV" uniqueRows = "0" count = "" datasetConfigVersion = "0.6" > <Dataset name = "hsapiens_gene_ensembl" interface = "default" > <Attribute name = "ensembl_gene_id" /> <Attribute name = "ensembl_peptide_id" /> <Attribute name = "description" /> <Attribute name = "external_gene_name" /> </Dataset> </Query>'
-#        with requests.get(settings.BIOMART_URL, params={'query': martxml}, stream=True) as reqfp, NamedTemporaryFile(mode='wb') as wfp:
-#            for chunk in reqfp.iter_content(chunk_size=8192):
-#                if chunk:
-#                    wfp.write(chunk)
-#            dstfn = 'Biomart_table_ENS{}'.format(ens_version)
-#            # Now register download in Kantele, still in context manager
-#            # since tmp file will be deleted on close()
-#            regresp = register_and_copy_lib_fasta_db(dstfn, wfp)
-#        register_transfer_libfile(regresp, dstfn, 'Biomart map for ENSEMBL release {}'.format(ens_version),
-#                settings.MARTMAP_FTID)
             requests.post(done_url, json={'type': 'ensembl', 'version': dbstate['version'], 
                         'organism': dbstate['organism'], 'fn_id': regresp['file_id']})
         print('Finished downloading {} {} version {} database'.format(dbstate['db'], dbstate['organism'], dbstate['version']))

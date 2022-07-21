@@ -15,13 +15,6 @@ ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
 TMPSHARE = os.environ.get('TMPSHARE', False)
 BACKUPSHARE = os.path.join(TMPSHARE, 'pdc_archive_links') if TMPSHARE else False
 
-# swestore
-SWESTORE_URI = os.environ.get('SWESTORE_URI')
-DAV_PATH = os.environ.get('DAVPATH')
-CACERTLOC = os.environ.get('CACERTLOC')
-CERTLOC = os.environ.get('CERTLOC')
-CERTKEYLOC = os.environ.get('CERTKEYLOC')
-CERTPASS = os.environ.get('CERTPASS')
 # File storage only used in web and nginx containers
 # which is where uploaded result files live for web access (HTML reports)
 WEBSHARE = os.environ.get('SERVABLE_FILE_PATH')
@@ -33,25 +26,17 @@ TMP_UPLOADPATH = os.environ.get('TMP_UPLOADPATH')
 DSM_DIR = os.environ.get('DSM_DIR')
 
 # site infra
-SWESTORECLIENT_APIKEY = os.environ.get('SWESTORECLIENT_APIKEY')
 STORAGECLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
-MZMLCLIENT_APIKEY = os.environ.get('MZMLCLIENT_APIKEY')
 ANALYSISCLIENT_APIKEY = os.environ.get('ANALYSISCLIENT_APIKEY')
 ADMIN_APIKEY = os.environ.get('ADMIN_APIKEY')
-CLIENT_APIKEYS = [SWESTORECLIENT_APIKEY, STORAGECLIENT_APIKEY, MZMLCLIENT_APIKEY,
-                  ANALYSISCLIENT_APIKEY, ADMIN_APIKEY]
+CLIENT_APIKEYS = [STORAGECLIENT_APIKEY, ANALYSISCLIENT_APIKEY, ADMIN_APIKEY]
 QUEUE_STORAGE = 'mv_md5_storage'
 QUEUE_PXDOWNLOAD = 'pxdownload'
-QUEUE_SWESTORE = 'create_swestore'
 QUEUE_PDC = 'pdc_archive'
 QUEUE_NXF = 'nextflow'
 QUEUE_QC_NXF = 'qc_nextflow'
 QUEUE_SEARCH_INBOX = 'scaninbox'
 
-QUEUES_PWIZ = ['pwiz2'] #, 'pwiz1']
-QUEUE_QCPWIZ = 'pwiz_qc'
-QUEUES_PWIZOUT = {'pwiz1': 'proteowiz1_out', 'pwiz2': 'proteowiz2_out', 'pwiz_qc': 'proteowiz2_out'}
-CERTFILE = os.environ.get('KANTELECERT')
 PROTOCOL = os.environ.get('PROTOCOL')
 KANTELEHOST = '{}://{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
 UPLOAD_URL = 'uploads'
@@ -149,7 +134,6 @@ NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
 LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
-NXF_VER = os.environ.get('NXF_VER')
 
 # django
 ALLOWED_HOSTS = [os.environ.get('HOST_DOMAIN')]

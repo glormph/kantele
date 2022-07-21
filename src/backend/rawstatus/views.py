@@ -735,15 +735,8 @@ def cleanup_old_files(request):
             rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE).filter(
             rawfile__datasetrawfile__dataset__datasetsearch__isnull=True,
             regdate__lt=maxtime_nonint)
-    # old QC mzml
-    qcmzmls = mzmls.filter(rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE)
-    old_qc_mzmls = qcmzmls.exclude(
-            rawfile__storedfile__filejob__job__nextflowsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_QC_STORAGE_TIME))
-    # orphan QC mzmls
-    nonsearched_qc = qcmzmls.exclude(
-            rawfile__storedfile__filejob__job__nextflowsearch__isnull=False).filter(
-            regdate__lt=maxtime_nonint)
-    all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml, old_qc_mzmls, nonsearched_qc)
+    all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml)
+    # TODO auto remove QC raw files of certain age? make sure you can get them back when needed though.
 
     def chunk_iter(qset, chunk_size):
         chunk = []

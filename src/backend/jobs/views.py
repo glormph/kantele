@@ -223,8 +223,7 @@ def purge_storedfile(request):
     file DB entry to purged"""
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.STORAGECLIENT_APIKEY,
-                                settings.SWESTORECLIENT_APIKEY]):
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').get()
     sfile.purged, sfile.deleted = True, True
@@ -239,8 +238,7 @@ def removed_emptydir(request):
     """Ran after a job has deleted an empty dir from the filesystem"""
     data = request.POST
     if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.STORAGECLIENT_APIKEY,
-                                settings.SWESTORECLIENT_APIKEY]):
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
     if 'task' in data:
         set_task_done(data['task'])
@@ -327,47 +325,6 @@ def restored_archive_file(request):
     sfile.update(deleted=False, purged=False)
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
-    return HttpResponse()
-
-
-@require_POST
-def created_swestore_backup(request):
-    data = request.POST
-    if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.SWESTORECLIENT_APIKEY]):
-        return HttpResponseForbidden()
-    backup = SwestoreBackedupFile.objects.filter(storedfile_id=data['sfid'])
-    backup.update(swestore_path=data['swestore_path'], success=True)
-    if 'task' in request.POST:
-        set_task_done(request.POST['task'])
-    return HttpResponse()
-
-
-@require_POST
-def created_mzml(request):
-    """For the three step windows convert tasks"""
-    data = request.POST
-    if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.MZMLCLIENT_APIKEY]):
-        return HttpResponseForbidden()
-    storedfile = StoredFile.objects.get(pk=request.POST['sfid'])
-    storedfile.filename = request.POST['filename']
-    storedfile.deleted = False
-    storedfile.save()
-    if 'task' in data:
-        set_task_done(data['task'])
-    return HttpResponse()
-
-
-@require_POST
-def scp_mzml(request):
-    """For the three step windows convert tasks, next step is MD5"""
-    data = request.POST
-    if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.MZMLCLIENT_APIKEY]):
-        return HttpResponseForbidden()
-    if 'task' in data:
-        set_task_done(data['task'])
     return HttpResponse()
 
 
