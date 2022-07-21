@@ -5,7 +5,7 @@ COPY frontend /frontend
 RUN cd /frontend/analysis && npm install && npm run build
 RUN cd /frontend/dashboard && npm install && npm run build
 RUN cd /frontend/datasets && npm install && npm run build
-RUN cd /frontend/file-inflow && npm install && npm run build
+#RUN cd /frontend/file-inflow && npm install && npm run build
 RUN cd /frontend/home && npm install && npm run build
 
 
@@ -37,5 +37,5 @@ COPY --from=django_static /kantele/static /static
 
 # For prod also copy in the relevant config files
 FROM nginx_stage AS nginx_prod
-COPY docker/nginx_prod.conf /etc/nginx/nginx.conf
+COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/uwsgi_params /etc/nginx/uwsgi_params

@@ -17,13 +17,18 @@
         loop:
             - ['.compose.prod.env.j2', '{{ kanteledir }}/.compose.prod.env']
             - ['container_env_vars.j2', '{{ kanteledir }}/prod-container.env']
+            - ['nginx_prod.conf.j2', '{{ kanteledir }}/src/docker/nginx.conf']
 
       - name: Remove running docker containers
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             files:
-                - docker-compose-prod.yml
+                - '{{ kanteledir }}/docker-compose-prod.yml'
+                - '{{ kanteledir }}/docker-compose-logging.yml'
             state: absent
+        environment:
+            - USER_ID: '{{ kanteleuid }}'
+            - GROUP_ID: '{{ kantelegid }}'
 
       - name: Build and start production docker containers
         community.docker.docker_compose:
@@ -31,6 +36,9 @@
             files:
                 - docker-compose-prod.yml
                 - docker-compose-logging.yml
-            env_file: '.compose.prod.env'
+            env_file: '{{ kanteledir }}/.compose.prod.env'
             build: yes
             state: present
+        environment:
+            - USER_ID: '{{ kanteleuid }}'
+            - GROUP_ID: '{{ kantelegid }}'

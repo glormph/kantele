@@ -64,7 +64,9 @@
             name: '{{ kanteleuser }}'
             shell: /bin/bash
             append: yes
-            groups: '{{ kantelegroup }}'
+            groups:
+                - '{{ kantelegroup }}'
+                - docker
 
       - name: TLS certificate directory exists
         ansible.builtin.file:

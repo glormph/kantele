@@ -8,9 +8,8 @@ services:
         logging:
             driver: syslog
             options:
-                syslog-address: "{{ SYSLOG_ADDRESS }}"
+                syslog-address: "${SYSLOG_ADDRESS}"
     
-            
     nginx:
         extends:
             file: docker-compose-prod.yml
@@ -18,7 +17,9 @@ services:
         logging:
             driver: syslog
             options:
-                syslog-address: "{{ SYSLOG_ADDRESS }}"
+                syslog-address: "${SYSLOG_ADDRESS}"
+        volumes:
+            - "{{ tls_path }}:/{{ tls_path }}"
 
     db: 
         extends:
@@ -27,7 +28,7 @@ services:
         logging:
             driver: syslog
             options:
-                syslog-address: "{{ SYSLOG_ADDRESS }}"
+                syslog-address: "${SYSLOG_ADDRESS}"
 
     mq:
         extends:
@@ -38,11 +39,11 @@ services:
         logging:
             driver: syslog
             options:
-                syslog-address: "{{ SYSLOG_ADDRESS }}"
+                syslog-address: "${SYSLOG_ADDRESS}"
 
 
     jobrunner:
-       extends:
+        extends:
            file: docker-compose-prod.yml
            service: jobrunner
         env_file:
@@ -50,4 +51,4 @@ services:
         logging:
             driver: syslog
             options:
-                syslog-address: "{{ SYSLOG_ADDRESS }}"
+                syslog-address: "${SYSLOG_ADDRESS}"
