@@ -1,8 +1,5 @@
 services:
     web:
-        extends:
-            file: docker-compose-prod.yml
-            service: web
         env_file:
             - prod-container.env
         logging:
@@ -11,9 +8,6 @@ services:
                 syslog-address: "${SYSLOG_ADDRESS}"
     
     nginx:
-        extends:
-            file: docker-compose-prod.yml
-            service: nginx
         logging:
             driver: syslog
             options:
@@ -22,18 +16,12 @@ services:
             - "{{ tls_path }}:/{{ tls_path }}"
 
     db: 
-        extends:
-            file: docker-compose-prod.yml
-            service: db
         logging:
             driver: syslog
             options:
                 syslog-address: "${SYSLOG_ADDRESS}"
 
     mq:
-        extends:
-            file: docker-compose-prod.yml
-            service: mq
         ports:
             - 5672:5672
         logging:
@@ -43,9 +31,6 @@ services:
 
 
     jobrunner:
-        extends:
-           file: docker-compose-prod.yml
-           service: jobrunner
         env_file:
             - prod-container.env
         logging:
