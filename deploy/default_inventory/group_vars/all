@@ -5,8 +5,11 @@ analysis_queue: nextflow
 mq_vhost: kantele_vhost
 rabbituser: kantele
 
+kanteledir: '{{ homedir }}/kantele'
+
 kanteledb: kanteledb
 kanteledbuser: kanteleuser
+pgdatadir: "{{ homedir }}/pgdata"
 
 tls_cert: server.crt
 tls_cert_key: server.key

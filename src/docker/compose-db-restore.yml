@@ -1,0 +1,5 @@
+services:
+    db: 
+        volumes:
+            - ${BACKUP_PATH}:/pgbackup.sql
+            

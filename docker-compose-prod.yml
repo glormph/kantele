@@ -14,7 +14,7 @@ services:
             KANTELEHOST: "${HOST_FQDN}"
             PROTOCOL: https
             DB_PASS: "${PG_KANTELE_PASSWORD}"
-            DB_USER: kanteleuser
+            DB_USER: "${PG_KANTELE_USER}"
             DB_HOST: db
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
