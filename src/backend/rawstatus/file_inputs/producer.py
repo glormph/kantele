@@ -82,8 +82,8 @@ def get_new_file_entry(fn, raw_is_folder):
             #'remote_checking': False, 'remote_ok': False}
 
 
-def get_csrf(cookies):
-    return {'X-CSRFToken': cookies['csrftoken']}
+def get_csrf(cookies, referer_host):
+    return {'X-CSRFToken': cookies['csrftoken'], 'Referer': referer_host}
 
 
 def check_in_instrument(config, configfn, logger):
@@ -122,9 +122,9 @@ def check_in_instrument(config, configfn, logger):
             init_resp = session.get(loginurl)
             loginresp = session.post(loginurl,
                     data={'username': username, 'password': password},
-                    headers=get_csrf(session.cookies))
+                    headers=get_csrf(session.cookies, kantelehost))
             tokenresp = session.post(urljoin(kantelehost, 'files/token/'),
-                    headers=get_csrf(session.cookies),
+                    headers=get_csrf(session.cookies, kantelehost),
                     json={'producer_id': clid, 'ftype_id': config['filetype_id']})
             if tokenresp.status_code != 403:
                 break
@@ -140,7 +140,7 @@ def check_in_instrument(config, configfn, logger):
         # Validate/renew existing token
         loginresp = session.get(loginurl)
         valresp = session.post(urljoin(kantelehost, 'files/instruments/check/'),
-                headers=get_csrf(loginresp.cookies),
+                headers=get_csrf(loginresp.cookies, kantelehost),
                 json={'token': config['token'], 'client_id': clid})
         if valresp.status_code == 403:
             logger.error('Token expired or invalid, will try to fetch new token')
@@ -180,7 +180,7 @@ def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **
                 }
     if postkwargs:
         postdata.update(postkwargs)
-    return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies), json=postdata)
+    return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata)
 
 
 def transfer_file(fpath, transfer_location, keyfile):
@@ -350,7 +350,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             logger.info('Checking remote state for file {} with ID {}'.format(fndata['fname'], fnid))
             try:
                 resp = requests.post(fnstate_url, cookies=cookies,
-                        headers=get_csrf(cookies),
+                        headers=get_csrf(cookies, kantelehost),
                         json={'fnid': fnid, 'token': config['token']})
             except requests.exceptions.ConnectionError:
                 logger.error('Cannot connect to kantele server to request state '
@@ -422,7 +422,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                         'userdesc': user_desc,
                         }
                 resp = requests.post(url=trfed_url, cookies=cookies,
-                        headers=get_csrf(cookies), json=trf_data)
+                        headers=get_csrf(cookies, kantelehost), json=trf_data)
                 if resp.status_code == 500:
                     result = {'error': 'Kantele server error when getting file '
                         'state, please contact administrator'}
