@@ -32,6 +32,8 @@ services:
             driver: syslog
             options:
                 syslog-address: "${SYSLOG_ADDRESS}"
+        volumes:
+            - "./src/docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
 
 
     jobrunner:
