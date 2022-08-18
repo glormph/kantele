@@ -19,13 +19,20 @@
             - ['container_env_vars.j2', '{{ kanteledir }}/prod-container.env']
             - ['nginx_prod.conf.j2', '{{ kanteledir }}/src/docker/nginx.conf']
 
+      - name: Copy docker-compose-base so it will use its location as base dir in compose
+        ansible.builtin.copy:
+            remote_src: yes
+            src: '{{ kanteledir }}/src/docker/docker-compose-base.yml'
+            dest: '{{ kanteledir }}'
+
       - name: Remove running docker containers
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             files:
-                - '{{ kanteledir }}/docker-compose-prod.yml'
-                - '{{ kanteledir }}/docker-compose-logging.yml'
+                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             state: absent
+            env_file: '{{ kanteledir }}/.compose.prod.env'
         environment:
             - USER_ID: '{{ kanteleuid }}'
             - GROUP_ID: '{{ kantelegid }}'
@@ -34,8 +41,8 @@
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             files:
-                - docker-compose-prod.yml
-                - docker-compose-logging.yml
+                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             env_file: '{{ kanteledir }}/.compose.prod.env'
             build: yes
             state: present

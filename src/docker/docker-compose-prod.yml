@@ -1,7 +1,7 @@
 services:
     web:
         env_file:
-            - prod-container.env
+            - ./prod-container.env
         logging:
             driver: syslog
             options:
@@ -13,13 +13,17 @@ services:
             options:
                 syslog-address: "${SYSLOG_ADDRESS}"
         volumes:
-            - "{{ tls_path }}:/{{ tls_path }}"
+            - "${HOST_TLSCERTPATH}:/${CONTAINER_TLSCERTPATH}"
 
     db: 
         logging:
             driver: syslog
             options:
                 syslog-address: "${SYSLOG_ADDRESS}"
+        volumes:
+            - "${PG_DATA_PATH}:/var/lib/postgresql/data"
+            - "${HOST_PG_BACKUPS}:/pgbackups"
+
 
     mq:
         ports:

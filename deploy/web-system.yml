@@ -91,6 +91,13 @@
             group: root
             mode: 0600
 
+      - name: Backup of SQL -- create local folder to restore files from and mount in container
+        ansible.builtin.file:
+            path: "{{ host_pgbackup_path }}"
+            state: directory
+            owner: "{{ kanteleuser }}"
+            group: "{{ kantelegroup }}"
+
       - name: Backup of SQL -- create backup folder on web server container host
         ansible.builtin.file:
             path: "{{ host_analysispath }}/{{ web_backupfolder }}"

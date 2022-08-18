@@ -9,10 +9,12 @@ CELERYD_PID_FILE="{{ kantelelogdir }}/%n%I.pid"
 CELERYD_USER="{{ kanteleuser }}"
 CELERYD_GROUP="{{ kantelegroup }}"
 CELERY_CREATE_DIRS=1
-KANTELEHOST={{ kantele_host }}
+PROTOCOL=https
+KANTELEHOST="{{ kantele_host }}"
 RABBITHOST={{ rabbithost }}
 RABBIT_VHOST={{ mq_vhost }}
-AMQPASS={{ amqppass }}
+RABBITPASS={{ amqppass }}
+RABBITUSER={{ rabbituser }}
 
 LOCAL_PTYPE_ID={{ local_ptype_id }}
 LC_DTYPE_ID={{ lc_dtype_id }}

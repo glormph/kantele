@@ -10,6 +10,7 @@ kanteledir: '{{ homedir }}/kantele'
 kanteledb: kanteledb
 kanteledbuser: kanteleuser
 pgdatadir: "{{ homedir }}/pgdata"
+host_pgbackup_path: "{{ homedir }}/pgbackups"
 
 tls_cert: server.crt
 tls_cert_key: server.key
@@ -33,10 +34,12 @@ storage_backup_path: "{{ storage_share }}/backups"
 
 storage_env:
     SECRET_KEY: "{{ secret_key }}"
+    PROTOCOL: https
     KANTELEHOST: "{{ kantele_host }}"
     RABBITHOST: "{{ kantele_host }}"
     RABBIT_VHOST: '{{ mq_vhost }}'
-    AMQPASS: "{{ amqppass }}"
+    RABBITPASS: "{{ amqppass }}"
+    RABBITUSER: "{{ rabbituser }}"
     APIKEY: "{{ storage_apikey }}"
     ADMIN_APIKEY: "{{ admin_apikey }}"
     STORAGESHARE: "{{ storage_share }}"

@@ -17,7 +17,7 @@
       - name: Start celery queue workers
         command: "scl enable rh-python36 rh-postgresql12 -- bash {{ kanteledir }}/{{ item }}.sh"
         args:
-            chdir: "{{ kanteledir }}"
+            chdir: "{{ kanteledir }}/src/backend"
         environment: "{{ storage_env }}"
         loop:
             - storage_local

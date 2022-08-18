@@ -1,5 +1,5 @@
 --- 
-# Deploy kantele web system
+# DB restoring on production from backup
 
 - hosts: kantele
   become: yes
@@ -9,9 +9,10 @@
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             files:
-                - '{{ kanteledir }}/docker-compose-prod.yml'
-                - '{{ kanteledir }}/docker-compose-logging.yml'
+                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             state: absent
+            env_file: '{{ kanteledir }}/.compose.prod.env'
         environment:
             - USER_ID: '{{ kanteleuid }}'
             - GROUP_ID: '{{ kantelegid }}'
@@ -41,45 +42,59 @@
       - name: Copy sql dump to server (takes long time)
         ansible.builtin.copy:
             src: '{{ sqldump }}'
-            dest: '{{ homedir }}'
+            dest: '{{ host_pgbackup_path }}'
 
       - name: DB service up
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             services: db
             files:
-                - docker-compose-prod.yml
-                - src/docker/compose-db-restore.yml
+                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             env_file: '{{ kanteledir }}/.compose.prod.env'
             build: yes
             state: present
-        environment:
-            - BACKUP_PATH: '{{ homedir }}/{{ sqldump | basename }}'
 
       - name: Wait for DB to come up
         ansible.builtin.wait_for:
-            timeout: 5
+            timeout: 10
 
       - name: Create user in postgres
         ansible.builtin.command:
             chdir: '{{ kanteledir }}'
-            cmd: docker-compose --env-file .compose.prod.env -f docker-compose-prod.yml -f docker-compose-logging.yml exec db psql -U postgres -c "CREATE USER {{ kanteledbuser }} WITH PASSWORD '{{ db_pass }}'"
+            cmd: docker-compose --env-file .compose.prod.env -f docker-compose-base.yml -f src/docker/docker-compose-prod.yml exec db psql -U postgres -c "CREATE USER {{ kanteledbuser }} WITH PASSWORD '{{ db_pass }}'"
 
       - name: Create kantele DB in postgres
         ansible.builtin.command:
             chdir: '{{ kanteledir }}'
-            cmd: 'docker-compose --env-file .compose.prod.env -f docker-compose-prod.yml -f docker-compose-logging.yml exec db createdb -U postgres {{ kanteledb }}'
+            cmd: 'docker-compose --env-file .compose.prod.env -f docker-compose-base.yml -f src/docker/docker-compose-prod.yml exec db createdb -U postgres {{ kanteledb }}'
 
       - name: Restore DB from existing DB
         ansible.builtin.command:
             chdir: '{{ kanteledir }}'
-            cmd: 'docker-compose --env-file .compose.prod.env -f docker-compose-prod.yml -f docker-compose-logging.yml exec db psql -U {{ kanteledbuser }} -d {{ kanteledb }} -f /pgbackup.sql'
+            cmd: 'docker-compose --env-file .compose.prod.env -f docker-compose-base.yml -f src/docker/docker-compose-prod.yml exec db psql -U {{ kanteledbuser }} -d {{ kanteledb }} -f /pgbackups/{{ sqldump | basename }}'
 
       - name: Remove running docker containers
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             files:
-                - docker-compose-prod.yml
-                - src/docker/compose-db-restore.yml
-            env_file: '{{ kanteledir }}/.compose.prod.env'
+                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             state: absent
+            env_file: '{{ kanteledir }}/.compose.prod.env'
+        environment:
+            - USER_ID: '{{ kanteleuid }}'
+            - GROUP_ID: '{{ kantelegid }}'
+
+      - name: Build and start production docker containers
+        community.docker.docker_compose:
+            project_src: '{{ kanteledir }}'
+            files:
+                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
+            env_file: '{{ kanteledir }}/.compose.prod.env'
+            build: yes
+            state: present
+        environment:
+            - USER_ID: '{{ kanteleuid }}'
+            - GROUP_ID: '{{ kantelegid }}'
