@@ -465,6 +465,7 @@ def file_transferred(request):
         token = data['token']
         fn_id = data['fn_id']
         libdesc, userdesc = data['libdesc'], data['userdesc']
+        fname = data['filename']
     except KeyError as error:
         print('POST request to file_transferred with missing parameter, '
               '{}'.format(error))
@@ -483,7 +484,7 @@ def file_transferred(request):
             rawfile=rawfn, filetype=upload.filetype,
             md5=rawfn.source_md5,
             defaults={'servershare': tmpshare, 'path': '',
-                'filename': rawfn.name, 'checked': False})
+                'filename': fname, 'checked': False})
     if not created:
         print('File already registered as transferred, rerunning MD5 check in case new '
                 'file arrived')
