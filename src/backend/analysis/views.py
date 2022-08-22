@@ -864,8 +864,6 @@ def upload_servable_file(request):
     data = request.POST
     if 'client_id' not in data or data['client_id'] !=settings.ANALYSISCLIENT_APIKEY:
         return JsonResponse({'msg': 'Forbidden'}, status=403)
-    elif 'rawid' not in data or 'md5' not in data:
-        return JsonResponse({'msg': 'Need to specify rawfile ID and MD5'})
     elif 'fname' not in data or data['fname'] not in settings.SERVABLE_FILENAMES:
         return JsonResponse({'msg': 'File is not servable'}, status=406)
     else:
