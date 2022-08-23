@@ -424,6 +424,7 @@ def store_analysis_result(request):
             fp.flush()
             os.fsync(fp.fileno())
             shutil.copy(fp.name, srvdst)
+            os.chmod(srvdst, 0o644)
     return HttpResponse()
 
 
