@@ -78,7 +78,25 @@
       - name: Install TLS certificate
         ansible.builtin.copy:
             src: 'tls_server.crt'
-            dest: "{{ tls_path }}/{{ tls_cert }}"
+            dest: "{{ tls_path }}/only_cert_no_chain.crt"
+            owner: root
+            group: root
+            mode: 0644
+
+      - name: Install TLS CA-cert bundle
+        ansible.builtin.copy:
+            src: 'ca.bundle.pem'
+            dest: "{{ tls_path }}/ca.bundle.pem"
+            owner: root
+            group: root
+            mode: 0644
+
+      - name: Concatenate ca bundle and no-chain-crt
+        ansible.builtin.shell: "cat {{ tls_path }}/only_cert_no_chain.crt {{ tls_path }}/ca.bundle.pem > {{ tls_path }}/{{ tls_cert }}"
+
+      - name: Finalize TLS certificate (mode, ownership)
+        ansible.builtin.file:
+            path: "{{ tls_path }}/{{ tls_cert }}"
             owner: root
             group: root
             mode: 0644
