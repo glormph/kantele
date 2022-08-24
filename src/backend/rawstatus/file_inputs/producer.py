@@ -154,8 +154,8 @@ def check_in_instrument(config, configfn, logger):
             return 'Could not check in instrument, server replied {resp["error"]}'
         else:
             validated = valresp.json()
-            logger.info(f'Got a new token from server, which will expire on {validated["expires"]}')
             if validated['newtoken']:
+                logger.info(f'Got a new token from server, which will expire on {validated["expires"]}')
                 token_state = 'new'
                 config['token'] = validated['newtoken']
     if token_state == 'new':
