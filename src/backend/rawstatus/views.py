@@ -507,13 +507,15 @@ def transfer_file(request):
             defaults={'servershare': tmpshare, 'path': '',
                 'filename': fname, 'checked': False})
     if not created:
+        # This should not happen, since we already check for existence above,
+        # and failed MD5 uploads do not create a StoredFile anymore
         print('File already registered as transferred, rerunning MD5 check in case new '
                 'file arrived')
         file_trf.checked = False
         file_trf.save()
-    elif token and libdesc:
+    elif libdesc:
         LibraryFile.objects.create(sfile=file_trf, description=libdesc)
-    elif token and userdesc:
+    elif userdesc:
         # TODO, external producer, actual raw data, otherwise userfile with description
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
     # if re-transfer happens and second time it is corrupt, overwriting old file
