@@ -456,11 +456,8 @@ def process_file_confirmed_ready(rfn, sfn):
 
 
 @require_POST
-def file_transferred(request):
-    """Treats POST requests with:
-        - fn_id
-    Starts checking file MD5 in background
-    """
+def transfer_file(request):
+    '''HTTP based file upload'''
     data = json.loads(request.body.decode('utf-8'))
     try:
         token = data['token']
@@ -468,7 +465,7 @@ def file_transferred(request):
         libdesc, userdesc = data['libdesc'], data['userdesc']
         fname = data['filename']
     except KeyError as error:
-        print('POST request to file_transferred with missing parameter, '
+        print('POST request to transfer_file with missing parameter, '
               '{}'.format(error))
         return JsonResponse({'error': 'Bad request'}, status=400)
     upload = validate_token(token)
@@ -481,6 +478,29 @@ def file_transferred(request):
         errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
         print(errmsg)
         return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
+    sfns = StoredFile.objects.filter(rawfile_id=fn_id)
+    if sfns.count() == 1:
+        return JsonResponse({'error': 'This file is already in the '
+            f'system: {sfns.get().filename}'}, status=403)
+    elif sfns.count():
+        return JsonResponse({'error': 'Multiple files already found, this '
+            'should not happen, please inform your administrator'}, status=403)
+    upfile = request.FILES['file']
+    dighash = md5()
+    with NamedTemporaryFile(mode='wb+') as fp:
+        for chunk in upfile.chunks():
+            fp.write(chunk)
+            dighash.update(chunk)
+        # Flush it to disk just in case, but seek is usually enough
+        fp.flush()
+        os.fsync(fp.fileno())
+        dighash = dighash.hexdigest() 
+        if dighash != rawfn.source_md5:
+            return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
+        dst = os.path.join(settings.TMP_UPLOADPATH, f'{rawfn.pk}.{upload.filetype.filetype}')
+        # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
+        shutil.copy(fp.name, dst)
+        os.chmod(dst, 0o644)
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype,
             md5=rawfn.source_md5,
