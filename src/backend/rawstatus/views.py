@@ -215,21 +215,22 @@ def browser_userupload(request):
         sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
         if sfns.count() == 1:
             return JsonResponse({'error': 'This file is already in the '
-                f'system: {sfns.get().filename}'})
+                f'system: {sfns.get().filename}'}, status=403)
         elif sfns.count():
             return JsonResponse({'error': 'Multiple files already found, this '
-                'should not happen, please inform your administrator'})
-        # never MD5 check browser-userfiles, MD5 is checked on delivery so, just assume checked = True
-        sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
-                filename=f'userfile_{raw["file_id"]}_{upfile.name}',
-                       checked=True, filetype=upload.filetype,
-                       md5=dighash, path=settings.USERFILEDIR,
-                       servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-        ufile = UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
-        dst = os.path.join(settings.TMP_UPLOADPATH, str(sfile.pk))
+                'should not happen, please inform your administrator'}, status=403)
+        dst = os.path.join(settings.TMP_UPLOADPATH, f'{raw["file_id"]}.{upload.filetype.filetype}')
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)
+    # never fire job to MD5 check browser-userfiles, 
+    # MD5 is checked on delivery so, just assume checked = True
+    sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
+        filename=f'userfile_{raw["file_id"]}_{upfile.name}',
+        checked=True, filetype=upload.filetype,
+        md5=dighash, path=settings.USERFILEDIR,
+        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
+    UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
     jobutil.create_job('download_file', sf_id=sfile.id)
         
     return JsonResponse({'error': False, 'success': 'Succesfully uploaded file to '
