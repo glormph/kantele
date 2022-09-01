@@ -457,21 +457,29 @@ def process_file_confirmed_ready(rfn, sfn):
 
 @require_POST
 def transfer_file(request):
+    # FIXME HTTP need long view time 
+    # 
+    # FIXME add share name to upload to and path
     '''HTTP based file upload'''
-    data = json.loads(request.body.decode('utf-8'))
+    data = request.POST
     try:
         token = data['token']
-        fn_id = data['fn_id']
-        libdesc, userdesc = data['libdesc'], data['userdesc']
+        fn_id = int(data['fn_id'])
         fname = data['filename']
     except KeyError as error:
         print('POST request to transfer_file with missing parameter, '
               '{}'.format(error))
         return JsonResponse({'error': 'Bad request'}, status=400)
+    except ValueError:
+        print('POST request to transfer_file with incorrect fn_id, '
+              '{}'.format(error))
+        return JsonResponse({'error': 'Bad request'}, status=400)
+    libdesc = data.get('libdesc', False)
+    userdesc = data.get('userdesc', False)
     upload = validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
-    tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+    # First check if everything is OK wrt rawfile/storedfiles
     try:
         rawfn = RawFile.objects.get(pk=fn_id)
     except RawFile.DoesNotExist:
@@ -479,51 +487,50 @@ def transfer_file(request):
         print(errmsg)
         return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
     sfns = StoredFile.objects.filter(rawfile_id=fn_id)
-    if sfns.count() == 1:
+    if sfns.count():
+        # By default do not overwrite, although deleted files could trigger this
+        # as well. In that case, have admin remove the files from DB.
+        # TODO create exception for that if ever needed? data['overwrite'] = True?
+        # Also look at below get_or_create call and checking created
         return JsonResponse({'error': 'This file is already in the '
-            f'system: {sfns.get().filename}'}, status=403)
-    elif sfns.count():
-        return JsonResponse({'error': 'Multiple files already found, this '
-            'should not happen, please inform your administrator'}, status=403)
+            f'system: {sfns.get().filename}, if you are re-uploading a previously '
+            'deleted file, consider reactivating from backup, or contact admin'}, status=403)
     upfile = request.FILES['file']
     dighash = md5()
-    with NamedTemporaryFile(mode='wb+') as fp:
+    upload_dst = os.path.join(settings.TMP_UPLOADPATH, f'{rawfn.pk}.{upload.filetype.filetype}')
+    # Write file from /tmp (or in memory if small) to its destination in upload folder
+    # We could do shutil.move() if /tmp file, for faster performance, but on docker
+    # with bound host folders this is a read/write operation and not a simple atomic mv
+    # That means we can do MD5 check at hardly an extra cost, it is hardly slower than
+    # not doing it if we're r/w anyway. Thus we can skip using an extra bg job
+    with open(upload_dst, 'wb+') as fp:
         for chunk in upfile.chunks():
             fp.write(chunk)
             dighash.update(chunk)
-        # Flush it to disk just in case, but seek is usually enough
-        fp.flush()
-        os.fsync(fp.fileno())
-        dighash = dighash.hexdigest() 
-        if dighash != rawfn.source_md5:
-            return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
-        dst = os.path.join(settings.TMP_UPLOADPATH, f'{rawfn.pk}.{upload.filetype.filetype}')
-        # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
-        shutil.copy(fp.name, dst)
-        os.chmod(dst, 0o644)
+    dighash = dighash.hexdigest() 
+    if dighash != rawfn.source_md5:
+        print(dighash)
+        return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
+    os.chmod(upload_dst, 0o644)
+
+    # Now prepare for move to proper destination
+    dstpath = ''
+    dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
     file_trf, created = StoredFile.objects.get_or_create(
-            rawfile=rawfn, filetype=upload.filetype,
-            md5=rawfn.source_md5,
-            defaults={'servershare': tmpshare, 'path': '',
-                'filename': fname, 'checked': False})
+            rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
+            defaults={'servershare': dstshare, 'path': '', 'filename': fname, 
+                'checked': True})
     if not created:
-        # This should not happen, since we already check for existence above,
-        # and failed MD5 uploads do not create a StoredFile anymore
-        print('File already registered as transferred, rerunning MD5 check in case new '
-                'file arrived')
-        file_trf.checked = False
-        file_trf.save()
+        # This could happen in the future when there is some kind of bypass of the above
+        # check sfns.count(). 
+        print('File already registered as transferred')
     elif libdesc:
         LibraryFile.objects.create(sfile=file_trf, description=libdesc)
     elif userdesc:
         # TODO, external producer, actual raw data, otherwise userfile with description
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
-    # if re-transfer happens and second time it is corrupt, overwriting old file
-    # then we have a problem! So always fire MD5 job, not only on new files
-    if file_trf.filetype.is_folder:
-        jobutil.create_job('unzip_raw_datadir_md5check', source_md5=rawfn.source_md5, sf_id=file_trf.id)
-    else:
-        jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
+    jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst,
+            dst_sharename=dstshare.name, dst_path=dstpath)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 

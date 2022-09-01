@@ -10,7 +10,7 @@ urlpatterns = [
    path('token/', views.request_upload_token, name='req_token'),
    path('instruments/check/', views.instrument_check_in, name='check_in'),
    path('upload/userfile/', views.browser_userupload, name='upload_browserfile'),
-   path('transferred/', views.file_transferred, name='transferred'),
+   path('transfer/', views.transfer_file, name='transfer'),
    path('transferstate/', views.get_files_transferstate, name='trfstate'),
    path('rename/', views.rename_file),
    path('cleanup/', views.cleanup_old_files),
