@@ -39,6 +39,10 @@ QUEUE_SEARCH_INBOX = 'scaninbox'
 
 PROTOCOL = os.environ.get('PROTOCOL')
 KANTELEHOST = '{}://{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
+RSYNC_SSHUSER = os.environ.get('RSYNC_SSHUSER')
+RSYNC_SSHKEY = os.environ.get('RSYNC_SSHKEY')
+RSYNC_SSHPORT = os.environ.get('RSYNC_SSHPORT')
+
 UPLOAD_URL = 'uploads'
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'

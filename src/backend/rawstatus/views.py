@@ -503,14 +503,19 @@ def transfer_file(request):
     # with bound host folders this is a read/write operation and not a simple atomic mv
     # That means we can do MD5 check at hardly an extra cost, it is hardly slower than
     # not doing it if we're r/w anyway. Thus we can skip using an extra bg job
-    with open(upload_dst, 'wb+') as fp:
-        for chunk in upfile.chunks():
-            fp.write(chunk)
-            dighash.update(chunk)
-    dighash = dighash.hexdigest() 
-    if dighash != rawfn.source_md5:
-        print(dighash)
-        return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
+    # However, we do not check MD5 on zipped arrival files:
+    if upload.filetype.filetype.is_folder:
+        with open(upload_dst, 'wb+') as fp:
+            for chunk in upfile.chunks():
+                fp.write(chunk)
+    else:
+        with open(upload_dst, 'wb+') as fp:
+            for chunk in upfile.chunks():
+                fp.write(chunk)
+                dighash.update(chunk)
+        dighash = dighash.hexdigest() 
+        if dighash != rawfn.source_md5:
+            return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
     os.chmod(upload_dst, 0o644)
 
     # Now prepare for move to proper destination
@@ -519,7 +524,7 @@ def transfer_file(request):
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
             defaults={'servershare': dstshare, 'path': '', 'filename': fname, 
-                'checked': True})
+                'checked': False})
     if not created:
         # This could happen in the future when there is some kind of bypass of the above
         # check sfns.count(). 

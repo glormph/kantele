@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import zipfile
 from ftplib import FTP
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from time import sleep
 from datetime import datetime
 from tempfile import NamedTemporaryFile
@@ -152,23 +152,68 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, shasum, size, s
 
 
 @shared_task(queue=settings.QUEUE_STORAGE, bind=True)
-def get_md5(self, source_md5, sfid, fnpath, servershare):
-    # This should be run on the storage server
-    """Checks MD5 of file and compares with source_md5. Report to host.
-    If they do not match, host will set checked to False of storedfile
-    """
-    print('MD5 requested for file {}'.format(sfid))
-    fnpath = os.path.join(settings.SHAREMAP[servershare], fnpath)
+def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
+    '''Uses rsync to transfer uploaded file from KANTELEHOST to storage server.
+    In case of a zipped folder transfer, the file is unzipped and an MD5 check is done 
+    on its relevant file, in case the transferred file is corrupt'''
+    # FIXME need to take care of e.g. zipped uploads which do not contain relevant file
+    # (use case e.g. microscopy images), unlike e.g. .d folders from Bruker.
+    ssh_host = urlsplit(KANTELEHOST).netloc
+    ssh_srcpath = f'{settings.RSYNC_SSHUSER}@{ssh_host}:{srcpath}'
+    dstfpath = os.path.join(settings.SHAREMAP[dstsharename], dstpath)
+    cmd = ['rsync', '-avz', '-e',
+            f'"ssh -o StrictHostKeyChecking=no -p {settings.RSYNC_SSHPORT} -i {settings.RSYNC_SSHKEY}"',
+            ssh_srcpath, dstfpath]
     try:
-        result = calc_md5(fnpath)
-    except Exception:
-        taskfail_update_db(self.request.id)
-        raise
-    postdata = {'sfid': sfid, 'md5': result, 'client_id': settings.APIKEY,
-                'task': self.request.id, 'source_md5': source_md5}
-    url = urljoin(settings.KANTELEHOST, reverse('jobs:setmd5'))
-    msg = ('Could not update database: http/connection error {}. '
-           'Retrying in one minute')
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            taskfail_update_db(self.request.id)
+            raise
+    postdata = {'sfid': sfid, 'client_id': settings.APIKEY, 'task': self.request.id, 
+            'do_md5check': do_unzip}
+    if do_unzip:
+        # Unzip if needed, in that case recheck MD5 to be sure of the zipping has been correct
+        # since MD5 is from internal file
+        unzippath = os.path.join(os.path.split(dstfpath)[0], os.path.splitext(dstfpath)[0])
+        try:
+            with zipfile.ZipFile(dstfpath, 'r') as zipfp:
+                zipfp.extractall(path=unzippath)
+        except zipfile.BadZipFile:
+            # Re queue zip and transfer!
+            taskfail_update_db(self.request.id, msg='File to unzip had a problem and could be '
+            'corrupt or partially transferred, could not unzip it')
+            raise
+        except IsADirectoryError:
+            # file has already been transferred and we are instructed to re-unzip
+            # possibly there is another zipped file
+            taskfail_update_db(self.request.id, msg='File to unzip was a directory, has '
+                    'likely already been unzipped and possibly been retransferred')
+            raise
+        except Exception:
+            taskfail_update_db(self.request.id, msg='Unknown problem happened during '
+                    'unzipping')
+            raise
+        else:
+            os.remove(zipped_fn)
+        # now find stable file in zip to get MD5 on
+        try:
+            stable_fn = [x for x in settings.MD5_STABLE_FILES
+                if os.path.exists(os.path.join(unzippath, x))][0]
+        except IndexError:
+            taskfail_update_db(self.request.id, msg='Could not find stable file inside unzipped folder for MD5 calculation')
+            raise
+        # Then do the actual md5 check
+        try:
+            md5result = calc_md5(os.path.join(unzippath, stable_fn))
+        except Exception:
+            taskfail_update_db(self.request.id, msg='MD5 calculation failed')
+            raise
+        postdata.update({'md5': md5result})
+    # Done, notify database
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:rsync_done'))
     try:
         update_db(url, postdata, msg)
     except RuntimeError:
@@ -177,7 +222,6 @@ def get_md5(self, source_md5, sfid, fnpath, servershare):
         except MaxRetriesExceededError:
             update_db(url, postdata, msg)
             raise
-    print('MD5 of {} is {}, registered in DB'.format(fnpath, result))
     return result
 
 
