@@ -1,13 +1,19 @@
 services:
     web:
+        network_mode: host
         env_file:
             - ./prod-container.env
         logging:
             driver: syslog
             options:
                 syslog-address: "${SYSLOG_ADDRESS}"
+        environment:
+            PROTOCOL: https
+            DB_HOST: "${HOST_FQDN}"
+            RABBITHOST: "${HOST_FQDN}"
     
     nginx:
+        network_mode: host
         logging:
             driver: syslog
             options:
@@ -16,6 +22,7 @@ services:
             - "${HOST_TLSCERTPATH}:/${CONTAINER_TLSCERTPATH}"
 
     db: 
+        network_mode: host
         logging:
             driver: syslog
             options:
@@ -26,8 +33,7 @@ services:
 
 
     mq:
-        ports:
-            - 5672:5672
+        network_mode: host
         logging:
             driver: syslog
             options:
@@ -37,9 +43,13 @@ services:
 
 
     jobrunner:
+        network_mode: host
         env_file:
             - ./prod-container.env
         logging:
             driver: syslog
             options:
                 syslog-address: "${SYSLOG_ADDRESS}"
+        environment:
+            DB_HOST: "${HOST_FQDN}"
+            RABBITHOST: "${HOST_FQDN}"

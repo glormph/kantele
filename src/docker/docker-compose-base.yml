@@ -14,13 +14,10 @@ services:
                 GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
         environment:
             KANTELEHOST: "${HOST_FQDN}"
-            PROTOCOL: https
             DB_PASS: "${PG_KANTELE_PASSWORD}"
             DB_USER: "${PG_KANTELE_USER}"
-            DB_HOST: db
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
-            RABBITHOST: mq
             RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
@@ -41,9 +38,6 @@ services:
                 GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
         depends_on:
             - web
-        ports:
-            - 80:80
-            - 443:443
         volumes:
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
             - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
@@ -74,10 +68,8 @@ services:
         environment:
             DB_PASS: "${PG_KANTELE_PASSWORD}"
             DB_USER: kanteleuser
-            DB_HOST: db
             DB_NAME: "${KANTELE_DB_NAME}"
             HOST_DOMAIN: "${HOST_FQDN}"
-            RABBITHOST: mq
             RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"

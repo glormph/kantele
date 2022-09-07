@@ -32,7 +32,7 @@ http {
 
     upstream django {
         # server unix:///path/to/your/mysite/mysite.sock; # for a file socket
-        server web:8009; # for a web port socket
+        server {{ kantele_host }}:8009; # for a web port socket
     }
 
     server {
