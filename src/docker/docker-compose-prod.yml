@@ -38,7 +38,7 @@ services:
 
     jobrunner:
         env_file:
-            - prod-container.env
+            - ./prod-container.env
         logging:
             driver: syslog
             options:

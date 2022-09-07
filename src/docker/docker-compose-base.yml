@@ -6,7 +6,7 @@ services:
         depends_on:
             - db
         build:
-            context: ./src
+            context: ../
             dockerfile: ./docker/Dockerfile
             target: django
             args:
@@ -33,7 +33,7 @@ services:
     nginx:
         image: kantele_nginx
         build:
-            context: ./src
+            context: ../
             dockerfile: ./docker/Dockerfile
             target: nginx_prod
             args:
