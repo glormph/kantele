@@ -35,7 +35,7 @@
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             files:
-                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-base.yml'
                 - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             env_file: '{{ kanteledir }}/.compose.prod.env'
             build: yes
