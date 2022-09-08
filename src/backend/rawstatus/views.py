@@ -107,10 +107,10 @@ def import_external_data(request):
             rawfn = get_or_create_rawfile(fakemd5, fn, extprod, size, date, {'claimed': True})
             raw_ids.append(rawfn['file_id'])
             if not rawfn['stored']:
-                sfn = StoredFile(rawfile_id=rawfn['file_id'],
-                        filetype_id=extprod.msinstrument.filetype_id,
-                        servershare_id=share.id, path=os.path.join(req['dirname'], path), filename=fn, md5='', checked=False)
-                sfn.save()
+                StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
+                        filetype_id=extprod.msinstrument.filetype_id, filename=fn,
+                        defaults={'servershare_id': share.id, 'path': os.path.join(req['dirname'], path),
+                            'md5': fakemd5, 'checked': False})
         # Jobs to get MD5 etc
         jobutil.create_job('register_external_raw', dset_id=dset.id, rawfnids=raw_ids, sharename=share.name)
     return JsonResponse({})
@@ -796,10 +796,9 @@ def download_px_project(request):
         shasums[rawfn['file_id']] = fn['sha1sum']
         if not rawfn['stored']:
             ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw').id
-            sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=ftid,
-                             servershare=tmpshare, path='',
-                             filename=filename, md5='', checked=False)
-            sfn.save()
+            StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'], filetype_id=ftid,
+                    filename=fn, defaults={'servershare_id': tmpshare, 'path': '',
+                        'md5': fakemd5, 'checked': False})
     rsjob = jobutil.create_job(
         'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], sharename=settings.TMPSHARENAME, shasums=shasums)
     return HttpResponse()
