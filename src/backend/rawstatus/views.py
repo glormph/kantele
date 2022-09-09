@@ -512,7 +512,7 @@ def transfer_file(request):
     # That means we can do MD5 check at hardly an extra cost, it is hardly slower than
     # not doing it if we're r/w anyway. Thus we can skip using an extra bg job
     # However, we do not check MD5 on zipped arrival files:
-    if upload.filetype.filetype.is_folder:
+    if upload.filetype.is_folder:
         with open(upload_dst, 'wb+') as fp:
             for chunk in upfile.chunks():
                 fp.write(chunk)

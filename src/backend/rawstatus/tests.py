@@ -192,7 +192,7 @@ class TestFileTransfer(BaseFilesTest):
         resp = self.cl.post(self.url, data=stddata)
         self.assertEqual(resp.status_code, 403)
         # Wrong token
-        resp = self.cl.post(self.url, data= {**stddata, 'token': self.nottoken})
+        resp = self.cl.post(self.url, data= {**stddata, 'token': 'thisisnotatoken'})
         self.assertEqual(resp.status_code, 403)
         # Wrong fn_id
         resp = self.cl.post(self.url, 
@@ -234,14 +234,14 @@ class TestFileTransfer(BaseFilesTest):
                     f'{self.newraw.pk}.{self.uploadtoken.filetype.filetype}')
             x = jm.Job.objects.last()
             jobs = jm.Job.objects.filter(funcname='rsync_transfer', kwargs={
-                'src_path': upload_file, 'dst_sharename': self.ss.name, 'dst_path': '',
+                'src_path': upload_file, 'dst_sharename': self.ss.name,
                 'sf_id': sf.pk})
             self.assertEqual(jobs.count(), 1)
             job = jobs.get()
             # this may fail occasionally
             
             self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
-            upfile = f'{sf.pk}.{sf.filetype.filetype}'
+            upfile = f'{self.newraw.pk}.{sf.filetype.filetype}'
             with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:
                 self.assertEqual(fp.read(), infile_contents)
 
