@@ -65,7 +65,7 @@ class TransferStateTest(BaseFilesTest):
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
 
-    def test_transferstate_scp(self):
+    def test_transferstate_transfer(self):
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': self.token, 'fnid': self.newraw.id})
         rj = resp.json()
@@ -201,7 +201,9 @@ class TestFileTransfer(BaseFilesTest):
         self.assertIn('invalid or expired', resp.json()['error'])
         
     def test_transfer_file(self, existing_file=False, libdesc=False, userdesc=False):
-        with open('rawstatus/test_upload.txt') as fp:
+        '''Tries to upload file and checks if everything is OK'''
+        fn = 'test_upload.txt'
+        with open(f'rawstatus/{fn}') as fp:
             stddata = {'fn_id': self.newraw.pk, 'token': self.token,
                     'filename': self.newraw.name, 'file': fp}
             if libdesc:
@@ -209,6 +211,9 @@ class TestFileTransfer(BaseFilesTest):
             elif userdesc:
                 stddata['userdesc'] = userdesc
             resp = self.cl.post(self.url, data=stddata)
+            fp.seek(0)
+            infile_contents = fp.read()
+        # Now do checks
         if existing_file:
             self.assertEqual(resp.status_code, 403)
             self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
@@ -221,7 +226,7 @@ class TestFileTransfer(BaseFilesTest):
             self.assertEqual(sfns.count(), 1)
             sf = sfns.get()
             self.assertEqual(sf.md5, self.newraw.source_md5)
-            self.assertTrue(sf.checked)
+            self.assertFalse(sf.checked)
             upload_file = os.path.join(settings.TMP_UPLOADPATH,
                     f'{self.newraw.pk}.{self.uploadtoken.filetype.filetype}')
             x = jm.Job.objects.last()
@@ -231,8 +236,11 @@ class TestFileTransfer(BaseFilesTest):
             self.assertEqual(jobs.count(), 1)
             job = jobs.get()
             # this may fail occasionally
-            self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
             
+            self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
+            upfile = f'{sf.pk}.{sf.filetype.filetype}'
+            with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:
+                self.assertEqual(fp.read(), infile_contents)
 
     def test_transfer_again(self):
         '''Transfer already existing file, e.g. overwrites of previously
