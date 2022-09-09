@@ -702,8 +702,6 @@ def download_instrument_package(request):
         'filetype_id': prod.msinstrument.filetype_id,
         'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
         'host': settings.KANTELEHOST,
-        'key': settings.TMP_STORAGE_KEYFILE,
-        'scp_full': settings.TMP_SCP_PATH,
         'md5_stable_fns': settings.MD5_STABLE_FILES,
         })
 

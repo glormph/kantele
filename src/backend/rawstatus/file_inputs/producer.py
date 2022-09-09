@@ -78,8 +78,7 @@ def get_new_file_entry(fn, raw_is_folder):
             'prod_date': str(os.path.getctime(fn)),
             'size': size,
             'is_dir': raw_is_folder or os.path.isdir(fn),
-            'transferred': False}
-            #'remote_checking': False, 'remote_ok': False}
+            }
 
 
 def get_csrf(cookies, referer_host):
@@ -183,14 +182,21 @@ def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **
     return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata)
 
 
-def transfer_file(fpath, transfer_location, keyfile):
+def transfer_file(url, fpath, fn_id, token, location, libdesc, userdesc, cookies, host):
     """Transfer location will be something like login@server:/path/to/storage"""
-    logging.info('Transferring {} to {}'.format(fpath, transfer_location))
-    remote_path = os.path.join(transfer_location + '/', os.path.basename(fpath))
-    if sys.platform.startswith("win"):
-        subprocess.check_call(['pscp.exe', '-i', keyfile, fpath, remote_path])
-    else:
-        subprocess.check_call(['scp', '-i', keyfile, fpath, remote_path])
+    # use fpath/basename instead of fname, to get the
+    # zipped file name if needed, instead of the normal fn
+    filename = os.path.basename(fpath)
+    logging.info(f'Transferring {fpath} to {location}')
+    with open(fpath, 'rb') as fp:
+        stddata = {'fn_id': fn_id, 'token': token, 'filename': filename}
+        filedata = {'file': fp}
+        if libdesc:
+            stddata['libdesc'] = libdesc
+        elif userdesc:
+            stddata['userdesc'] = userdesc
+        return requests.post(url, cookies=cookies, data=stddata, files=filedata,
+                headers=get_csrf(cookies, host)) 
 
 
 def get_fndata_id(fndata):
@@ -282,10 +288,11 @@ def log_listener(log_q):
 
 def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox, 
         single_file_id, kantelehost, clientname, scp_full, keyfile, library_desc, user_desc):
+    # FIXME scp_full to another location thing
     '''This process does the registration and the transfer of files'''
     # Start getting the leftovers from previous run
     fnstate_url = urljoin(kantelehost, 'files/transferstate/')
-    trfed_url = urljoin(kantelehost, 'files/transferred/')
+    trf_url = urljoin(kantelehost, 'files/transfer/')
     newfns_found = False
     proc_log_configure(logqueue)
     logger = logging.getLogger(f'{clientname}.producer.worker')
@@ -339,7 +346,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             save_ledger(ledger, LEDGERFN)
 
         # Now find what to do with all registered files and do it
-        scpfns, ledgerchanged = [], False
+        trffns, ledgerchanged = [], False
         if single_file_id and single_file_id in ledger and ledger[single_file_id]['fn_id']:
             to_process = [(single_file_id, ledger[single_file_id]['fn_id'], ledger[single_file_id])]
         elif single_file_id:
@@ -389,7 +396,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 del(ledger[cts_id])
                 ledgerchanged = True
             elif result['transferstate'] == 'transfer':
-                scpfns.append((cts_id, fndata))
+                trffns.append((cts_id, fndata))
             else:
                 logger.info('State for file {} with ID {} was: {}'.format(fndata['fname'], fnid, result['transferstate']))
         if single_file_id and not len(ledger.keys()):
@@ -397,7 +404,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             break
 
         # Now transfer registered files
-        for cts_id, fndata in scpfns:
+        for cts_id, fndata in trffns:
             if time() - heartbeat_t > HEARTBEAT_SECONDS:
                 checkerr = check_in_instrument(config, configfn, logger)
                 if checkerr:
@@ -408,37 +415,25 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 logger.warning(f'Could not find file with ID {fndata["fn_id"]} locally')
                 continue
             try:
-                transfer_file(fndata['fpath'], scp_full, keyfile)
+                resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
+                        scp_full, library_desc, user_desc, cookies, kantelehost)
             except subprocess.CalledProcessError:
                 logger.warning('Could not transfer {}'.format(
                     fndata['fpath']))
             else:
-                trf_data = {'fn_id': fndata['fn_id'],
-                        # use fpath/basename instead of fname, to get the
-                        # zipped file name if needed, instead of the normal fn
-                        'filename': os.path.basename(fndata['fpath']),
-                        'token': config['token'],
-                        'libdesc': library_desc,
-                        'userdesc': user_desc,
-                        }
-                resp = requests.post(url=trfed_url, cookies=cookies,
-                        headers=get_csrf(cookies, kantelehost), json=trf_data)
                 if resp.status_code == 500:
-                    result = {'error': 'Kantele server error when getting file '
+                    result = {'error': 'Kantele server error when transferring file '
                         'state, please contact administrator'}
                 else:
                     result = resp.json()
                 if resp.status_code != 200:
                     logger.error(result['error'])
                     if 'problem' in result and result['problem'] == 'NOT_REGISTERED':
-                        fndata.update({
-                            'md5': False,
-                            'remote_checking': False,
-                            'remote_ok': False})
+                        fndata['md5'] = False
                     else:
                         sys.exit(1)
                 else:
-                    logger.info(f'Registered transfer of file {fndata["fpath"]}')
+                    logger.info(f'Succesful transfer of file {fndata["fpath"]}')
                 ledgerchanged = True
         if ledgerchanged:
             save_ledger(ledger, LEDGERFN)
@@ -467,7 +462,6 @@ def main():
             'to use in case of e.g. re-zipping etc.')
     parser.add_argument('--file', dest='file', default=False, type=str, help='File to upload')
     parser.add_argument('--config', dest='configfn', default=False, type=str, help='Config file if any')
-    parser.add_argument('--key', dest='key', default=False, type=str, help='SSH key file for transfer')
     parser.add_argument('--scp-dest', dest='scp_dest', default=False, type=str, help='Full SCP destination path like user@server:/path/')
     parser.add_argument('--library-description', type=str, dest='libdesc', default=False,
             help='In case you want a library file to be uploaded (will be shared for analysis), '
