@@ -59,6 +59,8 @@ SHAREMAP = {TMPSHARENAME: TMPSHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
             WEBSHARENAME: WEBSHARE,
             }
+TMPPATH = ''
+
 NGINX_ANALYSIS_REDIRECT = os.environ.get('NGINX_ANALYSIS_REDIRECT')
 SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html']
 

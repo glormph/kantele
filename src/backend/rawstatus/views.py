@@ -519,12 +519,11 @@ def transfer_file(request):
     os.chmod(upload_dst, 0o644)
 
     # Now prepare for move to proper destination
-    dstpath = ''
     dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
-            defaults={'servershare': dstshare, 'path': '', 'filename': fname, 
-                'checked': False})
+            defaults={'servershare': dstshare, 'path': settings.TMPPATH,
+                'filename': fname, 'checked': False})
     if not created:
         # This could happen in the future when there is some kind of bypass of the above
         # check sfns.count(). 
@@ -535,7 +534,7 @@ def transfer_file(request):
         # TODO, external producer, actual raw data, otherwise userfile with description
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
     jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst,
-            dst_sharename=dstshare.name, dst_path=dstpath)
+            dst_sharename=dstshare.name)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
@@ -830,7 +829,7 @@ def download_px_project(request):
         if not rawfn['stored']:
             ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw').id
             sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=ftid,
-                             servershare=tmpshare, path='',
+                             servershare=tmpshare, path=settings.TMPPATH,
                              filename=filename, md5='', checked=False)
             sfn.save()
     rsjob = jobutil.create_job(
