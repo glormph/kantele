@@ -7,7 +7,6 @@ from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Q
 
 from datetime import timedelta, datetime
 import os
@@ -390,8 +389,23 @@ def get_files_transferstate(request):
         print(errmsg)
         return JsonResponse({'error': errmsg}, status=409)
     else:
-        # need to unzip, then MD5 check, then backup
+        # File in system, should be transferred and being rsynced/unzipped, or
+        # errored, or done.
         sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').get()
+        up_dst = os.path.join(settings.TMP_UPLOADPATH, f'{rfn.pk}.{sfn.filetype.filetype}')
+        rsync_jobs = jm.Job.objects.filter(funcname='rsync_transfer',
+                kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst,
+                kwargs__dst_sharename=settings.TMPSHARENAME).order_by('-timestamp')
+        # fetching from DB here to avoid race condition in if/else block
+        try:
+            last_rsjob = rsync_jobs.last()
+        except jm.Job.DoesNotExist:
+            last_rsjob = False
+        # Refresh to make sure we dont get race condition where it is checked
+        # while we fetching jobs above and the non-checked/done job will result
+        # in a retransfer
+        sfn.refresh_from_db()
+
         if sfn.checked:
             # File transfer and check finished
             tstate = 'done'
@@ -402,21 +416,21 @@ def get_files_transferstate(request):
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
 
-        elif jm.Job.objects.filter(Q(funcname='get_md5') | Q(funcname='unzip_raw_datadir_md5check'),
-                kwargs={'sf_id': sfn.pk, 'source_md5': rfn.source_md5}).exclude(
-                state__in=jobutil.JOBSTATES_DONE):
-            # this did not work when doing filejob_set.filter ?
-            # A second call to this route would fire the md5 again,
+        elif not last_rsjob:
+            # There is no rsync job for this file, means it's old or somehow
+            # errored # TODO how to report to user? File is also not OK checked
+            tstate = 'wait'
+        elif last_rsjob.state not in jobutil.JOBSTATES_DONE:
+            # File being rsynced and optionally md5checked (or it crashed, job
+            # errored, revoked, wait for system or admin to catch job)
+            # WARNING: this did not work when doing sfn.filejob_set.filter ?
+            # A second call to this route would fire the rsync/md5 job again,
             # until the file was checked. But in theory it'd work, and by hand too.
             # Maybe a DB or cache thing, however 3seconds between calls should be enough?
             # Maybe NGINX caches stuff, add some sort of no-cache into the header of request in client producer.py
-            # auto update producer would be nice, when it calls server at intervals, then downloads_automaticlly
-            # a new version of itself?
-
-            # File not checked, so either md5 check in progress, or it crashed
             tstate = 'wait'
 
-        elif sfn.md5 != rfn.source_md5:
+        elif last_rsjob.state == jobutil.Jobstates.DONE:
             # MD5 on disk is not same as registered MD5, corrupted transfer
             # reset MD5 on stored file to make sure no NEW stored files are created
             # basically setting its state to pre-transfer state
@@ -425,17 +439,11 @@ def get_files_transferstate(request):
             tstate = 'transfer'
 
         else:
-            # No MD5 job exists for file, fire one, do not report back. Unlikely to happen often
-            # since MD5 is checked in transferred-view
-            if sfn.filetype.is_folder:
-                jobutil.create_job('unzip_raw_datadir_md5check', source_md5=rfn.source_md5, sf_id=sfn.id)
-            else:
-                jobutil.create_job('get_md5', source_md5=rfn.source_md5, sf_id=sfn.id)
+            # There is an unlikely rsync job which is canceled, requeue it
+            jobutil.create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst,
+                dst_sharename=settings.TMPSHARENAME)
             tstate = 'wait'
     response = {'transferstate': tstate}
-    if tstate == 'transfer':
-        tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
-        response['scp'] = f'{settings.STORAGE_USER}@{tmpshare.uri}:{tmpshare.share}'
     return JsonResponse(response)
 
 

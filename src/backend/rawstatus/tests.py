@@ -72,13 +72,16 @@ class TransferStateTest(BaseFilesTest):
         self.assertEqual(rj['transferstate'], 'transfer')
 
     def test_transferstate_wait(self):
+        upload_file = os.path.join(settings.TMP_UPLOADPATH,
+                f'{self.trfraw.pk}.{self.trfsf.filetype.filetype}')
+        jm.Job.objects.create(funcname='rsync_transfer', kwargs={
+            'sf_id': self.trfsf.pk, 'src_path': upload_file,
+            'dst_sharename': settings.TMPSHARENAME}, timestamp=timezone.now())
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': self.token, 'fnid': self.trfraw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'wait')
-        job = jm.Job.objects.get()
-        self.assertEqual(job.funcname, 'get_md5')
-        self.assertEqual(job.kwargs, {'sf_id': self.trfsf.id, 'source_md5': 'defghi123'})
+        # TODO test for no-rsync-job exists (wait but talk to admin)
 
     def test_failing_transferstate(self):
         # test all the fail HTTPs
