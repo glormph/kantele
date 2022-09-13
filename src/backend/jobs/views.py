@@ -283,7 +283,13 @@ def downloaded_file(request):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.get(pk=data['sf_id'])
     # Delete file in tmp download area
-    fpath = os.path.join(settings.TMP_UPLOADPATH, str(sfile.pk))
+    if data['do_md5check']:
+        sfile.checked = sfile.rawfile.source_md5 == data['md5']
+    else:
+        # rsync checks integrity so we should not have problems here
+        sfile.checked = True
+    sfile.save()
+    fpath = os.path.join(settings.TMP_UPLOADPATH, f'{sfile.rawfile.pk}.{sfile.filetype.filetype}')
     os.unlink(fpath)
     if 'task' in data:
         set_task_done(data['task'])

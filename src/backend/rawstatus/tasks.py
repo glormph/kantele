@@ -158,11 +158,11 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
     on its relevant file, in case the transferred file is corrupt'''
     # FIXME need to take care of e.g. zipped uploads which do not contain relevant file
     # (use case e.g. microscopy images), unlike e.g. .d folders from Bruker.
-    ssh_host = urlsplit(KANTELEHOST).netloc
+    ssh_host = urlsplit(settings.KANTELEHOST).netloc
     ssh_srcpath = f'{settings.RSYNC_SSHUSER}@{ssh_host}:{srcpath}'
     dstfpath = os.path.join(settings.SHAREMAP[dstsharename], dstpath)
     cmd = ['rsync', '-avz', '-e',
-            f'"ssh -o StrictHostKeyChecking=no -p {settings.RSYNC_SSHPORT} -i {settings.RSYNC_SSHKEY}"',
+            f'ssh -o StrictHostKeyChecking=no -p {settings.RSYNC_SSHPORT} -i {settings.RSYNC_SSHKEY}',
             ssh_srcpath, dstfpath]
     try:
         subprocess.run(cmd, check=True)
@@ -172,7 +172,7 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
         except MaxRetriesExceededError:
             taskfail_update_db(self.request.id)
             raise
-    postdata = {'sfid': sfid, 'client_id': settings.APIKEY, 'task': self.request.id, 
+    postdata = {'sf_id': sfid, 'client_id': settings.APIKEY, 'task': self.request.id, 
             'do_md5check': do_unzip}
     if do_unzip:
         # Unzip if needed, in that case recheck MD5 to be sure of the zipping has been correct
@@ -213,16 +213,17 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
             raise
         postdata.update({'md5': md5result})
     # Done, notify database
-    url = urljoin(settings.KANTELEHOST, reverse('jobs:rsync_done'))
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:download_file'))
+    msg = f'Rsync used for file transfer of {dstfpath} with id {sfid} to storage'
     try:
-        update_db(url, postdata, msg)
+        update_db(url, json=postdata, msg=msg)
     except RuntimeError:
         try:
             self.retry(countdown=60)
         except MaxRetriesExceededError:
-            update_db(url, postdata, msg)
+            #update_db(url, json=postdata, msg=msg)
             raise
-    return result
+    print(msg)
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
