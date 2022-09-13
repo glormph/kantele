@@ -35,7 +35,7 @@ def calc_md5(fnpath):
     return hash_md5.hexdigest()
 
 
-@shared_task(queue=settings.QUEUE_STORAGE, bind=True)
+@shared_task(queue=settings.QUEUE_FILE_DOWNLOAD, bind=True)
 def download_uploaded_file_to_storage(self, sf_id, sharename, path, fname, fn_md5):
     postdata = {'client_id': settings.APIKEY, 'task': self.request.id, 'sf_id': sf_id}
     joburl = urljoin(settings.KANTELEHOST, reverse('jobs:download_file'))
@@ -84,7 +84,7 @@ def search_raws_downloaded(serversharename, dirname):
     return raw_paths_found
 
 
-@shared_task(queue=settings.QUEUE_PXDOWNLOAD, bind=True)
+@shared_task(queue=settings.QUEUE_FILE_DOWNLOAD, bind=True)
 def register_downloaded_external_raw(self, fpath, sf_id, raw_id, sharename, dset_id):
     """Downloaded external files on inbox somewhere get MD5 checked and associate
     with a dataset
@@ -110,7 +110,7 @@ def register_downloaded_external_raw(self, fpath, sf_id, raw_id, sharename, dset
     print('MD5 of {} is {}, registered in DB'.format(dstfile, postdata['md5']))
 
 
-@shared_task(queue=settings.QUEUE_PXDOWNLOAD, bind=True)
+@shared_task(queue=settings.QUEUE_FILE_DOWNLOAD, bind=True)
 def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, shasum, size, sharename, dset_id):
     """Downloads PX file, validate by file size and SHA1, get MD5.
     Uses separate queue on storage, because otherwise trouble when 
@@ -151,7 +151,7 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, shasum, size, s
     print('MD5 of {} is {}, registered in DB'.format(dstfile, postdata['md5']))
 
 
-@shared_task(queue=settings.QUEUE_STORAGE, bind=True)
+@shared_task(queue=settings.QUEUE_FILE_DOWNLOAD, bind=True)
 def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
     '''Uses rsync to transfer uploaded file from KANTELEHOST to storage server.
     In case of a zipped folder transfer, the file is unzipped and an MD5 check is done 
