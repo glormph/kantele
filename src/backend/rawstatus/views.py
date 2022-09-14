@@ -176,62 +176,58 @@ def browser_userupload(request):
         uploadable_filetypes = StoredFileType.objects.filter(name__in=['database'])
         return JsonResponse({'upload_ftypes': {ft.id: ft.filetype for ft in uploadable_filetypes}})
     data = request.POST
-    # create userfileupload model (incl. fake token)
     try:
         int(data['ftype_id'])
     except ValueError:
         return JsonResponse({'success': False, 'error': 'Please select a file type '
         f'{data["ftype_id"]}'})
+    desc = data['desc'].strip()
+    if desc == '':
+        return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+    # create userfileupload model (incl. fake token)
     producer = Producer.objects.get(shortname='admin')
     upload = create_upload_token(data['ftype_id'], request.user.id, producer)
     # tmp write file 
     upfile = request.FILES['file']
     dighash = md5()
-    desc = data['desc'].strip()
-    if desc == '':
-        return JsonResponse({'success': False, 'error': 'A description for this file is required'})
-    err_resp = {'error': 'File is not correct FASTA', 'success': False}
+    notfa_err_resp = {'error': 'File is not correct FASTA', 'success': False}
+        # check if it is correct FASTA (maybe add more parsing later)
+        # Flush it to disk just in case, but seek is usually enough
     with NamedTemporaryFile(mode='w+') as fp:
         for chunk in upfile.chunks():
             try:
                 text = chunk.decode('utf-8')
             except UnicodeDecodeError:
-                return JsonResponse(err_resp)
+                return JsonResponse(notfa_err_resp)
             else:
                 fp.write(text)
             dighash.update(chunk)
-        # check if it is correct FASTA (maybe add more parsing later)
-        # Flush it to disk just in case, but seek is usually enough
-        fp.flush()
-        os.fsync(fp.fileno())
+        # stay in context until copied, else tempfile is deleted
         fp.seek(0)
         if not any(SeqIO.parse(fp, 'fasta')):
-            return JsonResponse(err_resp)
+            return JsonResponse(notfa_err_resp)
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
-
-        # we already have this file by MD5, get the stored files
-        sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
-        if sfns.count() == 1:
-            return JsonResponse({'error': 'This file is already in the '
-                f'system: {sfns.get().filename}'}, status=403)
-        elif sfns.count():
-            return JsonResponse({'error': 'Multiple files already found, this '
-                'should not happen, please inform your administrator'}, status=403)
         dst = os.path.join(settings.TMP_UPLOADPATH, f'{raw["file_id"]}.{upload.filetype.filetype}')
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)
-    # never fire job to MD5 check browser-userfiles, 
-    # MD5 is checked on delivery so, just assume checked = True
+    sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
+    if sfns.count() == 1:
+        os.unlink(dst)
+        return JsonResponse({'error': 'This file is already in the '
+            f'system: {sfns.get().filename}'})
+    elif sfns.count():
+        os.unlink(dst)
+        return JsonResponse({'error': 'Multiple files already found, this '
+            'should not happen, please inform your administrator'}, status=403)
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
         filename=f'userfile_{raw["file_id"]}_{upfile.name}',
         checked=True, filetype=upload.filetype,
         md5=dighash, path=settings.USERFILEDIR,
         servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
     UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
-    jobutil.create_job('download_file', sf_id=sfile.id)
-        
+    jobutil.create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
     return JsonResponse({'error': False, 'success': 'Succesfully uploaded file to '
         f'become {sfile.filename}. File will be accessible on storage soon.'})
 

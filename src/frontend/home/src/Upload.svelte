@@ -35,7 +35,12 @@ async function uploadFile() {
     headers: {'X-CSRFToken': csrftoken},
   })
   if (!resp.ok) {
-    uploadError = 'Something went wrong trying to send file to server, contact admin';
+    if (resp.status != 500) {
+      let errors = await resp.json();
+      uploadError = `${errors.error} - Please contact admin`;
+    } else { 
+      uploadError = `Status ${resp.status} Something went wrong trying to send file to server, contact admin`;
+    }
     return;
   } else {
     resp = await resp.json();
