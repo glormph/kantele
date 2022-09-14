@@ -182,12 +182,11 @@ def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **
     return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata)
 
 
-def transfer_file(url, fpath, fn_id, token, location, libdesc, userdesc, cookies, host):
-    """Transfer location will be something like login@server:/path/to/storage"""
+def transfer_file(url, fpath, fn_id, token, libdesc, userdesc, cookies, host):
     # use fpath/basename instead of fname, to get the
     # zipped file name if needed, instead of the normal fn
     filename = os.path.basename(fpath)
-    logging.info(f'Transferring {fpath} to {location}')
+    logging.info(f'Transferring {fpath} to {host}')
     with open(fpath, 'rb') as fp:
         stddata = {'fn_id': fn_id, 'token': token, 'filename': filename}
         filedata = {'file': fp}
@@ -286,9 +285,8 @@ def log_listener(log_q):
             logger.handle(logrec)
 
 
-def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox, 
-        single_file_id, kantelehost, clientname, scp_full, keyfile, library_desc, user_desc):
-    # FIXME scp_full to another location thing
+def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox,
+        single_file_id, kantelehost, clientname, library_desc, user_desc):
     '''This process does the registration and the transfer of files'''
     # Start getting the leftovers from previous run
     fnstate_url = urljoin(kantelehost, 'files/transferstate/')
@@ -416,7 +414,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 continue
             try:
                 resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
-                        scp_full, library_desc, user_desc, cookies, kantelehost)
+                        library_desc, user_desc, cookies, kantelehost)
             except subprocess.CalledProcessError:
                 logger.warning('Could not transfer {}'.format(
                     fndata['fpath']))
@@ -461,8 +459,8 @@ def main():
             help='Ledger file to use, or to force ledgerless single-file transfer '
             'to use in case of e.g. re-zipping etc.')
     parser.add_argument('--file', dest='file', default=False, type=str, help='File to upload')
-    parser.add_argument('--config', dest='configfn', default=False, type=str, help='Config file if any')
-    parser.add_argument('--scp-dest', dest='scp_dest', default=False, type=str, help='Full SCP destination path like user@server:/path/')
+    parser.add_argument('--config', dest='configfn', default=False, type=str,
+            help='Config file if any')
     parser.add_argument('--library-description', type=str, dest='libdesc', default=False,
             help='In case you want a library file to be uploaded (will be shared for analysis), '
             'provide its description here (in quotes)')
@@ -480,10 +478,7 @@ def main():
         with open(args.configfn) as fp:
             config = json.load(fp)
     else:
-        if not args.key or not args.scp_dest:
-            print('Must pass all of --key, --scp-dest on command line or use a JSON config file')
-            sys.exit(1)
-        config = {'key': args.key, 'scp_full': args.scp_dest}
+        config = {}
 
     proc_log_configure(logqueue)
     logger = logging.getLogger(f'{config.get("hostname", "")}.producer.main')
@@ -566,7 +561,7 @@ def main():
         sys.exit(1)
     register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger, config, args.configfn,
         donebox, single_file_id, config.get('host'), config.get('hostname'),
-        config.get('scp_full'), config.get('key'), args.libdesc, args.userdesc))
+        args.libdesc, args.userdesc))
     register_p.start()
     logproc = Process(target=log_listener, args=(logqueue,))
     logproc.start()
