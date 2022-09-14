@@ -390,8 +390,7 @@ def get_files_transferstate(request):
         sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').get()
         up_dst = os.path.join(settings.TMP_UPLOADPATH, f'{rfn.pk}.{sfn.filetype.filetype}')
         rsync_jobs = jm.Job.objects.filter(funcname='rsync_transfer',
-                kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst,
-                kwargs__dst_sharename=settings.TMPSHARENAME).order_by('-timestamp')
+                kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst).order_by('-timestamp')
         # fetching from DB here to avoid race condition in if/else block
         try:
             last_rsjob = rsync_jobs.last()
@@ -436,8 +435,7 @@ def get_files_transferstate(request):
 
         else:
             # There is an unlikely rsync job which is canceled, requeue it
-            jobutil.create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst,
-                dst_sharename=settings.TMPSHARENAME)
+            jobutil.create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst)
             tstate = 'wait'
     response = {'transferstate': tstate}
     return JsonResponse(response)
@@ -537,8 +535,7 @@ def transfer_file(request):
     elif userdesc:
         # TODO, external producer, actual raw data, otherwise userfile with description
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
-    jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst,
-            dst_sharename=dstshare.name)
+    jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
