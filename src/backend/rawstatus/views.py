@@ -517,6 +517,7 @@ def transfer_file(request):
                 dighash.update(chunk)
         dighash = dighash.hexdigest() 
         if dighash != rawfn.source_md5:
+            os.unlink(upload_dst)
             return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
     os.chmod(upload_dst, 0o644)
 
