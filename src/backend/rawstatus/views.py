@@ -831,7 +831,7 @@ def download_px_project(request):
         if not rawfn['stored']:
             ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw').id
             sfn = StoredFile(rawfile_id=rawfn['file_id'], filetype_id=ftid,
-                             servershare=tmpshare, path=settings.TMPPATH,
+                             servershare=tmpshare, path='',
                              filename=filename, md5='', checked=False)
             sfn.save()
     rsjob = jobutil.create_job(
