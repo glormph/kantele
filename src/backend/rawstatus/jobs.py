@@ -10,6 +10,15 @@ from kantele import settings
 from jobs.jobs import BaseJob, SingleFileJob
 
 
+def create_upload_dst_web(rfid, ftype):
+    '''To create path for uploaded files'''
+    return os.path.join(settings.TMP_UPLOADPATH, f'{rfid}.{ftype}')
+
+def get_host_upload_dst(web_dst):
+    '''To get path for uploaded files on the host (not the container)'''
+    return web_dst.replace(settings.TMP_UPLOADPATH, settings.HOST_UPLOADDIR, 1)
+
+
 class RsyncFileTransfer(SingleFileJob):
     refname = 'rsync_transfer'
     task = tasks.rsync_transfer_file
@@ -17,8 +26,8 @@ class RsyncFileTransfer(SingleFileJob):
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         dstpath = os.path.join(sfile.path, sfile.filename)
-        self.run_tasks.append(((sfile.id, kwargs['src_path'], dstpath,
-            sfile.servershare.name, sfile.filetype.is_folder), {}))
+        self.run_tasks.append(((sfile.id, get_host_upload_dst(kwargs['src_path']),
+            dstpath, sfile.servershare.name, sfile.filetype.is_folder), {}))
 
 
 class CreatePDCArchive(SingleFileJob):

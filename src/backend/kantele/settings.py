@@ -21,6 +21,7 @@ WEBSHARE = os.environ.get('SERVABLE_FILE_PATH')
 
 # Tmp file storage for uploaded files to be transported to storage
 TMP_UPLOADPATH = os.environ.get('TMP_UPLOADPATH')
+HOST_UPLOADDIR = os.environ.get('HOST_UPLOADDIR')
 
 # DSM backups to tape
 DSM_DIR = os.environ.get('DSM_DIR')

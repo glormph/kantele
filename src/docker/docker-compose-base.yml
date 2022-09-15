@@ -22,6 +22,7 @@ services:
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
             TMP_UPLOADPATH: "${CONTAINER_UPLOADPATH}"
+            HOST_UPLOADDIR: "${HOST_UPLOADPATH}"
             SERVABLE_FILE_PATH: "${CONTAINER_ANALYSISPATH}"
         volumes:
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
@@ -73,3 +74,5 @@ services:
             RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
+            TMP_UPLOADPATH: "${CONTAINER_UPLOADPATH}"
+            HOST_UPLOADDIR: "${HOST_UPLOADPATH}"

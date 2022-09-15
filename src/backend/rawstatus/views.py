@@ -208,7 +208,7 @@ def browser_userupload(request):
             return JsonResponse(notfa_err_resp)
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
-        dst = os.path.join(settings.TMP_UPLOADPATH, f'{raw["file_id"]}.{upload.filetype.filetype}')
+        dst = rsjobs.create_upload_dst_web(raw['file_id'], upload.filetype.filetype)
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)
@@ -388,7 +388,7 @@ def get_files_transferstate(request):
         # File in system, should be transferred and being rsynced/unzipped, or
         # errored, or done.
         sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').get()
-        up_dst = os.path.join(settings.TMP_UPLOADPATH, f'{rfn.pk}.{sfn.filetype.filetype}')
+        up_dst = rsjobs.create_upload_dst_web(rfn.pk, sfn.filetype.filetype)
         rsync_jobs = jm.Job.objects.filter(funcname='rsync_transfer',
                 kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst).order_by('-timestamp')
         # fetching from DB here to avoid race condition in if/else block
@@ -499,7 +499,7 @@ def transfer_file(request):
             'deleted file, consider reactivating from backup, or contact admin'}, status=403)
     upfile = request.FILES['file']
     dighash = md5()
-    upload_dst = os.path.join(settings.TMP_UPLOADPATH, f'{rawfn.pk}.{upload.filetype.filetype}')
+    upload_dst = rsjobs.create_upload_dst_web(rawfn.pk, upload.filetype.filetype)
     # Write file from /tmp (or in memory if small) to its destination in upload folder
     # We could do shutil.move() if /tmp file, for faster performance, but on docker
     # with bound host folders this is a read/write operation and not a simple atomic mv
