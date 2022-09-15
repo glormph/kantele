@@ -20,7 +20,7 @@ from kantele import settings
 from rawstatus.tasks import calc_md5
 
 
-@shared_task(bind=True, queue=settings.QUEUE_PXDOWNLOAD)
+@shared_task(bind=True, queue=settings.QUEUE_FILE_DOWNLOAD)
 def check_ensembl_uniprot_fasta_download(self):
     """Checks if there is a new version of ENSEMBL data,
     downloads it to system over FTP"""

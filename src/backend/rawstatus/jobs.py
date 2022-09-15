@@ -10,15 +10,15 @@ from kantele import settings
 from jobs.jobs import BaseJob, SingleFileJob
 
 
-
-class GetMD5(SingleFileJob):
-    refname = 'get_md5'
-    task = tasks.get_md5
+class RsyncFileTransfer(SingleFileJob):
+    refname = 'rsync_transfer'
+    task = tasks.rsync_transfer_file
 
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
-        fnpath = os.path.join(sfile.path, sfile.filename)
-        self.run_tasks.append(((kwargs['source_md5'], sfile.id, fnpath, sfile.servershare.name), {}))
+        dstpath = os.path.join(sfile.path, sfile.filename)
+        self.run_tasks.append(((sfile.id, kwargs['src_path'], dstpath,
+            sfile.servershare.name, sfile.filetype.is_folder), {}))
 
 
 class CreatePDCArchive(SingleFileJob):

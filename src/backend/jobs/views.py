@@ -38,7 +38,7 @@ alljobs = [
         dsjobs.ReactivateDeletedDataset,
         dsjobs.DeleteDatasetPDCBackup,
         dsjobs.RenameProject,
-        rsjobs.GetMD5,
+        rsjobs.RsyncFileTransfer,
         rsjobs.CreatePDCArchive,
         rsjobs.RestoreFromPDC,
         rsjobs.UnzipRawFolder,
@@ -142,13 +142,19 @@ def renamed_project(request):
 
 
 @require_POST
-def set_md5(request):
-    if 'client_id' not in request.POST or not taskclient_authorized(
-            request.POST['client_id'], [settings.STORAGECLIENT_APIKEY]):
+def set_file_stored_status(request):
+    '''Called after transfer to storage from web upload bay'''
+    data = json.loads(request.body.decode('utf-8'))
+    if 'client_id' not in data or not taskclient_authorized(
+            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    StoredFile.objects.filter(pk=request.POST['sfid']).update(md5=request.POST['md5'],
-            checked=request.POST['source_md5'] == request.POST['md5'])
-    print('Stored file MD5 checked and saved')
+    sfile = StoredFile.objects.select_related('rawfile').get(pk=data['sfid'])
+    if data['do_md5check']:
+        sfile.checked = sfile.rawfile.source_md5 == data['md5']
+    else:
+        # rsync checks integrity so we should not have problems here
+        sfile.checked = True
+    sfile.save()
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
     return HttpResponse()
@@ -277,7 +283,13 @@ def downloaded_file(request):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.get(pk=data['sf_id'])
     # Delete file in tmp download area
-    fpath = os.path.join(settings.TMP_UPLOADPATH, str(sfile.pk))
+    if data['do_md5check']:
+        sfile.checked = sfile.rawfile.source_md5 == data['md5']
+    else:
+        # rsync checks integrity so we should not have problems here
+        sfile.checked = True
+    sfile.save()
+    fpath = os.path.join(settings.TMP_UPLOADPATH, f'{sfile.rawfile.pk}.{sfile.filetype.filetype}')
     os.unlink(fpath)
     if 'task' in data:
         set_task_done(data['task'])

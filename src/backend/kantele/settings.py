@@ -31,7 +31,7 @@ ANALYSISCLIENT_APIKEY = os.environ.get('ANALYSISCLIENT_APIKEY')
 ADMIN_APIKEY = os.environ.get('ADMIN_APIKEY')
 CLIENT_APIKEYS = [STORAGECLIENT_APIKEY, ANALYSISCLIENT_APIKEY, ADMIN_APIKEY]
 QUEUE_STORAGE = 'mv_md5_storage'
-QUEUE_PXDOWNLOAD = 'pxdownload'
+QUEUE_FILE_DOWNLOAD = 'file_download'
 QUEUE_PDC = 'pdc_archive'
 QUEUE_NXF = 'nextflow'
 QUEUE_QC_NXF = 'qc_nextflow'
@@ -39,22 +39,23 @@ QUEUE_SEARCH_INBOX = 'scaninbox'
 
 PROTOCOL = os.environ.get('PROTOCOL')
 KANTELEHOST = '{}://{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
+RSYNC_SSHUSER = os.environ.get('RSYNC_SSHUSER')
+RSYNC_SSHKEY = os.environ.get('RSYNC_SSHKEY')
+RSYNC_SSHPORT = os.environ.get('RSYNC_SSHPORT')
+
 UPLOAD_URL = 'uploads'
 TMPSHARENAME = 'tmp'
 STORAGESHARENAME = 'storage'
 ANALYSISSHARENAME = 'analysis'
 WEBSHARENAME = 'web'
 
-TMP_STORAGE_KEYFILE = os.environ.get('STORAGE_KEYFILE')
-STORAGE_USER = os.environ.get('STORAGE_USER')
-STORAGE_HOST = os.environ.get('STORAGE_HOST')
-TMP_SCP_PATH = '{}@{}:{}'.format(STORAGE_USER, STORAGE_HOST, TMPSHARE)
-
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
             STORAGESHARENAME: STORAGESHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
             WEBSHARENAME: WEBSHARE,
             }
+TMPPATH = ''
+
 NGINX_ANALYSIS_REDIRECT = os.environ.get('NGINX_ANALYSIS_REDIRECT')
 SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html']
 

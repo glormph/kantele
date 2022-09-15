@@ -7,7 +7,6 @@ from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Q
 
 from datetime import timedelta, datetime
 import os
@@ -177,61 +176,58 @@ def browser_userupload(request):
         uploadable_filetypes = StoredFileType.objects.filter(name__in=['database'])
         return JsonResponse({'upload_ftypes': {ft.id: ft.filetype for ft in uploadable_filetypes}})
     data = request.POST
-    # create userfileupload model (incl. fake token)
     try:
         int(data['ftype_id'])
     except ValueError:
         return JsonResponse({'success': False, 'error': 'Please select a file type '
         f'{data["ftype_id"]}'})
+    desc = data['desc'].strip()
+    if desc == '':
+        return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+    # create userfileupload model (incl. fake token)
     producer = Producer.objects.get(shortname='admin')
     upload = create_upload_token(data['ftype_id'], request.user.id, producer)
     # tmp write file 
     upfile = request.FILES['file']
     dighash = md5()
-    desc = data['desc'].strip()
-    if desc == '':
-        return JsonResponse({'success': False, 'error': 'A description for this file is required'})
-    err_resp = {'error': 'File is not correct FASTA', 'success': False}
+    notfa_err_resp = {'error': 'File is not correct FASTA', 'success': False}
+        # check if it is correct FASTA (maybe add more parsing later)
+        # Flush it to disk just in case, but seek is usually enough
     with NamedTemporaryFile(mode='w+') as fp:
         for chunk in upfile.chunks():
             try:
                 text = chunk.decode('utf-8')
             except UnicodeDecodeError:
-                return JsonResponse(err_resp)
+                return JsonResponse(notfa_err_resp)
             else:
                 fp.write(text)
             dighash.update(chunk)
-        # check if it is correct FASTA (maybe add more parsing later)
-        # Flush it to disk just in case, but seek is usually enough
-        fp.flush()
-        os.fsync(fp.fileno())
+        # stay in context until copied, else tempfile is deleted
         fp.seek(0)
         if not any(SeqIO.parse(fp, 'fasta')):
-            return JsonResponse(err_resp)
+            return JsonResponse(notfa_err_resp)
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
-
-        # we already have this file by MD5, get the stored files
-        sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
-        if sfns.count() == 1:
-            return JsonResponse({'error': 'This file is already in the '
-                f'system: {sfns.get().filename}'})
-        elif sfns.count():
-            return JsonResponse({'error': 'Multiple files already found, this '
-                'should not happen, please inform your administrator'})
-        # never MD5 check browser-userfiles, MD5 is checked on delivery so, just assume checked = True
-        sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
-                filename=f'userfile_{raw["file_id"]}_{upfile.name}',
-                       checked=True, filetype=upload.filetype,
-                       md5=dighash, path=settings.USERFILEDIR,
-                       servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-        ufile = UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
-        dst = os.path.join(settings.TMP_UPLOADPATH, str(sfile.pk))
+        dst = os.path.join(settings.TMP_UPLOADPATH, f'{raw["file_id"]}.{upload.filetype.filetype}')
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)
-    jobutil.create_job('download_file', sf_id=sfile.id)
-        
+    sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
+    if sfns.count() == 1:
+        os.unlink(dst)
+        return JsonResponse({'error': 'This file is already in the '
+            f'system: {sfns.get().filename}'})
+    elif sfns.count():
+        os.unlink(dst)
+        return JsonResponse({'error': 'Multiple files already found, this '
+            'should not happen, please inform your administrator'}, status=403)
+    sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
+        filename=f'userfile_{raw["file_id"]}_{upfile.name}',
+        checked=True, filetype=upload.filetype,
+        md5=dighash, path=settings.USERFILEDIR,
+        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
+    UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
+    jobutil.create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
     return JsonResponse({'error': False, 'success': 'Succesfully uploaded file to '
         f'become {sfile.filename}. File will be accessible on storage soon.'})
 
@@ -389,8 +385,22 @@ def get_files_transferstate(request):
         print(errmsg)
         return JsonResponse({'error': errmsg}, status=409)
     else:
-        # need to unzip, then MD5 check, then backup
+        # File in system, should be transferred and being rsynced/unzipped, or
+        # errored, or done.
         sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').get()
+        up_dst = os.path.join(settings.TMP_UPLOADPATH, f'{rfn.pk}.{sfn.filetype.filetype}')
+        rsync_jobs = jm.Job.objects.filter(funcname='rsync_transfer',
+                kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst).order_by('-timestamp')
+        # fetching from DB here to avoid race condition in if/else block
+        try:
+            last_rsjob = rsync_jobs.last()
+        except jm.Job.DoesNotExist:
+            last_rsjob = False
+        # Refresh to make sure we dont get race condition where it is checked
+        # while we fetching jobs above and the non-checked/done job will result
+        # in a retransfer
+        sfn.refresh_from_db()
+
         if sfn.checked:
             # File transfer and check finished
             tstate = 'done'
@@ -401,21 +411,21 @@ def get_files_transferstate(request):
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
 
-        elif jm.Job.objects.filter(Q(funcname='get_md5') | Q(funcname='unzip_raw_datadir_md5check'),
-                kwargs={'sf_id': sfn.pk, 'source_md5': rfn.source_md5}).exclude(
-                state__in=jobutil.JOBSTATES_DONE):
-            # this did not work when doing filejob_set.filter ?
-            # A second call to this route would fire the md5 again,
+        elif not last_rsjob:
+            # There is no rsync job for this file, means it's old or somehow
+            # errored # TODO how to report to user? File is also not OK checked
+            tstate = 'wait'
+        elif last_rsjob.state not in jobutil.JOBSTATES_DONE:
+            # File being rsynced and optionally md5checked (or it crashed, job
+            # errored, revoked, wait for system or admin to catch job)
+            # WARNING: this did not work when doing sfn.filejob_set.filter ?
+            # A second call to this route would fire the rsync/md5 job again,
             # until the file was checked. But in theory it'd work, and by hand too.
             # Maybe a DB or cache thing, however 3seconds between calls should be enough?
             # Maybe NGINX caches stuff, add some sort of no-cache into the header of request in client producer.py
-            # auto update producer would be nice, when it calls server at intervals, then downloads_automaticlly
-            # a new version of itself?
-
-            # File not checked, so either md5 check in progress, or it crashed
             tstate = 'wait'
 
-        elif sfn.md5 != rfn.source_md5:
+        elif last_rsjob.state == jobutil.Jobstates.DONE:
             # MD5 on disk is not same as registered MD5, corrupted transfer
             # reset MD5 on stored file to make sure no NEW stored files are created
             # basically setting its state to pre-transfer state
@@ -424,17 +434,10 @@ def get_files_transferstate(request):
             tstate = 'transfer'
 
         else:
-            # No MD5 job exists for file, fire one, do not report back. Unlikely to happen often
-            # since MD5 is checked in transferred-view
-            if sfn.filetype.is_folder:
-                jobutil.create_job('unzip_raw_datadir_md5check', source_md5=rfn.source_md5, sf_id=sfn.id)
-            else:
-                jobutil.create_job('get_md5', source_md5=rfn.source_md5, sf_id=sfn.id)
+            # There is an unlikely rsync job which is canceled, requeue it
+            jobutil.create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst)
             tstate = 'wait'
     response = {'transferstate': tstate}
-    if tstate == 'transfer':
-        tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
-        response['scp'] = f'{settings.STORAGE_USER}@{tmpshare.uri}:{tmpshare.share}'
     return JsonResponse(response)
 
 
@@ -455,78 +458,86 @@ def process_file_confirmed_ready(rfn, sfn):
 
 
 @require_POST
-def file_transferred(request):
-    """Treats POST requests with:
-        - fn_id
-    Starts checking file MD5 in background
-    """
-    data = json.loads(request.body.decode('utf-8'))
+def transfer_file(request):
+    # FIXME HTTP need long view time 
+    # 
+    # FIXME add share name to upload to and path
+    '''HTTP based file upload'''
+    data = request.POST
     try:
         token = data['token']
-        fn_id = data['fn_id']
-        libdesc, userdesc = data['libdesc'], data['userdesc']
+        fn_id = int(data['fn_id'])
         fname = data['filename']
     except KeyError as error:
-        print('POST request to file_transferred with missing parameter, '
+        print('POST request to transfer_file with missing parameter, '
               '{}'.format(error))
         return JsonResponse({'error': 'Bad request'}, status=400)
+    except ValueError:
+        print('POST request to transfer_file with incorrect fn_id, '
+              '{}'.format(error))
+        return JsonResponse({'error': 'Bad request'}, status=400)
+    libdesc = data.get('libdesc', False)
+    userdesc = data.get('userdesc', False)
     upload = validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
-    tmpshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+    # First check if everything is OK wrt rawfile/storedfiles
     try:
         rawfn = RawFile.objects.get(pk=fn_id)
     except RawFile.DoesNotExist:
         errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
         print(errmsg)
         return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
+    sfns = StoredFile.objects.filter(rawfile_id=fn_id)
+    if sfns.count():
+        # By default do not overwrite, although deleted files could trigger this
+        # as well. In that case, have admin remove the files from DB.
+        # TODO create exception for that if ever needed? data['overwrite'] = True?
+        # Also look at below get_or_create call and checking created
+        return JsonResponse({'error': 'This file is already in the '
+            f'system: {sfns.get().filename}, if you are re-uploading a previously '
+            'deleted file, consider reactivating from backup, or contact admin'}, status=403)
+    upfile = request.FILES['file']
+    dighash = md5()
+    upload_dst = os.path.join(settings.TMP_UPLOADPATH, f'{rawfn.pk}.{upload.filetype.filetype}')
+    # Write file from /tmp (or in memory if small) to its destination in upload folder
+    # We could do shutil.move() if /tmp file, for faster performance, but on docker
+    # with bound host folders this is a read/write operation and not a simple atomic mv
+    # That means we can do MD5 check at hardly an extra cost, it is hardly slower than
+    # not doing it if we're r/w anyway. Thus we can skip using an extra bg job
+    # However, we do not check MD5 on zipped arrival files:
+    if upload.filetype.is_folder:
+        with open(upload_dst, 'wb+') as fp:
+            for chunk in upfile.chunks():
+                fp.write(chunk)
+    else:
+        with open(upload_dst, 'wb+') as fp:
+            for chunk in upfile.chunks():
+                fp.write(chunk)
+                dighash.update(chunk)
+        dighash = dighash.hexdigest() 
+        if dighash != rawfn.source_md5:
+            os.unlink(upload_dst)
+            return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
+    os.chmod(upload_dst, 0o644)
+
+    # Now prepare for move to proper destination
+    dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
     file_trf, created = StoredFile.objects.get_or_create(
-            rawfile=rawfn, filetype=upload.filetype,
-            md5=rawfn.source_md5,
-            defaults={'servershare': tmpshare, 'path': '',
+            rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
+            defaults={'servershare': dstshare, 'path': settings.TMPPATH,
                 'filename': fname, 'checked': False})
     if not created:
-        print('File already registered as transferred, rerunning MD5 check in case new '
-                'file arrived')
-        file_trf.checked = False
-        file_trf.save()
-    elif token and libdesc:
+        # This could happen in the future when there is some kind of bypass of the above
+        # check sfns.count(). 
+        print('File already registered as transferred')
+    elif libdesc:
         LibraryFile.objects.create(sfile=file_trf, description=libdesc)
-    elif token and userdesc:
+    elif userdesc:
         # TODO, external producer, actual raw data, otherwise userfile with description
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
-    # if re-transfer happens and second time it is corrupt, overwriting old file
-    # then we have a problem! So always fire MD5 job, not only on new files
-    if file_trf.filetype.is_folder:
-        jobutil.create_job('unzip_raw_datadir_md5check', source_md5=rawfn.source_md5, sf_id=file_trf.id)
-    else:
-        jobutil.create_job('get_md5', source_md5=rawfn.source_md5, sf_id=file_trf.id)
+    jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
-
-
-def do_md5_check(file_transferred):
-    file_registered = file_transferred.rawfile
-    if not file_transferred.md5:
-        return JsonResponse({'fn_id': file_registered.id, 'md5_state': False})
-    elif file_registered.source_md5 == file_transferred.md5:
-        if not file_transferred.checked:
-            file_transferred.checked = True
-            file_transferred.save()
-        if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and not
-                PDCBackedupFile.objects.filter(storedfile_id=file_transferred.id)):
-            # Backup after transfer has succeeded (MD5 checked)
-            if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
-                jobutil.create_job('unzip_raw_datadir', sf_id=file_transferred.id)
-                ftype_isdir = True
-            else:
-                ftype_isdir = False
-            jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id, isdir=ftype_isdir)
-            fn = file_transferred.filename
-            if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(file_registered.producer, 'msinstrument'): 
-                singlefile_qc(file_transferred.rawfile, file_transferred)
-        return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
-    else:
-        return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'error'})
 
 
 def singlefile_qc(rawfile, storedfile):
@@ -667,8 +678,6 @@ def download_instrument_package(request):
         'filetype_id': prod.msinstrument.filetype_id,
         'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
         'host': settings.KANTELEHOST,
-        'key': settings.TMP_STORAGE_KEYFILE,
-        'scp_full': settings.TMP_SCP_PATH,
         'md5_stable_fns': settings.MD5_STABLE_FILES,
         })
 

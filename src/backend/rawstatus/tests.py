@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta, datetime
 from django.utils import timezone
 from django.test import TestCase, Client
@@ -18,7 +19,8 @@ class BaseFilesTest(TestCase):
         self.ss = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, uri='test.tmp', share='/home/testtmp')
         self.ft = rm.StoredFileType.objects.create(name='testft', filetype='tst')
         self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
-        self.newraw = rm.RawFile.objects.create(name='file1', producer=self.prod, source_md5='abcde12345',
+        self.newraw = rm.RawFile.objects.create(name='file1', producer=self.prod,
+                source_md5='b7d55c322fa09ecd8bea141082c5419d',
                 size=100, date=timezone.now(), claimed=False)
         self.username='testuser'
         email = 'test@test.com'
@@ -26,7 +28,7 @@ class BaseFilesTest(TestCase):
         self.user = User(username=self.username, email=email)
         self.user.set_password(self.password)
         self.user.save() 
-        rm.UploadToken.objects.create(user=self.user, token=self.token,
+        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft)
         # expired token
@@ -63,20 +65,23 @@ class TransferStateTest(BaseFilesTest):
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
 
-    def test_transferstate_scp(self):
+    def test_transferstate_transfer(self):
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': self.token, 'fnid': self.newraw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'transfer')
 
     def test_transferstate_wait(self):
+        upload_file = os.path.join(settings.TMP_UPLOADPATH,
+                f'{self.trfraw.pk}.{self.trfsf.filetype.filetype}')
+        jm.Job.objects.create(funcname='rsync_transfer', kwargs={
+            'sf_id': self.trfsf.pk, 'src_path': upload_file,
+            'dst_sharename': settings.TMPSHARENAME}, timestamp=timezone.now())
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': self.token, 'fnid': self.trfraw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'wait')
-        job = jm.Job.objects.get()
-        self.assertEqual(job.funcname, 'get_md5')
-        self.assertEqual(job.kwargs, {'sf_id': self.trfsf.id, 'source_md5': 'defghi123'})
+        # TODO test for no-rsync-job exists (wait but talk to admin)
 
     def test_failing_transferstate(self):
         # test all the fail HTTPs
@@ -171,72 +176,90 @@ class TestFileRegistered(BaseFilesTest):
         self.assertIn('is already registered', resp.json()['msg'])
 
 
-class TestFileTransferred(BaseFilesTest):
-    url = '/files/transferred/'
+class TestFileTransfer(BaseFilesTest):
+    url = '/files/transfer/'
 
     def test_fails_badreq_badauth(self):
         # GET
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 405)
         # No params
-        resp = self.cl.post(self.url, content_type='application/json',
-                data={'hello': 'test'})
+        resp = self.cl.post(self.url, data={'hello': 'test'})
         self.assertEqual(resp.status_code, 400)
         # Missing client ID /token (False)
         stddata = {'fn_id': self.newraw.pk, 'token': False,
-                'libdesc': False, 'userdesc': False}
-        resp = self.cl.post(self.url, content_type='application/json',
-                data=stddata)
+                'libdesc': False, 'userdesc': False, 'filename': self.newraw.name}
+        resp = self.cl.post(self.url, data=stddata)
         self.assertEqual(resp.status_code, 403)
         # Wrong token
-        resp = self.cl.post(self.url, content_type='application/json',
-                data= {**stddata, 'token': self.nottoken})
+        resp = self.cl.post(self.url, data= {**stddata, 'token': 'thisisnotatoken'})
         self.assertEqual(resp.status_code, 403)
         # Wrong fn_id
-        resp = self.cl.post(self.url, content_type='application/json',
+        resp = self.cl.post(self.url, 
                 data={**stddata, 'fn_id': self.newraw.pk + 1000, 'token': self.token})
         self.assertEqual(resp.status_code, 403)
         # expired token
-        resp = self.cl.post(self.url, content_type='application/json',
-                data={**stddata, 'token': self.nottoken})
+        resp = self.cl.post(self.url, data={**stddata, 'token': self.nottoken})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('invalid or expired', resp.json()['error'])
         
-    def test_transferred(self, existing_file=False, libdesc=False, userdesc=False):
-        stddata = {'fn_id': self.newraw.pk, 'token': self.token,
-                'libdesc': libdesc, 'userdesc': userdesc}
-        resp = self.cl.post(self.url, content_type='application/json',
-                data=stddata)
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), {'state': 'ok', 'fn_id': self.newraw.pk})
-        sfns = rm.StoredFile.objects.filter(rawfile=self.newraw)
-        self.assertEqual(sfns.count(), 1)
-        sf = sfns.get()
-        self.assertEqual(sf.md5, self.newraw.source_md5)
-        self.assertFalse(sf.checked)
-        jobs = jm.Job.objects.filter(funcname='get_md5', kwargs={
-            'source_md5': self.newraw.source_md5, 'sf_id': sf.pk})
-        self.assertEqual(jobs.count(), 1)
-        job = jobs.get()
-        # this may fail occasionally
-        timediff = 200 if existing_file else 10
-        self.assertTrue(sf.regdate + timedelta(milliseconds=timediff) > job.timestamp)
+    def test_transfer_file(self, existing_file=False, libdesc=False, userdesc=False):
+        '''Tries to upload file and checks if everything is OK'''
+        fn = 'test_upload.txt'
+        with open(f'rawstatus/{fn}') as fp:
+            stddata = {'fn_id': self.newraw.pk, 'token': self.token,
+                    'filename': self.newraw.name, 'file': fp}
+            if libdesc:
+                stddata['libdesc'] = libdesc
+            elif userdesc:
+                stddata['userdesc'] = userdesc
+            resp = self.cl.post(self.url, data=stddata)
+            fp.seek(0)
+            infile_contents = fp.read()
+        # Now do checks
+        if existing_file:
+            self.assertEqual(resp.status_code, 403)
+            self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
+            f'{self.newraw.name}, if you are re-uploading a previously '
+            'deleted file, consider reactivating from backup, or contact admin'})
+        else:
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.json(), {'state': 'ok', 'fn_id': self.newraw.pk})
+            sfns = rm.StoredFile.objects.filter(rawfile=self.newraw)
+            self.assertEqual(sfns.count(), 1)
+            sf = sfns.get()
+            self.assertEqual(sf.md5, self.newraw.source_md5)
+            self.assertFalse(sf.checked)
+            upload_file = os.path.join(settings.TMP_UPLOADPATH,
+                    f'{self.newraw.pk}.{self.uploadtoken.filetype.filetype}')
+            x = jm.Job.objects.last()
+            jobs = jm.Job.objects.filter(funcname='rsync_transfer', kwargs={
+                'src_path': upload_file, 'dst_sharename': self.ss.name,
+                'sf_id': sf.pk})
+            self.assertEqual(jobs.count(), 1)
+            job = jobs.get()
+            # this may fail occasionally
+            
+            self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
+            upfile = f'{self.newraw.pk}.{sf.filetype.filetype}'
+            with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:
+                self.assertEqual(fp.read(), infile_contents)
 
-    def test_transferred_again(self):
+    def test_transfer_again(self):
         '''Transfer already existing file, e.g. overwrites of previously
         found to be corrupt file'''
         rm.StoredFile.objects.create(rawfile=self.newraw, filetype=self.ft,
                 md5=self.newraw.source_md5, servershare=self.ss, path='',
                 filename=self.newraw.name, checked=False)
-        self.test_transferred(existing_file=True)
+        self.test_transfer_file(existing_file=True)
 
     def test_libfile(self):
-        self.test_transferred(libdesc='This is a libfile')
+        self.test_transfer_file(libdesc='This is a libfile')
         libs = am.LibraryFile.objects.filter(sfile__rawfile=self.newraw, description='This is a libfile')
         self.assertEqual(libs.count(), 1)
     
     def test_userfile(self):
-        self.test_transferred(userdesc='This is a userfile')
+        self.test_transfer_file(userdesc='This is a userfile')
         ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.newraw,
                 description='This is a userfile', upload__token=self.token)
         self.assertEqual(ufiles.count(), 1)

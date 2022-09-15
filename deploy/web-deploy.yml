@@ -3,7 +3,7 @@
 
 - hosts: kantele
   become: yes
-  become_user: '{{ kanteleuser }}'
+  become_user: '{{ web_user }}'
   tasks:
       - name: Clone repo
         ansible.builtin.git:

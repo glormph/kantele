@@ -51,3 +51,7 @@ storage_env:
     LC_DTYPE_ID: "{{ lc_dtype_id }}"
     ANALYSISOUT_FTID: "{{ analysisout_ftid }}"
     DATABASE_FTID: "{{ database_ftid }}"
+    RSYNC_SSHPORT: 22 # ssh port on upload
+    RSYNC_SSHUSER: '{{ web_user }}'
+    RSYNC_SSHKEY: '{{ rsync_ssh_key }}'
+
