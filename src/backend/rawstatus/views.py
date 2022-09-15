@@ -540,31 +540,6 @@ def transfer_file(request):
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
-def do_md5_check(file_transferred):
-    file_registered = file_transferred.rawfile
-    if not file_transferred.md5:
-        return JsonResponse({'fn_id': file_registered.id, 'md5_state': False})
-    elif file_registered.source_md5 == file_transferred.md5:
-        if not file_transferred.checked:
-            file_transferred.checked = True
-            file_transferred.save()
-        if (not AnalysisResultFile.objects.filter(sfile_id=file_transferred) and not
-                PDCBackedupFile.objects.filter(storedfile_id=file_transferred.id)):
-            # Backup after transfer has succeeded (MD5 checked)
-            if hasattr(file_registered.producer, 'msinstrument') and file_registered.producer.msinstrument.filetype.is_folder:
-                jobutil.create_job('unzip_raw_datadir', sf_id=file_transferred.id)
-                ftype_isdir = True
-            else:
-                ftype_isdir = False
-            jobutil.create_job('create_pdc_archive', sf_id=file_transferred.id, isdir=ftype_isdir)
-            fn = file_transferred.filename
-            if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(file_registered.producer, 'msinstrument'): 
-                singlefile_qc(file_transferred.rawfile, file_transferred)
-        return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'ok'})
-    else:
-        return JsonResponse({'fn_id': file_registered.id, 'md5_state': 'error'})
-
-
 def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
     add_to_qc(rawfile, storedfile)
