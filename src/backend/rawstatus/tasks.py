@@ -197,7 +197,7 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
                     'unzipping')
             raise
         else:
-            os.remove(zipped_fn)
+            os.remove(dstfpath)
         # now find stable file in zip to get MD5 on
         try:
             stable_fn = [x for x in settings.MD5_STABLE_FILES
