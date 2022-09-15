@@ -1,6 +1,9 @@
 ---
 # Playbook for starting all services on storage servers (kalevala, totoro)
 
+# FIXME dynamic way to get rsync SSH key?
+# Now it is in place, but must remember to have one in potential new instance
+
 - hosts: storage
   become: yes
   become_user: "{{ storage_user }}"

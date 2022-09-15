@@ -11,6 +11,7 @@
             dest: "{{ kanteledir }}"
             version: master
   
+            #- name: FIXME passwordless SSH key to use for rsync from web server
       - name: Backup download -- create folder for backups
         ansible.builtin.file:
             path: "{{ storage_backup_path }}"

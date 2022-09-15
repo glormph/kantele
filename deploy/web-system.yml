@@ -61,12 +61,18 @@
 
       - name: Create user
         ansible.builtin.user:
-            name: '{{ kanteleuser }}'
+            name: '{{ web_user }}'
             shell: /bin/bash
             append: yes
             groups:
                 - '{{ kantelegroup }}'
                 - docker
+
+      - name: Put SSH pubkey in place
+        ansible.posix.authorized_key:
+            user: '{{ web_user }}'
+            state: present
+            key: "{{ lookup('file', 'ssh_key_rsync.pub') }}"
 
       - name: TLS certificate directory exists
         ansible.builtin.file:
@@ -113,27 +119,27 @@
         ansible.builtin.file:
             path: "{{ host_pgbackup_path }}"
             state: directory
-            owner: "{{ kanteleuser }}"
+            owner: "{{ web_user }}"
             group: "{{ kantelegroup }}"
 
       - name: Backup of SQL -- create backup folder on web server container host
         ansible.builtin.file:
             path: "{{ host_analysispath }}/{{ web_backupfolder }}"
             state: directory
-            owner: "{{ kanteleuser }}"
+            owner: "{{ web_user }}"
             group: "{{ kantelegroup }}"
 
       - name: Backup of SQL -- template out backup script
         ansible.builtin.template:
             src: "sql_dump_backup.j2"
             dest: "{{ kanteledir }}/backup_db.sh"
-            owner: "{{ kanteleuser }}"
+            owner: "{{ web_user }}"
             group: "{{ kantelegroup }}"
 
       - name: Backup of SQL -- crontab setup 
         # FIXME how to error report? Log to syslog on web?
         become: yes
-        become_user: "{{ kanteleuser }}"
+        become_user: "{{ web_user }}"
         ansible.builtin.cron:
             name: Kantele DB dump backup
             hour: "2"
