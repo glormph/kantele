@@ -232,10 +232,8 @@ class TestFileTransfer(BaseFilesTest):
             self.assertFalse(sf.checked)
             upload_file = os.path.join(settings.TMP_UPLOADPATH,
                     f'{self.newraw.pk}.{self.uploadtoken.filetype.filetype}')
-            x = jm.Job.objects.last()
             jobs = jm.Job.objects.filter(funcname='rsync_transfer', kwargs={
-                'src_path': upload_file, 'dst_sharename': self.ss.name,
-                'sf_id': sf.pk})
+                'src_path': upload_file, 'sf_id': sf.pk})
             self.assertEqual(jobs.count(), 1)
             job = jobs.get()
             # this may fail occasionally
