@@ -143,16 +143,12 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=Fals
         update_db(url, json={'client_id': settings.APIKEY, 'task': self.request.id})
     print('Moving file {} to {}'.format(src, dst))
     dstdir = os.path.split(dst)[0]
-    if not os.path.exists(dstdir):
-        try:
-            os.makedirs(dstdir)
-        except FileExistsError:
-            # Race conditions may happen, dir already made by other task
-            pass
-        except Exception:
+    try:
+        os.makedirs(dstdir, exist_ok=True)
+    except Exception:
             taskfail_update_db(self.request.id)
             raise
-    elif not os.path.isdir(dstdir):
+    if not os.path.isdir(dstdir):
         taskfail_update_db(self.request.id)
         raise RuntimeError('Directory {} is already on disk as a file name. '
                            'Not moving files.')

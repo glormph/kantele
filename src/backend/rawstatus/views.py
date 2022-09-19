@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
 
 from datetime import timedelta, datetime
+from functools import wraps
 import os
 import re
 import json
@@ -279,7 +280,6 @@ def instrument_check_in(request):
     return JsonResponse(response)
 
  
-from functools import wraps
 def login_required_403_json(view_func):
     """
     Modified django's login_required to return a JsonResponse with

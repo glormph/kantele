@@ -397,14 +397,15 @@ def store_analysis_result(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
     data = request.POST
+    # FIXME add token check!
     # create analysis file
     if ('client_id' not in data or
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
     anashare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
     try:
-        ftypeid = {x.name: x.id for x in StoredFileType.objects.all()}[data['ftype']]
-    except KeyError:
+        ftypeid = StoredFileType.objects.get(name=data['ftype']).pk
+    except StoredFileType.DoesNotExist:
         return HttpResponseForbidden('File type does not exist')
 
     # Reruns lead to trying to store files multiple times, avoid that here:
@@ -416,7 +417,6 @@ def store_analysis_result(request):
         AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)
     # Also store any potential servable file on share on web server
     if data['filename'] in settings.SERVABLE_FILENAMES and request.FILES:
-        print('File found')
         webshare = ServerShare.objects.get(name=settings.WEBSHARENAME)
         srvfile, srvcreated  = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
                 md5=data['md5'], defaults={'filetype_id': ftypeid,

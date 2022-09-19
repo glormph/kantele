@@ -40,7 +40,6 @@
             port: "{{ item[1] }}"
         loop: "{{ mq_subnets | product(['amqp', 'epmd', '25672']) }}"
 
-        ## ssh rapunzel, ping rapunzel/gauss, 
       - name: Set last rule to deny all and reload UFW firewall
         community.general.ufw:
             policy: deny
@@ -51,7 +50,7 @@
         ansible.builtin.group:
             name: '{{ kantelegroup }}'
 
-      - name: Create admin users
+      - name: Create admin users group
         ansible.builtin.user:
             name: '{{ item }}'
             shell: /bin/bash

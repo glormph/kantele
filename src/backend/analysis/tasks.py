@@ -156,8 +156,7 @@ def get_dir_content_size(fpath):
 def stage_files(stagedir, stagefiles, params=False):
     for flag, files in stagefiles.items():
         stagefiledir = os.path.join(stagedir, flag.replace('--', ''))
-        if not os.path.exists(stagefiledir):
-            os.makedirs(stagefiledir)
+        os.makedirs(stagefiledir, exist_ok=True)
         not_needed_files = set(os.listdir(stagefiledir))
         if len(files) > 1:
             dst = os.path.join(stagefiledir, '*')
@@ -255,8 +254,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])
     outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME], outpath)
     try:
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
+        os.makedirs(outdir, exist_ok=True)
     except (OSError, PermissionError):
         taskfail_update_db(task_id, 'Could not create output directory for analysis results')
         raise
@@ -322,12 +320,11 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
         log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
     # runname is set in task so timestamp corresponds to execution start and not job queue
     gitwfdir = os.path.join(rundir, 'gitwfs')
-    if not os.path.exists(rundir):
-        try:
-            os.makedirs(rundir)
-        except (OSError, PermissionError):
-            taskfail_update_db(taskid, 'Could not create workdir on analysis server')
-            raise
+    try:
+        os.makedirs(rundir, exist_ok=True)
+    except (OSError, PermissionError):
+        taskfail_update_db(taskid, 'Could not create workdir on analysis server')
+        raise
     stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, run['runname'])
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
@@ -451,7 +448,8 @@ def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     postdata.update({'log': 'Analysis task completed.', 'analysis_id': analysis_id})
     update_db(url, json=postdata)
     shutil.rmtree(rundir)
-    shutil.rmtree(stagedir)
+    if os.path.exists(stagedir):
+        shutil.rmtree(stagedir)
 
 
 def check_in_transfer_client(task_id, token, filetype):

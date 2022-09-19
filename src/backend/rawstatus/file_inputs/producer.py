@@ -1,37 +1,33 @@
 '''
 Script to MD5, register, and upload files to Kantele system
 
-# to test
-- transferring while getting new tokens
-- make sure old tokens are bust
-- transfer by hand
-- browser fasta transfer
-
 Usecases:
-    - Instrument auto upload using an API key (config file from Kantele)
-        python upload.py --config transfer_config.json
+    - Instrument auto upload using a config file from Kantele
+        python kantele_upload.py --config transfer_config.json
 
-    - User file uploads (non-fasta)
-      - An upload token will be asked for and can be requested from Kantele web interface
-        python upload.py --file /path/to/file
+    - (TBD) Bigger user file uploads the browser cant handle
+      - An upload token for a filetype will be asked for
+      and can be requested from Kantele web interface:
+          python kantele_upload.py --file /path/to/file
+          python kantele_upload.py --file /path/to/file --userfile-description 'This is a file for a specific analysis'
+            or multiple files:
+          python kantele_upload.py --outbox /path/to/outbox
+
 
     - Libfile uploads (fasta etc), as above but with a library description
-        python upload.py --token abc123 --file /path/to/file --library-description "this is a file"
+          python kantele_upload.py --file /path/to/file --library-description "this is a file"
 
-    - External instrument uploads
-      - python upload.py --client abc123 --outbox /path/to outbox
-
-    - Sensitive data uploads, e.g. backup bunch of FASTQ uploads, encrypt
+    - (TBD) Sensitive data uploads, e.g. backup bunch of FASTQ uploads, encrypt
       - specify SENS when getting token
-      upload.py --token abc123 --outbox /path/to/outbox 
+          python kantele_upload.py --outbox /path/to/outbox
 '''
 
-# TODO make check_in procedure a main loop thing, restart processes when they need
-# to make a change in config (new token, pub key, new folder name, etc)
+# TODO list:
+# - Instrument page needs to be without keys download, new zip package
+# - make check_in procedure a main loop thing, restart processes when they need
+#   to make a change in config (new token, new folder name, etc)
+# - automatic updates of this script
 
-# - TODO generate and upload SSH pub key
-
-# FIXME look over the args to make sure no crap is in it
 
 import sys
 import logging
@@ -41,20 +37,19 @@ import argparse
 import getpass
 import json
 import hashlib
-import requests
 import subprocess
 import shutil
 from base64 import b64decode
 from urllib.parse import urljoin
 from time import sleep, time
-from multiprocessing import Process, Queue, set_start_method, TimeoutError
-from queue import Empty
+from multiprocessing import Process, Queue, set_start_method
+import requests
 
 LEDGERFN = 'ledger.json'
 HEARTBEAT_SECONDS = 5 * 60
- 
+
 def zipfolder(folder, arcname):
-    print('zipping {} to {}'.format(folder, arcname))
+    print(f'zipping {folder} to {arcname}')
     return shutil.make_archive(arcname, 'zip', folder)
 
 
@@ -69,7 +64,7 @@ def md5(fnpath):
 def get_new_file_entry(fn, raw_is_folder):
     if raw_is_folder or os.path.isdir(fn):
         size = sum(os.path.getsize(os.path.join(wpath, subfile))
-            for wpath, subdirs, files in os.walk(fn) for subfile in files if subfile)
+                for wpath, subdirs, files in os.walk(fn) for subfile in files if subfile)
     else:
         size = os.path.getsize(fn)
     return {'fpath': fn, 'fname': os.path.basename(fn),
@@ -154,7 +149,8 @@ def check_in_instrument(config, configfn, logger):
         else:
             validated = valresp.json()
             if validated['newtoken']:
-                logger.info(f'Got a new token from server, which will expire on {validated["expires"]}')
+                logger.info('Got a new token from server, which will expire on '
+                        f'{validated["expires"]}')
                 token_state = 'new'
                 config['token'] = validated['newtoken']
     if token_state == 'new':
@@ -222,8 +218,7 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
             fndata = get_new_file_entry(fn, raw_is_folder)
             ct_size = get_fndata_id(fndata)
             if ct_size not in ledger:
-                prod_date = fndata['prod_date']
-                logger.info('Found new file: {} produced {}'.format(fn, prod_date))
+                logger.info(f'Found new file: {fn} produced {fndata["prod_date"]}')
                 ledger[ct_size] = fndata
         for produced_fn in ledger.values():
             newfn = False
@@ -231,10 +226,11 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
                 newfn = True
                 if produced_fn['is_dir']:
                     try:
-                        stable_fn = [x for x in md5_stable_fns 
+                        stable_fn = [x for x in md5_stable_fns
                                 if os.path.exists(os.path.join(produced_fn['fpath'], x))][0]
                     except IndexError:
-                        logger.warning('This file is a directory, but we could not find a designated stable file inside it')
+                        logger.warning('This file is a directory, but we could not '
+                                'find a designated stable file inside it')
                         continue
                     md5path = os.path.join(produced_fn['fpath'], stable_fn)
                 else:
@@ -299,7 +295,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
         loginresp = requests.get(urljoin(kantelehost, 'login/'))
         cookies = loginresp.cookies
         for fndata in [x for x in ledger.values() if not x['fn_id']]:
-            # In case new files are found but registration failed for some 
+            # In case new files are found but registration failed for some
             # reason, MD5 is on disk (only to ledger after MD5), re-register
             regq.put(fndata)
         regqsize = regq.qsize()
@@ -334,7 +330,8 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                     resp_j = resp.json()
                     logger.error(f'Problem registering file, server replied with {resp_j["error"]}')
                 else:
-                    logger.error('Could not register file, error code {}, likely problem is on server, please check with admin'.format(resp.status_code))
+                    logger.error(f'Could not register file, error code {resp.status_code}, '
+                            'likely problem is on server, please check with admin')
                 if resp.status_code != 200:
                     # Exit when permission denied, need a new password from user
                     # exit also at server/client errors
@@ -352,7 +349,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
         else:
             to_process = [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]
         for cts_id, fnid, fndata in to_process:
-            logger.info('Checking remote state for file {} with ID {}'.format(fndata['fname'], fnid))
+            logger.info(f'Checking remote state for file {fndata["fname"]} with ID {fnid}')
             try:
                 resp = requests.post(fnstate_url, cookies=cookies,
                         headers=get_csrf(cookies, kantelehost),
@@ -364,7 +361,8 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             if resp.status_code != 500:
                 result = resp.json()
             else:
-                result = {'error': 'Kantele server error when getting file state, please contact administrator'}
+                result = {'error': 'Kantele server error when getting file state, '
+                        'please contact administrator'}
             if resp.status_code != 200:
                 logger.error(f'Could not get state for file with ID {fnid}, error '
                         f'message was: {result["error"]}')
@@ -396,8 +394,9 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             elif result['transferstate'] == 'transfer':
                 trffns.append((cts_id, fndata))
             else:
-                logger.info('State for file {} with ID {} was: {}'.format(fndata['fname'], fnid, result['transferstate']))
-        if single_file_id and not len(ledger.keys()):
+                logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
+                        f'{result["transferstate"]}')
+        if single_file_id and not ledger.keys():
             # Quit loop for single file
             break
 
@@ -416,8 +415,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
                         library_desc, user_desc, cookies, kantelehost)
             except subprocess.CalledProcessError:
-                logger.warning('Could not transfer {}'.format(
-                    fndata['fpath']))
+                logger.warning(f'Could not transfer {fndata["fpath"]}')
             else:
                 if resp.status_code == 500:
                     result = {'error': 'Kantele server error when transferring file '
@@ -453,7 +451,7 @@ def main():
 
     # backup-only, sensitive data is specified by DB on the host when getting a token!
     parser = argparse.ArgumentParser(description='File uploader')
-    parser.add_argument('--watch-folder', dest='outbox', default=False, type=str,
+    parser.add_argument('--outbox', dest='outbox', default=False, type=str,
             help='Outbox folder to watch if any')
     parser.add_argument('--ledger', dest='ledger', default=False, type=str,
             help='Ledger file to use, or to force ledgerless single-file transfer '
@@ -484,7 +482,8 @@ def main():
     logger = logging.getLogger(f'{config.get("hostname", "")}.producer.main')
 
     if not config.get('client_id', False):
-        # Parse token gotten from web UI 
+        # Parse token gotten from web UI, this is needed so Kantele knows
+        # which filetype were uploading, and it will contain the upload location
         webtoken = input('Please provide token from web interface: ').strip()
         try:
             token, kantelehost = b64decode(webtoken).decode('utf-8').split('|')
@@ -528,7 +527,9 @@ def main():
         if not os.path.exists(donebox):
             os.makedirs(donebox)
         # watch outbox for incoming files
-        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger, outbox, zipbox, config.get('hostname'), config.get('raw_is_folder'), config.get('md5_stable_fns')))
+        collect_p = Process(target=instrument_collector, args=(regq, regdoneq,
+            logqueue, ledger, outbox, zipbox, config.get('hostname'),
+            config.get('raw_is_folder'), config.get('md5_stable_fns')))
         processes = [collect_p]
         collect_p.start()
     elif args.file:
@@ -559,14 +560,15 @@ def main():
     else:
         print('No input files or outbox to watch was specified, exiting')
         sys.exit(1)
-    register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger, config, args.configfn,
+    register_p = Process(target=register_and_transfer, args=(regq, regdoneq,
+        logqueue, ledger, config, args.configfn,
         donebox, single_file_id, config.get('host'), config.get('hostname'),
         args.libdesc, args.userdesc))
     register_p.start()
     logproc = Process(target=log_listener, args=(logqueue,))
     logproc.start()
     processes.extend([logproc, register_p])
-    quit = False
+    quit_program = False
     while True:
         for p in processes:
             if not p.is_alive():
@@ -575,9 +577,9 @@ def main():
                     print(f'Crash detected in {p}, exiting')
                 else:
                     print('Finished transfers')
-                quit = True
+                quit_program = True
                 break
-        if quit:
+        if quit_program:
             break
         sleep(2)
     for p in processes:
