@@ -115,6 +115,9 @@ def update_storagepath_file(request):
     elif 'fn_ids' in data:
         sfns = StoredFile.objects.filter(pk__in=[int(x) for x in data['fn_ids']])
         sfns.update(path=data['dst_path'])
+        if 'servershare' in data:
+            sshare = ServerShare.objects.get(name=data['servershare'])
+            sfns.update(servershare=sshare)
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()

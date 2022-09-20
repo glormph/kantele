@@ -94,6 +94,37 @@ def rename_top_level_project_storage_dir(self, srcname, newname, proj_id):
     url = urljoin(settings.KANTELEHOST, reverse('jobs:renameproject'))
     update_db(url, json=postdata)
 
+@shared_task(bind=True, queue=settings.QUEUE_FILE_DOWNLOAD)
+def rsync_dset_servershare(self, srcsharename, srcpath, dstsharename, fns_fnids):
+    '''Uses rsync to copy a dataset to other servershare. E.g in case of consolidating
+    projects to a certain share, or when e.g. moving to new storage unit. Files are rsynced
+    one at a time, to avoid rsyncing files removed from dset before running this job,
+    and avoiding files added to dset updating servershare post-job'''
+    srcdir = os.path.join(settings.SHAREMAP[srcsharename], srcpath)
+    dstdir = os.path.join(settings.SHAREMAP[dstsharename], srcpath)
+    try:
+        os.makedirs(dstdir, exist_ok=True)
+    except Exception:
+        taskfail_update_db(self.request.id)
+        raise
+    for srcfn in fns_fnids:
+        cmd = ['rsync', '-avz', os.path.join(srcfpath, srcfn), dstdir]
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError:
+            try:
+                self.retry(countdown=60)
+            except MaxRetriesExceededError:
+                taskfail_update_db(self.request.id)
+                raise
+    # delete files in source dir after rsyncing ALL files (else task is not retryable)
+    for srcfn in fns_fnids:
+        os.unlink(os.path.join(srcdir, srcfn))
+    postdata = {'fn_ids': fns_fnids.values(), 'servershare': dstsharename, 'dst_path': srcpath,
+                'client_id': settings.APIKEY, 'task': self.request.id}
+    url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
+    update_db(url, json=postdata)
+
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def rename_dset_storage_location(self, srcpath, dstpath, dset_id, sf_ids):
