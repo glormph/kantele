@@ -44,6 +44,7 @@ from urllib.parse import urljoin
 from time import sleep, time
 from multiprocessing import Process, Queue, set_start_method
 import requests
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 LEDGERFN = 'ledger.json'
 HEARTBEAT_SECONDS = 5 * 60
@@ -183,15 +184,17 @@ def transfer_file(url, fpath, fn_id, token, libdesc, userdesc, cookies, host):
     # zipped file name if needed, instead of the normal fn
     filename = os.path.basename(fpath)
     logging.info(f'Transferring {fpath} to {host}')
+    stddata = {'fn_id': f'{fn_id}', 'token': token, 'filename': filename}
+    if libdesc:
+        stddata['libdesc'] = libdesc
+    elif userdesc:
+        stddata['userdesc'] = userdesc
     with open(fpath, 'rb') as fp:
-        stddata = {'fn_id': fn_id, 'token': token, 'filename': filename}
-        filedata = {'file': fp}
-        if libdesc:
-            stddata['libdesc'] = libdesc
-        elif userdesc:
-            stddata['userdesc'] = userdesc
-        return requests.post(url, cookies=cookies, data=stddata, files=filedata,
-                headers=get_csrf(cookies, host)) 
+        stddata['file'] = (filename, fp)
+        mpedata = MultipartEncoder(fields=stddata)
+        headers = get_csrf(cookies, host)
+        headers['Content-Type'] = mpedata.content_type
+        return requests.post(url, cookies=cookies, data=mpedata, headers=headers)
 
 
 def get_fndata_id(fndata):
