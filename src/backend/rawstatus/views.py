@@ -688,7 +688,7 @@ def download_instrument_package(request):
     else:
         # create zip file
         tmpfp, zipfilename = mkstemp()
-        shutil.copy('rawstatus/templates/rawstatus/producer.zip', zipfilename)
+        shutil.copy('/assets/producer.zip', zipfilename)
         with zipfile.ZipFile(zipfilename, 'a') as zipfp:
             zipfp.write('rawstatus/file_inputs/producer.py', 'producer.py')
             zipfp.writestr('transfer.bat', transferbat)

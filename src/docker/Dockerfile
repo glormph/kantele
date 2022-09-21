@@ -15,9 +15,17 @@ ARG USER_ID
 ARG GROUP_ID
 RUN addgroup --system --gid $GROUP_ID kantele
 RUN adduser --system --uid $USER_ID --gid $GROUP_ID kantele
-RUN apt-get update && apt-get install -y libpq-dev python3-psycopg2
+RUN apt-get update && apt-get install -y libpq-dev python3-psycopg2 zip
 COPY backend/requirements.txt /
 RUN pip install -r requirements.txt
+RUN mkdir /assets
+RUN chdir /assets && wget https://files.pythonhosted.org/packages/ca/91/6d9b8ccacd0412c08820f72cebaa4f0c0441b5cda699c90f618b6f8a1b42/requests-2.28.1-py3-none-any.whl
+RUN chdir /assets && wget https://files.pythonhosted.org/packages/60/ef/7681134338fc097acef8d9b2f8abe0458e4d87559c689a8c306d0957ece5/requests_toolbelt-0.9.1-py2.py3-none-any.whl
+RUN chdir /assets && wget https://files.pythonhosted.org/packages/fc/34/3030de6f1370931b9dbb4dad48f6ab1015ab1d32447850b9fc94e60097be/idna-3.4-py3-none-any.whl 
+RUN chdir /assets && wget https://files.pythonhosted.org/packages/db/51/a507c856293ab05cdc1db77ff4bc1268ddd39f29e7dc4919aa497f0adbec/charset_normalizer-2.1.1-py3-none-any.whl
+RUN chdir /assets && wget https://files.pythonhosted.org/packages/6f/de/5be2e3eed8426f871b170663333a0f627fc2924cc386cd41be065e7ea870/urllib3-1.26.12-py2.py3-none-any.whl
+COPY docker/setup.bat /assets/
+RUN cd /assets && zip producer.zip *.whl setup.bat && chown kantele:kantele producer.zip
 USER kantele
 COPY --chown=kantele backend /kantele
 WORKDIR /kantele
