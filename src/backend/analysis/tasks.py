@@ -7,7 +7,7 @@ from time import sleep
 from datetime import datetime
 from urllib.parse import urljoin, urlsplit
 from ftplib import FTP
-from dulwich.porcelain import clone, reset, pull
+from dulwich.porcelain import clone, reset, fetch
 from tempfile import NamedTemporaryFile
 from gzip import GzipFile
 
@@ -130,7 +130,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
     try:
         clone(run['repo'], gitwfdir, checkout=run['wf_commit'])
     except FileExistsError:
-        pull(gitwfdir, run['repo'])
+        fetch(gitwfdir, run['repo'])
         reset(gitwfdir, 'hard', run['wf_commit'])
     # FIXME dulwich does not seem to checkout anything, use this until it does
     subprocess.run(['git', 'checkout', run['wf_commit']], check=True, cwd=gitwfdir)
