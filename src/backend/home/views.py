@@ -831,6 +831,8 @@ def fetch_dset_details(dset):
 
 @login_required
 def create_mzmls(request):
+    '''It is assumed that a dataset's files all come from the same instrument,
+    and therefore need the same parameters when creating mzML files'''
     if not request.method == 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     data = json.loads(request.body.decode('utf-8'))

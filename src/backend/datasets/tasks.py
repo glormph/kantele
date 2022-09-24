@@ -15,22 +15,6 @@ from rawstatus.tasks import calc_md5
 # avoids setting up auth for DB
 
 
-@shared_task(bind=True)
-def convert_to_mzml(self, fn, fnpath, outfile, sf_id, servershare, filtopts, reporturl, failurl):
-    """This will run on remote in other repo (proteomics-tasks) so there is no
-    need to be no code in here, the task is an empty shell with only the
-    task name"""
-    return True
-
-
-@shared_task(bind=True)
-def scp_storage(self, mzmlfile, rawfn_id, dsetdir, servershare, reporturl, failurl):
-    """This will run on remote in other repo (proteomics-tasks) so there is no
-    need to be no code in here, the task is an empty shell with only the
-    task name"""
-    return True
-
-
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profiles, **kwargs):
     postdata = {'client_id': settings.APIKEY, 'task': self.request.id}
