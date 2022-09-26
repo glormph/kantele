@@ -291,6 +291,8 @@ def downloaded_file(request):
     else:
         # rsync checks integrity so we should not have problems here
         sfile.checked = True
+    if data['unzipped']:
+        sfile.filename = sfile.filename.rstrip('.zip')
     sfile.save()
     fpath = os.path.join(settings.TMP_UPLOADPATH, f'{sfile.rawfile.pk}.{sfile.filetype.filetype}')
     os.unlink(fpath)

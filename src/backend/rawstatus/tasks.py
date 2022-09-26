@@ -37,7 +37,9 @@ def calc_md5(fnpath):
 
 @shared_task(queue=settings.QUEUE_FILE_DOWNLOAD, bind=True)
 def download_uploaded_file_to_storage(self, sf_id, sharename, path, fname, fn_md5):
-    postdata = {'client_id': settings.APIKEY, 'task': self.request.id, 'sf_id': sf_id}
+    # FIXME deprecate?
+    postdata = {'client_id': settings.APIKEY, 'task': self.request.id,
+            'sf_id': sf_id, 'do_md5check': False, 'unzipped': False}
     joburl = urljoin(settings.KANTELEHOST, reverse('jobs:download_file'))
     dst = os.path.join(settings.SHAREMAP[sharename], path, fname)
     dighash = hashlib.md5()
@@ -173,7 +175,7 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
             taskfail_update_db(self.request.id)
             raise
     postdata = {'sf_id': sfid, 'client_id': settings.APIKEY, 'task': self.request.id, 
-            'do_md5check': do_unzip}
+            'do_md5check': do_unzip, 'unzipped': do_unzip}
     if do_unzip:
         # Unzip if needed, in that case recheck MD5 to be sure of the zipping has been correct
         # since MD5 is from internal file
