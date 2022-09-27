@@ -176,6 +176,8 @@ class ConvertDatasetMzml(BaseJob):
             mzsf.servershare_id = res_share
             mzsf.save()
             nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
+        if not nf_raws:
+            return
         # FIXME last file filetype decides mzml input filetype, we should enforce
         # same filetype files in a dataset if possible
         ftype = mzsf.filetype.name
