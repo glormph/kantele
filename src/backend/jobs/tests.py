@@ -41,14 +41,13 @@ class TestRenamedProject(BaseJobTest):
 
     def test_normal(self):
         producer = rm.Producer.objects.create(name='testprod', client_id='prod_abc123', shortname='tp')
-        ss = rm.ServerShare.objects.create(name='testss', uri='t.t.t', share='/home/disk')
         sftype = rm.StoredFileType.objects.create(name='test', filetype='tst')
         rf = rm.RawFile.objects.create(name='testrf', producer=producer,
             source_md5='abcdefgh', size=10, date=datetime.now(),
             claimed=True)
         dm.DatasetRawFile.objects.create(dataset=self.ds1, rawfile=rf)
         sf=rm.StoredFile.objects.create(rawfile=rf, filename=rf.name,
-            servershare=ss, path=self.ds1.storage_loc, md5=rf.source_md5, checked=True,
+            servershare=self.ss, path=self.ds1.storage_loc, md5=rf.source_md5, checked=True,
             filetype=sftype)
         resp = self.cl.post(self.url, content_type='application/json', data={
             'client_id': settings.STORAGECLIENT_APIKEY, 'task': self.taskid,

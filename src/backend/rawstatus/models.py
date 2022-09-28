@@ -42,11 +42,21 @@ class MSInstrument(models.Model):
         return 'MS - {}/{}'.format(self.producer.name, self.filetype.name)
 
 
+class FileServer(models.Model):
+    name = models.TextField(unique=True)
+    uri = models.TextField()
+
+    def __str__(self):
+        return self.name
+
+
 class ServerShare(models.Model):
     name = models.TextField(unique=True)  # storage, tmp,
-    uri = models.TextField()
+    server = models.ForeignKey(FileServer, on_delete=models.CASCADE)
     share = models.TextField()  # /home/disk1
 
+    def __str__(self):
+        return self.name
 
 class RawFile(models.Model):
     """Data (raw) files as reported by instrument"""

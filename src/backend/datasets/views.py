@@ -609,12 +609,11 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     dtype = models.Datatype.objects.get(pk=data['datatype_id'])
     prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
     hrrange_id = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
-    dset = models.Dataset(date=timezone.now(),
-                          runname_id=runname.id,
-                          storage_loc=set_storage_location(
-                              project, experiment, runname, dtype, prefrac, hrrange_id),
-                          datatype=dtype)
-    dset.save()
+    prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    dset = models.Dataset.objects.create(date=timezone.now(),
+            runname_id=runname.id, storage_loc=set_storage_location(
+                project, experiment, runname, dtype, prefrac, hrrange_id),
+            storageshare=prim_share, datatype=dtype)
     dsowner = models.DatasetOwner(dataset=dset, user_id=user_id)
     dsowner.save()
     if data['prefrac_id']:

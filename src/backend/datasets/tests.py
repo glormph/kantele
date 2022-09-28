@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from kantele import settings
 from datasets import models as dm
 from jobs import models as jm
+from rawstatus import models as rm
 
 
 class BaseDatasetTest(TestCase):
@@ -28,8 +29,10 @@ class BaseDatasetTest(TestCase):
         pt1 = dm.ProjType.objects.create(project=self.p1, ptype=self.ptype)
         self.exp1 = dm.Experiment.objects.create(name='e1', project=self.p1)
         self.run1 = dm.RunName.objects.create(name='run1', experiment=self.exp1)
+        self.fserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
+        self.ss = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.fserver, share='/home/testtmp')
         self.ds1 = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run1,
-                datatype=self.dtype, storage_loc='testloc1/path/to/file')
+                datatype=self.dtype, storageshare=self.ss, storage_loc='testloc1/path/to/file')
         own1 = dm.DatasetOwner.objects.create(dataset=self.ds1, user=self.user)
 
 
@@ -42,7 +45,7 @@ class RenameProjectTest(BaseDatasetTest):
         ####
         run = dm.RunName.objects.create(name='someoneelsesrun', experiment=self.exp1)
         ds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
-                datatype=self.dtype, storage_loc='test')
+                datatype=self.dtype, storage_loc='test', storageshare=self.ss)
         otheruser = User.objects.create(username='test', password='test')
         own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
@@ -98,7 +101,7 @@ class MergeProjectsTest(BaseDatasetTest):
     def test_no_ownership_fail(self):
         run = dm.RunName.objects.create(name='someoneelsesrun', experiment=self.exp2)
         ds = dm.Dataset.objects.create(date=self.p2.registered, runname=run,
-                datatype=self.dtype, storage_loc='test')
+                datatype=self.dtype, storage_loc='test', storageshare=self.ss)
         otheruser = User.objects.create(username='test', password='test')
         own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
@@ -111,7 +114,7 @@ class MergeProjectsTest(BaseDatasetTest):
         exp3 = dm.Experiment.objects.create(name='e1', project=self.p2)
         run3 = dm.RunName.objects.create(name=self.run1.name, experiment=exp3)
         ds3 = dm.Dataset.objects.create(date=self.p2.registered, runname=run3,
-                datatype=self.dtype, storage_loc='testloc3')
+                datatype=self.dtype, storage_loc='testloc3', storageshare=self.ss)
         dm.DatasetOwner.objects.create(dataset=ds3, user=self.user)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
@@ -125,7 +128,7 @@ class MergeProjectsTest(BaseDatasetTest):
         run2 = dm.RunName.objects.create(name='run2', experiment=self.exp2)
         oldstorloc = 'testloc2'
         ds2 = dm.Dataset.objects.create(date=self.p2.registered, runname=run2,
-                datatype=self.dtype, storage_loc=oldstorloc)
+                datatype=self.dtype, storage_loc=oldstorloc, storageshare=self.ss)
         dm.DatasetOwner.objects.create(dataset=ds2, user=self.user)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
@@ -156,7 +159,7 @@ class MergeProjectsTest(BaseDatasetTest):
         run3 = dm.RunName.objects.create(name='run3', experiment=exp3)
         oldstorloc = 'testloc3'
         ds3 = dm.Dataset.objects.create(date=self.p2.registered, runname=run3,
-                datatype=self.dtype, storage_loc=oldstorloc)
+                datatype=self.dtype, storage_loc=oldstorloc, storageshare=self.ss)
         own3 = dm.DatasetOwner.objects.create(dataset=ds3, user=self.user)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})

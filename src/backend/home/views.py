@@ -609,8 +609,8 @@ def get_analysis_info(request, nfs_id):
 #             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
             'nrfiles': ana.analysisdsinputfile_set.count(),
-            'storage_locs': [{'server': x.servershare.uri, 'share': x.servershare.name, 'path': x.path}
-                for x in storeloc.values()],
+            'storage_locs': [{'server': x.servershare.server.uri, 'share': x.servershare.name, 'path': x.path}
+                for x in storeloc],
             'log': logentry, 
             'base_analysis': {'nfsid': False, 'name': False},
             'servedfiles': linkedfiles,
@@ -770,7 +770,7 @@ def fetch_dset_details(dset):
                     if x.name in ['microscopy']}
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'servershare', 'filetype').filter(
         rawfile__datasetrawfile__dataset_id=dset.id)
-    servers = [x[0] for x in files.distinct('servershare').values_list('servershare__uri')]
+    servers = [x[0] for x in files.distinct('servershare').values_list('servershare__server__uri')]
     info['storage_loc'] = '{} - {}'.format(';'.join(servers), dset.storage_loc)
     info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
     info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))

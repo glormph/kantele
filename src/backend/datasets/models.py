@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from rawstatus.models import RawFile
+from rawstatus.models import RawFile, ServerShare
 from jobs.models import Job
 
 
@@ -80,9 +80,10 @@ class Dataset(models.Model):
     date = models.DateTimeField('date created')
     runname = models.OneToOneField(RunName, on_delete=models.CASCADE)
     datatype = models.ForeignKey(Datatype, on_delete=models.CASCADE)
-    # storage_loc should only ever be updated in jobs' post-run (after moves)
+    # storage_loc/share should only ever be updated in jobs' post-run (after moves)
     # because it is source of truth for where to/from move files
     storage_loc = models.TextField(max_length=200, unique=True)
+    storageshare = models.ForeignKey(ServerShare, on_delete=models.CASCADE)
     deleted = models.BooleanField(default=False) # for UI only, indicate deleted from active storage
     purged = models.BooleanField(default=False) # for UI only, indicate permanent deleted from cold storage too
 

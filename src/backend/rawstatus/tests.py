@@ -16,7 +16,8 @@ class BaseFilesTest(TestCase):
         self.nottoken = 'blablabla'
         self.token= 'fghihj'
         self.cl = Client()
-        self.ss = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, uri='test.tmp', share='/home/testtmp')
+        self.fserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
+        self.ss = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.fserver, share='/home/testtmp')
         self.ft = rm.StoredFileType.objects.create(name='testft', filetype='tst')
         self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
         self.newraw = rm.RawFile.objects.create(name='file1', producer=self.prod,
