@@ -189,6 +189,7 @@ class ConvertDatasetMzml(BaseJob):
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
+               'nfrundirname': 'small' if len(nf_raws) < 500 else 'larger',
                }
         params = ['--container', pwiz.container_version]
         for pname in ['options', 'filters']:
