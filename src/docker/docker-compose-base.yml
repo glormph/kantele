@@ -3,8 +3,6 @@
 services:
     web:
         image: kantele_web
-        depends_on:
-            - db
         build:
             context: ../
             dockerfile: ./docker/Dockerfile
@@ -37,8 +35,6 @@ services:
             args:
                 USER_ID: "${USER_ID:-You must run export USER_ID}"
                 GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
-        depends_on:
-            - web
         volumes:
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
             - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
@@ -63,8 +59,6 @@ services:
 
     jobrunner:
         image: kantele_web
-        depends_on:
-            - web
         command: python manage.py runjobs
         environment:
             DB_PASS: "${PG_KANTELE_PASSWORD}"
