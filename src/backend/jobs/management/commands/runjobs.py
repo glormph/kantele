@@ -23,9 +23,13 @@ class Command(BaseCommand):
     help = 'Run job runner until you terminate it'
 
     def handle(self, *args, **options):
-        while True:
+        '''Only run once when in testing mode, so it returns'''
+        if settings.TESTING:
             run_ready_jobs()
-            sleep(settings.JOBRUNNER_INTERVAL)
+        else:
+            while True:
+                run_ready_jobs()
+                sleep(settings.JOBRUNNER_INTERVAL)
 
 
 def run_ready_jobs():
@@ -92,7 +96,8 @@ def run_job(job, jobmap):
         job.state = Jobstates.ERROR
         JobError.objects.create(job_id=job.id, message=e)
         job.save()
-        send_slack_message('Job {} failed in job runner: {}'.format(job.id, job.funcname), 'kantele')
+        if not settings.TESTING:
+            send_slack_message('Job {} failed in job runner: {}'.format(job.id, job.funcname), 'kantele')
     job.save()
 
 
