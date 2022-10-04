@@ -1,6 +1,7 @@
 # Django settings for kantele project.
 import os
 
+TESTING = int(os.environ.get('TESTING', 0))
 # local box setup
 APIKEY = os.environ.get('APIKEY')
 
