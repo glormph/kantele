@@ -1,0 +1,30 @@
+# For importing to docker-compose.yml
+#
+
+services:
+    storage:
+        image: storage_test
+        build:
+            context: ./src
+            dockerfile: ./docker/Dockerfile
+            target: storage_test
+            args:
+                USER_ID: "${USER_ID:-You must run export USER_ID}"
+                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
+        volumes:
+            - ../../data/storage:/storage
+              #- ../../data/newstorage:/s3storage
+            - ../backend:/kantele
+        environment:
+            APIKEY: "${APIKEY_STORAGE}"
+            KANTELEHOST: nginx
+            PROTOCOL: http
+            TMPSHARE: '/storage/tmp'
+            WEBSHARE: '/storage/web'
+            ANALYSISSHARE: '/storage/analysis'
+            RABBITHOST: mq
+            RABBIT_VHOST: "${RABBIT_VHOST}"
+            RABBITUSER: "${RABBITUSER:-guest}"
+            RABBITPASS: "${RABBITPASS:-guest}"
+            STORAGESHARENAMES: "storage,s3storage"
+            STORAGESHARES: '/storage/storage,/s3storage/storage'
