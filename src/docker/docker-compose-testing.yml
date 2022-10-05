@@ -27,7 +27,7 @@ services:
     
     db: 
         image: postgres:14.3
-        user: "${DBUID:-0}:${DBGID:-0}"
+        #user: "${DBUID:-0}:${DBGID:-0}"
         environment:
             POSTGRES_PASSWORD: "${PG_SUPERUSER_PASSWORD}"
             KANTELE_PASSWORD: "${PG_KANTELE_PASSWORD}"
@@ -75,72 +75,6 @@ services:
             STORAGESHARENAMES: "oldstorage,newstorage"
             STORAGESHARES: '/storage/oldstorage,/storage/newstorage'
 
-
-            #    nginx:
-            #        image: kantele_nginx_stage
-            #        restart: on-failure
-            #        build:
-            #            context: ../
-            #            dockerfile: ./docker/Dockerfile
-            #            target: nginx_stage
-            #            args:
-            #                USER_ID: "${USER_ID:-You must run export USER_ID}"
-            #                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
-            #        volumes:
-            #            - ../docker/uwsgi_params:/etc/nginx/uwsgi_params
-            #            - ../docker/nginx_stage.conf:/etc/nginx/nginx.conf
-            #              #- "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
-            #              #- "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
-
-        #    upload_bay_rsync:
-        #        image: rsync_stor
-        #        build:
-        #            context: ../
-        #            dockerfile: ./docker/Dockerfile
-        #            target: rsync_storage
-        #            args:
-        #                USER_ID: "${USER_ID:-You must run export USER_ID}"
-        #                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
-        #        ports:
-        #            - "${RSYNC_SSHPORT}:22"
-        #        volumes:
-        #            - ../docker/test_rsync_sshkey.pub:/home/kantele/.ssh/authorized_keys
-        #            - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
-        #
-            #    nginx:
-            #        image: kantele_nginx_stage
-            #        restart: on-failure
-            #        build:
-            #            context: ../
-            #            dockerfile: ./docker/Dockerfile
-            #            target: nginx_stage
-            #            args:
-            #                USER_ID: "${USER_ID:-You must run export USER_ID}"
-            #                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
-            #        volumes:
-            #            - ../docker/uwsgi_params:/etc/nginx/uwsgi_params
-            #            - ../docker/nginx_stage.conf:/etc/nginx/nginx.conf
-            #              #- "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
-            #              #- "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
-
-        #
 # Cannot use jobrunner since it depends on having a DB,
 # which is created by web test framework, which we do not know
 # when it is finished
-            #    jobrunner:
-            #        depends_on:
-            #            - db
-            #        extends:
-            #            file: ../docker/docker-compose-base.yml
-            #            service: jobrunner
-            #        env_file:
-            #            - ../docker/testing.env
-            #        volumes:
-            #            - ../backend:/kantele
-            #        environment:
-            #             DB_HOST: db
-            #             RABBITHOST: mq
-            #             HOST_UPLOADDIR: "${CONTAINER_UPLOADPATH}"
-            #             STORAGESHARENAMES: "storage,oldstorage"
-            #             DB_NAME: "test_${KANTELE_DB_NAME}"
-            #

@@ -14,17 +14,30 @@ services:
             PROTOCOL: https
             DB_HOST: "${HOST_FQDN}"
             RABBITHOST: "${HOST_FQDN}"
+        volumes:
+            - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
+            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
     
     nginx:
         network_mode: host
         depends_on:
             - web
+        image: kantele_nginx
+        build:
+            context: ../
+            dockerfile: ./docker/Dockerfile
+            target: nginx_prod
+            args:
+                USER_ID: "${USER_ID:-You must run export USER_ID}"
+                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
+        volumes:
+            - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
+            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
+            - "${HOST_TLSCERTPATH}:/${CONTAINER_TLSCERTPATH}"
         logging:
             driver: syslog
             options:
                 syslog-address: "${SYSLOG_ADDRESS}"
-        volumes:
-            - "${HOST_TLSCERTPATH}:/${CONTAINER_TLSCERTPATH}"
 
     db: 
         network_mode: host
