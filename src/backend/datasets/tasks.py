@@ -54,11 +54,12 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def rename_top_level_project_storage_dir(self, srcname, newname, proj_id):
+def rename_top_level_project_storage_dir(self, projsharename, srcname, newname, proj_id):
     """Renames a project, including the below experiments/datasets"""
     msg = False
-    srcpath = os.path.join(settings.STORAGESHARE, srcname)
-    dstpath = os.path.join(settings.STORAGESHARE, newname)
+    projectshare = settings.SHAREMAP[projsharename]
+    srcpath = os.path.join(projectshare, srcname)
+    dstpath = os.path.join(projectshare, newname)
     if not os.path.exists(srcpath):
         msg = f'Cannot move project name {srcname} to {newname}, does not exist'
     elif not os.path.isdir(srcpath):
@@ -111,11 +112,12 @@ def rsync_dset_servershare(self, srcsharename, srcpath, dstsharename, fns_fnids)
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def rename_dset_storage_location(self, srcpath, dstpath, dset_id, sf_ids):
+def rename_dset_storage_location(self, ds_sharename, srcpath, dstpath, dset_id, sf_ids):
     """This expects one dataset per dir, as it will rename the whole dir"""
     print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
+    ds_share = settings.SHAREMAP[ds_sharename]
     try:
-        shutil.move(os.path.join(settings.STORAGESHARE, srcpath), os.path.join(settings.STORAGESHARE, dstpath))
+        shutil.move(os.path.join(ds_share, srcpath), os.path.join(ds_share, dstpath))
     except:
         taskfail_update_db(self.request.id)
         raise
@@ -123,7 +125,7 @@ def rename_dset_storage_location(self, srcpath, dstpath, dset_id, sf_ids):
     splitpath = srcpath.split(os.sep)
     for pathlen in range(0, len(splitpath))[::-1]:
         # no rmdir on the leaf dir (would be pathlen+1) since that's been moved
-        checkpath = os.path.join(settings.STORAGESHARE, os.sep.join(splitpath[:pathlen]))
+        checkpath = os.path.join(ds_share, os.sep.join(splitpath[:pathlen]))
         if not os.listdir(checkpath):
             try:
                 os.rmdir(checkpath)
@@ -145,13 +147,12 @@ def rename_dset_storage_location(self, srcpath, dstpath, dset_id, sf_ids):
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=False, newname=False):
+def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstsharename, newname=False):
+    '''Moves file across server shares, dirs, or as rename'''
     src = os.path.join(settings.SHAREMAP[srcshare], srcpath, fn)
-    if not dstshare:
-        dstshare = settings.STORAGESHARENAME
     if not newname:
         newname = fn
-    dst = os.path.join(settings.SHAREMAP[dstshare], dstpath, newname)
+    dst = os.path.join(settings.SHAREMAP[dstsharename], dstpath, newname)
     url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     if src == dst:
         print('Source and destination are identical, not moving file')
@@ -172,7 +173,7 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=Fals
     except Exception as e:
         taskfail_update_db(self.request.id)
         raise RuntimeError('Could not move file tot storage:', e)
-    postdata = {'fn_id': fn_id, 'servershare': dstshare,
+    postdata = {'fn_id': fn_id, 'servershare': dstsharename,
                 'dst_path': dstpath, 'newname': os.path.basename(dst),
                 'client_id': settings.APIKEY, 'task': self.request.id}
     try:
@@ -184,8 +185,8 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstshare=Fals
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def move_stored_file_tmp(self, fn, path, fn_id):
-    src = os.path.join(settings.STORAGESHARE, path, fn)
+def move_stored_file_tmp(self, sharename, fn, path, fn_id):
+    src = os.path.join(settings.SHAREMAP[sharename], path, fn)
     dst = os.path.join(settings.TMPSHARE, fn)
     print('Moving stored file {} to tmp'.format(fn_id))
     try:

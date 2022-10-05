@@ -91,7 +91,7 @@ class RenameFile(SingleFileJob):
             special_type = '_refined' if hasattr(changefn, 'mzmlfile') and changefn.mzmlfile.refined else ''
             self.run_tasks.append(((
                 changefn.filename, changefn.servershare.name,
-                changefn.path, changefn.path, changefn.id),
+                changefn.path, changefn.path, changefn.id, changefn.servershare.name),
                 {'newname': '{}{}{}'.format(newname, special_type, ext)}))
 
 
@@ -105,7 +105,7 @@ class MoveSingleFile(SingleFileJob):
         taskkwargs = {x: kwargs[x] for x in ['newname'] if x in kwargs}
         self.run_tasks.append(((
             oldname, sfile.servershare.name,
-            sfile.path, kwargs['dst_path'], sfile.id), taskkwargs))
+            sfile.path, kwargs['dst_path'], sfile.id, sfile.servershare.name), taskkwargs))
 
 
 class PurgeFiles(BaseJob):

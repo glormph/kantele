@@ -25,14 +25,15 @@ class RenameProject(BaseJob):
     def process(self, **kwargs):
         """Fetch fresh project name here, then queue for move from there"""
         new_is_oldname = True
-        for ds in Dataset.objects.filter(runname__experiment__project_id=kwargs['proj_id']):
-            dstoploc = ds.storage_loc.split(os.path.sep)[0]
-            if dstoploc != kwargs['newname']:
+        for ds in Dataset.objects.select_related('servershare').filter(
+                runname__experiment__project_id=kwargs['proj_id']):
+            ds_toploc = ds.storage_loc.split(os.path.sep)[0]
+            ssharename = ds.servershare.name
+            if ds_toploc != kwargs['newname']:
                 new_is_oldname = False
                 break
         if not new_is_oldname:
-            self.run_tasks = [((dstoploc, kwargs['newname'], kwargs['proj_id']), {})]
-            print('heres the tasks', self.run_tasks)
+            self.run_tasks = [((ssharename, ds_toploc, kwargs['newname'], kwargs['proj_id']), {})]
         print(self.run_tasks)
 
 
@@ -45,7 +46,8 @@ class RenameDatasetStorageLoc(DatasetJob):
         """Fetch fresh storage_loc src dir here, then queue for move from there"""
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         if dset.storage_loc != kwargs['dstpath']:
-            self.run_tasks = [((dset.storage_loc, kwargs['dstpath'], kwargs['dset_id'], [x.id for x in self.getfiles_query(**kwargs)]), {})]
+            self.run_tasks = [((dset.servershare.name, dset.storage_loc, kwargs['dstpath'],
+                kwargs['dset_id'], [x.id for x in self.getfiles_query(**kwargs)]), {})]
 
 
 class MoveDatasetServershare(DatasetJob):
@@ -105,7 +107,8 @@ class MoveFilesToStorage(DatasetJob):
             # path? Only relevant in case of cross-share moves.
             if fn.path != dstpath:
                 self.run_tasks.append(
-                        ((fn.rawfile.name, fn.servershare.name, fn.path, dstpath, fn.id), {})
+                        ((fn.rawfile.name, fn.servershare.name, fn.path, dstpath, 
+                            fn.id, settings.PRIMARY_STORAGESHARENAME), {})
                         )
 
 
@@ -113,20 +116,18 @@ class MoveFilesStorageTmp(BaseJob):
     """Moves file from a dataset back to a tmp/inbox-like share"""
     refname = 'move_stored_files_tmp'
     task = False
-    #print('Moving files with ids {} from dataset storage to tmp, '
-    #      'if not already there. Deleting if mzml'.format(fn_ids))
 
     def getfiles_query(self, **kwargs):
         return StoredFile.objects.select_related('filetype').filter(
             rawfile_id__in=kwargs['fn_ids']).exclude(servershare__name=settings.TMPSHARENAME)
 
     def process(self, **kwargs):
-        for fn in self.getfiles_query(**kwargs).select_related('mzmlfile'):
+        for fn in self.getfiles_query(**kwargs).select_related('mzmlfile', 'servershare'):
             if hasattr(fn, 'mzmlfile'):
                 fullpath = os.path.join(fn.path, fn.filename)
                 self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}, filetasks.delete_file))
             else:
-                self.run_tasks.append(((fn.filename, fn.path, fn.id), {}, tasks.move_stored_file_tmp))
+                self.run_tasks.append(((fn.servershare.name, fn.filename, fn.path, fn.id), {}, tasks.move_stored_file_tmp))
 
     def queue_tasks(self):
         for task in self.run_tasks:

@@ -11,7 +11,7 @@ BACKUP_DL_IP = os.environ.get('BACKUP_DL_IP')
 NGINX_BACKUP_REDIRECT = os.environ.get('NGINX_BACKUP_REDIRECT')
 
 # File storage of raw files/analysis results
-STORAGESHARE = os.environ.get('STORAGESHARE')
+STORAGESHARES = os.environ.get('STORAGESHARES', '').split(',')
 ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
 TMPSHARE = os.environ.get('TMPSHARE', False)
 BACKUPSHARE = os.path.join(TMPSHARE, 'pdc_archive_links') if TMPSHARE else False
@@ -47,15 +47,15 @@ RSYNC_SSHPORT = os.environ.get('RSYNC_SSHPORT')
 
 UPLOAD_URL = 'uploads'
 TMPSHARENAME = 'tmp'
-STORAGESHARENAME = 'storage'
 ANALYSISSHARENAME = 'analysis'
 WEBSHARENAME = 'web'
+STORAGESHARENAMES = os.environ.get('STORAGESHARENAMES').split(',')
 PRIMARY_STORAGESHARENAME = os.environ.get('PRIMARY_STORAGE')
 
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
-            STORAGESHARENAME: STORAGESHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
             WEBSHARENAME: WEBSHARE,
+            **{name: share for name, share in zip(STORAGESHARENAMES, STORAGESHARES)}
             }
 TMPPATH = ''
 
