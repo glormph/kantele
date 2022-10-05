@@ -15,30 +15,14 @@ services:
             DB_PASS: "${PG_KANTELE_PASSWORD}"
             DB_USER: "${PG_KANTELE_USER}"
             DB_NAME: "${KANTELE_DB_NAME}"
-            HOST_DOMAIN: "${HOST_FQDN}"
+            HOST_DOMAIN: "${HOST_FQDN},nginx"
             RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
             TMP_UPLOADPATH: "${CONTAINER_UPLOADPATH}"
             HOST_UPLOADDIR: "${HOST_UPLOADPATH}"
             SERVABLE_FILE_PATH: "${CONTAINER_ANALYSISPATH}"
-        volumes:
-            - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
-            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
     
-    nginx:
-        image: kantele_nginx
-        build:
-            context: ../
-            dockerfile: ./docker/Dockerfile
-            target: nginx_prod
-            args:
-                USER_ID: "${USER_ID:-You must run export USER_ID}"
-                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
-        volumes:
-            - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
-            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
-
     db:
         image: postgres:14.3
         ## Comment user: line on MacOS, not on linux
