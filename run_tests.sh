@@ -1,6 +1,6 @@
-# remove old test results if needed
+set -euo pipefail
 
-docker-compose --version
+# remove old test results if needed
 echo Cleaning up
 git clean -xf data/test
 git checkout -- data/test
@@ -17,5 +17,7 @@ sleep 5
 #docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml stop db
 
 echo Running tests
+export GROUP_ID=$(id -g)
+export USER_ID=$(id -u)
 # Run tests
 docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml run --use-aliases web python manage.py test kantele
