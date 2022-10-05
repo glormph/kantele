@@ -97,7 +97,7 @@ class RunLabelCheckNF(MultiDatasetJob):
                'repo': nfwf.nfworkflow.repo,
                'name': analysis.name,
                'outdir': analysis.user.username,
-               'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger'
+               'nfrundirname': 'small' if len(nf_raws) < 500 else 'larger',
                }
         if not len(nfwf.profiles):
             profiles = ['standard', 'docker', 'lehtio']
@@ -258,6 +258,7 @@ class RunNextflowWorkflow(BaseJob):
         # token is unique per job run:
         analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
         analysis.nextflowsearch.save()
+        bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(nf_raws) > 500
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
                'analysis_id': analysis.id,
                'token': analysis.nextflowsearch.token,
@@ -266,7 +267,7 @@ class RunNextflowWorkflow(BaseJob):
                'repo': nfwf.nfworkflow.repo,
                'name': get_ana_fullname(analysis),
                'outdir': analysis.user.username,
-               'nfrundirname': 'small' if analysis.nextflowsearch.workflow.shortname.name != '6FT' else 'larger',
+               'nfrundirname': 'larger' if bigrun else 'small',
                'mzmls': [],
                'old_mzmls': False,
                }
