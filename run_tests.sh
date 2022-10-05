@@ -10,11 +10,9 @@ docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-
 
 echo Prebuilding DB and MQ containers
 # Get DB container ready so web doesnt try to connect before it has init'ed
-docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml up --no-start db mq
-docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml up --detach --wait db
+docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml up --detach db mq
 echo Created db container and started it
 sleep 5
-#docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml stop db
 
 echo Running tests
 export GROUP_ID=$(id -g)
