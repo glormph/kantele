@@ -32,12 +32,6 @@ COPY --chown=kantele backend /kantele
 WORKDIR /kantele
 CMD uwsgi --socket :8009 --processes 3 --module kantele.wsgi
 
-# Build django static for the nginx container
-FROM django AS django_static
-ARG SECRET_KEY=abcd1234
-RUN python manage.py collectstatic
-
-
 # For storage container (use in testing)
 FROM django AS storage_test
 USER root
@@ -45,6 +39,10 @@ RUN apt-get install -y rsync
 USER kantele
 RUN mkdir /home/kantele/.ssh && chmod 700 /home/kantele/.ssh
 
+# Build django static for the nginx container
+FROM django AS django_static
+ARG SECRET_KEY=abcd1234
+RUN python manage.py collectstatic
 
 # Nginx to serve static stuff, uploads etc
 # Needs static things in here, for stage only put the static file
