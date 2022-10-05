@@ -5,7 +5,7 @@ services:
     storage:
         image: storage_test
         build:
-            context: ./src
+            context: "${BUILD_CONTEXT_DEV:-./src}"
             dockerfile: ./docker/Dockerfile
             target: storage_test
             args:
