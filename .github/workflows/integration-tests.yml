@@ -1,0 +1,9 @@
+name: integration-tests
+run-name: Run integration tests
+on: [push]
+jobs:
+    integration-tests:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - run: bash run_tests.sh
