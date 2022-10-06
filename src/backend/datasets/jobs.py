@@ -34,7 +34,6 @@ class RenameProject(BaseJob):
                 break
         if not new_is_oldname:
             self.run_tasks = [((ssharename, ds_toploc, kwargs['newname'], kwargs['proj_id']), {})]
-        print(self.run_tasks)
 
 
 class RenameDatasetStorageLoc(DatasetJob):
@@ -55,28 +54,29 @@ class MoveDatasetServershare(DatasetJob):
     refname = 'move_dset_servershare'
     task = tasks.rsync_dset_servershare
 
+    def getfiles_query(self, **kwargs):
+        '''Select storedfiles with servershare same as dset to 
+        avoid transferring those already on the dst share
+        (e.g. on new tmp)'''
+        return super().getfiles_query(**kwargs).filter(servershare__name=kwargs['srcsharename'],
+                deleted=False, purged=False, checked=True)
+
     def process(self, **kwargs):
         dset = Dataset.objects.values('storage_loc').get(pk=kwargs['dset_id'])
-        # Do not use files non-checked for those are newly added to dset and are not yet in place
-        sfs = self.getfiles_query(**kwargs).values('path', 'servershare').filter(
-                deleted=False, purged=False, checked=True)
-        shares = sfs.distinct('servershare')
-        if shares.count() > 1:
-            raise RuntimeError('Dataset live files are spread over multiple server shares and cannot '
-                    f'be consolidated to {kwargs["dstsharename"]}. Please group files first')
-        share = shares.get().servershare
-        if share.name == kwargs['dstsharename']:
-            raise RuntimeError('Cannot move dataset to same share as its files are on using this job')
+        sfs = self.getfiles_query(**kwargs).values('path', 'servershare__name', 'filename', 'pk')
         paths = sfs.distinct('path')
         if paths.count() > 1:
             raise RuntimeError('Dataset live files are spread over multiple paths and cannot '
                     f'be consolidated to {kwargs["dstsharename"]} under one path. '
                     f'Please group files first, to dset storage location {dset.storage_loc}')
-        if paths.get().path != dset.storage_loc:
+        if paths.get()['path'] != dset['storage_loc']:
             raise RuntimeError('Dataset storage location is different from paths of dset live files, '
                     f'Please make sure files are in correct location, {dset.storage_loc}')
-        self.run_tasks.append(((share.name, dset.storage_loc, kwargs['dstsharename'],
-            {x.filename: x.pk for x in sfs}), {}))
+        sharename = sfs.first()['servershare__name']
+        if sharename == kwargs['dstsharename']:
+            raise RuntimeError('Cannot move dataset to same share as its files are on using this job')
+        self.run_tasks.append(((kwargs['dset_id'], sharename, dset['storage_loc'],
+            kwargs['dstsharename'], {x['filename']: x['pk'] for x in sfs}), {}))
 
 
 class MoveFilesToStorage(DatasetJob):

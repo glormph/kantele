@@ -38,6 +38,7 @@ alljobs = [
         dsjobs.ReactivateDeletedDataset,
         dsjobs.DeleteDatasetPDCBackup,
         dsjobs.RenameProject,
+        dsjobs.MoveDatasetServershare,
         rsjobs.RsyncFileTransfer,
         rsjobs.CreatePDCArchive,
         rsjobs.RestoreFromPDC,
@@ -91,7 +92,11 @@ def update_storage_loc_dset(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    Dataset.objects.filter(pk=data['dset_id']).update(storage_loc=data['storage_loc'])
+    dset = Dataset.objects.filter(pk=data['dset_id'])
+    dset.update(storage_loc=data['storage_loc'])
+    if data['newsharename']:
+        newshare = ServerShare.objects.get(name=data['newsharename'])
+        dset.update(storageshare=newshare)
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
@@ -99,12 +104,11 @@ def update_storage_loc_dset(request):
 
 @require_POST
 def update_storagepath_file(request):
-    # FIXME tests!
     data = json.loads(request.body.decode('utf-8'))
-    print('Updating storage task finished')
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY, settings.ANALYSISCLIENT_APIKEY]):
         return HttpResponseForbidden()
+    print('Updating storage task finished')
     if 'fn_id' in data:
         sfile = StoredFile.objects.get(pk=data['fn_id'])
         sfile.servershare = ServerShare.objects.get(name=data['servershare'])

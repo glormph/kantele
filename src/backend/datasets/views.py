@@ -1234,25 +1234,48 @@ def empty_files_json():
                          for x in newfiles}}
 
 
+def move_dset_project_servershare(dset, dstsharename):
+    '''Takes a dataset and moves its entire project to a new
+    servershare'''
+    create_job('move_dset_servershare', dset_id=dset.pk, srcsharename=dset.storageshare.name,
+                dstsharename=dstsharename)
+    for other_ds in models.Dataset.objects.filter(deleted=False, purged=False,
+            runname__experiment__project=dset.runname.experiment.project).exclude(pk=dset.pk):
+        create_job('move_dset_servershare', dset_id=dset.pk, srcsharename=dset.storageshare.name,
+                dstsharename=dstsharename)
+
+
 def save_or_update_files(data):
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
-    dset = models.Dataset.objects.get(pk=dset_id)
+    dset = models.Dataset.objects.select_related('storageshare').get(pk=dset_id)
+    tmpshare = filemodels.ServerShare.objects.get(name=settings.TMPSHARENAME)
+    dsrawfn_ids = filemodels.RawFile.objects.filter(datasetrawfile__dataset=dset)
+    switch_fileserver = dset.storageshare.server != tmpshare.server
+    mvjobs = []
     if added_fnids:
         models.DatasetRawFile.objects.bulk_create([
             models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
             for fnid in added_fnids])
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
-        create_job('move_files_storage', dset_id=dset_id, dst_path=dset.storage_loc,
-                rawfn_ids=added_fnids)
+        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'dst_path': dset.storage_loc, 
+            'rawfn_ids': added_fnids}))
+
     removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
-        create_job('move_stored_files_tmp', dset_id=dset_id, fn_ids=removed_ids)
+        mvjobs.append(('move_stored_files_tmp', {'dset_id': dset_id, 'fn_ids': removed_ids}))
+
+    if switch_fileserver:
+        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
+    if mvjobs:
+        for mvjob in mvjobs:
+            create_job(mvjob[0], **mvjob[1])
+
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)
     try:

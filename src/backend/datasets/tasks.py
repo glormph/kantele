@@ -9,7 +9,7 @@ from celery import shared_task
 from kantele import settings
 from jobs.post import update_db, taskfail_update_db
 from analysis.tasks import create_runname_dir, prepare_nextflow_run, run_nextflow, transfer_resultfile, check_in_transfer_client
-from rawstatus.tasks import calc_md5
+from rawstatus.tasks import calc_md5, delete_empty_dir
 
 # Updating stuff in tasks happens over the API, assume no DB is touched. This
 # avoids setting up auth for DB
@@ -80,7 +80,7 @@ def rename_top_level_project_storage_dir(self, projsharename, srcname, newname, 
     update_db(url, json=postdata)
 
 @shared_task(bind=True, queue=settings.QUEUE_FILE_DOWNLOAD)
-def rsync_dset_servershare(self, srcsharename, srcpath, dstsharename, fns_fnids):
+def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, dstsharename, fns_fnids):
     '''Uses rsync to copy a dataset to other servershare. E.g in case of consolidating
     projects to a certain share, or when e.g. moving to new storage unit. Files are rsynced
     one at a time, to avoid rsyncing files removed from dset before running this job,
@@ -93,10 +93,11 @@ def rsync_dset_servershare(self, srcsharename, srcpath, dstsharename, fns_fnids)
         taskfail_update_db(self.request.id)
         raise
     for srcfn in fns_fnids:
-        cmd = ['rsync', '-avz', os.path.join(srcfpath, srcfn), dstdir]
+        cmd = ['rsync', '-avz', os.path.join(srcdir, srcfn), dstdir]
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError:
+            print('Failed to run', cmd)
             try:
                 self.retry(countdown=60)
             except MaxRetriesExceededError:
@@ -105,10 +106,16 @@ def rsync_dset_servershare(self, srcsharename, srcpath, dstsharename, fns_fnids)
     # delete files in source dir after rsyncing ALL files (else task is not retryable)
     for srcfn in fns_fnids:
         os.unlink(os.path.join(srcdir, srcfn))
-    postdata = {'fn_ids': fns_fnids.values(), 'servershare': dstsharename, 'dst_path': srcpath,
-                'client_id': settings.APIKEY, 'task': self.request.id}
-    url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
-    update_db(url, json=postdata)
+    delete_empty_dir(srcsharename, srcpath)
+    # report finished
+    fnpostdata = {'fn_ids': [x for x in fns_fnids.values()], 'servershare': dstsharename,
+            'dst_path': srcpath, 'client_id': settings.APIKEY, 'task': self.request.id}
+    dspostdata = {'storage_loc': srcpath, 'dset_id': dset_id, 'newsharename': dstsharename,
+            'task': self.request.id, 'client_id': settings.APIKEY}
+    fnurl = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
+    dsurl = urljoin(settings.KANTELEHOST, reverse('jobs:update_ds_storage'))
+    update_db(fnurl, json=fnpostdata)
+    update_db(dsurl, json=dspostdata)
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
@@ -134,7 +141,7 @@ def rename_dset_storage_location(self, ds_sharename, srcpath, dstpath, dset_id, 
                 raise
     fn_postdata = {'fn_ids': sf_ids, 'dst_path': dstpath, 
             'client_id': settings.APIKEY}
-    ds_postdata = {'storage_loc': dstpath, 'dset_id': dset_id, 
+    ds_postdata = {'storage_loc': dstpath, 'dset_id': dset_id, 'newsharename': False,
             'task': self.request.id, 'client_id': settings.APIKEY}
     fnurl = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     dsurl = urljoin(settings.KANTELEHOST, reverse('jobs:update_ds_storage'))
