@@ -17,7 +17,7 @@ sleep 5
 echo Running tests
 export GROUP_ID=$(id -g)
 export USER_ID=$(id -u)
-# Display logs from other containers:
-docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml logs storage_mvfiles storage_downloads &
 # Run tests
 docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml run --use-aliases web python manage.py test kantele
+# Display logs from other containers:
+docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml logs storage_mvfiles storage_downloads
