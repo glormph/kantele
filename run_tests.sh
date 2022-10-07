@@ -18,4 +18,5 @@ echo Running tests
 export GROUP_ID=$(id -g)
 export USER_ID=$(id -u)
 # Run tests
-docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml run --use-aliases web python manage.py test kantele || (docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml logs storage_mvfiles storage_downloads && exit 1)
+docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml run --use-aliases web python manage.py test || (docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml logs storage_mvfiles storage_downloads && exit 1)
+
