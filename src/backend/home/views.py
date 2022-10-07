@@ -4,7 +4,7 @@ from celery import states as tstates
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.db.models import Q, Sum, Max, Count
@@ -17,7 +17,7 @@ from analysis import models as anmodels
 from analysis import views as av
 from analysis import jobs as aj
 from datasets import jobs as dsjobs
-from datasets.views import check_ownership, get_dset_storestate
+from datasets.views import check_ownership, get_dset_storestate, move_dset_project_servershare
 from rawstatus import models as filemodels
 from rawstatus import views as rv
 from jobs import jobs as jj
@@ -830,36 +830,44 @@ def fetch_dset_details(dset):
 
 
 @login_required
+@require_POST
 def create_mzmls(request):
     '''It is assumed that a dataset's files all come from the same instrument,
     and therefore need the same parameters when creating mzML files'''
-    if not request.method == 'POST':
-        return JsonResponse({'error': 'Must use POST'}, status=405)
     data = json.loads(request.body.decode('utf-8'))
+    try:
+        dset = dsmodels.Dataset.objects.get(pk=data['dsid'], deleted=False)
+        pwiz = anmodels.Proteowizard.objects.get(pk=data['pwiz_id'])
+    except KeyError:
+        return JsonResponse({'error': 'Bad request data'}, status=400)
+    except anmodels.Proteowizard.DoesNotExist:
+        return JsonResponse({'error': 'Proteowizard version does not exist'}, status=400)
+    except dsmodels.Dataset.DoesNotExist:
+        return JsonResponse({'error': 'Dataset does not exist or is deleted'}, status=403)
     filters = ['"peakPicking true 2"', '"precursorRefine"'] # peakPick first to operate as vendor picking
     options = []
-    dset = dsmodels.Dataset.objects.filter(pk=data['dsid'], deleted=False)
-    if not dset.exists():
-        return JsonResponse({'error': 'Dataset does not exist or is deleted'}, status=403)
-    ds_instype = dset.distinct('datasetrawfile__rawfile__producer__msinstrument__instrumenttype')
+    ds_instype = dset.datasetrawfile_set.distinct('rawfile__producer__msinstrument__instrumenttype')
     if ds_instype.count() > 1:
         return JsonResponse({'error': 'Dataset contains data from multiple instrument types, cannot convert all in the same way, separate them'}, status=403)
-    pwiz = anmodels.Proteowizard.objects.get(pk=data['pwiz_id'])
-    if ds_instype.filter(datasetrawfile__rawfile__producer__msinstrument__instrumenttype__name='timstof').exists():
+    if ds_instype.filter(rawfile__producer__msinstrument__instrumenttype__name='timstof').exists():
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('combineIonMobilitySpectra')
+        # FIXME deprecate is_docker, since is always docker
         if not pwiz.is_docker:
             return JsonResponse({'error': 'Cannot process mzML timstof/pasef data with that version'}, status=403)
     num_rawfns = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=data['dsid']).count()
-    mzmls_exist = filemodels.StoredFile.objects.filter(
-            rawfile__datasetrawfile__dataset_id=data['dsid'],
-            deleted=False, purged=False, checked=True, 
-            mzmlfile__isnull=False).exclude(mzmlfile__pwiz=pwiz)
+    mzmls_exist = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset,
+            deleted=False, purged=False, checked=True, mzmlfile__isnull=False)
     # set delete for UI, purging is done in job
-    mzmls_exist.update(deleted=True)
+    mzmls_exist.exclude(mzmlfile__pwiz=pwiz).update(deleted=True)
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
         return JsonResponse({'error': 'This dataset already has existing mzML files of that proteowizard version'}, status=403)
-    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'], pwiz_id=data['pwiz_id'], timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
+    res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
+    # Move entire project if not on same file server
+    if dset.storageshare.server != res_share.server:
+        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
+    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'],
+            pwiz_id=pwiz.pk, timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
     return JsonResponse({})
 
 

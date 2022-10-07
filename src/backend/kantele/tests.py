@@ -3,7 +3,7 @@ import os
 from time import sleep
 
 from django.contrib.auth.models import User
-from django.test import LiveServerTestCase, Client
+from django.test import TestCase, LiveServerTestCase, Client
 from django.utils import timezone
 from django.core.management import call_command
 
@@ -11,6 +11,42 @@ from kantele import settings
 from datasets import models as dm
 from rawstatus import models as rm
 from jobs import models as jm
+
+
+class BaseKanteleUnitTest(TestCase):
+
+    def setUp(self):
+        self.cl = Client()
+        username='testuser'
+        email = 'test@test.com'
+        password='12345'
+        self.user = User(username=username, email=email)
+        self.user.set_password(password)
+        self.user.save() 
+        login = self.cl.login(username=username, password=password)
+
+        # storage backend
+        self.newfserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
+        self.sstmp = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.newfserver,
+                share='/home/testtmp')
+        self.ssnewstore = rm.ServerShare.objects.create(name=settings.PRIMARY_STORAGESHARENAME,
+                server=self.newfserver, share='/home/storage')
+        self.oldfserver = rm.FileServer.objects.create(name='oldserver', uri='s0.test')
+        self.ssoldstorage = rm.ServerShare.objects.create(name=settings.STORAGESHARENAMES[0],
+                server=self.oldfserver, share='/home/storage')
+
+        # make project/dataset
+        qdt = dm.Datatype.objects.create(name='Quantitative proteomics')
+        self.ptype = dm.ProjectTypeName.objects.create(name='testpt')
+        self.pi = dm.PrincipalInvestigator.objects.create(name='testpi')
+        self.dtype = dm.Datatype.objects.create(name='dttest')
+        self.p1 = dm.Project.objects.create(name='p1', pi=self.pi)
+        dm.ProjType.objects.create(project=self.p1, ptype=self.ptype)
+        self.exp1 = dm.Experiment.objects.create(name='e1', project=self.p1)
+        self.run1 = dm.RunName.objects.create(name='run1', experiment=self.exp1)
+        self.storloc = os.path.join(self.p1.name, self.exp1.name, self.run1.name)
+        self.ds = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run1,
+                datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=self.storloc)
 
 
 class BaseIntegrationTest(LiveServerTestCase):
