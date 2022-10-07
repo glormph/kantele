@@ -581,8 +581,8 @@ def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
         'analysis', 'workflow', 'nfworkflow').get()
     ana = nfs.analysis
-    storeloc = {'{}_{}'.format(x.sfile.servershare.name, x.sfile.path): x.sfile for x in
-                anmodels.AnalysisResultFile.objects.filter(analysis_id=nfs.analysis_id)}
+    storeloc = filemodels.StoredFile.objects.select_related('servershare__server').filter(
+            analysisresultfile__analysis=ana)
     dsets = {x.dataset for x in ana.datasetsearch_set.all()}
     #projs = {x.runname.experiment.project for x in dsets}
     if not nfs.analysis.log:
