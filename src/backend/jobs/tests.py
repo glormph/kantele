@@ -84,7 +84,7 @@ class TestUpdateStorageLocDset(BaseJobTest):
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'client_id': settings.STORAGECLIENT_APIKEY,
                     'dset_id': self.ds1.pk, 'storage_loc': newstorloc,
-                    'task' : self.task.asyncid})
+                    'newsharename': False, 'task' : self.task.asyncid})
         self.assertEqual(resp.status_code, 200)
         self.ds1.refresh_from_db()
         self.assertEqual(self.ds1.storage_loc, newstorloc)
