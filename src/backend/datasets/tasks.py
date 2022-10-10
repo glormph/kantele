@@ -30,8 +30,8 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
     transfer_url = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
     resultfiles = {}
-    outpath = os.path.join('mzml_in', os.path.split(rundir)[-1])
-    outfullpath = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME], outpath)
+    outpath = os.path.split(rundir)[-1]
+    outfullpath = os.path.join(settings.SHAREMAP[run['dstsharename']], outpath)
     try:
         os.makedirs(outfullpath, exist_ok=True)
     except (OSError, PermissionError):
@@ -43,7 +43,8 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
         fname = os.path.splitext(raw[2])[0] + '.mzML'
         srcpath = os.path.join(run_outdir, fname)
         fdata = {'md5': calc_md5(srcpath), 'file_id': raw[3], 'newname': fname}
-        transfer_resultfile(outfullpath, outpath, srcpath, fdata, transfer_url, False, token, self.request.id)
+        transfer_resultfile(outfullpath, outpath, srcpath, run['dstsharename'],
+                fdata, transfer_url, False, token, self.request.id)
     # FIXME first check tstate so no dup transfers used?
     # TODO we're only reporting task finished in this POST call, but there is no specific route
     # for that.

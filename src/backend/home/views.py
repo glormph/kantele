@@ -606,7 +606,7 @@ def get_analysis_info(request, nfs_id):
                    'name': nfs.nfworkflow.nfworkflow.description,
                    'update': nfs.nfworkflow.update,
                    'repo': nfs.nfworkflow.nfworkflow.repo},
-#             'proj': [{'name': x.name, 'id': x.id} for x in projs],
+##             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
             'nrfiles': ana.analysisdsinputfile_set.count(),
             'storage_locs': [{'server': x.servershare.server.uri, 'share': x.servershare.name, 'path': x.path}
@@ -866,8 +866,9 @@ def create_mzmls(request):
     # Move entire project if not on same file server
     if dset.storageshare.server != res_share.server:
         move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
-    jj.create_job('convert_dataset_mzml', options=options, filters=filters, dset_id=data['dsid'],
-            pwiz_id=pwiz.pk, timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
+    jj.create_job('convert_dataset_mzml', options=options, filters=filters,
+            dset_id=data['dsid'], dstshare_id=res_share.pk, pwiz_id=pwiz.pk,
+            timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
     return JsonResponse({})
 
 
@@ -905,7 +906,8 @@ def refine_mzmls(request):
     # FIXME get analysis if it does exist, in case someone reruns?
     analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}')
     jj.create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
-                dbfn_id=settings.MZREFINER_FADB_ID, qtype=dset.quantdataset.quanttype.shortname)
+            dstshare_id=res_share.pk, dbfn_id=settings.MZREFINER_FADB_ID,
+            qtype=dset.quantdataset.quanttype.shortname)
     return JsonResponse({})
 
 

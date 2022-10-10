@@ -107,7 +107,7 @@ class TestCreateMzmls(MzmlTests):
         j = jm.Job.objects.last()
         self.assertEqual(j.funcname, 'convert_dataset_mzml')
         exp_kw  = {'options': ['combineIonMobilitySpectra'], 'filters': ['"peakPicking true 2"', '"precursorRefine"', '"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"'], 
-                'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
+                'dstshare_id': self.ssmzml.pk, 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
         self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 0)
@@ -121,7 +121,7 @@ class TestCreateMzmls(MzmlTests):
         j = jm.Job.objects.last()
         self.assertEqual(j.funcname, 'convert_dataset_mzml')
         exp_kw  = {'options': [], 'filters': ['"peakPicking true 2"', '"precursorRefine"'], 
-                'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
+                'dstshare_id': self.ssmzml.pk, 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
         self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 1)
@@ -168,7 +168,8 @@ class TestRefineMzmls(MzmlTests):
         j = jm.Job.objects.last()
         self.assertEqual(j.funcname, 'refine_mzmls')
         exp_kw = {'dset_id': self.ds.pk, 'wfv_id': settings.MZREFINER_NXFWFV_ID,
-                'dbfn_id': settings.MZREFINER_FADB_ID, 'qtype': self.ds.quantdataset.quanttype.shortname}
+                'dbfn_id': settings.MZREFINER_FADB_ID, 'dstshare_id': self.ssmzml.pk,
+                'qtype': self.ds.quantdataset.quanttype.shortname}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
 

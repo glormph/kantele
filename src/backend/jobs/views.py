@@ -411,7 +411,7 @@ def store_analysis_result(request):
     if ('client_id' not in data or
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
-    anashare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
+    dstshare = ServerShare.objects.get(name=data['dstsharename'])
     try:
         ftypeid = StoredFileType.objects.get(name=data['ftype']).pk
     except StoredFileType.DoesNotExist:
@@ -420,7 +420,7 @@ def store_analysis_result(request):
     # Reruns lead to trying to store files multiple times, avoid that here:
     sfile, created  = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
             md5=data['md5'],
-            defaults={'filetype_id': ftypeid, 'servershare': anashare, 
+            defaults={'filetype_id': ftypeid, 'servershare': dstshare, 
                 'path': data['outdir'], 'checked': True, 'filename': data['filename']})
     if created:
         AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)

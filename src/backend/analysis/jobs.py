@@ -35,10 +35,10 @@ class RefineMzmls(DatasetJob):
         all_sfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False, mzmlfile__isnull=False)
         existing_refined = all_sfiles.filter(mzmlfile__refined=True)
         mzmlfiles = all_sfiles.exclude(rawfile__storedfile__in=existing_refined).select_related('mzmlfile__pwiz')
-        anashare = rm.ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
+        dstshare = rm.ServerShare.objects.get(pk=kwargs['dstshare_id'])
         mzmls = []
         for x in mzmlfiles:
-            ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=anashare)
+            ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=dstshare.pk)
             mzmls.append({'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
                 'sfid': ref_sf.id})
         allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
@@ -55,6 +55,7 @@ class RefineMzmls(DatasetJob):
                'repo': nfwf.nfworkflow.repo,
                'name': analysis.name,
                'outdir': analysis.user.username,
+               'dstsharename': dstshare.name,
                }
         if not len(nfwf.profiles):
             profiles = ['standard', 'docker', 'lehtio']
@@ -98,6 +99,7 @@ class RunLabelCheckNF(MultiDatasetJob):
                'name': analysis.name,
                'outdir': analysis.user.username,
                'nfrundirname': 'small' if len(mzmls) < 500 else 'larger',
+               'dstsharename': settings.ANALYSISSHARENAME,
                }
         if not len(nfwf.profiles):
             profiles = ['standard', 'docker', 'lehtio']
@@ -268,6 +270,7 @@ class RunNextflowWorkflow(BaseJob):
                'outdir': analysis.user.username,
                'mzmls': [],
                'old_mzmls': False,
+               'dstsharename': settings.ANALYSISSHARENAME,
                }
         
         # Gather mzML input

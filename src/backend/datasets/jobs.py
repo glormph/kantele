@@ -149,7 +149,7 @@ class ConvertDatasetMzml(BaseJob):
     def process(self, **kwargs):
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
-        res_share = ServerShare.objects.get(name=settings.ANALYSISSHARENAME).id
+        res_share = ServerShare.objects.get(pk=kwargs['dstshare_id'])
         # First create jobs to delete old files
         # TODO problem may arise if eg storage worker is down and hasnt finished processing the
         # and old batch of files. Then the new files will come in before the worker is restarted.
@@ -166,7 +166,7 @@ class ConvertDatasetMzml(BaseJob):
             create_job('purge_files', sf_ids=delete_sfids)
         nf_raws = []
         for fn in self.getfiles_query(**kwargs):
-            mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz, servershare_id=res_share)
+            mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz, servershare_id=res_share.pk)
             if mzsf.checked and not mzsf.purged:
                 continue
             # refresh file status for previously purged (deleted from disk)  mzmls,
@@ -174,7 +174,7 @@ class ConvertDatasetMzml(BaseJob):
             if mzsf.purged:
                 mzsf.checked = False
                 mzsf.purged = False
-            mzsf.servershare_id = res_share
+            mzsf.servershare = res_share
             mzsf.save()
             nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
         if not nf_raws:
@@ -191,6 +191,7 @@ class ConvertDatasetMzml(BaseJob):
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
                'nfrundirname': 'small' if len(nf_raws) < 500 else 'larger',
+               'dstsharename': res_share.name,
                }
         params = ['--container', pwiz.container_version]
         for pname in ['options', 'filters']:

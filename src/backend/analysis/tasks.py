@@ -252,7 +252,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     checksrvurl = urljoin(settings.KANTELEHOST, reverse('analysis:checkfileupload'))
 
     outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])
-    outdir = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME], outpath)
+    outdir = os.path.join(settings.SHAREMAP[run['dstsharename']], outpath)
     try:
         os.makedirs(outdir, exist_ok=True)
     except (OSError, PermissionError):
@@ -264,7 +264,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
         regfile = register_resultfile(ofile, token)
         if not regfile:
             continue
-        transfer_resultfile(outdir, outpath, ofile, regfile, fileurl, checksrvurl, 
+        transfer_resultfile(outdir, outpath, ofile, regfile, dstsharename, fileurl, checksrvurl, 
                 token, self.request.id, run['analysis_id'])
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
@@ -288,7 +288,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     outfiles_db = {}
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
     outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])
-    outfullpath = os.path.join(settings.SHAREMAP[settings.ANALYSISSHARENAME], outpath)
+    outfullpath = os.path.join(settings.SHAREMAP[run['dstsharename']], outpath)
     try:
         os.makedirs(outfullpath, exist_ok=True)
     except (OSError, PermissionError):
@@ -299,7 +299,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
         token = check_in_transfer_client(self.request.id, token, 'analysis_output')
         sf_id, newname = os.path.basename(fn).split('___')
         fdata = {'file_id': sf_id, 'newname': newname, 'md5': calc_md5(fn)}
-        transfer_resultfile(outfullpath, outpath, fn, fdata, fileurl, False, token,
+        transfer_resultfile(outfullpath, outpath, fn, run['dstsharename'], fdata, fileurl, False, token,
                 self.request.id)
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY, 'analysis_id': run['analysis_id'],
@@ -487,7 +487,8 @@ def register_resultfile(fn, token):
         return False
 
 
-def transfer_resultfile(outfullpath, outpath, fn, regfile, url, checksrvurl, token, task_id, analysis_id=False):
+def transfer_resultfile(outfullpath, outpath, fn, dstsharename, regfile, url,
+        checksrvurl, token, task_id, analysis_id=False):
     '''Copies files from analyses to outdir on result storage.
     outfullpath is absolute destination dir for file
     outpath is the path stored in Kantele DB (for users on the share of outfullpath)
@@ -502,7 +503,8 @@ def transfer_resultfile(outfullpath, outpath, fn, regfile, url, checksrvurl, tok
         taskfail_update_db(task_id, 'Errored when trying to copy files to analysis result destination')
         raise
     postdata = {'client_id': settings.APIKEY, 'fn_id': regfile['file_id'],
-            'outdir': outpath, 'filename': fname, 'token': token}
+            'outdir': outpath, 'filename': fname, 'token': token,
+            'dstsharename': dstsharename}
     if calc_md5(dst) != regfile['md5']:
         msg = 'Copying error, MD5 of src and dst are different'
         taskfail_update_db(task_id, msg)
