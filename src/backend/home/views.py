@@ -871,24 +871,40 @@ def create_mzmls(request):
     return JsonResponse({})
 
 
+@require_POST
 @login_required
 def refine_mzmls(request):
     """Creates a job that runs the workflow with the latest version of the mzRefine containing NXF repo.
     Jobs and analysis entries are not created for dsets with full set of refined mzmls (403)."""
-    if not request.method == 'POST':
-        return JsonResponse({'error': 'Must use POST'}, status=405)
     data = json.loads(request.body.decode('utf-8'))
-    # FIXME get analysis if it does exist, in case someone reruns?
-    # Check if files lack refined mzMLs
-    nr_refined = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], mzmlfile__refined=True, deleted=False, checked=True).count()
-    nr_mzml = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=data['dsid'], mzmlfile__refined=False, deleted=False, checked=True)
-    if nr_mzml == nr_refined:
+    try:
+        dset = dsmodels.Dataset.objects.select_related('quantdataset__quanttype').get(pk=data['dsid'], deleted=False)
+    except dsmodels.Dataset.DoesNotExist:
+        return JsonResponse({'error': 'Dataset does not exist or is deleted'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request data'}, status=400)
+
+    # Check if existing normal/refined mzMLs (normal mzMLs can be deleted for this 
+    # due to age, its just the number we need, but refined mzMLs should not be)
+    mzmls = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset, 
+            mzmlfile__isnull=False, checked=True)
+    nr_refined = mzmls.filter(mzmlfile__refined=True, deleted=False).count()
+    normal_mzml = mzmls.filter(mzmlfile__refined=False)
+    nr_mzml = normal_mzml.count()
+    if nr_mzml and nr_mzml == nr_refined:
         return JsonResponse({'error': 'Refined data already exists'}, status=403)
-    dset = dsmodels.Dataset.objects.select_related('quantdataset__quanttype').get(pk=data['dsid'])
-    analysis = anmodels.Analysis(user_id=request.user.id, name='refine_dataset_{}'.format(data['dsid']))
-    analysis.save()
-    if dsmodels.Dataset.objects.filter(pk=data['dsid'], deleted=False).count():
-        jj.create_job('refine_mzmls', dset_id=data['dsid'], analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
+    elif not normal_mzml.filter(deleted=False, purged=False).count():
+        return JsonResponse({'error': 'Need to create normal mzMLs before refining'}, status=403)
+    
+    # Move entire project if not on same file server
+    res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
+    if dset.storageshare.server != res_share.server:
+        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
+
+    # Refine data
+    # FIXME get analysis if it does exist, in case someone reruns?
+    analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}')
+    jj.create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
                 dbfn_id=settings.MZREFINER_FADB_ID, qtype=dset.quantdataset.quanttype.shortname)
     return JsonResponse({})
 
