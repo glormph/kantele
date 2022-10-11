@@ -32,6 +32,8 @@ backup_dl_url: "https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupf
 # Path to backups on storage
 storage_backup_path: "{{ storage_share }}/backups"
 
+storagesharenames: "storage,s3storage"
+
 storage_env:
     SECRET_KEY: "{{ secret_key }}"
     PROTOCOL: https
@@ -42,7 +44,8 @@ storage_env:
     RABBITUSER: "{{ rabbituser }}"
     APIKEY: "{{ storage_apikey }}"
     ADMIN_APIKEY: "{{ admin_apikey }}"
-    STORAGESHARE: "{{ storage_share }}"
+    STORAGESHARENAMES: "{{ storagesharenames }}"
+    STORAGESHARES: "{{ storage_shares }}"
     ANALYSISSHARE: "{{ analysis_share }}"
     TMPSHARE: "{{ tmp_share }}"
     DSM_DIR: "{{ dsm_dir }}"
