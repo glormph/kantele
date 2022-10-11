@@ -270,7 +270,7 @@ class RunNextflowWorkflow(BaseJob):
                'outdir': analysis.user.username,
                'mzmls': [],
                'old_mzmls': False,
-               'dstsharename': settings.ANALYSISSHARENAME,
+               'dstsharename': kwargs['dstsharename'],
                }
         
         # Gather mzML input

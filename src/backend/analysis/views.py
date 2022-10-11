@@ -712,7 +712,8 @@ def store_analysis(request):
     fname = 'run_nf_search_workflow'
     jobinputs['params'] = [x for nf, vals in jobparams.items() for x in [nf, ';'.join([str(v) for v in vals])]]
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': jobinputs}
-    kwargs = {'analysis_id': analysis.id, 'wfv_id': req['nfwfvid'], 'inputs': jobinputs, **data_args}
+    kwargs = {'analysis_id': analysis.id, 'dstsharename': settings.ANALYSISSHARENAME,
+            'wfv_id': req['nfwfvid'], 'inputs': jobinputs, **data_args}
     if req['analysis_id']:
         job = analysis.nextflowsearch.job
         job.kwargs = kwargs
