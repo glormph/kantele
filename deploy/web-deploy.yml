@@ -15,7 +15,7 @@
             src: '{{ item[0] }}'
             dest: '{{ item[1] }}'
         loop:
-            - ['.compose.prod.env.j2', '{{ kanteledir }}/.compose.prod.env']
+            - ['.compose.prod.env.j2', '{{ compose_env_file }}']
             - ['container_env_vars.j2', '{{ kanteledir }}/src/docker/prod-container.env']
             - ['nginx_prod.conf.j2', '{{ kanteledir }}/src/docker/nginx.conf']
 
@@ -23,10 +23,10 @@
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
             files:
-                - '{{ kanteledir }}/docker-compose-base.yml'
+                - '{{ kanteledir }}/src/docker/docker-compose-base.yml'
                 - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             state: absent
-            env_file: '{{ kanteledir }}/.compose.prod.env'
+            env_file: '{{ compose_env_file }}'
         environment:
             - USER_ID: '{{ kanteleuid }}'
             - GROUP_ID: '{{ kantelegid }}'
@@ -37,7 +37,7 @@
             files:
                 - '{{ kanteledir }}/src/docker/docker-compose-base.yml'
                 - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
-            env_file: '{{ kanteledir }}/.compose.prod.env'
+            env_file: '{{ compose_env_file }}'
             build: yes
             state: present
         environment:
