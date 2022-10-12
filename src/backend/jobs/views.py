@@ -42,14 +42,12 @@ alljobs = [
         rsjobs.RsyncFileTransfer,
         rsjobs.CreatePDCArchive,
         rsjobs.RestoreFromPDC,
-        rsjobs.UnzipRawFolder,
         rsjobs.RenameFile,
         rsjobs.MoveSingleFile,
         rsjobs.DeleteEmptyDirectory,
         rsjobs.PurgeFiles,
         rsjobs.DownloadPXProject,
         rsjobs.RegisterExternalFile,
-        rsjobs.DownloadFile,
         anjobs.RunLongitudinalQCWorkflow,
         anjobs.RunNextflowWorkflow,
         anjobs.RunLabelCheckNF,
@@ -145,25 +143,6 @@ def renamed_project(request):
         dset.save()
         StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset).update(path=newstorloc)
     set_task_done(data['task'])
-    return HttpResponse()
-
-
-@require_POST
-def set_file_stored_status(request):
-    '''Called after transfer to storage from web upload bay'''
-    data = json.loads(request.body.decode('utf-8'))
-    if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
-        return HttpResponseForbidden()
-    sfile = StoredFile.objects.select_related('rawfile').get(pk=data['sfid'])
-    if data['do_md5check']:
-        sfile.checked = sfile.rawfile.source_md5 == data['md5']
-    else:
-        # rsync checks integrity so we should not have problems here
-        sfile.checked = True
-    sfile.save()
-    if 'task' in request.POST:
-        set_task_done(request.POST['task'])
     return HttpResponse()
 
 
@@ -283,7 +262,6 @@ def register_external_file(request):
 def downloaded_file(request):
     '''When files are downloaded in a job this can clean up afterwards
     '''
-    # FIXME clean download area
     data = json.loads(request.body.decode('utf-8'))
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
@@ -302,24 +280,6 @@ def downloaded_file(request):
     os.unlink(fpath)
     if 'task' in data:
         set_task_done(data['task'])
-    return HttpResponse()
-
-
-@require_POST
-def unzipped_folder(request):
-    """Changes file name in DB after having completed unzip (remove .zip)"""
-    data = request.POST
-    if 'client_id' not in data or not taskclient_authorized(
-            data['client_id'], [settings.STORAGECLIENT_APIKEY]):
-        return HttpResponseForbidden()
-    sfile = StoredFile.objects.get(pk=request.POST['sfid'])
-    sfile.md5 = request.POST['md5']
-    sfile.checked = request.POST['source_md5'] == request.POST['md5']
-    sfile.filename = sfile.filename.rstrip('.zip')
-    sfile.save()
-    print('Stored file MD5 checked and saved')
-    if 'task' in request.POST:
-        set_task_done(request.POST['task'])
     return HttpResponse()
 
 

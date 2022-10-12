@@ -9,8 +9,6 @@ urlpatterns = [
     url(r'^set/storagepath/$', views.update_storagepath_file, name='updatestorage'),
     url(r'^set/dsstoragepath/$', views.update_storage_loc_dset, name='update_ds_storage'),
     url(r'^set/projectname/$', views.renamed_project, name='renameproject'),
-    url(r'^set/storedstatus/$', views.set_file_stored_status, name='setstoredstatus'),
-    url(r'^unzipped/$', views.unzipped_folder, name='unzipped'),
     url(r'^delete/$', views.delete_job, name='deletejob'),
     url(r'^pause/$', views.pause_job, name='pausejob'),
     url(r'^resume/$', views.resume_job, name='resumejob'),
@@ -20,7 +18,6 @@ urlpatterns = [
     url(r'^set/downloaded/$', views.downloaded_file, name='download_file'),
     url(r'^pdcarchive/set/$', views.created_pdc_archive, name='createpdcarchive'),
     url(r'^pdcrestore/set/$', views.restored_archive_file, name='restoredpdcarchive'),
-    # deprecate when stopped using, this is from old pwiz windows
     url(r'^set/longqc/$', views.store_longitudinal_qc, name='storelongqc'),
     url(r'^set/analysis/$', views.analysis_run_done, name='analysisdone'),
     url(r'^set/mzmlfile/$', views.mzml_convert_or_refine_file_done, name='mzmlfiledone'),

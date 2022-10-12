@@ -51,18 +51,6 @@ class RestoreFromPDC(SingleFileJob):
         print('PDC restore task queued')
 
 
-class UnzipRawFolder(SingleFileJob):
-    refname = 'unzip_raw_datadir_md5check'
-    task = tasks.unzip_folder_check_md5
-    retryable = False
-
-    def process(self, **kwargs):
-        sfile = self.getfiles_query(**kwargs)
-        fnpath = os.path.join(sfile.path, sfile.filename)
-        self.run_tasks.append(((sfile.servershare.name, fnpath, sfile.id, kwargs['source_md5']), {}))
-        print('Unzip/MD5 task queued')
-
-
 class RenameFile(SingleFileJob):
     refname = 'rename_file'
     task = dstasks.move_file_storage
@@ -159,17 +147,6 @@ class RegisterExternalFile(BaseJob):
         for fn in self.getfiles_query(**kwargs):
             self.run_tasks.append(((os.path.join(fn.path, fn.filename), fn.id,
                 fn.rawfile_id, kwargs['sharename'], kwargs['dset_id']), {}))
-
-
-class DownloadFile(SingleFileJob):
-    refname = 'download_file'
-    task = tasks.download_uploaded_file_to_storage
-
-    def process(self, **kwargs):
-        sfile = self.getfiles_query(**kwargs)
-        self.run_tasks.append(((sfile.id, sfile.servershare.name, sfile.path,
-            sfile.filename, sfile.md5), {}))
-        print('Download task queued')
 
 
 class DownloadPXProject(BaseJob):

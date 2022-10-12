@@ -545,7 +545,10 @@ def singlefile_qc(rawfile, storedfile):
     if len(options):
         params.extend(['--options', ';'.join([x[2:] for x in options])])
     wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk').id
-    start_qc_analysis(rawfile, storedfile, wf_id, settings.LONGQC_FADB_ID, params)
+    analysis = Analysis.objects.create(user_id=settings.QC_USER_ID,
+                        name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
+    jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,
+            wfv_id=wf_id, dbfn_id=settings.LONGQC_FADB_ID, params=params)
 
 
 def get_file_owners(sfile):
@@ -583,32 +586,6 @@ def rename_file(request):
     return JsonResponse({})
 
 
-def manyfile_qc(rawfiles, storedfiles):
-    """For reanalysis or batching by hand"""
-    for rawfn, sfn in zip(rawfiles, storedfiles):
-        try:
-            dsmodels.DatasetRawFile.objects.select_related(
-                'dataset').filter(rawfile=rawfn).get().dataset
-        except dsmodels.DatasetRawFile.DoesNotExist:
-            dset = add_to_qc(rawfn, sfn)
-            print('Added QC file {} to QC dataset {}'.format(rawfn.id, dset.id))
-        filters = ['"peakPicking true 2"', '"precursorRefine"']
-        options = []
-        if rawfn.producer.msinstrument.instrumenttype.name == 'timstof':
-            filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
-            options.append('--combineIonMobilitySpectra')
-        jobutil.create_job('convert_single_mzml', options=options, filters=filters, sf_id=sfn.id)
-    # Do not rerun with the same workflow as previously
-    for rawfn, sfn in zip(rawfiles, storedfiles):
-        if not dashmodels.QCData.objects.filter(
-                analysis__nextflowsearch__nfworkflow=settings.LONGQC_NXF_WF_ID,
-                rawfile=rawfn.id).count():
-            start_qc_analysis(rawfn, sfn, settings.LONGQC_NXF_WF_ID, settings.LONGQC_FADB_ID)
-        else:
-            print('QC has already been done with this workflow (id: {}) for '
-                  'rawfile id {}'.format(settings.LONGQC_NXF_WF_ID, rawfn.id))
-
-
 def add_to_qc(rawfile, storedfile):
     # add file to dataset: proj:QC, exp:Hela, run:instrument
     try:
@@ -626,15 +603,6 @@ def add_to_qc(rawfile, storedfile):
     data['added_files'] = {1: {'id': rawfile.id}}
     dsviews.save_or_update_files(data)
     return dset
-
-
-def start_qc_analysis(rawfile, storedfile, wf_id, dbfn_id, params):
-    analysis = Analysis(user_id=settings.QC_USER_ID,
-                        name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
-    analysis.save()
-    jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id,
-                            analysis_id=analysis.id, wfv_id=wf_id, dbfn_id=dbfn_id,
-                            params=params)
 
 
 @login_required

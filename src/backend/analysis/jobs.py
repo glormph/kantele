@@ -67,50 +67,6 @@ class RefineMzmls(DatasetJob):
         analysis.save()
 
 
-class RunLabelCheckNF(MultiDatasetJob):
-    refname = 'run_nf_lc_workflow'
-    task = tasks.run_nextflow_workflow
-    revokable = True
-
-    def process(self, **kwargs):
-        analysis = models.Analysis.objects.select_related('user',
-                'nextflowsearch__workflow__shortname').get(pk=kwargs['analysis_id'])
-        nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
-            pk=kwargs['wfv_id'])
-        stagefiles = {}
-        for flag, sf_id in kwargs['inputs']['singlefiles'].items():
-            sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
-            stagefiles[flag] = [(sf.servershare.name, sf.path, sf.filename)]
-        sfiles = self.getfiles_query(**kwargs).filter(mzmlfile__refined=False).values(
-                'servershare__name', 'path', 'filename',
-                'rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name',
-                'rawfile__datasetrawfile__quantfilechannelsample__projsample__sample'
-                )
-        mzmls = [{'servershare': x['servershare__name'], 'path': x['path'], 'fn': x['filename'],
-            'setname': kwargs['setnames'][str(x.id)] if 'setnames' in kwargs else False,
-            'channel': x['rawfile__datasetrawfile__quantfilechannelsample__channel__channel__name'],
-            'sample': x['rawfile__datasetrawfile__quantfilechannelsample__projsample__sample']}
-            for x in sfiles]
-        run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
-               'analysis_id': analysis.id,
-               'wf_commit': nfwf.commit,
-               'nxf_wf_fn': nfwf.filename,
-               'repo': nfwf.nfworkflow.repo,
-               'name': analysis.name,
-               'outdir': analysis.user.username,
-               'nfrundirname': 'small' if len(mzmls) < 500 else 'larger',
-               'dstsharename': settings.ANALYSISSHARENAME,
-               }
-        if not len(nfwf.profiles):
-            profiles = ['standard', 'docker', 'lehtio']
-        else:
-            profiles = nfwf.profiles
-        kwargs['inputs']['params'].extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        self.run_tasks.append(((run, kwargs['inputs']['params'], mzmls, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
-        analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
-        analysis.save()
-
-
 class RunLongitudinalQCWorkflow(SingleFileJob):
     refname = 'run_longit_qc_workflow'
     task = tasks.run_nextflow_longitude_qc

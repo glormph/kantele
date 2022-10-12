@@ -35,42 +35,6 @@ def calc_md5(fnpath):
     return hash_md5.hexdigest()
 
 
-@shared_task(queue=settings.QUEUE_FILE_DOWNLOAD, bind=True)
-def download_uploaded_file_to_storage(self, sf_id, sharename, path, fname, fn_md5):
-    # FIXME deprecate?
-    postdata = {'client_id': settings.APIKEY, 'task': self.request.id,
-            'sf_id': sf_id, 'do_md5check': False, 'unzipped': False}
-    joburl = urljoin(settings.KANTELEHOST, reverse('jobs:download_file'))
-    dst = os.path.join(settings.SHAREMAP[sharename], path, fname)
-    dighash = hashlib.md5()
-    dlurl = urljoin(settings.KANTELEHOST, f'{settings.UPLOAD_URL}/{sf_id}')
-    with requests.get(dlurl, stream=True) as req, NamedTemporaryFile(mode='wb+') as wfp:
-        for chunk in req.iter_content(chunk_size=8192):
-            if chunk:
-                wfp.write(chunk)
-                dighash.update(chunk)
-        if dighash.hexdigest() != fn_md5:
-            try:
-                self.retry(countdown=60)
-            except MaxRetriesExceededError:
-                update_db(joburl, postdata)
-                raise
-        # Without wfp.seek(0) we need an explicit flush
-        wfp.flush()
-        os.fsync(wfp.fileno())
-        # wfp.name contains absolute path
-        shutil.copy(wfp.name, dst)
-    # File downloaded, MD5 checked and copied, tempfile will be deleted automatically
-    try:
-        update_db(joburl, json=postdata)
-    except RuntimeError:
-        try:
-            self.retry(countdown=60)
-        except MaxRetriesExceededError:
-            update_db(joburl, postdata)
-            raise
-
-
 @shared_task(queue=settings.QUEUE_SEARCH_INBOX)
 def search_raws_downloaded(serversharename, dirname):
     print('Scanning {} folder {} for import raws'.format(serversharename, dirname))
@@ -286,60 +250,6 @@ def delete_empty_dir(self, servershare, directory):
            '{}'.format(dirpath, '{}'))
     url = urljoin(settings.KANTELEHOST, reverse('jobs:rmdir'))
     postdata = {'task': self.request.id, 'client_id': settings.APIKEY}
-    try:
-        update_db(url, postdata, msg)
-    except RuntimeError:
-        try:
-            self.retry(countdown=60)
-        except MaxRetriesExceededError:
-            update_db(url, postdata, msg)
-            raise
-
-
-@shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def unzip_folder_check_md5(self, servershare, fnpath, sf_id, source_md5):
-    print('Unzipping {} on {} to a folder'.format(fnpath, servershare))
-    # first unzip
-    zipped_fn = os.path.join(settings.SHAREMAP[servershare], fnpath)
-    unzippath = os.path.join(os.path.split(zipped_fn)[0], os.path.splitext(zipped_fn)[0])
-    try:
-        with zipfile.ZipFile(zipped_fn, 'r') as zipfp:
-            zipfp.extractall(path=unzippath)
-    except zipfile.BadZipFile:
-        # Re queue zip and transfer!
-        taskfail_update_db(self.request.id, msg='File to unzip had a problem and could be '
-        'corrupt or partially transferred, could not unzip it')
-        raise
-    except IsADirectoryError:
-        # file has already been transferred and we are instructed to re-unzip
-        # possibly there is another zipped file
-        taskfail_update_db(self.request.id, msg='File to unzip was a directory, has '
-                'likely already been unzipped and possibly been retransferred')
-        raise
-    except Exception:
-        taskfail_update_db(self.request.id, msg='Unknown problem happened during '
-                'unzipping')
-        raise
-    else:
-        os.remove(zipped_fn)
-    # now find stable file in zip to get MD5 on
-    try:
-        stable_fn = [x for x in settings.MD5_STABLE_FILES
-            if os.path.exists(os.path.join(unzippath, x))][0]
-    except IndexError:
-        taskfail_update_db(self.request.id, msg='Could not find stable file inside unzipped folder for MD5 calculation')
-        raise
-    # Then do the actual md5 check
-    try:
-        md5result = calc_md5(os.path.join(unzippath, stable_fn))
-    except Exception:
-        taskfail_update_db(self.request.id, msg='MD5 calculation failed')
-        raise
-    url = urljoin(settings.KANTELEHOST, reverse('jobs:unzipped'))
-    postdata = {'task': self.request.id, 'client_id': settings.APIKEY, 'sfid': sf_id,
-        'source_md5': source_md5, 'md5': md5result}
-    msg = ('Could not update database for unzipping fn {}. '
-           '{}'.format(fnpath, '{}'))
     try:
         update_db(url, postdata, msg)
     except RuntimeError:

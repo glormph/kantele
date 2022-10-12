@@ -52,12 +52,7 @@ storage_env:
     ANALYSISSHARE: "{{ analysis_share }}"
     TMPSHARE: "{{ tmp_share }}"
     DSM_DIR: "{{ dsm_dir }}"
-    EXTERNAL_PRODUCER_IDS: "{{ external_producer_ids }}"
-    LOCAL_PTYPE_ID: "{{ local_ptype_id }}"
-    LC_DTYPE_ID: "{{ lc_dtype_id }}"
-    ANALYSISOUT_FTID: "{{ analysisout_ftid }}"
-    DATABASE_FTID: "{{ database_ftid }}"
+    DATABASE_FTID: "{{ database_ftid }}" # for download/register ensembl
     RSYNC_SSHPORT: 22 # ssh port on upload
     RSYNC_SSHUSER: '{{ web_user }}'
     RSYNC_SSHKEY: '{{ rsync_ssh_key }}'
-
