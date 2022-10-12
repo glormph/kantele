@@ -47,7 +47,7 @@ services:
                 syslog-address: "${SYSLOG_ADDRESS}"
         volumes:
             - "${PG_DATA_PATH}:/var/lib/postgresql/data"
-            - "${HOST_PG_BACKUPS}:/pgbackups"
+            - "${HOST_PG_BACKUPS}:${CONTAINER_BACKUPPATH}"
 
 
     mq:

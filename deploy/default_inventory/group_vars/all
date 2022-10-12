@@ -10,10 +10,16 @@ kanteledir: '{{ homedir }}/kantele'
 kanteledb: kanteledb
 kanteledbuser: kanteleuser
 pgdatadir: "{{ homedir }}/pgdata"
-host_pgbackup_path: "{{ homedir }}/pgbackups"
+web_homedir: "/home/{{ web_user }}"
+host_pgbackup_path: "{{ web_homedir }}/pgbackups"
+
+compose_env_file: '{{ web_homedir }}/kantele/.compose.prod.env'
 
 tls_cert: server.crt
 tls_cert_key: server.key
+
+# DB backups in web container
+container_backuppath: /pgbackups
 
 # Upload paths in nginx container
 container_uploadpath: /uploads
@@ -28,9 +34,6 @@ analysis_path_url: /analysisfiles
 # DEPRECATE if not used in backup DL script
 web_backupfolder: backups
 backup_dl_url: "https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupfolder }}"
-
-# Path to backups on storage
-storage_backup_path: "{{ storage_share }}/backups"
 
 storagesharenames: "storage,s3storage"
 

@@ -5,11 +5,6 @@ TESTING = int(os.environ.get('TESTING', 0))
 # local box setup
 APIKEY = os.environ.get('APIKEY')
 
-# Server to allow backup downloads from
-# TODO create better solution, push backups
-BACKUP_DL_IP = os.environ.get('BACKUP_DL_IP')
-NGINX_BACKUP_REDIRECT = os.environ.get('NGINX_BACKUP_REDIRECT')
-
 # File storage of raw files/analysis results
 STORAGESHARES = os.environ.get('STORAGESHARES', '').split(',')
 ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
