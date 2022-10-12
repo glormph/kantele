@@ -50,7 +50,6 @@ alljobs = [
         rsjobs.RegisterExternalFile,
         anjobs.RunLongitudinalQCWorkflow,
         anjobs.RunNextflowWorkflow,
-        anjobs.RunLabelCheckNF,
         anjobs.RefineMzmls,
         anjobs.PurgeAnalysis,
         ]
