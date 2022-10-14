@@ -35,12 +35,12 @@ RUN python manage.py collectstatic
 
 FROM node:18 AS build_frontend
 # Compile node stuff
-COPY frontend /frontend
-RUN cd /frontend/analysis && npm install && npm run build
-RUN cd /frontend/dashboard && npm install && npm run build
-RUN cd /frontend/datasets && npm install && npm run build
-#RUN cd /frontend/file-inflow && npm install && npm run build
-RUN cd /frontend/home && npm install && npm run build
+COPY ../src/frontend /src/frontend
+RUN cd /src/frontend/analysis && npm install && npm run build
+RUN cd /src/frontend/dashboard && npm install && npm run build
+RUN cd /src/frontend/datasets && npm install && npm run build
+RUN cd /src/frontend/file-inflow && npm install && npm run build
+RUN cd /src/frontend/home && npm install && npm run build
 
 # Nginx to serve static stuff, uploads etc
 # Needs static things in here, for stage only put the static file

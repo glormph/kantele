@@ -37,9 +37,6 @@ from jobs import models as jm
 from jobs import jobs as jobutil
 
 
-def show_inflow(request):
-    return render(request, 'rawstatus/inflow.html', {})
-
 #def show_files(request):
 #    files = []
 #    for sfn in StoredFile.objects.filter(
@@ -64,6 +61,10 @@ def show_inflow(request):
 #                      'transfer': True})
 #    return render(request, 'rawstatus/files.html', {'files': files})
 #
+def inflow_page(request):
+    return render(request, 'rawstatus/inflow.html', {
+        'producers': {x.id: x.name for x in Producer.objects.filter(msinstrument__active=True,
+            internal=True)}, 'filetypes': {x.id: x.name for x in StoredFileType.objects.filter(user_uploadable=True)}})
 
 
 @login_required
@@ -281,6 +282,16 @@ def login_required_403_json(view_func):
             return view_func(request, *args, **kwargs)
         return JsonResponse({'error': 'Permission denied'}, status=403)
     return _wrapped_view
+
+
+@login_required_403_json
+@require_POST
+def user_request_upload_token(request):
+    data = json.loads(request.body.decode('utf-8'))
+    producer = Producer.objects.get(shortname='admin')
+    ufu = create_upload_token(data['ftype_id'], request.user.id, producer)
+    token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
+    return JsonResponse({'token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
 
 @login_required_403_json

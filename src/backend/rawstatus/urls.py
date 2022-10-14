@@ -4,8 +4,6 @@ from rawstatus import views
 
 app_name = 'files'
 urlpatterns = [
-   path('instruments/', views.instrument_page, name='instruments'),
-   path('instruments/download/', views.download_instrument_package),
    path('register/', views.register_file, name='register'),
    path('token/', views.request_upload_token, name='req_token'),
    path('instruments/check/', views.instrument_check_in, name='check_in'),
@@ -18,4 +16,7 @@ urlpatterns = [
    path('external/import/', views.import_external_data),
    path('archive/', views.archive_file),
    path('undelete/', views.restore_file_from_cold),
+   path('datainflow/', views.inflow_page, name='inflow'),
+   path('datainflow/download/', views.download_instrument_package),
+   path('datainflow/user/token/', views.user_request_upload_token, name='req_token'),
 ]
