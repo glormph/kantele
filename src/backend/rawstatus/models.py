@@ -8,6 +8,7 @@ class StoredFileType(models.Model):
     name = models.TextField(unique=True) 
     filetype = models.TextField() # fasta, tabular, mzml, raw, analysisoutput
     is_folder = models.BooleanField(default=False)
+    user_uploadable = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name

@@ -13,7 +13,7 @@ export default {
 		sourcemap: true,
 		format: 'iife',
 		name: 'app',
-		file: '../../static/home/bundle.js'
+		file: '../../../static/home/bundle.js'
 	},
 	plugins: [
 		svelte({
@@ -40,7 +40,7 @@ export default {
 
 		// Watch the `public` directory and refresh the
 		// browser on changes when not in production
-		!production && livereload('../../static/home/base'),
+		!production && livereload('../../../static/home/base'),
 
 		// If we're building for production (npm run build
 		// instead of npm run dev), minify
