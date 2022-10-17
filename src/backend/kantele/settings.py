@@ -138,7 +138,7 @@ MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
 
 # django
-ALLOWED_HOSTS = [os.environ.get('HOST_DOMAIN')]
+ALLOWED_HOSTS = os.environ.get('HOST_DOMAIN', KANTELEHOST).split(',')
 SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = True
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
