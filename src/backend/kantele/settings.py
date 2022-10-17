@@ -46,7 +46,8 @@ TMPSHARENAME = 'tmp'
 ANALYSISSHARENAME = 'analysis'
 MZMLINSHARENAME = 'mzml_in'
 WEBSHARENAME = 'web'
-STORAGESHARENAMES = os.environ.get('STORAGESHARENAMES').split(',')
+# TODO maybe have datatype/storage DB setup
+STORAGESHARENAMES = os.environ.get('STORAGESHARENAMES', '').split(',')
 PRIMARY_STORAGESHARENAME = os.environ.get('PRIMARY_STORAGE')
 
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
