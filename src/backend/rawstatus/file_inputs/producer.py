@@ -23,7 +23,6 @@ Usecases:
 '''
 
 # TODO list:
-# - Instrument page needs to be without keys download, new zip package
 # - make check_in procedure a main loop thing, restart processes when they need
 #   to make a change in config (new token, new folder name, etc)
 # - automatic updates of this script

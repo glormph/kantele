@@ -4,12 +4,11 @@ import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 
 let ft_selected = false;
 //let token = false;
-let token = {token: 'this stest fdjwilfw38faoj8fwnme8fn8waefn8wafnew8a9nfew8a9nf89ewaawfeja89wjf8ew9nf8we9anfe',
-  expires: 'tomorrow'};
+let token = false;
 let onlyArchive = false;
 
 async function createToken() {
-  const resp = await postJSON('user/token/', {'ftype_id': ft_selected});
+  const resp = await postJSON('../token/', {'ftype_id': ft_selected});
   if (resp.error) {
     console.log('error');
     // FIXME
@@ -35,6 +34,7 @@ async function createToken() {
       <form action="download/" method="GET">
         <div class="field">
           <label class="label">Datadisk letter</label>
+          <input type="hidden" name="client" value="instrument">
           <input type="text" name="datadisk" class="input" placeholder="Drive letter for data, e.g. D">
         </div>
       
@@ -59,7 +59,7 @@ async function createToken() {
 
       <h5 class="subtitle is-5">Instructions</h5>
       <ul>
-        <li>&bull; Install <a href="https://www.python.org/downloads/">python3</a> on the machine, for all users (not as an admin). When installing, make sure to check "add to PATH"</li>
+        <li>&bull; Install <a href="https://www.python.org/downloads/">Python >=3.6</a> on the machine, for all users (not as an admin). When installing, make sure to check "add to PATH"</li>
         <li>&bull; Fill in the above form and download the zip file</li>
         <li>&bull; Move and unzip the file to an appropriate location, preferably on the Desktop for easy updating</li>
         <li>&bull; Run <code>setup.bat</code></li>
@@ -107,7 +107,7 @@ async function createToken() {
         <hr>
         <div>
           <label class="label">Here is your token</label>
-          <input class="input" value={token.token} />
+          <input class="input" value={token.user_token} />
           It will expire {token.expires}
         </div>
       {/if}
@@ -119,10 +119,11 @@ async function createToken() {
       You can upload your own raw files to totoro. For this you need the following:
       <ul>
         <li>&bull; Linux or MacOS terminal</li>
-        <li>&bull; python3</li>
-        <li>&bull; these uploading scripts</li>
+        <li>&bull; Python &gt;=3.6</li>
+        <li>&bull; 
+          <a href="download/?client=user">these uploading scripts</a>
+        </li>
         <li>&bull; an upload token (above)</li>
-        <li>&bull; </li>
       </ul>
       <hr>
       If not done previously, download and extract the upload scripts. Then <code>chdir</code> to the directory 
@@ -135,7 +136,7 @@ async function createToken() {
       can be used for multiple file uploads of the same file type. All files uploaded 
       using a certain token will be stored similarly (archived or active).
       <hr>
-      For experiments with many small files, you can upload a folder, which will be zipped by the upload. (Please keep a sensible total folder size, 500GB is not sensible!) do:
+      For experiments with many small files, you can upload a folder, which will be zipped by the upload. (Please keep a sensible total folder size, 500GB is not sensible!). For this, point the upload script to the folder instead of a raw file:
       <p><code>bash kantele_upload.sh /path/to/folder_containing_experiment</code> </p>
       <p>
       Depending on the file type, folders will be unzipped on the storage archive (e.g. <code>.d</code> raw data), or left zipped (e.g. microscopy).

@@ -286,22 +286,14 @@ def login_required_403_json(view_func):
 
 @login_required_403_json
 @require_POST
-def user_request_upload_token(request):
-    data = json.loads(request.body.decode('utf-8'))
-    producer = Producer.objects.get(shortname='admin')
-    ufu = create_upload_token(data['ftype_id'], request.user.id, producer)
-    token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
-    return JsonResponse({'token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
-
-
-@login_required_403_json
-@require_POST
 def request_upload_token(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
         producer = Producer.objects.get(client_id=data['producer_id'])
     except Producer.DoesNotExist:
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
+    except KeyError:
+        producer = Producer.objects.get(shortname='admin')
     ufu = create_upload_token(data['ftype_id'], request.user.id, producer)
     token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
     return JsonResponse({'token': ufu.token,
@@ -616,11 +608,22 @@ def add_to_qc(rawfile, storedfile):
     return dset
 
 
-@login_required
-@staff_member_required
-def instrument_page(request):
-    producers = {x.pk: x.name for x in Producer.objects.filter(msinstrument__isnull=False)}
-    return render(request, 'rawstatus/instruments.html', {'producers': producers})
+def zip_instrument_upload_pkg(prod, datadisk, runtransferfile):
+    tmpfp, zipfilename = mkstemp()
+    shutil.copy('/assets/producer.zip', zipfilename)
+    with zipfile.ZipFile(zipfilename, 'a') as zipfp:
+        zipfp.write('rawstatus/file_inputs/producer.py', 'producer.py')
+        zipfp.write('rawstatus/file_inputs/producer.bat', 'transfer.bat')
+        zipfp.writestr('transfer_config.json', runtransferfile)
+    return zipfilename
+
+
+def zip_user_upload_pkg():
+    tmpfp, zipfilename = mkstemp()
+    with zipfile.ZipFile(zipfilename, 'w') as zipfp:
+        zipfp.write('rawstatus/file_inputs/producer.py', 'upload.py')
+        zipfp.write('rawstatus/file_inputs/kantele_upload.sh', 'kantele_upload.sh')
+    return zipfilename
 
 
 @login_required
@@ -631,39 +634,41 @@ def download_instrument_package(request):
     # configs will then be auto-downloaded when changing datadisk, outbox name,
     # instrument name, etc
     # and staff can create new instruments when they like
-    datadisk = '{}:'.format(request.GET['datadisk'][0]) # strip so only get first letter
     try:
-        prod = Producer.objects.select_related('msinstrument').get(pk=request.GET['prod_id'])
-    except Producer.DoesNotExist:
+        client = request.GET['client']
+    except KeyError:
         return HttpResponseForbidden()
-    
-    transferbat = loader.render_to_string('rawstatus/producer.bat', {'client_id': prod.client_id})
-    runtransferfile = json.dumps({
-        'outbox': f'{datadisk}\outbox',
-        'zipbox': f'{datadisk}\zipbox',
-        'donebox': f'{datadisk}\donebox',
-        'producerhostname': prod.name,
-        'client_id': prod.client_id,
-        'filetype_id': prod.msinstrument.filetype_id,
-        'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
-        'host': settings.KANTELEHOST,
-        'md5_stable_fns': settings.MD5_STABLE_FILES,
-        })
-
-    if 'configonly' in request.POST and request.POST['configonly'] == 'true':
-        resp = HttpResponse(runtransferfile, content_type='application/json')
-        resp['Content-Disposition'] = 'attachment; filename="transfer_config.json"'
-        return resp
+    if client == 'instrument':
+        try:
+            prod = Producer.objects.select_related('msinstrument').get(pk=request.GET['prod_id'])
+        except Producer.DoesNotExist:
+            return HttpResponseForbidden()
+        fname_prefix = prod.name
+        datadisk = f'{request.GET["datadisk"][0]}'
+        runtransferfile = json.dumps({
+            'outbox': f'{datadisk}\outbox',
+            'zipbox': f'{datadisk}\zipbox',
+            'donebox': f'{datadisk}\donebox',
+            'producerhostname': prod.name,
+            'client_id': prod.client_id,
+            'filetype_id': prod.msinstrument.filetype_id,
+            'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
+            'host': settings.KANTELEHOST,
+            'md5_stable_fns': settings.MD5_STABLE_FILES,
+            })
+        if 'configonly' in request.GET and request.GET['configonly'] == 'true':
+            resp = HttpResponse(runtransferfile, content_type='application/json')
+            resp['Content-Disposition'] = 'attachment; filename="transfer_config.json"'
+            return resp
+        # strip datadisk so only get first letter
+        zipfn = zip_instrument_upload_pkg(prod, datadisk, runtransferfile)
+    elif client == 'user':
+        fname_prefix = 'kantele'
+        zipfn = zip_user_upload_pkg()
     else:
-        # create zip file
-        tmpfp, zipfilename = mkstemp()
-        shutil.copy('/assets/producer.zip', zipfilename)
-        with zipfile.ZipFile(zipfilename, 'a') as zipfp:
-            zipfp.write('rawstatus/file_inputs/producer.py', 'producer.py')
-            zipfp.writestr('transfer.bat', transferbat)
-            zipfp.writestr('transfer_config.json', runtransferfile)
-        resp = FileResponse(open(zipfilename, 'rb'))
-        resp['Content-Disposition'] = 'attachment; filename="{}_filetransfer.zip"'.format(prod.name)
+        return HttpResponseForbidden()
+    resp = FileResponse(open(zipfn, 'rb'))
+    resp['Content-Disposition'] = f'attachment; filename="{fname_prefix}_filetransfer.zip"'
     return resp
 
 
