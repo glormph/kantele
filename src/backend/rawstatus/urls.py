@@ -18,5 +18,4 @@ urlpatterns = [
    path('undelete/', views.restore_file_from_cold),
    path('datainflow/', views.inflow_page, name='inflow'),
    path('datainflow/download/', views.download_instrument_package),
-   path('datainflow/user/token/', views.user_request_upload_token, name='req_token'),
 ]
