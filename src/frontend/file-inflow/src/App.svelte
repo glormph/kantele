@@ -8,7 +8,8 @@ let token = false;
 let onlyArchive = false;
 
 async function createToken() {
-  const resp = await postJSON('../token/', {'ftype_id': ft_selected});
+  const resp = await postJSON('../token/', {ftype_id: ft_selected,
+    archive_only: onlyArchive});
   if (resp.error) {
     console.log('error');
     // FIXME

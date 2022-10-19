@@ -101,6 +101,7 @@ class UploadToken(models.Model):
     #pubkey = models.TextField()
     producer = models.ForeignKey(Producer, on_delete=models.CASCADE)
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
+    archive_only = models.BooleanField(default=False)
 
 
 class UserFile(models.Model):
