@@ -11,6 +11,7 @@ STORAGESHARES = os.environ.get('STORAGESHARES', '').split(',')
 ANALYSISSHARE = os.environ.get('ANALYSISSHARE')
 MZML_INSHARE = os.environ.get('MZMLINSHARE')
 TMPSHARE = os.environ.get('TMPSHARE', False)
+ARCHIVESHARE = os.environ.get('ARCHIVESHARE', False)
 BACKUPSHARE = os.path.join(TMPSHARE, 'pdc_archive_links') if TMPSHARE else False
 
 # File storage only used in web and nginx containers
@@ -38,12 +39,14 @@ QUEUE_SEARCH_INBOX = 'scaninbox'
 
 PROTOCOL = os.environ.get('PROTOCOL')
 KANTELEHOST = '{}://{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
+RSYNC_HOST = os.environ.get('RSYNC_HOST', urlsplit(KANTELEHOST).netloc)
 RSYNC_SSHUSER = os.environ.get('RSYNC_SSHUSER')
 RSYNC_SSHKEY = os.environ.get('RSYNC_SSHKEY')
 RSYNC_SSHPORT = os.environ.get('RSYNC_SSHPORT')
 
 UPLOAD_URL = 'uploads'
 TMPSHARENAME = 'tmp'
+ARCHIVESHARENAME = 'archive'
 ANALYSISSHARENAME = 'analysis'
 MZMLINSHARENAME = 'mzml_in'
 WEBSHARENAME = 'web'
@@ -52,6 +55,7 @@ STORAGESHARENAMES = os.environ.get('STORAGESHARENAMES', '').split(',')
 PRIMARY_STORAGESHARENAME = os.environ.get('PRIMARY_STORAGE')
 
 SHAREMAP = {TMPSHARENAME: TMPSHARE,
+            ARCHIVESHARENAME: ARCHIVESHARE,
             ANALYSISSHARENAME: ANALYSISSHARE,
             WEBSHARENAME: WEBSHARE,
             **{name: share for name, share in zip(STORAGESHARENAMES, STORAGESHARES)}

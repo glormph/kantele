@@ -294,19 +294,19 @@ def request_upload_token(request):
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
     except KeyError:
         producer = Producer.objects.get(shortname='admin')
-    ufu = create_upload_token(data['ftype_id'], request.user.id, producer)
+    ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['archive_only'])
     token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
     return JsonResponse({'token': ufu.token,
         'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
 
-def create_upload_token(ftype_id, user_id, producer):
+def create_upload_token(ftype_id, user_id, producer, archive_only=False):
     '''Generates a new UploadToken for a producer and stores it in DB'''
     token = str(uuid4())
     expi_sec = settings.MAX_TIME_PROD_TOKEN if producer.internal else settings.MAX_TIME_UPLOADTOKEN
     expiry = timezone.now() + timedelta(seconds=expi_sec)
     return UploadToken.objects.create(token=token, user_id=user_id, expired=False,
-            expires=expiry, filetype_id=ftype_id, producer=producer)
+            expires=expiry, filetype_id=ftype_id, producer=producer, archive_only=archive_only)
 
 
 def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
@@ -400,7 +400,7 @@ def get_files_transferstate(request):
             if (not AnalysisResultFile.objects.filter(sfile_id=sfn) and not
                     PDCBackedupFile.objects.filter(storedfile_id=sfn.id)):
                 # No analysis result or PDC file, then do some processing work
-                process_file_confirmed_ready(rfn, sfn)
+                process_file_confirmed_ready(rfn, sfn, upload.archive_only)
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
 
@@ -434,11 +434,16 @@ def get_files_transferstate(request):
     return JsonResponse(response)
 
 
-def process_file_confirmed_ready(rfn, sfn):
-    """Processing of unzip, backup, QC after transfer has succeeded (MD5 checked)
-    for newly arrived MS other raw data files (not for analysis etc)"""
+def process_file_confirmed_ready(rfn, sfn, archive_only):
+    """Processing of backup, QC, library/userfile after transfer has succeeded
+    (MD5 checked) for newly arrived MS other raw data files (not for analysis etc)
+    Files that are for archiving only are also deleted from the archive share after
+    backing up.
+    """
     ftype_isdir = hasattr(rfn.producer, 'msinstrument') and rfn.producer.msinstrument.filetype.is_folder
     jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=ftype_isdir)
+    if archive_only:
+        jobutil.create_job('purge_files', sf_ids=[sfn.pk])
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(rfn.producer, 'msinstrument'): 
         singlefile_qc(sfn.rawfile, sfn)
@@ -515,7 +520,10 @@ def transfer_file(request):
     os.chmod(upload_dst, 0o644)
 
     # Now prepare for move to proper destination
-    dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+    if upload.archive_only:
+        dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
+    else:
+        dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
             defaults={'servershare': dstshare, 'path': settings.TMPPATH,
