@@ -64,7 +64,8 @@ from jobs import jobs as jobutil
 def inflow_page(request):
     return render(request, 'rawstatus/inflow.html', {
         'producers': {x.id: x.name for x in Producer.objects.filter(msinstrument__active=True,
-            internal=True)}, 'filetypes': {x.id: x.name for x in StoredFileType.objects.filter(user_uploadable=True)}})
+            internal=True)}, 'filetypes': [{'id': x.id, 'name': x.name, 'israw': x.is_rawdata}
+                for x in StoredFileType.objects.filter(user_uploadable=True)]})
 
 
 @login_required
@@ -164,25 +165,30 @@ def register_file(request):
 
 @login_required
 def browser_userupload(request):
-    if request.method != 'POST':
-        uploadable_filetypes = StoredFileType.objects.filter(name__in=['database'])
-        return JsonResponse({'upload_ftypes': {ft.id: ft.filetype for ft in uploadable_filetypes}})
+    # FIXME make sure this job is similar to transfer_file then?
     data = request.POST
     try:
-        int(data['ftype_id'])
+        ftype = StoredFileType.objects.get(user_uploadable=True, pk=int(data['ftype_id']))
     except ValueError:
         return JsonResponse({'success': False, 'error': 'Please select a file type '
         f'{data["ftype_id"]}'})
-    desc = data['desc'].strip()
-    if desc == '':
-        return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+    except StoredFileType.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Illegal file type to upload'})
+    if not ftype.is_rawdata:
+        desc = str(data.get('desc', '').strip())
+        if desc == '':
+            return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+    try:
+        archive_only = bool(int(data['archive_only']))
+        is_library = bool(int(data['is_library']))
+    except (ValueError, KeyError):
+        return JsonResponse({'success': False, 'error': 'Bad request, contact admin'})
     # create userfileupload model (incl. fake token)
     producer = Producer.objects.get(shortname='admin')
-    upload = create_upload_token(data['ftype_id'], request.user.id, producer)
+    upload = create_upload_token(ftype.pk, request.user.id, producer, archive_only, is_library)
     # tmp write file 
     upfile = request.FILES['file']
     dighash = md5()
-    notfa_err_resp = {'error': 'File is not correct FASTA', 'success': False}
         # check if it is correct FASTA (maybe add more parsing later)
         # Flush it to disk just in case, but seek is usually enough
     with NamedTemporaryFile(mode='w+') as fp:
@@ -196,7 +202,8 @@ def browser_userupload(request):
             dighash.update(chunk)
         # stay in context until copied, else tempfile is deleted
         fp.seek(0)
-        if not any(SeqIO.parse(fp, 'fasta')):
+        if ftype.name == 'fasta' and not any(SeqIO.parse(fp, 'fasta')):
+            notfa_err_resp = {'error': 'File is not correct FASTA', 'success': False}
             return JsonResponse(notfa_err_resp)
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
@@ -214,14 +221,18 @@ def browser_userupload(request):
         return JsonResponse({'error': 'Multiple files already found, this '
             'should not happen, please inform your administrator'}, status=403)
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
-        filename=f'userfile_{raw["file_id"]}_{upfile.name}',
+        filename=f'{upfile.name}',
         checked=True, filetype=upload.filetype,
         md5=dighash, path=settings.USERFILEDIR,
         servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-    UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
     jobutil.create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
+    if not ftype.is_rawdata and upload.is_library:
+        LibraryFile.objects.create(sfile=file_trf, description=libdesc)
+    elif not ftype.is_rawdata:
+        UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
+    dstfn = process_file_confirmed_ready(sfile.rawfile, sfile, upload.archive_only)
     return JsonResponse({'error': False, 'success': 'Succesfully uploaded file to '
-        f'become {sfile.filename}. File will be accessible on storage soon.'})
+        f'become {dstfn} File will be accessible on storage soon.'})
 
     
 # TODO webGUI view for asking tokens or put it in the fasta upload view
@@ -294,13 +305,14 @@ def request_upload_token(request):
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
     except KeyError:
         producer = Producer.objects.get(shortname='admin')
-    ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['archive_only'])
+    ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['archive_only'],
+            data['is_library'])
     token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
     return JsonResponse({'token': ufu.token,
         'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
 
-def create_upload_token(ftype_id, user_id, producer, archive_only=False):
+def create_upload_token(ftype_id, user_id, producer, archive_only=False, is_library=False):
     '''Generates a new UploadToken for a producer and stores it in DB'''
     token = str(uuid4())
     expi_sec = settings.MAX_TIME_PROD_TOKEN if producer.internal else settings.MAX_TIME_UPLOADTOKEN

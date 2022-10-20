@@ -1,15 +1,20 @@
 <script>
 
-import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
+import { getCookie, postJSON } from '../../datasets/src/funcJSON.js'
 
 let ft_selected = false;
-//let token = false;
 let token = false;
 let onlyArchive = false;
+let isLibrary = false;
+let uploaddesc = '';
+let selectedFile = [];
+let uploadSuccess;
+let uploadError;
+let uploadRunning;
 
 async function createToken() {
-  const resp = await postJSON('../token/', {ftype_id: ft_selected,
-    archive_only: onlyArchive});
+  const resp = await postJSON('../token/', {ftype_id: ft_selected.id,
+    archive_only: onlyArchive, is_library: isLibrary && !ft_selected.israw});
   if (resp.error) {
     console.log('error');
     // FIXME
@@ -17,8 +22,46 @@ async function createToken() {
     console.log(resp);
     token = resp;
   }
-
 }
+
+async function uploadFile() {
+  //upload_wait = true;
+  uploadRunning = true;
+  uploadError = uploadSuccess = false;
+  let fdata = new FormData();
+  fdata.append('file', selectedFile[0]);
+  fdata.append('desc', uploaddesc);
+  fdata.append('ftype_id', ft_selected.id);
+  fdata.append('archive_only', onlyArchive ? '1' : '0');
+  fdata.append('is_library', isLibrary ? '1' : '0');
+  const csrftoken = getCookie('csrftoken');
+  let resp = await fetch('/files/upload/userfile/', {
+    method: 'POST',
+    body: fdata,
+    credentials: 'same-origin',
+    headers: {'X-CSRFToken': csrftoken},
+  })
+  if (!resp.ok) {
+    if (resp.status != 500) {
+      let errors = await resp.json();
+      uploadError = `${errors.error} - Please contact admin`;
+    } else { 
+      uploadError = `Status ${resp.status} Something went wrong trying to send file to server, contact admin`;
+    }
+    return;
+  } else {
+    resp = await resp.json();
+  }
+  uploadRunning = false;
+  if (resp.error) {
+    uploadSuccess = false;
+    uploadError = resp.error;
+  } else {
+    uploadSuccess = resp.success;
+  }
+  //upload_wait = false;
+}
+
 </script>
 
 <style>
@@ -82,42 +125,99 @@ async function createToken() {
     <div class="box">
       <h5 class="title is-5">Upload your files</h5>
       <h5 class="subtitle is-5">Get an upload authentication token</h5>
-      Administrators can enable uploads of specific file types.
+      Administrators can enable uploads of more file types.
 
       {#if Object.keys(filetypes).length}
       <div class="field">
         <div class="select">
           <select bind:value={ft_selected}>
             <option value={false}>Select a filetype</option>
-            {#each Object.entries(filetypes) as [fid, name]}
-            <option value={fid}>{name}</option>
+            {#each filetypes as ft}
+            <option value={ft}>{ft.name}</option>
             {/each}
           </select>
         </div>
-        {#if ft_selected}
-        <div on:click={createToken} class="button">Create token</div>
-        {/if}
       </div>
+
       <div clas="field">
         <div class="checkbox">
           <input type="checkbox" bind:checked={onlyArchive}>
           <label clas="checkbox">Only store in archive/backup</label>
         </div>
       </div>
+
+      <div clas="field">
+        <div class="checkbox">
+          {#if ft_selected && !ft_selected.israw}
+          <input type="checkbox" bind:checked={isLibrary}>
+          <label clas="checkbox">Library file shared with everyone (e.g. FASTA, not raw data)</label>
+          {/if}
+        </div>
+      </div>
+
+      {#if ft_selected}
+      <hr>
+      <h5 class="subtitle is-5">Either upload large/many files with a token</h5>
+        <div on:click={createToken} class="button">Create token</div>
         {#if token}
-        <hr>
         <div>
           <label class="label">Here is your token</label>
           <input class="input" value={token.user_token} />
           It will expire {token.expires}
         </div>
       {/if}
-        {:else}
-        No upload of any file type is currently enabled!
-        {/if}
       <hr>
-      <h5 class="subtitle is-5">Instructions</h5>
-      You can upload your own raw files to totoro. For this you need the following:
+      <h5 class="subtitle is-5">Or upload a file directly in browser</h5>
+      <div class="field">
+      <div class="file has-name is-fullwidth">
+        <label class="file-label">
+          <input bind:files={selectedFile} class="file-input" type="file"> 
+          <span class="file-cta">
+            <span class="file-icon">
+              <i class="fas fa-upload"></i>
+            </span>
+            <span class="file-label">Choose a file...</span>
+          </span>
+          <span class="file-name">
+            {#if uploadSuccess}
+            <span class="has-icon"><i class="fa fa-check has-text-success"></i></span>
+            {:else if uploadError}
+            <span class="has-icon"><i class="fa fa-times has-text-danger"></i></span>
+            {:else if uploadRunning}
+            <span class="has-icon"><i class="fa fa-spinner fa-spin"></i></span>
+            {/if}
+            {#if selectedFile.length}
+            {selectedFile[0].name}
+            {/if}
+          </span>
+        </label>
+      </div>
+      </div>
+      {#if !ft_selected.israw}
+      <div class="field">
+        <input class="input" bind:value={uploaddesc} type="text" placeholder="Description">
+      </div>
+      {/if}
+
+      {#if uploadError}
+      <div class="has-text-danger">{uploadError}</div>
+      {:else if uploadSuccess}
+      <div class="has-text-success">{uploadSuccess}</div>
+      {/if}
+      {#if selectedFile.length && (ft_selected.israw || uploaddesc) && !uploadRunning}
+      <a class="button is-small" on:click={uploadFile}>Upload file</a>
+      {:else}
+      <a class="button is-small" disabled>Upload file</a>
+      {/if}
+      {/if}
+
+      {:else}
+      No upload of any file type is currently enabled!
+      {/if}
+
+      <hr>
+      <h5 class="subtitle is-5">Instructions for upload of big files with token</h5>
+      You can upload your own raw or otherwise bigger files to storage. For this you need the following:
       <ul>
         <li>&bull; Linux or MacOS terminal</li>
         <li>&bull; Python &gt;=3.6</li>

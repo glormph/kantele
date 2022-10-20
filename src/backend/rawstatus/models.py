@@ -9,6 +9,7 @@ class StoredFileType(models.Model):
     filetype = models.TextField() # fasta, tabular, mzml, raw, analysisoutput
     is_folder = models.BooleanField(default=False)
     user_uploadable = models.BooleanField(default=False)
+    is_rawdata = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -102,6 +103,7 @@ class UploadToken(models.Model):
     producer = models.ForeignKey(Producer, on_delete=models.CASCADE)
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     archive_only = models.BooleanField(default=False)
+    is_library = models.BooleanField(default=False)
 
 
 class UserFile(models.Model):
