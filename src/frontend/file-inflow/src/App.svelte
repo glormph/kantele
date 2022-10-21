@@ -156,59 +156,76 @@ async function uploadFile() {
       </div>
 
       {#if ft_selected}
-      <hr>
-      <h5 class="subtitle is-5">Either upload large/many files with a token</h5>
-        <div on:click={createToken} class="button">Create token</div>
-        {#if token}
-        <div>
-          <label class="label">Here is your token</label>
-          <input class="input" value={token.user_token} />
-          It will expire {token.expires}
-        </div>
-      {/if}
-      <hr>
-      <h5 class="subtitle is-5">Or upload a file directly in browser</h5>
-      <div class="field">
-      <div class="file has-name is-fullwidth">
-        <label class="file-label">
-          <input bind:files={selectedFile} class="file-input" type="file"> 
-          <span class="file-cta">
-            <span class="file-icon">
-              <i class="fas fa-upload"></i>
-            </span>
-            <span class="file-label">Choose a file...</span>
-          </span>
-          <span class="file-name">
-            {#if uploadSuccess}
-            <span class="has-icon"><i class="fa fa-check has-text-success"></i></span>
-            {:else if uploadError}
-            <span class="has-icon"><i class="fa fa-times has-text-danger"></i></span>
-            {:else if uploadRunning}
-            <span class="has-icon"><i class="fa fa-spinner fa-spin"></i></span>
-            {/if}
-            {#if selectedFile.length}
-            {selectedFile[0].name}
-            {/if}
-          </span>
-        </label>
-      </div>
-      </div>
-      {#if !ft_selected.israw}
-      <div class="field">
-        <input class="input" bind:value={uploaddesc} type="text" placeholder="Description">
-      </div>
-      {/if}
+        <hr>
+        <h5 class="subtitle is-5">Either upload large/many files with a token</h5>
+          <div on:click={createToken} class="button">Create token</div>
+          {#if token}
+          <div>
+            <label class="label">Here is your token</label>
+            <input class="input" value={token.user_token} />
+            It will expire {token.expires}
+          </div>
+          {/if}
+          <hr>
+  
+        {#if !ft_selected.isfolder}
+          <h5 class="subtitle is-5">Or upload a file directly in browser</h5>
+          <div class="field">
+          <div class="file has-name is-fullwidth">
+            <label class="file-label">
+              <input bind:files={selectedFile} class="file-input" type="file"> 
+              <span class="file-cta">
+                <span class="file-icon">
+                  <i class="fas fa-upload"></i>
+                </span>
+                <span class="file-label">Choose a file...</span>
+              </span>
+              <span class="file-name">
+                {#if uploadSuccess}
+                <span class="has-icon"><i class="fa fa-check has-text-success"></i></span>
+                {:else if uploadError}
+                <span class="has-icon"><i class="fa fa-times has-text-danger"></i></span>
+                {:else if uploadRunning}
+                <span class="has-icon"><i class="fa fa-spinner fa-spin"></i></span>
+                {/if}
+                {#if selectedFile.length}
+                {selectedFile[0].name}
+                {/if}
+              </span>
+            </label>
+          </div>
+          </div>
+          {#if !ft_selected.israw}
+          <div class="field">
+            <input class="input" bind:value={uploaddesc} type="text" placeholder="Description">
+          </div>
+          {/if}
+  
+          {#if uploadError}
+          <div class="has-text-danger">{uploadError}</div>
+          {:else if uploadSuccess}
+          <div class="has-text-success">{uploadSuccess}</div>
+          {/if}
+          {#if selectedFile.length && (ft_selected.israw || uploaddesc) && !uploadRunning}
+          <a class="button is-small" on:click={uploadFile}>Upload file</a>
+          {:else}
+          <a class="button is-small" disabled>Upload file</a>
+          {/if}
+        {:else}
 
-      {#if uploadError}
-      <div class="has-text-danger">{uploadError}</div>
-      {:else if uploadSuccess}
-      <div class="has-text-success">{uploadSuccess}</div>
-      {/if}
-      {#if selectedFile.length && (ft_selected.israw || uploaddesc) && !uploadRunning}
-      <a class="button is-small" on:click={uploadFile}>Upload file</a>
-      {:else}
-      <a class="button is-small" disabled>Upload file</a>
-      {/if}
+            <label class="file-label">
+              <span class="file-cta">
+                <span class="file-icon">
+                  <i class="fas fa-upload"></i>
+                </span>
+                <span class="file-label">Choose a file...</span>
+              </span>
+            </label>
+        <div class="field">
+          <a class="button is-small" disabled>Upload file</a>
+        </div>
+        Cannot upload filetypes that are folders (e.g. `.d` files)
+        {/if}
       {/if}
 
       {:else}

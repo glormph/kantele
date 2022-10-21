@@ -64,8 +64,8 @@ from jobs import jobs as jobutil
 def inflow_page(request):
     return render(request, 'rawstatus/inflow.html', {
         'producers': {x.id: x.name for x in Producer.objects.filter(msinstrument__active=True,
-            internal=True)}, 'filetypes': [{'id': x.id, 'name': x.name, 'israw': x.is_rawdata}
-                for x in StoredFileType.objects.filter(user_uploadable=True)]})
+            internal=True)}, 'filetypes': [{'id': x.id, 'name': x.name, 'israw': x.is_rawdata,
+                'isfolder': x.is_folder} for x in StoredFileType.objects.filter(user_uploadable=True)]})
 
 
 @login_required
@@ -178,6 +178,9 @@ def browser_userupload(request):
         desc = str(data.get('desc', '').strip())
         if desc == '':
             return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+    elif ftype.is_folder:
+        return JsonResponse({'success': False, 'error': 'Cannot upload folder datatypes through browser'})
+
     try:
         archive_only = bool(int(data['archive_only']))
         is_library = bool(int(data['is_library']))
