@@ -462,12 +462,19 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(rfn.producer, 'msinstrument'): 
         singlefile_qc(sfn.rawfile, sfn)
+        newname = fn
     elif hasattr(sfn, 'libraryfile'):
+        newname = f'libfile_{sfn.libraryfile.id}_{sfn.filename}'
         jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
-                newname='libfile_{}_{}'.format(sfn.libraryfile.id, sfn.filename))
+                newname=newname)
     elif hasattr(sfn, 'userfile'):
+        newname = f'userfile_{rfn.id}_{sfn.filename}'
+        # FIXME can we move a folder!?
         jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
-                newname='userfile_{}_{}'.format(rfn.id, sfn.filename))
+                newname=newname)
+    else:
+        newname = sfn.filename
+    return newname
 
 
 @require_POST
