@@ -1,5 +1,6 @@
 # Django settings for kantele project.
 import os
+from urllib.parse import urlsplit
 
 TESTING = int(os.environ.get('TESTING', 0))
 # local box setup
