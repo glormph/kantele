@@ -321,7 +321,8 @@ def create_upload_token(ftype_id, user_id, producer, archive_only=False, is_libr
     expi_sec = settings.MAX_TIME_PROD_TOKEN if producer.internal else settings.MAX_TIME_UPLOADTOKEN
     expiry = timezone.now() + timedelta(seconds=expi_sec)
     return UploadToken.objects.create(token=token, user_id=user_id, expired=False,
-            expires=expiry, filetype_id=ftype_id, producer=producer, archive_only=archive_only)
+            expires=expiry, filetype_id=ftype_id, producer=producer,
+            archive_only=archive_only, is_library=is_library)
 
 
 def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
@@ -455,12 +456,13 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
     Files that are for archiving only are also deleted from the archive share after
     backing up.
     """
-    ftype_isdir = hasattr(rfn.producer, 'msinstrument') and rfn.producer.msinstrument.filetype.is_folder
-    jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=ftype_isdir)
+    is_ms = hasattr(rfn.producer, 'msinstrument')
+    is_active_ms = is_ms and rfn.producer.internal and rfn.producer.msinstrument.active
+    jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
     if archive_only:
         jobutil.create_job('purge_files', sf_ids=[sfn.pk])
     fn = sfn.filename
-    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and hasattr(rfn.producer, 'msinstrument'): 
+    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
         singlefile_qc(sfn.rawfile, sfn)
         newname = fn
     elif hasattr(sfn, 'libraryfile'):
@@ -501,6 +503,10 @@ def transfer_file(request):
     upload = validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
+    elif upload.is_library and not libdesc:
+        return JsonResponse({'error': 'Library file needs a description'}, status=403)
+    elif not upload.filetype.is_rawdata and not userdesc:
+        return JsonResponse({'error': 'User file needs a description'}, status=403)
     # First check if everything is OK wrt rawfile/storedfiles
     try:
         rawfn = RawFile.objects.get(pk=fn_id)
@@ -557,10 +563,9 @@ def transfer_file(request):
         # This could happen in the future when there is some kind of bypass of the above
         # check sfns.count(). 
         print('File already registered as transferred')
-    elif libdesc:
+    elif upload.is_library:
         LibraryFile.objects.create(sfile=file_trf, description=libdesc)
-    elif userdesc:
-        # TODO, external producer, actual raw data, otherwise userfile with description
+    elif not upload.filetype.is_rawdata:
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
     jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
