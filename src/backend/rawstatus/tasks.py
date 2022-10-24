@@ -118,8 +118,8 @@ def download_px_file_raw(self, ftpurl, ftpnetloc, sf_id, raw_id, shasum, size, s
 
 
 @shared_task(queue=settings.QUEUE_FILE_DOWNLOAD, bind=True)
-def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
-    '''Uses rsync to transfer uploaded file from KANTELEHOST to storage server.
+def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, stablefiles):
+    '''Uses rsync to transfer uploaded file from KANTELEHOST/other RSYNC_HOST to storage server.
     In case of a zipped folder transfer, the file is unzipped and an MD5 check is done 
     on its relevant file, in case the transferred file is corrupt'''
     # FIXME need to take care of e.g. zipped uploads which do not contain relevant file
@@ -139,7 +139,7 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
             taskfail_update_db(self.request.id)
             raise
     postdata = {'sf_id': sfid, 'client_id': settings.APIKEY, 'task': self.request.id, 
-            'do_md5check': do_unzip, 'unzipped': do_unzip}
+            'do_md5check': do_md5check, 'unzipped': do_unzip}
     if do_unzip:
         # Unzip if needed, in that case recheck MD5 to be sure of the zipping has been correct
         # since MD5 is from internal file
@@ -164,20 +164,19 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip):
             raise
         else:
             os.remove(dstfpath)
-        # now find stable file in zip to get MD5 on
-        try:
-            stable_fn = [x for x in settings.MD5_STABLE_FILES
-                if os.path.exists(os.path.join(unzippath, x))][0]
-        except IndexError:
-            taskfail_update_db(self.request.id, msg='Could not find stable file inside unzipped folder for MD5 calculation')
-            raise
-        # Then do the actual md5 check
-        try:
-            md5result = calc_md5(os.path.join(unzippath, stable_fn))
-        except Exception:
-            taskfail_update_db(self.request.id, msg='MD5 calculation failed')
-            raise
-        postdata.update({'md5': md5result})
+        # now find stable file in zip to get MD5 on, do md5 check if needed
+        ok_sf = [x for x in stablefiles if os.path.exists(os.path.join(unzippath, x))]
+        if len(stablefiles) and not len(ok_sf):
+            errmsg = 'Could not find stable file inside unzipped folder for MD5 calculation'
+            taskfail_update_db(self.request.id, msg=errmsg)
+            raise RuntimeError(errmsg)
+        elif len(ok_sf):
+            try:
+                md5result = calc_md5(os.path.join(unzippath, stable_fn))
+            except Exception:
+                taskfail_update_db(self.request.id, msg='MD5 calculation failed')
+                raise
+            postdata.update({'md5': md5result})
     # Done, notify database
     url = urljoin(settings.KANTELEHOST, reverse('jobs:download_file'))
     msg = f'Rsync used for file transfer of {dstfpath} with id {sfid} to storage'
