@@ -518,12 +518,15 @@ def transfer_file(request):
     # with bound host folders this is a read/write operation and not a simple atomic mv
     # That means we can do MD5 check at hardly an extra cost, it is hardly slower than
     # not doing it if we're r/w anyway. Thus we can skip using an extra bg job
-    # However, we do not check MD5 on zipped arrival files:
-    if upload.filetype.is_folder:
+    if upload.filetype.is_folder and len(upload.filetype.stablefiles) > 0:
+        # folder data is uploaded zipped and will be unzipped after rsync
+        # contains a stablefile to MD5 check on, post-unzip
         with open(upload_dst, 'wb+') as fp:
             for chunk in upfile.chunks():
                 fp.write(chunk)
     else:
+        # No predictable file inside zipped folder if any, so we instead do MD5 on
+        # entire zipped folder or raw file which is uploaded.
         with open(upload_dst, 'wb+') as fp:
             for chunk in upfile.chunks():
                 fp.write(chunk)

@@ -27,7 +27,8 @@ class RsyncFileTransfer(SingleFileJob):
         sfile = self.getfiles_query(**kwargs)
         dstpath = os.path.join(sfile.path, sfile.filename)
         self.run_tasks.append(((sfile.id, get_host_upload_dst(kwargs['src_path']),
-            dstpath, sfile.servershare.name, sfile.filetype.is_folder), {}))
+            dstpath, sfile.servershare.name, sfile.filetype.is_folder,
+            sfile.filetype.stablefiles), {}))
 
 
 class CreatePDCArchive(SingleFileJob):
