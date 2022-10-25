@@ -224,7 +224,7 @@ def browser_userupload(request):
         return JsonResponse({'error': 'Multiple files already found, this '
             'should not happen, please inform your administrator'}, status=403)
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
-        filename=f'{upfile.name}',
+        filename=f'{raw["file_id"]}_{upfile.name}',
         checked=True, filetype=upload.filetype,
         md5=dighash, path=settings.USERFILEDIR,
         servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
@@ -466,11 +466,11 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
         singlefile_qc(sfn.rawfile, sfn)
         newname = fn
     elif hasattr(sfn, 'libraryfile'):
-        newname = f'libfile_{sfn.libraryfile.id}_{sfn.filename}'
+        newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
         jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
                 newname=newname)
     elif hasattr(sfn, 'userfile'):
-        newname = f'userfile_{rfn.id}_{sfn.filename}'
+        newname = f'userfile_{rfn.id}_{rfn.name}'
         # FIXME can we move a folder!?
         jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
                 newname=newname)
@@ -549,12 +549,12 @@ def transfer_file(request):
             os.unlink(upload_dst)
             return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
     os.chmod(upload_dst, 0o644)
-
     # Now prepare for move to proper destination
     if upload.archive_only:
         dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
     else:
         dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+    fname = fname if rawfn.producer.internal else f'{rawfn.pk}_{fname}'
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
             defaults={'servershare': dstshare, 'path': settings.TMPPATH,
