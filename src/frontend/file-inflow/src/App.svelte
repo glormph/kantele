@@ -25,7 +25,6 @@ async function createToken() {
 }
 
 async function uploadFile() {
-  //upload_wait = true;
   uploadRunning = true;
   uploadError = uploadSuccess = false;
   let fdata = new FormData();
@@ -41,25 +40,23 @@ async function uploadFile() {
     credentials: 'same-origin',
     headers: {'X-CSRFToken': csrftoken},
   })
-  if (!resp.ok) {
-    if (resp.status != 500) {
-      let errors = await resp.json();
-      uploadError = `${errors.error} - Please contact admin`;
-    } else { 
+  uploadRunning = false;
+  let jresp;
+  try {
+    jresp = await resp.json();
+  } catch {
+    if (resp.status == 413) {
+      uploadError = 'File to upload is too large - please contact admin';
+    } else {
       uploadError = `Status ${resp.status} Something went wrong trying to send file to server, contact admin`;
     }
-    return;
-  } else {
-    resp = await resp.json();
   }
-  uploadRunning = false;
-  if (resp.error) {
+  if (jresp.success) {
+    uploadSuccess = jresp.msg;
+  } else {
     uploadSuccess = false;
-    uploadError = resp.error;
-  } else {
-    uploadSuccess = resp.success;
+    uploadError = jresp.msg;
   }
-  //upload_wait = false;
 }
 
 </script>

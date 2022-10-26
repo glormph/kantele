@@ -170,22 +170,22 @@ def browser_userupload(request):
     try:
         ftype = StoredFileType.objects.get(user_uploadable=True, pk=int(data['ftype_id']))
     except ValueError:
-        return JsonResponse({'success': False, 'error': 'Please select a file type '
+        return JsonResponse({'success': False, 'msg': 'Please select a file type '
         f'{data["ftype_id"]}'})
     except StoredFileType.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'Illegal file type to upload'})
+        return JsonResponse({'success': False, 'msg': 'Illegal file type to upload'})
     if not ftype.is_rawdata:
         desc = str(data.get('desc', '').strip())
         if desc == '':
-            return JsonResponse({'success': False, 'error': 'A description for this file is required'})
+            return JsonResponse({'success': False, 'msg': 'A description for this file is required'})
     elif ftype.is_folder:
-        return JsonResponse({'success': False, 'error': 'Cannot upload folder datatypes through browser'})
+        return JsonResponse({'success': False, 'msg': 'Cannot upload folder datatypes through browser'})
 
     try:
         archive_only = bool(int(data['archive_only']))
         is_library = bool(int(data['is_library']))
     except (ValueError, KeyError):
-        return JsonResponse({'success': False, 'error': 'Bad request, contact admin'})
+        return JsonResponse({'success': False, 'msg': 'Bad request, contact admin'}, status=400)
     # create userfileupload model (incl. fake token)
     producer = Producer.objects.get(shortname='admin')
     upload = create_upload_token(ftype.pk, request.user.id, producer, archive_only, is_library)
@@ -194,20 +194,15 @@ def browser_userupload(request):
     dighash = md5()
         # check if it is correct FASTA (maybe add more parsing later)
         # Flush it to disk just in case, but seek is usually enough
-    with NamedTemporaryFile(mode='w+') as fp:
+    with NamedTemporaryFile(mode='wb+') as fp:
         for chunk in upfile.chunks():
-            try:
-                text = chunk.decode('utf-8')
-            except UnicodeDecodeError:
-                return JsonResponse(notfa_err_resp)
-            else:
-                fp.write(text)
+            fp.write(chunk)
             dighash.update(chunk)
         # stay in context until copied, else tempfile is deleted
         fp.seek(0)
         if ftype.name == 'fasta' and not any(SeqIO.parse(fp, 'fasta')):
-            notfa_err_resp = {'error': 'File is not correct FASTA', 'success': False}
-            return JsonResponse(notfa_err_resp)
+            notfa_err_resp = {'msg': 'File is not correct FASTA', 'success': False}
+            return JsonResponse(notfa_err_resp, status=403)
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
         dst = rsjobs.create_upload_dst_web(raw['file_id'], upload.filetype.filetype)
@@ -217,11 +212,11 @@ def browser_userupload(request):
     sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
     if sfns.count() == 1:
         os.unlink(dst)
-        return JsonResponse({'error': 'This file is already in the '
-            f'system: {sfns.get().filename}'})
+        return JsonResponse({'success': False, 'msg': 'This file is already in the '
+            f'system: {sfns.get().filename}'}, status=403)
     elif sfns.count():
         os.unlink(dst)
-        return JsonResponse({'error': 'Multiple files already found, this '
+        return JsonResponse({'success': False, 'msg': 'Multiple files already found, this '
             'should not happen, please inform your administrator'}, status=403)
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
         filename=f'{raw["file_id"]}_{upfile.name}',
@@ -234,11 +229,10 @@ def browser_userupload(request):
     elif not ftype.is_rawdata:
         UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
     dstfn = process_file_confirmed_ready(sfile.rawfile, sfile, upload.archive_only)
-    return JsonResponse({'error': False, 'success': 'Succesfully uploaded file to '
+    return JsonResponse({'success': True, 'msg': 'Succesfully uploaded file to '
         f'become {dstfn} File will be accessible on storage soon.'})
 
     
-# TODO webGUI view for asking tokens or put it in the fasta upload view
 # TODO store heartbeat of instrument, deploy config, message from backend, etc
 
 @require_POST
