@@ -308,9 +308,14 @@ def request_upload_token(request):
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
     except KeyError:
         producer = Producer.objects.get(shortname='admin')
+    try:
+        selected_ft = StoredFileType.objects.get(pk=data['ftype_id'])
+    except StoredFileType.DoesNotExist:
+        return JsonResponse({'error': True, 'error': 'Cannot use that file type'}, status=403)
     ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['archive_only'],
-            data['is_library'])
-    token_ft_host_b64 = b64encode('|'.join([ufu.token, settings.KANTELEHOST]).encode('utf-8'))
+            data['is_library'] and not selected_ft.is_rawdata)
+    token_info = f'{ufu.token}|{settings.KANTELEHOST}|{int(ufu.is_library)}|{int(not ufu.filetype.is_rawdata)}'
+    token_ft_host_b64 = b64encode(token_info.encode('utf-8'))
     return JsonResponse({'token': ufu.token,
         'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
@@ -505,7 +510,7 @@ def transfer_file(request):
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     elif upload.is_library and not libdesc:
         return JsonResponse({'error': 'Library file needs a description'}, status=403)
-    elif not upload.filetype.is_rawdata and not userdesc:
+    elif not upload.is_library and not upload.filetype.is_rawdata and not userdesc:
         return JsonResponse({'error': 'User file needs a description'}, status=403)
     # First check if everything is OK wrt rawfile/storedfiles
     try:

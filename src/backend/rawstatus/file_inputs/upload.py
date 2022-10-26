@@ -5,21 +5,10 @@ Usecases:
     - Instrument auto upload using a config file from Kantele
         python kantele_upload.py --config transfer_config.json
 
-    - (TBD) Bigger user file uploads the browser cant handle
+    - Bigger user file uploads the browser cant handle
       - An upload token for a filetype will be asked for
       and can be requested from Kantele web interface:
           python kantele_upload.py --file /path/to/file
-          python kantele_upload.py --file /path/to/file --userfile-description 'This is a file for a specific analysis'
-            or multiple files:
-          python kantele_upload.py --outbox /path/to/outbox
-
-
-    - Libfile uploads (fasta etc), as above but with a library description
-          python kantele_upload.py --file /path/to/file --library-description "this is a file"
-
-    - (TBD) Sensitive data uploads, e.g. backup bunch of FASTQ uploads, encrypt
-      - specify SENS when getting token
-          python kantele_upload.py --outbox /path/to/outbox
 '''
 
 # TODO list:
@@ -422,6 +411,9 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 if resp.status_code == 500:
                     result = {'error': 'Kantele server error when transferring file '
                         'state, please contact administrator'}
+                elif resp.status_code == 413:
+                    result = {'error': 'File to transfer too large for Kantele server! '
+                            'Please contact administrator'}
                 else:
                     result = resp.json()
                 if resp.status_code != 200:
@@ -453,20 +445,9 @@ def main():
 
     # backup-only, sensitive data is specified by DB on the host when getting a token!
     parser = argparse.ArgumentParser(description='File uploader')
-    parser.add_argument('--outbox', dest='outbox', default=False, type=str,
-            help='Outbox folder to watch if any')
-    parser.add_argument('--ledger', dest='ledger', default=False, type=str,
-            help='Ledger file to use, or to force ledgerless single-file transfer '
-            'to use in case of e.g. re-zipping etc.')
     parser.add_argument('--file', dest='file', default=False, type=str, help='File to upload')
     parser.add_argument('--config', dest='configfn', default=False, type=str,
             help='Config file if any')
-    parser.add_argument('--library-description', type=str, dest='libdesc', default=False,
-            help='In case you want a library file to be uploaded (will be shared for analysis), '
-            'provide its description here (in quotes)')
-    parser.add_argument('--userfile-description', type=str, dest='userdesc', default=False,
-            help='For users to describe their file to be uploaded, '
-            'provide its description here (in quotes)')
     args = parser.parse_args()
 
     regdoneq = Queue()
@@ -482,17 +463,21 @@ def main():
 
     proc_log_configure(logqueue)
     logger = logging.getLogger(f'{config.get("hostname", "")}.producer.main')
+    libdesc, userdesc = False, False
 
     if not config.get('client_id', False):
         # Parse token gotten from web UI, this is needed so Kantele knows
         # which filetype were uploading, and it will contain the upload location
         webtoken = input('Please provide token from web interface: ').strip()
         try:
-            token, kantelehost = b64decode(webtoken).decode('utf-8').split('|')
+            token, kantelehost, is_libfile, is_userfile = b64decode(webtoken).decode('utf-8').split('|')
         except ValueError:
             print('Incorrect token')
             sys.exit(1)
-
+        if int(is_libfile):
+            libdesc = input('Please enter a description for your library file: ')
+        elif int(is_userfile):
+            userdesc = input('Please enter a description for your userfile: ')
         config.update({'host': kantelehost, 'token': token})
     elif args.configfn:
         checkerr = check_in_instrument(config, args.configfn, logger)
@@ -504,10 +489,9 @@ def main():
         print('Client ID specified but no JSON config file passed to --config, exiting')
         sys.exit(1)
 
-    # either a config outbox (instruments) or arg (users)
-    outbox = args.outbox or config.get('outbox', False)
+    outbox = config.get('outbox', False)
 
-    if outbox or args.ledger:
+    if outbox:
         # ledger for outboxes with multiple files to keep track in case 
         # transfer process is stopped, or when enforced using with single file
         try:
@@ -565,7 +549,7 @@ def main():
     register_p = Process(target=register_and_transfer, args=(regq, regdoneq,
         logqueue, ledger, config, args.configfn,
         donebox, single_file_id, config.get('host'), config.get('hostname'),
-        args.libdesc, args.userdesc))
+        libdesc, userdesc))
     register_p.start()
     logproc = Process(target=log_listener, args=(logqueue,))
     logproc.start()

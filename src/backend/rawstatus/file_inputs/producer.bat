@@ -4,4 +4,4 @@ REM change dir to script dir
 cd %~dp0
 
 call venv\Scripts\activate
-python.exe producer.py --config transfer_config.json
+python.exe upload.py --config transfer_config.json
