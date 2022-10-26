@@ -11,6 +11,7 @@ let selectedFile = [];
 let uploadSuccess;
 let uploadError;
 let uploadRunning;
+let copiedToken = false;
 
 async function createToken() {
   const resp = await postJSON('../token/', {ftype_id: ft_selected.id,
@@ -22,6 +23,12 @@ async function createToken() {
     console.log(resp);
     token = resp;
   }
+}
+
+function copyToken() {
+  navigator.clipboard.writeTest(token);
+  copiedToken = true;
+  setTimeout(() => {copiedToken = false;}, 2000);
 }
 
 async function uploadFile() {
@@ -157,10 +164,17 @@ async function uploadFile() {
         <h5 class="subtitle is-5">Either upload large/many files with a token</h5>
           <div on:click={createToken} class="button">Create token</div>
           {#if token}
+          <button on:click={copyToken} class="button">
+            {#if copiedToken}
+            <span class="icon is-small"><i class="fa fa-check has-text-success"></i></span>
+            {:else}
+            <span class="icon is-small"><i class="fa fa-copy"></i></span>
+            <span>Copy token</span>
+            {/if}
+          </button>
           <div>
-            <label class="label">Here is your token</label>
-            <input class="input" value={token.user_token} />
-            It will expire {token.expires}
+            <input class="input" value={token.user_token} readonly />
+            This token will expire {token.expires}
           </div>
           {/if}
           <hr>
