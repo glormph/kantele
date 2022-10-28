@@ -783,7 +783,10 @@ def delete_analysis(request):
             del_record.save()
             ana_job = analysis.nextflowsearch.job
             if ana_job.state not in jj.Jobstates.DONE:
-                ana_job.state = jj.Jobstates.CANCELED
+                if ana_job.state in [jj.Jobstates.ERROR, jj.Jobstates.WAITING, jj.Jobstates.PENDING]:
+                    ana_job.state = jj.Jobstates.CANCELED
+                else:
+                    ana_job.state = jj.Jobstates.REVOKING
                 ana_job.save()
         return JsonResponse({})
     else:
