@@ -193,7 +193,7 @@ class RunNextflowWorkflow(BaseJob):
         # First new files included:
         # NB including new files leads to problems with e.g. fraction regex
         # if they are somehow strange
-        newfns = rm.StoredFile.objects.filter(mzmlfile__isnull=False,
+        newfns = rm.StoredFile.objects.filter(mzmlfile__isnull=False, deleted=False,
             rawfile__datasetrawfile__dataset__datasetsearch__in=dss).exclude(
             pk__in=kwargs['fractions'].keys())
         if newfns.count():
