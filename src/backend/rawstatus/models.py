@@ -10,7 +10,7 @@ class StoredFileType(models.Model):
     is_folder = models.BooleanField(default=False)
     user_uploadable = models.BooleanField(default=False)
     is_rawdata = models.BooleanField(default=False)
-    stablefiles = models.JSONField(default=list)
+    stablefiles = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return self.name
