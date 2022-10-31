@@ -108,7 +108,8 @@ def check_in_instrument(config, configfn, logger):
                     headers=get_csrf(session.cookies, kantelehost))
             tokenresp = session.post(urljoin(kantelehost, 'files/token/'),
                     headers=get_csrf(session.cookies, kantelehost),
-                    json={'producer_id': clid, 'ftype_id': config['filetype_id']})
+                    json={'producer_id': clid, 'ftype_id': config['filetype_id'],
+                        'is_library': False, 'archive_only': False})
             if tokenresp.status_code != 403:
                 break
             if passwordfail:
