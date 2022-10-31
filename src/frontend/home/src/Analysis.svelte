@@ -4,13 +4,11 @@ import {querystring, push} from 'svelte-spa-router';
 import { getJSON } from '../../datasets/src/funcJSON.js'
 import Table from './Table.svelte'
 import Tabs from './Tabs.svelte'
-import Upload from './Upload.svelte'
 import Details from './AnalysisDetails.svelte'
 import { flashtime } from '../../util.js'
 
 let selectedAnalyses = [];
 let notif = {errors: {}, messages: {}}
-let uploadVisible = false;
 let treatItems;
 let detailsVisible = false;
 let analyses;
@@ -126,14 +124,9 @@ function purgeAnalyses() {
 <a class="button" disabled>Undelete analyses</a>
 <a class="button" disabled>Purge analyses</a>
 {/if}
-<a class="button" on:click={e => uploadVisible = uploadVisible === false}>Upload FASTA</a>
 
 <Table tab="Analyses" bind:items={analyses} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:rowAction={e => doAction(e.detail.action, e.detail.id)} />
  
-{#if uploadVisible}
-<Upload toggleWindow={e => uploadVisible = uploadVisible === false} />
-{/if}
-
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} anaIds={detailsVisible} />
 {/if}
