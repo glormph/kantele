@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% load static %}
+
+{% block head %}
+  <link rel='stylesheet' href='{% static "rawstatus/inflow-bundle.css" %}'>
+  {{ producers | json_script:'producers_el'}}
+  {{ filetypes | json_script:'filetypes_el'}}
+  <script defer src='{% static "rawstatus/inflow-bundle.js" %}'></script>
+  <script>
+    let producers = JSON.parse(document.getElementById('producers_el').textContent);
+    let filetypes = JSON.parse(document.getElementById('filetypes_el').textContent);
+  </script>
+{% endblock head %}
+
+{% block content %}
+
+<div class="container" id="app"> </div>
+
+{% endblock content %}
