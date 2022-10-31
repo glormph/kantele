@@ -649,7 +649,7 @@ def zip_instrument_upload_pkg(prod, datadisk, runtransferfile):
     tmpfp, zipfilename = mkstemp()
     shutil.copy('/assets/producer.zip', zipfilename)
     with zipfile.ZipFile(zipfilename, 'a') as zipfp:
-        zipfp.write('rawstatus/file_inputs/producer.py', 'producer.py')
+        zipfp.write('rawstatus/file_inputs/upload.py', 'upload.py')
         zipfp.write('rawstatus/file_inputs/producer.bat', 'transfer.bat')
         zipfp.writestr('transfer_config.json', runtransferfile)
     return zipfilename
@@ -658,7 +658,7 @@ def zip_instrument_upload_pkg(prod, datadisk, runtransferfile):
 def zip_user_upload_pkg():
     tmpfp, zipfilename = mkstemp()
     with zipfile.ZipFile(zipfilename, 'w') as zipfp:
-        zipfp.write('rawstatus/file_inputs/producer.py', 'upload.py')
+        zipfp.write('rawstatus/file_inputs/upload.py', 'upload.py')
         zipfp.write('rawstatus/file_inputs/kantele_upload.sh', 'kantele_upload.sh')
     return zipfilename
 
@@ -691,7 +691,7 @@ def download_instrument_package(request):
             'filetype_id': prod.msinstrument.filetype_id,
             'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
             'host': settings.KANTELEHOST,
-            'md5_stable_fns': settings.MD5_STABLE_FILES,
+            'md5_stable_fns': prod.msinstrument.filetype.stablefiles,
             })
         if 'configonly' in request.GET and request.GET['configonly'] == 'true':
             resp = HttpResponse(runtransferfile, content_type='application/json')
