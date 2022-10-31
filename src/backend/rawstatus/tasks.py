@@ -172,7 +172,7 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
             raise RuntimeError(errmsg)
         elif len(ok_sf):
             try:
-                md5result = calc_md5(os.path.join(unzippath, stable_fn))
+                md5result = calc_md5(os.path.join(unzippath, ok_sf[0]))
             except Exception:
                 taskfail_update_db(self.request.id, msg='MD5 calculation failed')
                 raise

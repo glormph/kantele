@@ -225,7 +225,7 @@ def browser_userupload(request):
         servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
     jobutil.create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
     if not ftype.is_rawdata and upload.is_library:
-        LibraryFile.objects.create(sfile=file_trf, description=libdesc)
+        LibraryFile.objects.create(sfile=sfile, description=desc)
     elif not ftype.is_rawdata:
         UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
     dstfn = process_file_confirmed_ready(sfile.rawfile, sfile, upload.archive_only)
@@ -711,7 +711,7 @@ def download_instrument_package(request):
 
 def show_old_new_projects(request):
     maxtime_nonint = timezone.now() - timedelta(settings.MAX_MZML_STORAGE_TIME_POST_ANALYSIS)
-    allp = Project.objects.filter(active=True)
+    allp = dsmodels.Project.objects.filter(active=True)
     # make an aggregate for gt / lt  maxtime, or just filter stuff?
     pass
 
