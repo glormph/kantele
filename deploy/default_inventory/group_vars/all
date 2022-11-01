@@ -51,6 +51,7 @@ storage_env:
     STORAGESHARES: "{{ storage_shares }}"
     ANALYSISSHARE: "{{ analysis_share }}"
     TMPSHARE: "{{ tmp_share }}"
+    MZMLINSHARE: "{{ mzml_in_share }}"
     DSM_DIR: "{{ dsm_dir }}"
     DATABASE_FTID: "{{ database_ftid }}" # for download/register ensembl
     RSYNC_SSHPORT: 22 # ssh port on upload
