@@ -681,11 +681,12 @@ def download_instrument_package(request):
         except Producer.DoesNotExist:
             return HttpResponseForbidden()
         fname_prefix = prod.name
+        # strip datadisk so only get first letter
         datadisk = f'{request.GET["datadisk"][0]}'
         runtransferfile = json.dumps({
-            'outbox': f'{datadisk}\outbox',
-            'zipbox': f'{datadisk}\zipbox',
-            'donebox': f'{datadisk}\donebox',
+            'outbox': f'{datadisk}:\outbox',
+            'zipbox': f'{datadisk}:\zipbox',
+            'donebox': f'{datadisk}:\donebox',
             'producerhostname': prod.name,
             'client_id': prod.client_id,
             'filetype_id': prod.msinstrument.filetype_id,
@@ -697,7 +698,6 @@ def download_instrument_package(request):
             resp = HttpResponse(runtransferfile, content_type='application/json')
             resp['Content-Disposition'] = 'attachment; filename="transfer_config.json"'
             return resp
-        # strip datadisk so only get first letter
         zipfn = zip_instrument_upload_pkg(prod, datadisk, runtransferfile)
     elif client == 'user':
         fname_prefix = 'kantele'
