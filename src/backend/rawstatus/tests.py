@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 import zipfile
 from io import BytesIO
@@ -480,18 +481,33 @@ class TestDownloadUploadScripts(BaseFilesTest):
             self.assertEqual(fn.file_size, self.zipsizes[fn.filename])
 
     def test_instrument(self):
-        resp = self.cl.get(self.url, data={'client': 'instrument', 'prod_id': self.prod.pk, 'datadisk': 'D:'})
+        datadisk = 'D:'
+        resp = self.cl.get(self.url, data={'client': 'instrument', 'prod_id': self.prod.pk,
+            'datadisk': datadisk})
         self.assertEqual(resp.status_code, 200)
         with zipfile.ZipFile(BytesIO(b''.join(resp.streaming_content))) as zipfn:
             contents = {x.filename: x.file_size for x in zipfn.infolist()}
             names = zipfn.namelist()
+            with zipfn.open('transfer_config.json') as tcfp:
+                tfconfig = json.load(tcfp)
         self.assertEqual(len(names), 10)
         for fn in ['requests-2.28.1-py3-none-any.whl', 'certifi-2022.9.14-py3-none-any.whl', 
                 'requests_toolbelt-0.9.1-py2.py3-none-any.whl', 'idna-3.4-py3-none-any.whl',
                 'charset_normalizer-2.1.1-py3-none-any.whl', 'urllib3-1.26.12-py2.py3-none-any.whl'
                 ]:
             self.assertIn(fn, names)
-        for fn in ['transfer.bat', 'upload.py', 'transfer_config.json', 'setup.bat']:
+        for key,val in {'outbox': f'{datadisk}\outbox',
+                'zipbox': f'{datadisk}\zipbox',
+                'donebox': f'{datadisk}\donebox',
+                'producerhostname': self.prod.name,
+                'client_id': self.prod.client_id,
+                'filetype_id': self.prod.msinstrument.filetype_id,
+                'is_folder': 1 if self.prod.msinstrument.filetype.is_folder else 0,
+                'host': settings.KANTELEHOST,
+                'md5_stable_fns': self.prod.msinstrument.filetype.stablefiles,
+                }.items():
+            self.assertEqual(tfconfig[key], val)
+        for fn in ['transfer.bat', 'upload.py', 'setup.bat']:
             self.assertEqual(contents[fn], self.zipsizes[fn])
 
 # FIXME case for upload with archiving only
