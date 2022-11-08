@@ -1,5 +1,5 @@
 from django.http import (JsonResponse, HttpResponseForbidden, FileResponse,
-                         HttpResponse)
+                         HttpResponse, HttpResponseBadRequest)
 from django.shortcuts import render
 from django.template import loader
 from django.contrib.auth.decorators import login_required
@@ -645,7 +645,7 @@ def add_to_qc(rawfile, storedfile):
     return dset
 
 
-def zip_instrument_upload_pkg(prod, datadisk, runtransferfile):
+def zip_instrument_upload_pkg(prod, runtransferfile):
     tmpfp, zipfilename = mkstemp()
     shutil.copy('/assets/producer.zip', zipfilename)
     with zipfile.ZipFile(zipfilename, 'a') as zipfp:
@@ -655,11 +655,14 @@ def zip_instrument_upload_pkg(prod, datadisk, runtransferfile):
     return zipfilename
 
 
-def zip_user_upload_pkg():
+def zip_user_upload_pkg(windows):
     tmpfp, zipfilename = mkstemp()
     with zipfile.ZipFile(zipfilename, 'w') as zipfp:
         zipfp.write('rawstatus/file_inputs/upload.py', 'upload.py')
-        zipfp.write('rawstatus/file_inputs/kantele_upload.sh', 'kantele_upload.sh')
+        if windows:
+            zipfp.write('rawstatus/file_inputs/kantele_upload.bat', 'kantele_upload.bat')
+        else:
+            zipfp.write('rawstatus/file_inputs/kantele_upload.sh', 'kantele_upload.sh')
     return zipfilename
 
 
@@ -677,12 +680,16 @@ def download_instrument_package(request):
         return HttpResponseForbidden()
     if client == 'instrument':
         try:
-            prod = Producer.objects.select_related('msinstrument').get(pk=request.GET['prod_id'])
+            prod_id = request.GET['prod_id']
+            datadisk = request.GET['datadisk'][0]
+        except (KeyError, IndexError):
+            return HttpResponseForbidden()
+        try:
+            prod = Producer.objects.select_related('msinstrument').get(pk=prod_id)
         except Producer.DoesNotExist:
             return HttpResponseForbidden()
         fname_prefix = prod.name
         # strip datadisk so only get first letter
-        datadisk = f'{request.GET["datadisk"][0]}'
         runtransferfile = json.dumps({
             'outbox': f'{datadisk}:\outbox',
             'zipbox': f'{datadisk}:\zipbox',
@@ -698,10 +705,13 @@ def download_instrument_package(request):
             resp = HttpResponse(runtransferfile, content_type='application/json')
             resp['Content-Disposition'] = 'attachment; filename="transfer_config.json"'
             return resp
-        zipfn = zip_instrument_upload_pkg(prod, datadisk, runtransferfile)
+        zipfn = zip_instrument_upload_pkg(prod, runtransferfile)
     elif client == 'user':
         fname_prefix = 'kantele'
-        zipfn = zip_user_upload_pkg()
+        try:
+            zipfn = zip_user_upload_pkg(int(request.GET['windows']))
+        except (KeyError, ValueError):
+            return HttpResponseBadRequest()
     else:
         return HttpResponseForbidden()
     resp = FileResponse(open(zipfn, 'rb'))

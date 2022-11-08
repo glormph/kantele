@@ -12,6 +12,7 @@ let uploadSuccess;
 let uploadError;
 let uploadRunning;
 let copiedToken = false;
+const isWindows = navigator.appVersion.indexOf('win') != -1 ? 1 : 0;
 
 async function createToken() {
   const resp = await postJSON('../token/', {ftype_id: ft_selected.id,
@@ -247,10 +248,9 @@ async function uploadFile() {
       <h5 class="subtitle is-5">Instructions for upload of big files with token</h5>
       You can upload your own raw or otherwise bigger files to storage. For this you need the following:
       <ul>
-        <li>&bull; Linux or MacOS terminal</li>
         <li>&bull; Python &gt;=3.6</li>
         <li>&bull; 
-          <a href="download/?client=user">these uploading scripts</a>
+          <a href="download/?client=user&windows={isWindows}">These uploading scripts for {isWindows ? 'Windows': 'MacOS/Linux'}</a> (click <a href="download/?client=user&windows={isWindows ? 0 : 1}">here</a> for {isWindows ? 'MacOS/Linux' : 'Windows'})
         </li>
         <li>&bull; an upload token (above)</li>
       </ul>

@@ -1,5 +1,10 @@
 import os
+import shutil
+import zipfile
+from io import BytesIO
 from datetime import timedelta, datetime
+from tempfile import mkdtemp
+
 from django.utils import timezone
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
@@ -21,6 +26,8 @@ class BaseFilesTest(TestCase):
         self.ft = rm.StoredFileType.objects.create(name='testft', filetype='tst', is_rawdata=True)
         self.uft = rm.StoredFileType.objects.create(name='ufileft', filetype='tst', is_rawdata=False)
         self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
+        msit = rm.MSInstrumentType.objects.create(name='test')
+        rm.MSInstrument.objects.create(producer=self.prod, instrumenttype=msit, filetype=self.ft)
         self.newraw = rm.RawFile.objects.create(name='file1', producer=self.prod,
                 source_md5='b7d55c322fa09ecd8bea141082c5419d',
                 size=100, date=timezone.now(), claimed=False)
@@ -410,3 +417,81 @@ class TestArchiveFile(BaseFilesTest):
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.sfile.pk})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json(), {'state': 'ok'})
+
+
+class TestDownloadUploadScripts(BaseFilesTest):
+    url = '/files/datainflow/download/'
+    zipsizes = {'kantele_upload.sh': 306,
+            'kantele_upload.bat': 297,
+            'upload.py': 24817,
+            'transfer.bat': 177,
+            'transfer_config.json': 202,
+            'setup.bat': 689,
+            }
+
+    def setUp(self):
+        super().setUp()
+        login = self.cl.login(username=self.username, password=self.password)
+        self.tmpdir = mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_fails_badreq_badauth(self):
+        postresp = self.cl.post(self.url)
+        self.assertEqual(postresp.status_code, 405)
+        clientresp = self.cl.get(self.url, data={'client': 'none'})
+        self.assertEqual(clientresp.status_code, 403)
+        nowinresp = self.cl.get(self.url, data={'client': 'user'})
+        self.assertEqual(nowinresp.status_code, 400)
+        badwinresp = self.cl.get(self.url, data={'client': 'user', 'windows': 'yes'})
+        self.assertEqual(badwinresp.status_code, 400)
+        badinsnoprod = self.cl.get(self.url, data={'client': 'instrument'})
+        self.assertEqual(badinsnoprod.status_code, 403)
+        badinsbadprod = self.cl.get(self.url, data={'client': 'instrument', 'prod_id': 1000})
+        self.assertEqual(badinsbadprod.status_code, 403)
+        badinsbaddisk = self.cl.get(self.url, data={'client': 'instrument', 'prod_id': 1})
+        self.assertEqual(badinsbaddisk.status_code, 403)
+
+    def test_user_linuxmacos(self):
+        resp = self.cl.get(self.url, data={'client': 'user', 'windows': '0'})
+        self.assertEqual(resp.status_code, 200)
+        with zipfile.ZipFile(BytesIO(b''.join(resp.streaming_content))) as zipfn:
+            contents = zipfn.infolist()
+            names = zipfn.namelist()
+        # check if both files of correct name/size are there
+        self.assertEqual(len(contents), 2)
+        self.assertIn('kantele_upload.sh', names)
+        self.assertIn('upload.py', names)
+        for fn in contents:
+            self.assertEqual(fn.file_size, self.zipsizes[fn.filename])
+
+    def test_user_windows(self):
+        resp = self.cl.get(self.url, data={'client': 'user', 'windows': '1'})
+        self.assertEqual(resp.status_code, 200)
+        with zipfile.ZipFile(BytesIO(b''.join(resp.streaming_content))) as zipfn:
+            contents = zipfn.infolist()
+            names = zipfn.namelist()
+        # check if both files of correct name/size are there
+        self.assertEqual(len(contents), 2)
+        self.assertIn('kantele_upload.bat', names)
+        self.assertIn('upload.py', names)
+        for fn in contents:
+            self.assertEqual(fn.file_size, self.zipsizes[fn.filename])
+
+    def test_instrument(self):
+        resp = self.cl.get(self.url, data={'client': 'instrument', 'prod_id': self.prod.pk, 'datadisk': 'D:'})
+        self.assertEqual(resp.status_code, 200)
+        with zipfile.ZipFile(BytesIO(b''.join(resp.streaming_content))) as zipfn:
+            contents = {x.filename: x.file_size for x in zipfn.infolist()}
+            names = zipfn.namelist()
+        self.assertEqual(len(names), 10)
+        for fn in ['requests-2.28.1-py3-none-any.whl', 'certifi-2022.9.14-py3-none-any.whl', 
+                'requests_toolbelt-0.9.1-py2.py3-none-any.whl', 'idna-3.4-py3-none-any.whl',
+                'charset_normalizer-2.1.1-py3-none-any.whl', 'urllib3-1.26.12-py2.py3-none-any.whl'
+                ]:
+            self.assertIn(fn, names)
+        for fn in ['transfer.bat', 'upload.py', 'transfer_config.json', 'setup.bat']:
+            self.assertEqual(contents[fn], self.zipsizes[fn])
+
+# FIXME case for upload with archiving only
