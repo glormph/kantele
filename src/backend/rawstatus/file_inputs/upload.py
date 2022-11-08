@@ -15,6 +15,10 @@ Usecases:
 # - make check_in procedure a main loop thing, restart processes when they need
 #   to make a change in config (new token, new folder name, etc)
 # - automatic updates of this script
+#   - have bash script run script to check first if newer version on server (track versions)
+#   - download new version if appropriate
+#   - bash in next line starts normal operation
+#   - all in same python script (except bash fire same python script to check)
 
 
 import sys
