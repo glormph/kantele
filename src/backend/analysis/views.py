@@ -44,10 +44,17 @@ def load_analysis_resultfiles(request, anid):
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis_date = datetime.strftime(ana.date, '%Y-%m-%d')
     dsids = [int(x) for x in request.GET['dsids'].split(',')]
+    base_ana_id = int(request.GET['base_ana']) or False
     analysis_prev_resfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
+    if base_ana_id:
+        base_ana_resfiles_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
+            analysis_id=base_ana_id).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
+    else:
+        base_ana_resfiles_ids = []
+    already_loaded_files = analysis_prev_resfiles_ids + base_ana_resfiles_ids
     resultfiles = [{'id': x.sfile_id,
         'name': f'{x.sfile.filename} - Result of {aj.get_ana_fullname(ana)} ({analysis_date})'}
-        for x in ana.analysisresultfile_set.exclude(sfile__pk__in=analysis_prev_resfiles_ids)]
+        for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
     return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
 
 
@@ -60,7 +67,11 @@ def load_base_analysis(request, wfversion_id, baseanid):
     MS proteomics pipeline, and therefore not very general, due to the complement and rerun
     functionality. Maybe find a way around that, breaking those off from regular base analysis.
     """
-    dsids = [int(x) for x in request.GET['dsids'].split(',')]
+    try:
+        new_ana_dsids = [int(x) for x in request.GET['dsids'].split(',')]
+        added_ana_ids = [int(x) for x in request.GET['added_ana_ids'].split(',') if x]
+    except KeyError:
+        return JsonResponse({'error': 'Something wrong when asking for base analysis, contact admin', 'status': 400})
     try:
         new_pset_id = am.NextflowWfVersion.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
     except am.NextflowWfVersion.DoesNotExist:
@@ -71,7 +82,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis = {
             'analysis_id': ana.pk,
-            'dsets_identical': set(dss.dataset_id for dss in ana.datasetsearch_set.all()) == set(dsids),
+            'dsets_identical': set(dss.dataset_id for dss in ana.datasetsearch_set.all()) == set(new_ana_dsids),
             'mzmldef': False,
             'flags': [],
             'multicheck': [],
@@ -118,11 +129,14 @@ def load_base_analysis(request, wfversion_id, baseanid):
     else:
         dsets.update(baseana_dbrec.shadow_dssetnames)
         analysis['isoquants'].update(baseana_dbrec.shadow_isoquants)
-    analysis_prev_resfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
-    resultfiles = [{'id': x.sfile_id, 
+    analysis_prev_resfiles_ids = get_prev_resultfiles(new_ana_dsids, only_ids=True)
+    added_files_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
+        analysis_id__in=added_ana_ids).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
+    already_loaded_files = analysis_prev_resfiles_ids + added_files_ids
+    base_resfiles = [{'id': x.sfile_id, 
         'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(ana), datetime.strftime(ana.date, '%Y-%m-%d'))}
-        for x in ana.analysisresultfile_set.exclude(sfile__pk__in=analysis_prev_resfiles_ids)]
-    return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': resultfiles})
+        for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
+    return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': base_resfiles})
 
 
 

@@ -336,6 +336,7 @@ async function loadAnalysisResults() {
   let url = new URL(`/analysis/resultfiles/load/${adding_analysis.selected}/`, document.location)
   const params = {
     dsids: dsids.join(','),
+    base_ana: base_analysis.selected || '0',
   };
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
@@ -364,8 +365,12 @@ async function loadBaseAnalysis() {
   /*
     Load fresh base analysis (resetting its isComplement/runFromPSM also)
     */
-  const dsids = Object.keys(dsets).join(',');
-  let url = `/analysis/baseanalysis/load/${config.wfversion.id}/${base_analysis.selected}/?dsids=${dsids}`;
+  const params = {
+    dsids: Object.keys(dsets).join(','),
+    added_ana_ids: Object.keys(added_results).join(','),
+  }
+  let url = new URL(`/analysis/baseanalysis/load/${config.wfversion.id}/${base_analysis.selected}/`, document.location);
+  url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   if ('error' in result) {
     const msg = `While fetching base analysis, encountered: ${result.error}`;
