@@ -43,9 +43,11 @@ def load_analysis_resultfiles(request, anid):
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis_date = datetime.strftime(ana.date, '%Y-%m-%d')
-    resultfiles = [{'id': x.sfile_id, 
-        'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(ana), analysis_date)}
-        for x in ana.analysisresultfile_set.all()]
+    dsids = [int(x) for x in request.GET['dsids'].split(',')]
+    analysis_prev_resfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
+    resultfiles = [{'id': x.sfile_id,
+        'name': f'{x.sfile.filename} - Result of {aj.get_ana_fullname(ana)} ({analysis_date})'}
+        for x in ana.analysisresultfile_set.exclude(sfile__pk__in=analysis_prev_resfiles_ids)]
     return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
 
 
@@ -116,9 +118,10 @@ def load_base_analysis(request, wfversion_id, baseanid):
     else:
         dsets.update(baseana_dbrec.shadow_dssetnames)
         analysis['isoquants'].update(baseana_dbrec.shadow_isoquants)
+    analysis_prev_resfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
     resultfiles = [{'id': x.sfile_id, 
         'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(ana), datetime.strftime(ana.date, '%Y-%m-%d'))}
-        for x in ana.analysisresultfile_set.all()]
+        for x in ana.analysisresultfile_set.exclude(sfile__pk__in=analysis_prev_resfiles_ids)]
     return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': resultfiles})
 
 
@@ -160,13 +163,15 @@ def get_analysis(request, anid):
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
 
     dsids = [x.dataset_id for x in ana.datasetsearch_set.all()]
+    prev_resultfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
     # Parse base analysis if any
     ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch').filter(analysis_id=ana.id)
     if ana_base.exists():
         ana_base = ana_base.get()
         base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetsearch_set.all()]
         analysis['base_analysis'] = {
-                'resultfiles':  [{'id': x.sfile_id, 'name': x.sfile.filename} for x in ana_base.base_analysis.analysisresultfile_set.all()],
+                #### these are repeated in ana/wf if same dsets
+                'resultfiles':  [{'id': x.sfile_id, 'name': x.sfile.filename} for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
                 'selected': ana_base.base_analysis_id,
                 'typedname': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(ana_base.base_analysis),
                 ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
@@ -178,17 +183,10 @@ def get_analysis(request, anid):
         ana_base_resfiles = {x['id'] for x in analysis['base_analysis']['resultfiles']}
     else:
         ana_base_resfiles = set()
-    # Parse input files, files from other analysis may need that other analysis included
-    superset_analysis = am.DatasetSearch.objects.filter(analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values('analysis')
-    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids,
-            deleted=False).exclude(pk__in=superset_analysis)
-    for dsid in dsids:
-        qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
-    prev_resultfiles = {x.sfile_id for x in am.AnalysisResultFile.objects.filter(
-            analysis__in=qset_analysis.distinct())}
     for afp in ana.analysisfileparam_set.all():
+        # Looping input files, to find added results analysis
         if (hasattr(afp.sfile, 'analysisresultfile') and not hasattr(afp.sfile, 'libraryfile')
-                and not afp.sfile_id in prev_resultfiles and not afp.sfile_id in ana_base_resfiles
+                and not afp.sfile_id in prev_resultfiles_ids and not afp.sfile_id in ana_base_resfiles
                 and afp.sfile.analysisresultfile.analysis_id not in analysis['added_results']):
             arf = afp.sfile.analysisresultfile
             arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
@@ -197,6 +195,7 @@ def get_analysis(request, anid):
                 for x in arf.analysis.analysisresultfile_set.all()]
             analysis['added_results'][arf.analysis_id] = {'analysisname': aj.get_ana_fullname(arf.analysis), 'date': arf_date, 'fns': arf_fns}
 
+        # Looping input files, multifile params need enumeration
         if afp.param_id in multifiles:
             try:
                 fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
@@ -204,6 +203,7 @@ def get_analysis(request, anid):
                 fnr = 0
                 analysis['multifileparams'][afp.param_id] = {}
             analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
+        # Looping input files, put in normal params
         else:
             analysis['fileparams'][afp.param_id] = afp.sfile_id
     if hasattr(ana, 'analysismzmldef'):
@@ -447,23 +447,32 @@ def get_workflow_versioned(request):
                 'name': x.sfile.filename}
                 for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}
     }
-    # Get files from earlier analyses on same datasets
-    # double filtering gets first all DsS records that that have an analysis with ANY of the records,
-    # and then strip out:
-    #    - with analysis that also have MORE datasets
-    #    - analysis that have a subset of datasets
-    dsids = [int(x) for x in request.GET['dsids'].split(',')]
-    superset_analysis = am.DatasetSearch.objects.filter(analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values('analysis')
+    resp['prev_resultfiles'] = get_prev_resultfiles(request.GET['dsids'].split(','))
+    return JsonResponse({'wf': resp})
+
+
+def get_prev_resultfiles(dsids, only_ids=False):
+    '''Get files from earlier analyses on same datasets
+    double filtering gets first all DsS records that that have an analysis with ANY of the records,
+    and then strip out:
+       - with analysis that also have MORE datasets
+       - analysis that have a subset of datasets
+    '''
+    superset_analysis = am.DatasetSearch.objects.filter(
+            analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values(
+                    'analysis')
     qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids,
             deleted=False).exclude(pk__in=superset_analysis)
     for dsid in dsids:
         qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
-    resp['prev_resultfiles'] = [{'id': x.sfile.id, #'name': x.sfile.filename, 
-        'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(x.analysis), datetime.strftime(x.analysis.date, '%Y-%m-%d')),
-        'analysisdate': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
-        for x in am.AnalysisResultFile.objects.filter(
-            analysis__in=qset_analysis.distinct()).select_related('analysis')]
-    return JsonResponse({'wf': resp})
+    qset_arf = am.AnalysisResultFile.objects.filter(analysis__in=qset_analysis.distinct())
+    if only_ids:
+        prev_resultfiles = [x['sfile_id'] for x in qset_arf.values('sfile_id')]
+    else:
+        prev_resultfiles = [{'id': x.sfile.id, 'name': f'{x.sfile.filename} - '
+        f'Result of {aj.get_ana_fullname(x.analysis)} ({datetime.strftime(x.analysis.date, "%Y-%m-%d")})'
+        } for x in qset_arf.select_related('analysis')]
+    return prev_resultfiles
 
 
 @login_required

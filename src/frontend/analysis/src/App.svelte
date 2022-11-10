@@ -333,7 +333,11 @@ async function loadAnalysisResults() {
   if (added_analyses_order.indexOf(adding_analysis.selected) > -1) {
     return;
   }
-  let url = `/analysis/resultfiles/load/${adding_analysis.selected}/`;
+  let url = new URL(`/analysis/resultfiles/load/${adding_analysis.selected}/`, document.location)
+  const params = {
+    dsids: dsids.join(','),
+  };
+  url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   if ('error' in result) {
     const msg = `While fetching analysis, encountered: ${result.error}`;
