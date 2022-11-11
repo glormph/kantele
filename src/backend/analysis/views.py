@@ -185,7 +185,9 @@ def get_analysis(request, anid):
         base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetsearch_set.all()]
         analysis['base_analysis'] = {
                 #### these are repeated in ana/wf if same dsets
-                'resultfiles':  [{'id': x.sfile_id, 'name': x.sfile.filename} for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
+                'resultfiles':  [{'id': x.sfile_id,
+                    'name': f'{x.sfile.filename} - Result of {aj.get_ana_fullname(ana_base.base_analysis)} ({datetime.strftime(ana_base.base_analysis.date, "%Y-%m-%d")})',
+                    } for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
                 'selected': ana_base.base_analysis_id,
                 'typedname': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(ana_base.base_analysis),
                 ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
