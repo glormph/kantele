@@ -1,4 +1,5 @@
 <script>
+import { onMount } from 'svelte';
 import { getJSON } from './funcJSON.js';
 import { createEventDispatcher } from 'svelte';
 
@@ -7,14 +8,19 @@ const dispatch = createEventDispatcher();
 export let selectval = '';
 export let fixedoptions = {};
 export let fixedorder = [];
-export let intext;
 export let fetchUrl = false;
 export let fetchedData;
 export let niceName = function(text) { return text; }
 export let unknowninput = '__ILLEGAL_PLACEHOLDER__';
 
+let intext;
 let options;
-$: options = Object.fromEntries(Object.entries(fixedoptions));
+$: {
+  // When options change (e.g. loaded from base analysis during first page load),
+  // also call inputdone to populate the thing
+  options = Object.fromEntries(Object.entries(fixedoptions));
+  inputdone();
+}
 let optorder = [];
 let optorderindex;
 $: optorderindex = Object.fromEntries(optorder.map((x, ix) => [x, ix]));
@@ -110,6 +116,7 @@ async function handleKeyInput(event) {
 }
 
 function starttyping() {
+  selectval = false;
   const keys = Object.keys(options);
   optorder = fixedorder.length ? fixedorder : keys;
   options = fixedorder.length ? fixedoptions : options;
@@ -117,6 +124,11 @@ function starttyping() {
   placeholder = selectval ? niceName(selectval) : '';
 }
  
+onMount(async() => {
+  // call inputdone to load the intexts from selectedval
+  await inputdone();
+})
+
 </script>
 
 <div class="control has-icons-right" tabindex="0">

@@ -874,10 +874,9 @@ onMount(async() => {
       </label>
         <div class="field">
           {#if !filep.allow_resultfile}
-          <DynamicSelect intext={getIntextFileName(config.multifileparams[filep.id][mfpkey], libfiles[filep.ftype])}
-          bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
+          <DynamicSelect bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
           {:else}
-          <DynamicSelect intext={getIntextFileName(config.multifileparams[filep.id][mfpkey], Object.assign(resultfiles, libfiles[filep.ftype]))} bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
+          <DynamicSelect bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
           {/if}
         </div>
       {/each}
@@ -892,9 +891,9 @@ onMount(async() => {
         {/if}
       </label>
       {#if !filep.allow_resultfile}
-      <DynamicSelect intext={getIntextFileName(config.fileparams[filep.id], libfiles[filep.ftype])} bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
+      <DynamicSelect bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
       {:else}
-      <DynamicSelect intext={getIntextFileName(config.fileparams[filep.id], Object.assign(resultfiles, libfiles[filep.ftype]))} bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
+      <DynamicSelect bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
       {/if}
     </div>
     {/each}
