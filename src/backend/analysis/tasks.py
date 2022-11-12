@@ -264,8 +264,8 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
         regfile = register_resultfile(ofile, token)
         if not regfile:
             continue
-        transfer_resultfile(outdir, outpath, ofile, regfile, dstsharename, fileurl, checksrvurl, 
-                token, self.request.id, run['analysis_id'])
+        transfer_resultfile(outdir, outpath, ofile, run['dstsharename'], regfile, fileurl,
+                checksrvurl, token, self.request.id, run['analysis_id'])
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
