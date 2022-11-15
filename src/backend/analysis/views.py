@@ -429,9 +429,9 @@ def get_workflow_versioned(request):
     ftypes.extend([x['param__filetype_id'] for x in multifiles.values('param__filetype_id').distinct()])
     ftypes = set(ftypes)
     selectable_files = [x for x in am.LibraryFile.objects.select_related('sfile__filetype').filter(
-        sfile__filetype__in=ftypes)]
+        sfile__filetype__in=ftypes).order_by('-sfile__regdate')]
     userfiles = [x for x in rm.UserFile.objects.select_related('sfile__filetype').filter(
-        sfile__filetype__in=ftypes)]
+        sfile__filetype__in=ftypes).order_by('-sfile__regdate')]
     selectable_files.extend(userfiles)
     resp = {
             'analysisapi': wf.kanteleanalysis_version,

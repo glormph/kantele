@@ -89,7 +89,7 @@ async function handleKeyInput(event) {
     // empty input, show all options, reset selectvalue
     hoveropt = false;
     options = Object.fromEntries(Object.entries(fixedoptions));
-    optorder = Object.keys(options);
+    optorder = fixedorder.length ? fixedorder : Object.keys(options);
     selectval = initval;
   } else if (event.key.length > 1 && !(event.keyCode === 8 || event.keyCode === 46)) {
     // special key without modification effect (e.g. alt), not backspace/delete
