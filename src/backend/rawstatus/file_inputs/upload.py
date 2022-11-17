@@ -203,7 +203,7 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
     proc_log_configure(logq)
     logger = logging.getLogger(f'{hostname}.producer.inboxcollect')
     while True:
-        while fndoneq.qsize():
+        while not fndoneq.empty():
             # These files will have been removed from outbox
             cts_id = fndoneq.get()
             if cts_id in ledger:
@@ -268,13 +268,12 @@ def log_listener(log_q):
     fh.setFormatter(f)
     logroot.addHandler(sh)
     logroot.addHandler(fh)
-    while True:
-        if log_q.qsize():
-            logrec = log_q.get()
-            if logrec == False:
-                break
-            logger = logging.getLogger(logrec.name)
-            logger.handle(logrec)
+    while log_q.empty():
+        logrec = log_q.get()
+        if logrec == False:
+            break
+        logger = logging.getLogger(logrec.name)
+        logger.handle(logrec)
 
 
 def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox,
@@ -294,13 +293,15 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             # In case new files are found but registration failed for some
             # reason, MD5 is on disk (only to ledger after MD5), re-register
             regq.put(fndata)
-        regqsize = regq.qsize()
-        if regqsize:
-            logger.info(f'Registering {regqsize} new file(s)')
-        for _i in range(regq.qsize()):
-            # DO NOT USE: while regq.qsize():
+        newfns = []
+        while not regq.empty():
+            newfns.append(regq.get())
+        if newfns:
+            logger.info(f'Registering {len(newfns)} new file(s)')
+        for fndata in newfns:
+            # DO NOT USE: while regq.qsize() here,
             # that leads to potential eternal loop when flooded every five seconds
-            newfns_found = True
+            # Also MacOS doesnt support qsize()
             fndata = regq.get()
             ct_size = get_fndata_id(fndata)
             # update ledger in case new MD5 calculated
@@ -333,7 +334,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                     # exit also at server/client errors
                     sys.exit(resp.status_code)
         # Persist state of zipped/MD5/fn_ids to disk
-        if newfns_found:
+        if len(newfns):
             save_ledger(ledger, LEDGERFN)
 
         # Now find what to do with all registered files and do it
