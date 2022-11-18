@@ -54,18 +54,19 @@ let dsinfo = {
   hiriefrange: '',
 }
 
-let pdata = {
-  datasettypes: [],
-  ptypes: [],
-  projects: {},
-  local_ptype_id: '',
-  external_pis: [],
-  prefracs: [],
-  hirief_ranges: [],
-}
+let datasettypes = [];
+let ptypes = [];
+let projects = {};
+let local_ptype_id = '';
+let external_pis = [];
+let prefracs = [];
+let hirief_ranges = [];
+let internal_pi_id = '';
+
 
 let components = [];
 let isNewProject = false;
+let isExternal = false;
 let isNewExperiment = false;
 let isNewPI = false;
 let experiments = []
@@ -77,8 +78,8 @@ let tabcolor = 'has-text-grey-lighter';
   // - QMS, LCheck, IP, TPP, microscopy QC?, genomics
 
 $: showMsdata = components.indexOf('acquisition') > -1;
-$: isExternal = dsinfo.ptype_id && dsinfo.ptype_id !== pdata.local_ptype_id;
-$: isLabelcheck = pdata.datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x => x.name.indexOf('abelcheck') > -1).length;
+$: isExternal = Boolean(dsinfo.ptype_id && dsinfo.ptype_id !== local_ptype_id);
+$: isLabelcheck = datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x => x.name.indexOf('abelcheck') > -1).length;
 
 async function getcomponents() {
   const result = await getJSON(`/datasets/show/components/${dsinfo.datatype_id}`);
@@ -94,7 +95,7 @@ async function project_selected(saved=false) {
   // Gets experiments, project details when selecting a project
   if (dsinfo.project_id) {
     const result = await getJSON(`/datasets/show/project/${dsinfo.project_id}`);
-    dsinfo.pi_name = pdata.external_pis[result.pi_id].name;
+    dsinfo.pi_name = external_pis[result.pi_id].name;
     dsinfo.ptype_id = result.ptype_id;
     experiments = result.experiments;
     for (let key in projsamples) { delete(projsamples[key]);};
@@ -125,9 +126,16 @@ function editMade() {
 async function fetchDataset() {
   let url = '/datasets/show/info/';
   url = $dataset_id ? url + $dataset_id : url;
-	const response = await getJSON(url);
-  for (let [key, val] of Object.entries(response.projdata)) { pdata[key] = val; }
-  for (let [key, val] of Object.entries(response.dsinfo)) { dsinfo[key] = val; }
+  const resp = await getJSON(url);
+  for (let [key, val] of Object.entries(resp.dsinfo)) { dsinfo[key] = val; }
+  datasettypes = resp.projdata.datasettypes;
+  ptypes = resp.projdata.ptypes;
+  projects = resp.projdata.projects;
+  local_ptype_id = resp.projdata.local_ptype_id;
+  external_pis = resp.projdata.external_pis;
+  internal_pi_id = resp.projdata.internal_pi_id;
+  prefracs = resp.projdata.prefracs;
+  hirief_ranges = resp.projdata.hirief_ranges;
   if ($dataset_id) {
     getcomponents();
     await project_selected(true); // true is saved param
@@ -161,7 +169,7 @@ function validate() {
 		comperrors.push('Experiment name may only contain a-z 0-9 - _');
 	}
   if (isExternal) {
-		if (isNewProject && !dsinfo.newpiname && (!dsinfo.pi_id || dsinfo.pi_id === pdata.internal_pi_id)) {
+		if (isNewProject && !dsinfo.newpiname && (!dsinfo.pi_id || dsinfo.pi_id === internal_pi_id)) {
 			comperrors.push('Need to select or create a PI');
 		}
 		if (!dsinfo.externalcontactmail) {
@@ -205,9 +213,9 @@ async function save() {
     if (dsinfo.newpiname) {
       postdata.newpiname = dsinfo.newpiname;
     } else {
-      postdata.pi_id = isExternal ? dsinfo.pi_id : pdata.internal_pi_id;
+      postdata.pi_id = isExternal ? dsinfo.pi_id : internal_pi_id;
     }
-    if (dsinfo.ptype_id !== pdata.local_ptype_id) {
+    if (dsinfo.ptype_id !== local_ptype_id) {
       postdata.externalcontact = dsinfo.externalcontactmail;
     }
     const response = await postJSON('/datasets/save/dataset/', postdata);
@@ -215,7 +223,6 @@ async function save() {
       saveerrors.basics = [response.error, ...saveerrors.basics];
     } else {
   	  dataset_id.set(response.dataset_id);
-      console.log($dataset_id);
       fetchDataset();
     }
   }
@@ -295,13 +302,13 @@ function showFiles() {
         {/if}
         </label>
         <div class="control">
-          <DynamicSelect bind:intext={dsinfo.project_name} fixedoptions={pdata.projects} bind:unknowninput={dsinfo.newprojectname} bind:selectval={dsinfo.project_id} on:selectedvalue={e => project_selected()} on:newvalue={setNewProj} niceName={x => x.name}/>
+          <DynamicSelect bind:intext={dsinfo.project_name} fixedoptions={projects} bind:unknowninput={dsinfo.newprojectname} bind:selectval={dsinfo.project_id} on:selectedvalue={e => project_selected()} on:newvalue={setNewProj} niceName={x => x.name}/>
         {#if isNewProject}
         <label class="label">Project type</label>
         <div class="select">
           <select bind:value={dsinfo.ptype_id}>
             <option disabled value="">Please select one</option>
-            {#each pdata.ptypes as ptype}
+            {#each ptypes as ptype}
             <option value={ptype.id}>{ptype.name}</option>
             {/each}
           </select>
@@ -322,7 +329,7 @@ function showFiles() {
         {/if}
         <div class="control">
           {#if isNewProject}
-          <DynamicSelect bind:intext={dsinfo.pi_name} fixedoptions={pdata.external_pis} bind:unknowninput={dsinfo.newpiname} bind:selectval={dsinfo.pi_id} niceName={x => x.name} />
+          <DynamicSelect bind:intext={dsinfo.pi_name} fixedoptions={external_pis} bind:unknowninput={dsinfo.newpiname} bind:selectval={dsinfo.pi_id} niceName={x => x.name} />
           {/if}
           <input class="input" type="text" on:change={editMade} bind:value={dsinfo.externalcontactmail} placeholder="operational contact email (e.g. postdoc)">
         </div>
@@ -335,7 +342,7 @@ function showFiles() {
           <div class="select">
             <select bind:value={dsinfo.datatype_id} on:change={switchDatatype}>
               <option disabled value="">Please select one</option>
-              {#each pdata.datasettypes as dstype}
+              {#each datasettypes as dstype}
               <option value={dstype.id}>{dstype.name}</option>
               {/each}
             </select>
@@ -372,7 +379,7 @@ function showFiles() {
       {/if}
   
       {#if showMsdata}
-      <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} prefracs={pdata.prefracs} hirief_ranges={pdata.hirief_ranges} />
+      <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} prefracs={prefracs} hirief_ranges={hirief_ranges} />
 
       <div class="field">
         <label class="label">Run name</label>
