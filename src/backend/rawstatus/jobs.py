@@ -92,9 +92,10 @@ class MoveSingleFile(SingleFileJob):
         sfile = self.getfiles_query(**kwargs)
         oldname = sfile.filename if not 'oldname' in kwargs or not kwargs['oldname'] else kwargs['oldname']
         taskkwargs = {x: kwargs[x] for x in ['newname'] if x in kwargs}
+        dstsharename = kwargs.get('dstsharename') or sfile.servershare.name
         self.run_tasks.append(((
             oldname, sfile.servershare.name,
-            sfile.path, kwargs['dst_path'], sfile.id, sfile.servershare.name), taskkwargs))
+            sfile.path, kwargs['dst_path'], sfile.id, dstsharename), taskkwargs))
 
 
 class PurgeFiles(BaseJob):
