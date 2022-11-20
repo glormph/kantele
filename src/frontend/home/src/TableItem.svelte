@@ -18,7 +18,6 @@ function setConfirm() {
   confirmReady = true;
   setTimeout(() => { confirmReady = false} , flashtime);
 }
-
 </script>
 
 {#if field.type === 'tag'}

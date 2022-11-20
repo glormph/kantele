@@ -1223,15 +1223,11 @@ def find_files(request):
 def empty_files_json():
     newfiles = filemodels.RawFile.objects.select_related('producer').filter(
             claimed=False, date__gt=datetime.now() - timedelta(200))
-    return {'instruments': [x.name for x in filemodels.Producer.objects.all()],
-            'datasetFiles': [],
+    return {'instruments': [x.name for x in filemodels.Producer.objects.all()], 'datasetFiles': [],
             'newfn_order': [x.id for x in newfiles.order_by('-date')],
-            'newFiles': {x.id:
-                         {'id': x.id, 'name': x.name, 
-                          'size': round(x.size / (2**20), 1),
-                          'date': x.date.timestamp() * 1000,
-                          'instrument': x.producer.name, 'checked': False}
-                         for x in newfiles}}
+            'newFiles': {x.id: {'id': x.id, 'name': x.name, 'size': round(x.size / (2**20), 1), 
+                'date': x.date.timestamp() * 1000, 'instrument': x.producer.name, 'checked': False}
+                for x in newfiles}}
 
 
 def move_dset_project_servershare(dset, dstsharename):
@@ -1246,6 +1242,8 @@ def move_dset_project_servershare(dset, dstsharename):
 
 
 def save_or_update_files(data):
+    '''Called from jobs, rawstatus as well, so broke out from request
+    handling view'''
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
     dset = models.Dataset.objects.select_related('storageshare').get(pk=dset_id)

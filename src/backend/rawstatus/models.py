@@ -100,8 +100,8 @@ class UploadToken(models.Model):
     timestamp = models.DateTimeField(auto_now=True) # this can be updated
     expires = models.DateTimeField()
     expired = models.BooleanField()
-    #pubkey = models.TextField()
     producer = models.ForeignKey(Producer, on_delete=models.CASCADE)
+    # ftype is encoded in token for upload, so need to bind Token to Filetype:
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     archive_only = models.BooleanField(default=False)
     is_library = models.BooleanField(default=False)

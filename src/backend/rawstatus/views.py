@@ -37,30 +37,6 @@ from jobs import models as jm
 from jobs import jobs as jobutil
 
 
-#def show_files(request):
-#    files = []
-#    for sfn in StoredFile.objects.filter(
-#            filetype=settings.RAW_SFGROUP_ID, checked=False).select_related('rawfile'):
-#        fn = sfn.rawfile
-#        files.append({'name': fn.name, 'prod': fn.producer.name,
-#                      'date': fn.date, 'backup': False,
-#                      'size': round(fn.size / (2**20), 1), 'transfer': False})
-#    for sfn in SwestoreBackedupFile.objects.select_related(
-#            'storedfile__rawfile').filter(success=False):
-#        fn  = sfn.storedfile.rawfile
-#        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
-#                      'size': round(fn.size / (2**20), 1), 'backup': False,
-#                      'transfer': sfn.storedfile.checked})
-#    for sfn in SwestoreBackedupFile.objects.order_by(
-#            'storedfile__rawfile__date').select_related(
-#            'storedfile__rawfile').filter(success=True).exclude(
-#            storedfile__checked=False).reverse()[:100]:
-#        fn  = sfn.storedfile.rawfile
-#        files.append({'name': fn.name, 'prod': fn.producer.name, 'date': fn.date,
-#                      'size': round(fn.size / (2**20), 1), 'backup': True,
-#                      'transfer': True})
-#    return render(request, 'rawstatus/files.html', {'files': files})
-#
 def inflow_page(request):
     return render(request, 'rawstatus/inflow.html', {
         'producers': {x.id: x.name for x in Producer.objects.filter(msinstrument__active=True,
@@ -245,6 +221,8 @@ def browser_userupload(request):
 def instrument_check_in(request):
     '''Returns 200 at correct token or expiring token, in which case a new token
     will be issued'''
+    # auto update producer would be nice, when it calls server at intervals, then downloads_automaticlly
+    # a new version of itself?
     data = json.loads(request.body.decode('utf-8'))
     response = {'newtoken': False}
     token = data.get('token', False)
@@ -487,7 +465,6 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
 @require_POST
 def transfer_file(request):
     # FIXME HTTP need long view time 
-    # 
     # FIXME add share name to upload to and path
     '''HTTP based file upload'''
     data = request.POST
@@ -517,7 +494,6 @@ def transfer_file(request):
         rawfn = RawFile.objects.get(pk=fn_id)
     except RawFile.DoesNotExist:
         errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
-        print(errmsg)
         return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
     sfns = StoredFile.objects.filter(rawfile_id=fn_id)
     if sfns.count():

@@ -25,13 +25,19 @@ let optorder = [];
 let optorderindex;
 $: optorderindex = Object.fromEntries(optorder.map((x, ix) => [x, ix]));
 
+// currently hovered option id
 let hoveropt = false;
-let selectedtext;
-let placeholder = 'Filter by typing';
+
+// toggle dropdown to active
 let typing = false;
+
+// only when mouseSelect==false we can be done with input
 let mouseSelect = false;
+
+let placeholder = 'Filter by typing';
 const initval = selectval;
 
+// options change -> Input done -> newvalue -> setNewProj -> ptype_id='' fuckat
 
 function inputdone() {
   if (!mouseSelect) {
@@ -39,7 +45,7 @@ function inputdone() {
     if (selectval && selectval in options) {
       intext = niceName(options[selectval]);
     } else if (unknowninput === '__ILLEGAL_PLACEHOLDER__') {
-      console.log('illegal value dectected');
+      // FIXME nothing is actually catching this?
       dispatch('illegalvalue', {});
     } else {
       unknowninput = intext;

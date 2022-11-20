@@ -143,5 +143,3 @@ def send_slack_message(text, channel):
         req.raise_for_status()
     except Exception as error:
         print('Kantele cant send slack message to channel {}, please check configuration. Error was {}'.format(channel, error))
-
-

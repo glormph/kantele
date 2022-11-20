@@ -92,7 +92,7 @@ class MoveFilesToStorage(DatasetJob):
 
     def process(self, **kwargs):
         dset_files = self.getfiles_query(**kwargs)
-        # if only half of the files have been SCP arrived yet? Try more later:
+        # if only half of the files have arrived on tmp yet? Try more later:
         dset_registered_files = DatasetRawFile.objects.filter(
             dataset_id=kwargs['dset_id'], rawfile_id__in=kwargs['rawfn_ids'])
         if dset_files.count() != dset_registered_files.count():
@@ -141,6 +141,7 @@ class ConvertDatasetMzml(BaseJob):
     task = tasks.run_convert_mzml_nf
 
     def getfiles_query(self, **kwargs):
+        '''Return raw files, not existing mzML files'''
         return StoredFile.objects.filter(
             rawfile__datasetrawfile__dataset_id=kwargs['dset_id']).exclude(
             mzmlfile__isnull=False).select_related(

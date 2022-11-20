@@ -67,10 +67,6 @@ class TestRenamedProject(BaseJobTest):
 class TestUpdateStorageLocDset(BaseJobTest):
     url = '/jobs/set/dsstoragepath/'
     jobname = 'rename_dset_storage_loc'
-    p_newname = 'test_newp1'
-
-    def setUp(self):
-        super().setUp()
 
     def test_wrong_client(self):
         resp = self.cl.post(self.url, content_type='application/json',

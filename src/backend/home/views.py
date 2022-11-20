@@ -703,7 +703,7 @@ def get_dset_info(request, dataset_id):
 @login_required
 def get_file_info(request, file_id):
     sfile = filemodels.StoredFile.objects.filter(pk=file_id).select_related(
-        'rawfile__datasetrawfile', 'mzmlfile', 
+        'rawfile__datasetrawfile', 'mzmlfile', 'servershare',
         'rawfile__producer__msinstrument', 'analysisresultfile__analysis', 
         'libraryfile', 'userfile').get()
     is_mzml = hasattr(sfile, 'mzmlfile')
@@ -861,7 +861,8 @@ def create_mzmls(request):
     # set delete for UI, purging is done in job
     mzmls_exist.exclude(mzmlfile__pwiz=pwiz).update(deleted=True)
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
-        return JsonResponse({'error': 'This dataset already has existing mzML files of that proteowizard version'}, status=403)
+        return JsonResponse({'error': 'This dataset already has existing mzML files of that '
+            'proteowizard version'}, status=403)
     res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
     # Move entire project if not on same file server
     if dset.storageshare.server != res_share.server:

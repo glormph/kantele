@@ -92,7 +92,7 @@ def run_job(job, jobmap):
         JobError.objects.create(job_id=job.id, message=e)
         job.save()
     except Exception as e:
-        print('Error occurred, not executing this job')
+        print(f'Error occurred: {e} --- not executing this job')
         job.state = Jobstates.ERROR
         JobError.objects.create(job_id=job.id, message=e)
         job.save()

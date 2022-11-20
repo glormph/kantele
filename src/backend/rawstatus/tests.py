@@ -291,7 +291,6 @@ class TestFileTransfer(BaseFilesTest):
             self.assertEqual(jobs.count(), 1)
             job = jobs.get()
             # this may fail occasionally
-            
             self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
             upfile = f'{self.newraw.pk}.{sf.filetype.filetype}'
             with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:

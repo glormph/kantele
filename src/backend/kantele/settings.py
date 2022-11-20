@@ -100,9 +100,6 @@ TOKEN_RENEWAL_WINDOW_DAYS = 7
 LCEXPNAME = '__labelchecks'
 LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID', '-1').split(',')]
 
-# Files to MD5 check in case of a raw file being a folder (e.g. Bruker .d)
-MD5_STABLE_FILES = ['analysis.tdf_bin']
-
 # local datasets 
 LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID', -1))
 

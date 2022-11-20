@@ -243,7 +243,9 @@ def delete_empty_dir(self, servershare, directory):
             os.rmdir(dirpath)
         except OSError:
             # OSError raised on dir not empty
-            print('Parent directory {} not empty, stop deletion'.format(dirpath))
+            print(f'Parent directory {dirpath} not empty, stop deletion')
+        except FileNotFoundError:
+            print(f'Parent directory {dirpath} does not exist, possibly deleted in parallel task')
     # Report
     msg = ('Could not update database with deletion of dir {} :'
            '{}'.format(dirpath, '{}'))
