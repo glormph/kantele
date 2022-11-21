@@ -256,7 +256,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     try:
         os.makedirs(outdir, exist_ok=True)
     except (OSError, PermissionError):
-        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
+        taskfail_update_db(self.request.id, 'Could not create output directory for analysis results')
         raise
     token = False
     for ofile in outfiles:
@@ -292,7 +292,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     try:
         os.makedirs(outfullpath, exist_ok=True)
     except (OSError, PermissionError):
-        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
+        taskfail_update_db(self.request.id, 'Could not create output directory for analysis results')
         raise
     token = False
     for fn in outfiles:

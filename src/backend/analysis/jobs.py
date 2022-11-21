@@ -257,7 +257,7 @@ class RunNextflowWorkflow(BaseJob):
                 if 'fractions' in kwargs else False,
                 'instrument': x.rawfile.producer.msinstrument.instrumenttype.name 
                 if 'instrument' in mzmldef_fields else False,
-                } for x in sfiles_passed(**kwargs)]
+                } for x in sfiles_passed]
             mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields if x[key]]), **{k: x[k] 
                 for k in ['servershare', 'path', 'fn']}} for x in mzmls]
         bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(mzmls) > 500
@@ -306,7 +306,7 @@ class PurgeAnalysis(BaseJob):
         return rm.StoredFile.objects.filter(analysisresultfile__analysis__id=kwargs['analysis_id'])
 
     def process(self, **kwargs):
-        webshare = ServerShare.objects.get(name=settings.WEBSHARENAME)
+        webshare = rm.ServerShare.objects.get(name=settings.WEBSHARENAME)
         for fn in self.getfiles_query(**kwargs):
             fullpath = os.path.join(fn.path, fn.filename)
             print('Purging {} from analysis {}'.format(fullpath, kwargs['analysis_id']))

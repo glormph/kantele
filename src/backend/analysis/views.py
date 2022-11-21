@@ -833,7 +833,7 @@ def purge_analysis(request):
         return JsonResponse({'error': 'Analysis is not deleted, cannot purge'}, status=403)
     analysis.purged = True
     analysis.save()
-    webshare = ServerShare.objects.get(name=settings.WEBSHARENAME)
+    webshare = rm.ServerShare.objects.get(name=settings.WEBSHARENAME)
     # Delete files on web share here since the job tasks run on storage cannot do that
     for webfile in rm.StoredFile.objects.filter(analysisresultfile__analysis__id=analysis.pk, servershare_id=webshare.pk):
         fpath = os.path.join(settings.WEBSHARE, webfile.path, webfile.filename)
@@ -856,7 +856,7 @@ def start_analysis(request):
         elif 'analysis_id' in req:
             # analysis start app
             job = jm.Job.objects.get(nextflowsearch__analysis_id=req['analysis_id'])
-    except models.Job.DoesNotExist:
+    except jm.Job.DoesNotExist:
         return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
     ownership = jv.get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
