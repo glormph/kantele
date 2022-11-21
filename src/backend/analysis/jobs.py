@@ -188,21 +188,32 @@ class RunNextflowWorkflow(BaseJob):
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
         # re-filter mzML files in case files are removed or added to dataset
         # between a stop/error and rerun of job
+        sfiles_passed = self.getfiles_query(**kwargs)
         job = analysis.nextflowsearch.job
         dss = analysis.datasetsearch_set.all()
         # First new files included:
         # NB including new files leads to problems with e.g. fraction regex
         # if they are somehow strange
-        newfns = rm.StoredFile.objects.filter(mzmlfile__isnull=False, deleted=False,
-            rawfile__datasetrawfile__dataset__datasetsearch__in=dss).exclude(
-            pk__in=kwargs['fractions'].keys())
-        if newfns.count():
+        # newfns also has to take into account there can be refined mzMLs and they
+        # exist next to normal mzMLs
+        files_not_in_frs = rm.StoredFile.objects.filter(mzmlfile__isnull=False, deleted=False,
+            rawfile__datasetrawfile__dataset__datasetsearch__in=dss).select_related(
+                    'rawfile').exclude(pk__in=kwargs['fractions'].keys())
+        stop_analysis = False
+        for fn_notfr in files_not_in_frs:
+            is_oldfn = fn_notfr.rawfile.storedfile_set.filter(mzmlfile__isnull=False, deleted=False,
+                    pk__in=kwargs['fractions'].keys(), regdate__gt=fn_notfr.regdate).count()
+            # if fn_notfr is older but has same rawfile as an mzml passed in fractions, it will
+            # probably be a refined file or otherwise older file
+            if not is_oldfn:
+                stop_analysis = True
+        if stop_analysis:
             raise RuntimeError('Could not rerun job, there are files added to '
                 'a dataset, please edit the analysis so it is still correct, '
                 'save, and re-queue the job')
 
-        # Now remove obsolete deleted files (e.g. corrupt, empty, etc)
-        obsolete = self.getfiles_query(**kwargs).exclude(rawfile__datasetrawfile__dataset__datasetsearch__in=dss)
+        # Now remove obsolete deleted files from job (e.g. corrupt, empty, etc)
+        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetsearch__in=dss)
         analysis.analysisdsinputfile_set.filter(sfile__in=obsolete).delete()
         analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
@@ -246,7 +257,7 @@ class RunNextflowWorkflow(BaseJob):
                 if 'fractions' in kwargs else False,
                 'instrument': x.rawfile.producer.msinstrument.instrumenttype.name 
                 if 'instrument' in mzmldef_fields else False,
-                } for x in self.getfiles_query(**kwargs)]
+                } for x in sfiles_passed(**kwargs)]
             mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields if x[key]]), **{k: x[k] 
                 for k in ['servershare', 'path', 'fn']}} for x in mzmls]
         bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(mzmls) > 500
