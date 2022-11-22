@@ -110,7 +110,7 @@ class UploadToken(models.Model):
 class UserFile(models.Model):
     sfile = models.OneToOneField(StoredFile, on_delete=models.CASCADE)
     description = models.TextField()
-    upload = models.OneToOneField(UploadToken, on_delete=models.CASCADE)
+    upload = models.ForeignKey(UploadToken, on_delete=models.CASCADE)
     # FIXME do we care about the upload token? In that case, should we care
     # also for libfiles, or maybe even raw files? (mzml etc of course not)
 

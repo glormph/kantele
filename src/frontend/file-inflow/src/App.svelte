@@ -12,7 +12,7 @@ let uploadSuccess;
 let uploadError;
 let uploadRunning;
 let copiedToken = false;
-const isWindows = navigator.appVersion.indexOf('win') != -1 ? 1 : 0;
+const isWindows = navigator.appVersion.toLowerCase().indexOf('win') != -1 ? 1 : 0;
 
 async function createToken() {
   const resp = await postJSON('../token/', {ftype_id: ft_selected.id,

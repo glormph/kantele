@@ -269,12 +269,13 @@ def log_listener(log_q):
     fh.setFormatter(f)
     logroot.addHandler(sh)
     logroot.addHandler(fh)
-    while log_q.empty():
-        logrec = log_q.get()
-        if logrec == False:
-            break
-        logger = logging.getLogger(logrec.name)
-        logger.handle(logrec)
+    while True:
+        if not log_q.empty():
+            logrec = log_q.get()
+            if logrec == False:
+                break
+            logger = logging.getLogger(logrec.name)
+            logger.handle(logrec)
 
 
 def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox,
@@ -386,6 +387,8 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 ledgerchanged = True
             elif result['transferstate'] == 'transfer':
                 trffns.append((cts_id, fndata))
+                logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
+                        f'{result["transferstate"]}')
             else:
                 logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
                         f'{result["transferstate"]}')
@@ -491,6 +494,9 @@ def main():
             print('Incorrect token')
             sys.exit(1)
         libdescs, userdescs = {}, {}
+        # Windows doesnt have shell expansion or multi-arguments in cmd.exe, so use glob
+        if sys.platform.startswith('win'):
+            args.files = glob(args.files[0])
         for fn in args.files:
             if int(is_libfile):
                 libdescs[fn] = input(f'Please enter a description for your library file {fn}: ')
@@ -542,9 +548,6 @@ def main():
         # maybe raw_is_folder ALWAYS dynamic
         # First populate ledger for caching
         files_found = []
-        # Windows doesnt have shell expansion or multi-arguments in cmd.exe, so use glob
-        if sys.platform.startswith('win'):
-            args.files = glob(args.files[0])
         for fn in args.files:
             if not os.path.exists(fn):
                 print(f'File {fn} does not exist')
