@@ -77,9 +77,9 @@ async function uploadFile() {
 
 <div class="columns">
   <div class="column">
-    <div class="box">
+    <div class="box has-background-link-light">
       <h5 class="title is-5">Automated file transfer</h5>
-      <h5 class="subtitle is-5">for instruments</h5>
+      <h5 class="subtitle is-5">for instruments with outbox</h5>
       <form action="download/" method="GET">
         <div class="field">
           <label class="label">Datadisk letter</label>
@@ -107,30 +107,32 @@ async function uploadFile() {
       </form>
 
       <h5 class="subtitle is-5">Instructions</h5>
-      <ul>
-        <li>&bull; Install <a href="https://www.python.org/downloads/">Python >=3.6</a> on the machine, for all users (not as an admin). When installing, make sure to check "add to PATH"</li>
-        <li>&bull; Fill in the above form and download the zip file</li>
-        <li>&bull; Move and unzip the file to an appropriate location, preferably on the Desktop for easy updating</li>
-        <li>&bull; Run <code>setup.bat</code></li>
-        <li>&bull; To create scheduled tasks, run the generated file (with administrator rights) <code>tasksetup.bat</code></li>
-        <li>&bull; Run<code>transfer.bat</code></li>
-      </ul>
-    </div>
-    <div class="section">
-      <h5 class="subtitle is-5">Config updates</h5>
-      <ul>
-        <li>&bull; Fill in the above form, tick the config-only box and download the <code>transfer.bat</code> file</li>
-        <li>&bull; Replace original bat file with the new file</li>
-        <li>&bull; Stop running transfer program</li>
-        <li>&bull; Run<code>transfer.bat</code></li>
-      </ul>
+      <div class="content">
+        <ul>
+          <li>Install <a href="https://www.python.org/downloads/">Python >=3.6</a> on the machine, for all users (not as an admin). When installing, make sure to check "add to PATH"</li>
+          <li>Fill in the above form and download the zip file</li>
+          <li>Move and unzip the file to an appropriate location, preferably on the Desktop for easy updating</li>
+          <li>Run <code>setup.bat</code></li>
+          <li>To create scheduled tasks, run the generated file (with administrator rights) <code>tasksetup.bat</code></li>
+          <li>Run<code>transfer.bat</code></li>
+        </ul>
+      </div>
+      <h5 class="subtitle is-5 has-margin-top-5">Config updates</h5>
+      <div class="content">
+        <ul>
+          <li>Fill in the above form, tick the config-only box and download the <code>transfer.bat</code> file</li>
+          <li>Replace original bat file with the new file</li>
+          <li>Stop running transfer program</li>
+          <li>Run<code>transfer.bat</code></li>
+        </ul>
+      </div>
     </div>
   </div>
   <div class="column">
-    <div class="box">
+    <div class="box has-background-success-light">
       <h5 class="title is-5">Upload your files</h5>
-      <h5 class="subtitle is-5">Get an upload authentication token</h5>
-      Administrators can enable uploads of more file types.
+      <h5 class="subtitle is-5">directly or using a script</h5>
+      (Administrators can enable uploads of more file types)
 
       {#if Object.keys(filetypes).length}
       <div class="field">
@@ -162,7 +164,7 @@ async function uploadFile() {
 
       {#if ft_selected}
         <hr>
-        <h5 class="subtitle is-5">Either upload large/many files with a token</h5>
+        <h5 class="subtitle is-5">EITHER upload large/many files with a token</h5>
           <div on:click={createToken} class="button">Create token</div>
           {#if token}
           <button on:click={copyToken} class="button">
@@ -181,7 +183,7 @@ async function uploadFile() {
           <hr>
   
         {#if !ft_selected.isfolder}
-          <h5 class="subtitle is-5">Or upload a file directly in browser</h5>
+          <h5 class="subtitle is-5">OR upload a file directly in browser</h5>
           <div class="field">
           <div class="file has-name is-fullwidth">
             <label class="file-label">
@@ -246,31 +248,46 @@ async function uploadFile() {
 
       <hr>
       <h5 class="subtitle is-5">Instructions for upload of big files with token</h5>
-      You can upload your own raw or otherwise bigger files to storage. For this you need the following:
+      <div class="content">
+        You can upload your own raw or otherwise bigger files to storage. For this you need the following:
       <ul>
-        <li>&bull; Python &gt;=3.6</li>
-        <li>&bull; 
+        <li>Python &gt;=3.6</li>
+        <li>
           <a href="download/?client=user&windows={isWindows}">These uploading scripts for {isWindows ? 'Windows': 'MacOS/Linux'}</a> (click <a href="download/?client=user&windows={isWindows ? 0 : 1}">here</a> for {isWindows ? 'MacOS/Linux' : 'Windows'})
         </li>
-        <li>&bull; an upload token (above)</li>
+        <li>an upload token (above)</li>
       </ul>
-      <hr>
       If not done previously, download and extract the upload scripts. Then <code>chdir</code> to the directory 
-      containing them, and run:
+      containing them, and run e.g.:
       <p>
-        <code>bash kantele_upload.sh /path/to/rawfile.raw</code>
+      <code>
+        {#if isWindows}
+        kantele_upload.bat path\to\file.fa
+        {:else}
+        bash kantele_upload.sh /path/to/file.fa
+        {/if}
+      </code>
       </p>
       This will create a python virtual environment in your current directory.
       You will be asked for the upload token, paste it and let it run. The same token
-      can be used for multiple file uploads of the same file type. All files uploaded 
+      can be used for multiple file uploads of the same file type, in which case you can
+      use <code>*.fa</code>. All files uploaded 
       using a certain token will be stored similarly (archived or active).
-      <hr>
+
       For experiments with many small files, you can upload a folder, which will be zipped by the upload. (Please keep a sensible total folder size, 500GB is not sensible!). For this, point the upload script to the folder instead of a raw file:
-      <p><code>bash kantele_upload.sh /path/to/folder_containing_experiment</code> </p>
+      
       <p>
-      Depending on the file type, folders will be unzipped on the storage archive (e.g. <code>.d</code> raw data), or left zipped (e.g. microscopy).
+      <code>
+        {#if isWindows}
+        kantele_upload.bat path\to\folder_containing_experiment
+        {:else}
+        bash kantele_upload.sh /path/to/folder_containing_experiment
+        {/if}
+      </code>
       </p>
-      <hr>
+
+      Depending on the file type, folders will be unzipped on the storage archive (e.g. <code>.d</code> raw data), or left zipped (e.g. microscopy).
+      </div>
 
     </div>
   </div>
