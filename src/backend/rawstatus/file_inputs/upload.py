@@ -31,6 +31,7 @@ import json
 import hashlib
 import subprocess
 import shutil
+from glob import glob
 from base64 import b64decode
 from urllib.parse import urljoin
 from time import sleep, time
@@ -277,7 +278,7 @@ def log_listener(log_q):
 
 
 def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox,
-        single_file_id, kantelehost, clientname, library_desc, user_desc):
+        kantelehost, clientname, library_descs, user_descs):
     '''This process does the registration and the transfer of files'''
     # Start getting the leftovers from previous run
     fnstate_url = urljoin(kantelehost, 'files/transferstate/')
@@ -289,10 +290,11 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
     while True:
         loginresp = requests.get(urljoin(kantelehost, 'login/'))
         cookies = loginresp.cookies
-        for fndata in [x for x in ledger.values() if not x['fn_id']]:
-            # In case new files are found but registration failed for some
-            # reason, MD5 is on disk (only to ledger after MD5), re-register
-            regq.put(fndata)
+        if not config['is_manual']:
+            for fndata in [x for x in ledger.values() if not x['fn_id']]:
+                # In case new files are found but registration failed for some
+                # reason, MD5 is on disk (only to ledger after MD5), re-register
+                regq.put(fndata)
         newfns = []
         while not regq.empty():
             newfns.append(regq.get())
@@ -302,7 +304,6 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             # DO NOT USE: while regq.qsize() here,
             # that leads to potential eternal loop when flooded every five seconds
             # Also MacOS doesnt support qsize()
-            fndata = regq.get()
             ct_size = get_fndata_id(fndata)
             # update ledger in case new MD5 calculated
             ledger[ct_size] = fndata
@@ -339,12 +340,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
 
         # Now find what to do with all registered files and do it
         trffns, ledgerchanged = [], False
-        if single_file_id and single_file_id in ledger and ledger[single_file_id]['fn_id']:
-            to_process = [(single_file_id, ledger[single_file_id]['fn_id'], ledger[single_file_id])]
-        elif single_file_id:
-            to_process = []
-        else:
-            to_process = [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]
+        to_process = [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]
         for cts_id, fnid, fndata in to_process:
             logger.info(f'Checking remote state for file {fndata["fname"]} with ID {fnid}')
             try:
@@ -393,8 +389,8 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             else:
                 logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
                         f'{result["transferstate"]}')
-        if single_file_id and not ledger.keys():
-            # Quit loop for single file
+        if config['is_manual'] and not ledger.keys():
+            # Quit loop for manual file
             break
 
         # Now transfer registered files
@@ -408,9 +404,10 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             if cts_id not in ledger:
                 logger.warning(f'Could not find file with ID {fndata["fn_id"]} locally')
                 continue
+            ldesc, udesc = library_descs.get(fndata['fpath']), user_descs.get(fndata['fpath'])
             try:
                 resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
-                        library_desc, user_desc, cookies, kantelehost)
+                        ldesc, udesc, cookies, kantelehost)
             except subprocess.CalledProcessError:
                 logger.warning(f'Could not transfer {fndata["fpath"]}')
             else:
@@ -442,6 +439,17 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
         sleep(3)
 
 
+def start_processes(regq, regdoneq, logqueue, ledger, config, configfn, donebox, host, hostname,
+        libdescs, userdescs):
+    processes = []
+    register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger,
+        config, configfn, donebox, host, hostname, libdescs, userdescs))
+    register_p.start()
+    logproc = Process(target=log_listener, args=(logqueue,))
+    logproc.start()
+    return [logproc, register_p]
+
+
 def main():
     # Set Process method to spawn to not inherit shared objects
     # this is what normally happens on windows/MacOS anyway, but on Unix
@@ -451,7 +459,8 @@ def main():
 
     # backup-only, sensitive data is specified by DB on the host when getting a token!
     parser = argparse.ArgumentParser(description='File uploader')
-    parser.add_argument('--file', dest='file', default=False, type=str, help='File to upload')
+    parser.add_argument('--files', dest='files', default=False, type=str, nargs='+',
+            help='File to upload')
     parser.add_argument('--config', dest='configfn', default=False, type=str,
             help='Config file if any')
     args = parser.parse_args()
@@ -468,7 +477,8 @@ def main():
         config = {}
 
     proc_log_configure(logqueue)
-    logger = logging.getLogger(f'{config.get("hostname", "")}.producer.main')
+    clientname = config.get('hostname', '')
+    logger = logging.getLogger(f'{clientname}.producer.main')
     libdesc, userdesc = False, False
 
     if not config.get('client_id', False):
@@ -480,12 +490,15 @@ def main():
         except ValueError:
             print('Incorrect token')
             sys.exit(1)
-        if int(is_libfile):
-            libdesc = input('Please enter a description for your library file: ')
-        elif int(is_userfile):
-            userdesc = input('Please enter a description for your userfile: ')
-        config.update({'host': kantelehost, 'token': token})
+        libdescs, userdescs = {}, {}
+        for fn in args.files:
+            if int(is_libfile):
+                libdescs[fn] = input(f'Please enter a description for your library file {fn}: ')
+            elif int(is_userfile):
+                userdescs[fn] = input(f'Please enter a description for your userfile {fn}: ')
+        config.update({'host': kantelehost, 'token': token, 'is_manual': True})
     elif args.configfn:
+        config['is_manual'] = False
         checkerr = check_in_instrument(config, args.configfn, logger)
         if checkerr:
             # No logger process running yet
@@ -497,21 +510,17 @@ def main():
 
     outbox = config.get('outbox', False)
 
-    if outbox:
-        # ledger for outboxes with multiple files to keep track in case 
-        # transfer process is stopped, or when enforced using with single file
-        try:
-            with open(LEDGERFN) as fp:
-                ledger = json.load(fp)
-        except IOError:
-            ledger = {}
-    else:
+    # ledger for outboxes with multiple files to keep track in case 
+    # transfer process is stopped, or when enforced using with single file
+    try:
+        with open(LEDGERFN) as fp:
+            ledger = json.load(fp)
+    except IOError:
         ledger = {}
 
     if outbox:
         donebox = config.get('donebox') or os.path.join(outbox, os.path.pardir, 'donebox')
         zipbox = config.get('zipbox') or os.path.join(outbox, os.path.pardir, 'zipbox')
-        single_file_id = False
         # for instruments, setup collection/MD5 process
         # otherwise we use a single shot MD5er
         if not os.path.exists(outbox):
@@ -519,47 +528,55 @@ def main():
         if not os.path.exists(donebox):
             os.makedirs(donebox)
         # watch outbox for incoming files
-        collect_p = Process(target=instrument_collector, args=(regq, regdoneq,
-            logqueue, ledger, outbox, zipbox, config.get('hostname'),
-            config.get('raw_is_folder'), config.get('md5_stable_fns')))
+        collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger,
+            outbox, zipbox, clientname, config.get('raw_is_folder'), config.get('md5_stable_fns')))
         processes = [collect_p]
         collect_p.start()
-    elif args.file:
-        # Single file upload by user with token from web GUI
+        processes.extend(start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
+            donebox, False, config['host'], clientname, libdescs, userdescs))
+    elif args.files:
+        print('New files found, calculating checksum')
+        # Multi file upload by user with token from web GUI
         donebox = False
         # FIXME filetype and raw_is_folder should be dynamic, in token
         # maybe raw_is_folder ALWAYS dynamic
-        print('New file found, calculating checksum')
-        fndata = get_new_file_entry(args.file, config.get('raw_is_folder', False))
-        single_file_id = get_fndata_id(fndata)
-        if single_file_id in ledger:
-            fndata = ledger[single_file_id]
-        # TODO cannot zip yet, there is no "zipbox", maybe make it workdir
-        # FIXME align this with collector process
-        if fndata['is_dir'] and 'nonzipped_path' not in fndata:
-            zipname = os.path.join(zipbox, os.path.basename(fndata['fpath']))
-            fndata['nonzipped_path'] = fndata['fpath']
-            fndata['fpath'] = zipfolder(fndata['fpath'], zipname)
-        if not fndata['md5']:
-            try:
-                fndata['md5'] = md5(fndata['fpath'])
-            except FileNotFoundError:
-                logger.warning('Could not find file specified to check MD5')
+        # First populate ledger for caching
+        files_found = []
+        # Windows doesnt have shell expansion or multi-arguments in cmd.exe, so use glob
+        if sys.platform.startswith('win'):
+            args.files = glob(args.files[0])
+        for fn in args.files:
+            if not os.path.exists(fn):
+                print(f'File {fn} does not exist')
             else:
-                regq.put(fndata)
-        print('Finished checksum of file, will try to upload')
-        processes = []
+                fndata = get_new_file_entry(fn, config.get('raw_is_folder', False))
+                fndata_id = get_fndata_id(fndata)
+                files_found.append((fndata_id, fndata))
+        if len(files_found) < len(args.files):
+            sys.exit(1)
+        if ledger or ledger.keys() != set(x[0] for x in files_found):
+            # Delete ledger if fndata_id s do not match, otherwise use cache
+            ledger = {x[0]: x[1] for x in files_found}
+            # TODO cannot zip yet, there is no "zipbox", maybe make it workdir
+            # FIXME align this with collector process
+        processes = start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
+                donebox, config['host'], clientname, libdescs, userdescs)
+        for upload_fnid, fndata in ledger.items():
+            if fndata['is_dir'] and 'nonzipped_path' not in fndata:
+                zipname = os.path.join(zipbox, os.path.basename(fndata['fpath']))
+                fndata['nonzipped_path'] = fndata['fpath']
+                fndata['fpath'] = zipfolder(fndata['fpath'], zipname)
+            if not fndata['md5']:
+                try:
+                    fndata['md5'] = md5(fndata['fpath'])
+                except FileNotFoundError:
+                    logger.warning('Could not find file specified to check MD5')
+                else:
+                    regq.put(fndata)
+            print('Finished checksum of file, will try to upload')
     else:
         print('No input files or outbox to watch was specified, exiting')
         sys.exit(1)
-    register_p = Process(target=register_and_transfer, args=(regq, regdoneq,
-        logqueue, ledger, config, args.configfn,
-        donebox, single_file_id, config.get('host'), config.get('hostname'),
-        libdesc, userdesc))
-    register_p.start()
-    logproc = Process(target=log_listener, args=(logqueue,))
-    logproc.start()
-    processes.extend([logproc, register_p])
     quit_program = False
     while True:
         for p in processes:

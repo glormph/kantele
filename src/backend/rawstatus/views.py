@@ -169,7 +169,7 @@ def browser_userupload(request):
     upfile = request.FILES['file']
     dighash = md5()
     # Fasta must be text mode for checking with SeqIO, other files can be binary
-    fpmode = 'wb+' if not ftype.name == 'fasta' else 'w+'
+    fpmode = 'wb+' if not ftype.filetype == 'fasta' else 'w+'
     notfa_err_resp = {'msg': 'File is not correct FASTA', 'success': False}
     with NamedTemporaryFile(mode=fpmode) as fp:
         for chunk in upfile.chunks():
@@ -183,7 +183,7 @@ def browser_userupload(request):
             dighash.update(chunk)
         # stay in context until copied, else tempfile is deleted
         fp.seek(0)
-        if ftype.name == 'fasta' and not any(SeqIO.parse(fp, 'fasta')):
+        if ftype.filetype == 'fasta' and not any(SeqIO.parse(fp, 'fasta')):
             return JsonResponse(notfa_err_resp, status=403)
         dighash = dighash.hexdigest() 
         raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
