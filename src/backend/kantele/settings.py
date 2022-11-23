@@ -78,6 +78,9 @@ CELERY_BROKER_URL = 'amqp://{}:{}@{}:5672/{}'.format(RABBIT_USER, RABBIT_PASSWOR
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'rpc'
 
+# default prefetch is 4, but long running tasks e.g. analyses can disable and set to 1
+CELERY_WORKER_PREFETCH_MULTIPLIER = os.environ.get('CELERY_PREFETCH', 4)
+
 JOBRUNNER_INTERVAL = 5
 
 # datatypes
