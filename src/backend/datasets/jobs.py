@@ -28,7 +28,7 @@ class RenameProject(BaseJob):
         for ds in Dataset.objects.select_related('servershare').filter(
                 runname__experiment__project_id=kwargs['proj_id']):
             ds_toploc = ds.storage_loc.split(os.path.sep)[0]
-            ssharename = ds.servershare.name
+            ssharename = ds.storageshare.name
             if ds_toploc != kwargs['newname']:
                 new_is_oldname = False
                 break
@@ -45,7 +45,7 @@ class RenameDatasetStorageLoc(DatasetJob):
         """Fetch fresh storage_loc src dir here, then queue for move from there"""
         dset = Dataset.objects.get(pk=kwargs['dset_id'])
         if dset.storage_loc != kwargs['dstpath']:
-            self.run_tasks = [((dset.servershare.name, dset.storage_loc, kwargs['dstpath'],
+            self.run_tasks = [((dset.storageshare.name, dset.storage_loc, kwargs['dstpath'],
                 kwargs['dset_id'], [x.id for x in self.getfiles_query(**kwargs)]), {})]
 
 
