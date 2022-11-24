@@ -359,28 +359,26 @@ def update_dataset(data):
         dsraws = dset.datasetrawfile_set.all()
         dspsams = models.ProjectSample.objects.filter(quantchannelsample__dataset=dset).union(
                 models.ProjectSample.objects.filter(quantsamplefile__rawfile__in=dsraws),
-                models.ProjectSample.objects.filter(quantfilechannelsample__dsrawfile__in=dsraws))
+                models.ProjectSample.objects.filter(quantfilechannelsample__dsrawfile__in=dsraws)
+                ).values('pk')
         # Since unions cant be filtered/excluded on, re-query
         dspsams = models.ProjectSample.objects.filter(pk__in=dspsams)
-        # Duplicate multi DS projsamples from QCS:
+        # Duplicate multi DS projsamples from QCS, they are going to a new project:
         multipsams = set()
         multidsqcs = models.QuantChannelSample.objects.filter(projsample__in=dspsams).exclude(dataset=dset)
         for qcs in multidsqcs.distinct('projsample'):
             multipsams.add(qcs.projsample_id)
-            newpsam = models.ProjectSample(sample=qcs.projsample.sample, project=project)
-            newpsam.save()
+            newpsam = models.ProjectSample.objects.create(sample=qcs.projsample.sample, project=project)
             models.QuantChannelSample.objects.filter(dataset=dset, projsample=qcs.projsample).update(projsample=newpsam)
         multidsqsf = models.QuantSampleFile.objects.filter(projsample__in=dspsams).exclude(rawfile__in=dsraws)
         for qsf in multidsqsf.distinct('projsample'):
             multipsams.add(qsf.projsample_id)
-            newpsam = models.ProjectSample(sample=qsf.projsample.sample, project=project)
-            newpsam.save()
+            newpsam = models.ProjectSample.objects.create(sample=qsf.projsample.sample, project=project)
             models.QuantSampleFile.objects.filter(rawfile__in=dsraws, projsample=qsf.projsample).update(projsample=newpsam)
         multidsqfcs = models.QuantFileChannelSample.objects.filter(projsample__in=dspsams).exclude(dsrawfile__in=dsraws)
         for qfcs in multidsqfcs.distinct('projsample'):
             multipsams.add(qfcs.projsample_id)
-            newpsam = models.ProjectSample(sample=qfcs.projsample.sample, project=project)
-            newpsam.save()
+            newpsam = models.ProjectSample.objects.create(sample=qfcs.projsample.sample, project=project)
             models.QuantFileChannelSample.objects.filter(dsrawfile__in=dsraws, projsample=qfcs.projsample).update(projsample=newpsam)
         # having found multi-dset-psams, now move project_id on non-shared projectsamples
         dspsams.exclude(pk__in=multipsams).update(project=project)
