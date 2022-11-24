@@ -146,6 +146,11 @@ class TestRefineMzmls(MzmlTests):
         resp = self.cl.post(self.url, content_type='application/json', data={'dsid': 10000})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('does not exist or is deleted', resp.json()['error'])
+        dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=self.timsraw)
+        resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
+            'dsid': self.ds.pk})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('contains data from multiple instrument types', resp.json()['error'])
 
     def test_existing_mzmls(self):
         # no mzMLs exist yet

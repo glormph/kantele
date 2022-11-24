@@ -885,6 +885,12 @@ def refine_mzmls(request):
         return JsonResponse({'error': 'Dataset does not exist or is deleted'}, status=403)
     except KeyError:
         return JsonResponse({'error': 'Bad request data'}, status=400)
+    # TODO qe and qehf are sort of same instrument type really for MSGF (but not qehfx)
+    ds_instype = dset.datasetrawfile_set.distinct('rawfile__producer__msinstrument__instrumenttype')
+    if ds_instype.count() > 1:
+        insts = ','.join(x.rawfile.producer.msinstrument.instrumenttype.name for x in ds_instype)
+        return JsonResponse({'error': 'Dataset contains data from multiple instrument types: '
+            f'{insts} cannot convert all in the same way, separate them'}, status=403)
 
     # Check if existing normal/refined mzMLs (normal mzMLs can be deleted for this 
     # due to age, its just the number we need, but refined mzMLs should not be)

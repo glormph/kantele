@@ -139,6 +139,7 @@ class MoveFilesStorageTmp(BaseJob):
 class ConvertDatasetMzml(BaseJob):
     refname = 'convert_dataset_mzml'
     task = tasks.run_convert_mzml_nf
+    revokable = True
 
     def getfiles_query(self, **kwargs):
         '''Return raw files, not existing mzML files'''

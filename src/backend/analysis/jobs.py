@@ -41,11 +41,8 @@ class RefineMzmls(DatasetJob):
             ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=dstshare.pk)
             mzmls.append({'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
                 'sfid': ref_sf.id})
-        allinstr = [x['rawfile__producer__name'] for x in mzmlfiles.distinct('rawfile__producer').values('rawfile__producer__name')] 
-        if len(allinstr) > 1:
-            raise RuntimeError('Trying to run a refiner job on dataset containing more than one instrument is not possible')
-        params = ['--instrument']
-        params.append('velos' if 'elos' in allinstr else 'qe')
+        mzml_ins = mzmlfiles.distinct('rawfile__producer__msinstrument__instrumenttype__name').get()
+        params = ['--instrument', mzml_ins.rawfile.producer.msinstrument.instrumenttype.name]
         if kwargs['qtype'] != 'labelfree':
             params.extend(['--isobaric', kwargs['qtype']])
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
