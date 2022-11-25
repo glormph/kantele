@@ -1,4 +1,4 @@
-Django==3.2.13
+Django==3.2.16
 celery==5.1.2
 psycopg2==2.8.6
 requests==2.26.0
