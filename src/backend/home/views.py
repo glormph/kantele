@@ -899,9 +899,11 @@ def refine_mzmls(request):
     nr_refined = mzmls.filter(mzmlfile__refined=True, deleted=False).count()
     normal_mzml = mzmls.filter(mzmlfile__refined=False)
     nr_mzml = normal_mzml.count()
+    nr_exist_mzml = normal_mzml.filter(deleted=False, purged=False).count()
+    nr_dsrs = dset.datasetrawfile_set.count()
     if nr_mzml and nr_mzml == nr_refined:
         return JsonResponse({'error': 'Refined data already exists'}, status=403)
-    elif not normal_mzml.filter(deleted=False, purged=False).count():
+    elif not nr_exist_mzml or nr_exist_mzml < nr_dsrs:
         return JsonResponse({'error': 'Need to create normal mzMLs before refining'}, status=403)
     
     # Move entire project if not on same file server

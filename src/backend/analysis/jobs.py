@@ -32,15 +32,16 @@ class RefineMzmls(DatasetJob):
         nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         stagefiles = {'--tdb': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
-        all_sfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False, mzmlfile__isnull=False)
-        existing_refined = all_sfiles.filter(mzmlfile__refined=True)
-        mzmlfiles = all_sfiles.exclude(rawfile__storedfile__in=existing_refined).select_related('mzmlfile__pwiz')
+        mzmlfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False,
+                mzmlfile__isnull=False).exclude(rawfile__storedfile__mzmlfile__refined=True)
         dstshare = rm.ServerShare.objects.get(pk=kwargs['dstshare_id'])
         mzmls = []
         for x in mzmlfiles:
             ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=dstshare.pk)
             mzmls.append({'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
                 'sfid': ref_sf.id})
+        if not mzmls:
+            return
         mzml_ins = mzmlfiles.distinct('rawfile__producer__msinstrument__instrumenttype__name').get()
         params = ['--instrument', mzml_ins.rawfile.producer.msinstrument.instrumenttype.name]
         if kwargs['qtype'] != 'labelfree':
