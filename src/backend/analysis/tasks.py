@@ -13,7 +13,7 @@ from gzip import GzipFile
 
 from django.urls import reverse
 from django.utils import timezone
-from celery import shared_task
+from celery import shared_task, exceptions
 
 from jobs.post import update_db, taskfail_update_db
 from kantele import settings
@@ -145,7 +145,18 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
         cmd.extend(['-name', run['token'], '-with-weblog', nflogurl])
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
-    subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
+    try:
+        nxf_sub = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
+    except exceptions.SoftTimeLimitExceeded:
+        # celery has killed the job (task revoked) make sure nextflow is stopped and not left
+        nxf_sub.kill()
+        print('Job has been revoked, stopping analysis')
+        raise
+    else:
+        # raise any exceptions nextflow has caused
+        stdout, stderr = nxf_sub.communicate()
+        if nxf_sub.returncode != 0:
+            raise subprocess.CalledProcessError(nxf_sub.returncode, cmd, stdout, stderr=stderr)
     return outdir
 
 
@@ -383,6 +394,9 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
         taskfail_update_db(taskid, errmsg)
         raise RuntimeError('Error occurred running nextflow workflow '
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
+    # Revoked jobs do not need DB-updating, but need just to be stopped, 
+    # so do not catch SoftTimeLimit exception
+
     #TODO use nextflows -weblog functionality to do logging
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
