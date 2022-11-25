@@ -1,2 +1,2 @@
-ps ax | grep file_download | grep -v grep || nohup {{ kantelevenv }}/bin/celery worker -A kantele -Q file_download -n file_downloadjobs.% --concurrency=1 &>> {{ kanteledir }}/file_download_nohup.out &
-ps ax | grep scaninbox | grep -v grep || nohup {{ kantelevenv }}/bin/celery worker -A kantele -Q scaninbox -n scaninboxjobs.% --concurrency=1 &>> {{ kanteledir }}/scaninbox.out &
+ps ax | grep file_download | grep -v grep || nohup {{ kantelevenv }}/bin/celery -A kantele worker -Q file_download -n file_downloadjobs.% --concurrency=1 &>> {{ kanteledir }}/file_download_nohup.out &
+ps ax | grep scaninbox | grep -v grep || nohup {{ kantelevenv }}/bin/celery -A kantele worker -Q scaninbox -n scaninboxjobs.% --concurrency=1 &>> {{ kanteledir }}/scaninbox.out &
