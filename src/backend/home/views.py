@@ -807,7 +807,9 @@ def fetch_dset_details(dset):
                 if not refined and '{}_True'.format(pwpk) not in pw_sets:
                     pws['refineready'] = True
             elif not refined or pw_sets['{}_False'.format(pwpk)]['existing'] == nrstoredfiles['raw']:
-                if pws['existing'] == 0:
+                if refined and pws['existing'] == 0:
+                    state = 'Incomplete'
+                elif pws['existing'] == 0:
                     state = 'No mzmls'
                 else:
                     state = 'Incomplete'

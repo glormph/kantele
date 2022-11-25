@@ -171,9 +171,9 @@ onMount(async() => {
         {#each dset.pwiz_sets as pw}
         <tr>
           <td>
-            {#if (pw.state === 'Incomplete' && pw.refined)}
+            {#if (pw.state === 'Incomplete' && pw.refined && pw.active)}
             <button class="button is-small" on:click={e => refineDset(dsid, pw.id)}>Re-refine</button>
-            {:else if pw.active && (pw.state === 'Incomplete' || pw.state === 'No mzmls')}
+            {:else if !pw.refined && pw.active && (pw.state === 'Incomplete' || pw.state === 'No mzmls')}
             <button class="button is-small" on:click={e => convertDset(dsid, pw.id)}>Re-convert</button>
             {:else if pw.refineready}
             <div class="select is-small">
