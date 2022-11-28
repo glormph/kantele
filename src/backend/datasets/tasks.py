@@ -158,9 +158,8 @@ def rename_dset_storage_location(self, ds_sharename, srcpath, dstpath, dset_id, 
 def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstsharename, newname=False):
     '''Moves file across server shares, dirs, or as rename'''
     src = os.path.join(settings.SHAREMAP[srcshare], srcpath, fn)
-    if not newname:
-        newname = fn
-    dst = os.path.join(settings.SHAREMAP[dstsharename], dstpath, newname)
+    dstfn = newname or fn
+    dst = os.path.join(settings.SHAREMAP[dstsharename], dstpath, dstfn)
     url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     if src == dst:
         print('Source and destination are identical, not moving file')
@@ -181,9 +180,10 @@ def move_file_storage(self, fn, srcshare, srcpath, dstpath, fn_id, dstsharename,
     except Exception as e:
         taskfail_update_db(self.request.id)
         raise RuntimeError('Could not move file tot storage:', e)
-    postdata = {'fn_id': fn_id, 'servershare': dstsharename,
-                'dst_path': dstpath, 'newname': os.path.basename(dst),
-                'client_id': settings.APIKEY, 'task': self.request.id}
+    postdata = {'fn_id': fn_id, 'servershare': dstsharename, 'dst_path': dstpath,
+            'client_id': settings.APIKEY, 'task': self.request.id}
+    if newname:
+        postdata['newname'] = newname
     try:
         update_db(url, json=postdata)
     except RuntimeError:
