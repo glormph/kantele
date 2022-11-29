@@ -5,47 +5,23 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 
 from kantele import settings
+from kantele.tests import BaseTest 
 from datasets import models as dm
 from jobs import models as jm
 from rawstatus import models as rm
 
 
-class BaseDatasetTest(TestCase):
-    def setUp(self):
-        self.cl = Client()
-        username='testuser'
-        email = 'test@test.com'
-        password='12345'
-        self.user = User(username=username, email=email)
-        self.user.set_password(password)
-        self.user.save() 
-        login = self.cl.login(username=username, password=password)
-        # make projects
-        qdt = dm.Datatype.objects.create(name='Quantitative proteomics')
-        self.ptype = dm.ProjectTypeName.objects.create(name='testpt')
-        self.pi = dm.PrincipalInvestigator.objects.create(name='testpi')
-        self.dtype = dm.Datatype.objects.create(name='dttest')
-        self.p1 = dm.Project.objects.create(name='p1', pi=self.pi)
-        pt1 = dm.ProjType.objects.create(project=self.p1, ptype=self.ptype)
-        self.exp1 = dm.Experiment.objects.create(name='e1', project=self.p1)
-        self.run1 = dm.RunName.objects.create(name='run1', experiment=self.exp1)
-        self.fserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
-        self.ss = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.fserver, share='/home/testtmp')
-        self.ds1 = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run1,
-                datatype=self.dtype, storageshare=self.ss, storage_loc='testloc1/path/to/file')
-        own1 = dm.DatasetOwner.objects.create(dataset=self.ds1, user=self.user)
 
 
-class RenameProjectTest(BaseDatasetTest):
-    def setUp(self):
-        super().setUp()
-        self.url = '/datasets/rename/project/'
+
+class RenameProjectTest(BaseTest):
+    url = '/datasets/rename/project/'
 
     def test_no_ownership_fail(self):
         ####
         run = dm.RunName.objects.create(name='someoneelsesrun', experiment=self.exp1)
         ds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
-                datatype=self.dtype, storage_loc='test', storageshare=self.ss)
+                datatype=self.dtype, storage_loc='test', storageshare=self.ssnewstore)
         otheruser = User.objects.create(username='test', password='test')
         own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
@@ -76,10 +52,11 @@ class RenameProjectTest(BaseDatasetTest):
         self.assertEqual(self.p1.name, newname)
 
 
-class MergeProjectsTest(BaseDatasetTest):
+class MergeProjectsTest(BaseTest):
+    url = '/datasets/merge/projects/'
+
     def setUp(self):
         super().setUp()
-        self.url = '/datasets/merge/projects/'
         # make projects
         self.p2 = dm.Project.objects.create(name='p2', pi=self.pi)
         pt2 = dm.ProjType.objects.create(project=self.p2, ptype=self.ptype)
@@ -101,7 +78,7 @@ class MergeProjectsTest(BaseDatasetTest):
     def test_no_ownership_fail(self):
         run = dm.RunName.objects.create(name='someoneelsesrun', experiment=self.exp2)
         ds = dm.Dataset.objects.create(date=self.p2.registered, runname=run,
-                datatype=self.dtype, storage_loc='test', storageshare=self.ss)
+                datatype=self.dtype, storage_loc='test', storageshare=self.ssnewstore)
         otheruser = User.objects.create(username='test', password='test')
         own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
@@ -114,7 +91,7 @@ class MergeProjectsTest(BaseDatasetTest):
         exp3 = dm.Experiment.objects.create(name='e1', project=self.p2)
         run3 = dm.RunName.objects.create(name=self.run1.name, experiment=exp3)
         ds3 = dm.Dataset.objects.create(date=self.p2.registered, runname=run3,
-                datatype=self.dtype, storage_loc='testloc3', storageshare=self.ss)
+                datatype=self.dtype, storage_loc='testloc3', storageshare=self.ssnewstore)
         dm.DatasetOwner.objects.create(dataset=ds3, user=self.user)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
@@ -128,7 +105,7 @@ class MergeProjectsTest(BaseDatasetTest):
         run2 = dm.RunName.objects.create(name='run2', experiment=self.exp2)
         oldstorloc = 'testloc2'
         ds2 = dm.Dataset.objects.create(date=self.p2.registered, runname=run2,
-                datatype=self.dtype, storage_loc=oldstorloc, storageshare=self.ss)
+                datatype=self.dtype, storage_loc=oldstorloc, storageshare=self.ssnewstore)
         dm.DatasetOwner.objects.create(dataset=ds2, user=self.user)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
@@ -140,7 +117,7 @@ class MergeProjectsTest(BaseDatasetTest):
         
         oldstorloc = ds2.storage_loc
         ds2.refresh_from_db()
-        self.assertEqual(ds2.runname.experiment.project, self.ds1.runname.experiment.project)
+        self.assertEqual(ds2.runname.experiment.project, self.ds.runname.experiment.project)
         self.assertEqual(ds2.storage_loc, oldstorloc)
         renamejobs = jm.Job.objects.filter(funcname='rename_dset_storage_loc') 
         ds2jobs = renamejobs.filter(kwargs={'dset_id': ds2.pk,
@@ -159,13 +136,13 @@ class MergeProjectsTest(BaseDatasetTest):
         run3 = dm.RunName.objects.create(name='run3', experiment=exp3)
         oldstorloc = 'testloc3'
         ds3 = dm.Dataset.objects.create(date=self.p2.registered, runname=run3,
-                datatype=self.dtype, storage_loc=oldstorloc, storageshare=self.ss)
+                datatype=self.dtype, storage_loc=oldstorloc, storageshare=self.ssnewstore)
         own3 = dm.DatasetOwner.objects.create(dataset=ds3, user=self.user)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
         oldstorloc = ds3.storage_loc
         ds3.refresh_from_db()
-        self.assertEqual(ds3.runname.experiment, self.ds1.runname.experiment)
+        self.assertEqual(ds3.runname.experiment, self.ds.runname.experiment)
         self.assertEqual(dm.Experiment.objects.filter(pk=exp3.pk).count(), 0)
         self.assertEqual(ds3.storage_loc, oldstorloc)
         renamejobs = jm.Job.objects.filter(funcname='rename_dset_storage_loc') 

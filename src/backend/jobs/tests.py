@@ -5,14 +5,14 @@ from django.test import TestCase, Client
 from celery import states as cstates
 
 
-from datasets import tests as dt
+from kantele.tests import BaseTest
 from rawstatus import models as rm
 from datasets import models as dm
 from jobs import models as jm
 from kantele import settings
 
 
-class BaseJobTest(dt.BaseDatasetTest):
+class BaseJobTest(BaseTest):
     def setUp(self):
         super().setUp()
         self.job = jm.Job.objects.create(funcname=self.jobname,
@@ -46,19 +46,19 @@ class TestRenamedProject(BaseJobTest):
         rf = rm.RawFile.objects.create(name='testrf', producer=producer,
             source_md5='abcdefgh', size=10, date=datetime.now(),
             claimed=True)
-        dm.DatasetRawFile.objects.create(dataset=self.ds1, rawfile=rf)
+        dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=rf)
         sf=rm.StoredFile.objects.create(rawfile=rf, filename=rf.name,
-            servershare=self.ss, path=self.ds1.storage_loc, md5=rf.source_md5, checked=True,
+            servershare=self.ssnewstore, path=self.ds.storage_loc, md5=rf.source_md5, checked=True,
             filetype=sftype)
         resp = self.cl.post(self.url, content_type='application/json', data={
             'client_id': settings.STORAGECLIENT_APIKEY, 'task': self.taskid,
             'proj_id': self.p1.pk, 'newname': self.p_newname,
             })
         self.assertEqual(resp.status_code, 200)
-        newpath = os.path.join(self.p_newname, *self.ds1.storage_loc.split(os.path.sep)[1:])
+        newpath = os.path.join(self.p_newname, *self.ds.storage_loc.split(os.path.sep)[1:])
         sf.refresh_from_db()
-        self.ds1.refresh_from_db()
-        self.assertEqual(self.ds1.storage_loc, newpath)
+        self.ds.refresh_from_db()
+        self.assertEqual(self.ds.storage_loc, newpath)
         self.assertEqual(sf.path, newpath)
         self.task.refresh_from_db()
         self.assertEqual(self.task.state, cstates.SUCCESS)
@@ -80,11 +80,11 @@ class TestUpdateStorageLocDset(BaseJobTest):
         newstorloc = 'another/location'
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'client_id': settings.STORAGECLIENT_APIKEY,
-                    'dset_id': self.ds1.pk, 'storage_loc': newstorloc,
+                    'dset_id': self.ds.pk, 'storage_loc': newstorloc,
                     'newsharename': False, 'task' : self.task.asyncid})
         self.assertEqual(resp.status_code, 200)
-        self.ds1.refresh_from_db()
-        self.assertEqual(self.ds1.storage_loc, newstorloc)
+        self.ds.refresh_from_db()
+        self.assertEqual(self.ds.storage_loc, newstorloc)
         self.task.refresh_from_db()
         self.assertEqual(self.task.state, cstates.SUCCESS)
 
@@ -101,7 +101,7 @@ class TestUpdateStorageLocFile(BaseJobTest):
         self.raw = rm.RawFile.objects.create(name='file1', producer=self.prod,
                 source_md5='b7d55c322fa09ecd8bea141082c5419d',
                 size=100, date=timezone.now(), claimed=False)
-        self.sf = rm.StoredFile.objects.create(rawfile=self.raw, filename=self.raw.name, servershare=self.ss,
+        self.sf = rm.StoredFile.objects.create(rawfile=self.raw, filename=self.raw.name, servershare=self.ssnewstore,
                 path='', md5=self.raw.source_md5, checked=False, filetype=self.ft)
 
     def test_wrong_client(self):
@@ -113,7 +113,7 @@ class TestUpdateStorageLocFile(BaseJobTest):
         self.assertEqual(resp.status_code, 403)
 
     def test_one_fnid(self):
-        newshare = rm.ServerShare.objects.create(name='newshare', server=self.fserver, share='/')
+        newshare = rm.ServerShare.objects.create(name='newshare', server=self.newfserver, share='/')
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'client_id': settings.ANALYSISCLIENT_APIKEY, 'fn_id': self.sf.pk,
                     'dst_path': 'new_path', 'servershare': newshare.name, 'task': self.taskid,
@@ -131,9 +131,9 @@ class TestUpdateStorageLocFile(BaseJobTest):
         raw2 = rm.RawFile.objects.create(name='file2', producer=self.prod,
                 source_md5='r328j9dqhj32qh98ddh3982q',
                 size=100, date=timezone.now(), claimed=False)
-        sf2 = rm.StoredFile.objects.create(rawfile=raw2, filename=raw2.name, servershare=self.ss,
+        sf2 = rm.StoredFile.objects.create(rawfile=raw2, filename=raw2.name, servershare=self.ssnewstore,
                 path='', md5=raw2.source_md5, checked=False, filetype=self.ft)
-        newshare = rm.ServerShare.objects.create(name='newshare', server=self.fserver, share='/')
+        newshare = rm.ServerShare.objects.create(name='newshare', server=self.newfserver, share='/')
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'client_id': settings.ANALYSISCLIENT_APIKEY, 'fn_ids': [self.sf.pk, sf2.pk],
                     'dst_path': 'new_path', 'servershare': newshare.name, 'task': self.taskid,

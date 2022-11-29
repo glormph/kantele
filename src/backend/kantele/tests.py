@@ -13,8 +13,7 @@ from rawstatus import models as rm
 from jobs import models as jm
 
 
-class BaseKanteleUnitTest(TestCase):
-
+class BaseTest(TestCase):
     def setUp(self):
         self.cl = Client()
         username='testuser'
@@ -24,7 +23,6 @@ class BaseKanteleUnitTest(TestCase):
         self.user.set_password(password)
         self.user.save() 
         login = self.cl.login(username=username, password=password)
-
         # storage backend
         self.newfserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
         self.sstmp = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.newfserver,
@@ -35,11 +33,13 @@ class BaseKanteleUnitTest(TestCase):
         self.ssoldstorage = rm.ServerShare.objects.create(name=settings.STORAGESHARENAMES[0],
                 server=self.oldfserver, share='/home/storage')
 
-        # make project/dataset
+        # Datasets/projects
+        dscomp = dm.DatasetComponent.objects.create(name='files')
+        self.dtype = dm.Datatype.objects.create(name='dttest')
+        self.dtcomp = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dscomp)
         qdt = dm.Datatype.objects.create(name='Quantitative proteomics')
         self.ptype = dm.ProjectTypeName.objects.create(name='testpt')
         self.pi = dm.PrincipalInvestigator.objects.create(name='testpi')
-        self.dtype = dm.Datatype.objects.create(name='dttest')
         self.p1 = dm.Project.objects.create(name='p1', pi=self.pi)
         dm.ProjType.objects.create(project=self.p1, ptype=self.ptype)
         self.exp1 = dm.Experiment.objects.create(name='e1', project=self.p1)
@@ -47,58 +47,38 @@ class BaseKanteleUnitTest(TestCase):
         self.storloc = os.path.join(self.p1.name, self.exp1.name, self.run1.name)
         self.ds = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run1,
                 datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=self.storloc)
+        self.contact = dm.ExternalDatasetContact.objects.create(dataset=self.ds,
+                email='contactname')
+        own1 = dm.DatasetOwner.objects.create(dataset=self.ds, user=self.user)
 
 
 class BaseIntegrationTest(LiveServerTestCase):
+    # use a live server so that jobrunner can interface with it (otherwise only dummy
+    # test client can do that)
     port = 80
     host = '0.0.0.0'
 
     def setUp(self):
-        self.cl = Client()
-        username='testuser'
-        email = 'test@test.com'
-        password='12345'
-        self.user = User(username=username, email=email)
-        self.user.set_password(password)
-        self.user.save() 
-        login = self.cl.login(username=username, password=password)
         # make projects
-        qdt = dm.Datatype.objects.create(name='Quantitative proteomics')
-        self.ptype = dm.ProjectTypeName.objects.create(name='testpt')
-        self.pi = dm.PrincipalInvestigator.objects.create(name='testpi')
-        self.dtype = dm.Datatype.objects.create(name='dttest')
-        self.p1 = dm.Project.objects.create(name='p1', pi=self.pi)
-        pt1 = dm.ProjType.objects.create(project=self.p1, ptype=self.ptype)
-        self.exp1 = dm.Experiment.objects.create(name='e1', project=self.p1)
-        self.run1 = dm.RunName.objects.create(name='run1', experiment=self.exp1)
-        self.newfserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
-        self.sstmp = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.newfserver,
-                share='/home/testtmp')
-        self.ssnewstore = rm.ServerShare.objects.create(name=settings.PRIMARY_STORAGESHARENAME,
-                server=self.newfserver, share='/home/storage')
-        self.oldfserver = rm.FileServer.objects.create(name='oldserver', uri='s0.test')
-        self.ssoldstorage = rm.ServerShare.objects.create(name=settings.STORAGESHARENAMES[0],
-                server=self.oldfserver, share='/home/storage')
+        BaseTest.setUp(self)
 
-        dscomp = dm.DatasetComponent.objects.create(name='files')
-        self.dtcomp = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dscomp)
+class TestMultiStorageServers(BaseIntegrationTest):
     def test_move_dataset_old_new_storage(self):
-        storloc = os.path.join(self.p1.name, self.exp1.name, self.run1.name)
-        self.ds = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run1,
-                datatype=self.dtype, storageshare=self.ssoldstorage, storage_loc=storloc)
+        self.ds.storageshare = self.ssoldstorage
+        self.ds.save()
         dtcstate = dm.DatasetComponentState.objects.create(dataset=self.ds, dtcomp=self.dtcomp, state='OK')
         self.ft = rm.StoredFileType.objects.create(name='testft', filetype='tst')
         self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
         own1 = dm.DatasetOwner.objects.create(dataset=self.ds, user=self.user)
         oldfn = 'raw1'
-        oldfpath = os.path.join(settings.SHAREMAP[self.ssoldstorage.name], storloc)
+        oldfpath = os.path.join(settings.SHAREMAP[self.ssoldstorage.name], self.storloc)
         oldsize = os.path.getsize(os.path.join(oldfpath, oldfn))
         oldraw = rm.RawFile.objects.create(name='file1', producer=self.prod,
                 source_md5='52416cc60390c66e875ee6ed8e03103a',
                 size=oldsize, date=timezone.now(), claimed=True)
         dsr = dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=oldraw)
         oldsf = rm.StoredFile.objects.create(rawfile=oldraw, filename=oldfn, servershare=self.ssoldstorage,
-                path=storloc, md5=oldraw.source_md5, checked=True, filetype=self.ft)
+                path=self.storloc, md5=oldraw.source_md5, checked=True, filetype=self.ft)
 
         newfn = 'raw2'
         newfpathfn = os.path.join(settings.SHAREMAP[self.sstmp.name], newfn)
@@ -117,7 +97,7 @@ class BaseIntegrationTest(LiveServerTestCase):
         call_command('runjobs')
         sleep(3)
         self.assertFalse(os.path.exists(oldfpath))
-        newdspath = os.path.join(settings.SHAREMAP[self.ssnewstore.name], storloc)
+        newdspath = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
         self.assertTrue(os.path.exists(os.path.join(newdspath, oldfn)))
         self.assertTrue(os.path.exists(os.path.join(newdspath, newfn)))
         self.assertEqual(dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=newraw).count(), 1)
@@ -129,4 +109,4 @@ class BaseIntegrationTest(LiveServerTestCase):
         oldsf.refresh_from_db()
         self.assertEqual(oldsf.servershare_id, self.ssnewstore.pk)
         self.assertEqual(self.ds.storageshare_id, self.ssnewstore.pk)
-        self.assertEqual(self.ds.storage_loc, storloc)
+        self.assertEqual(self.ds.storage_loc, self.storloc)

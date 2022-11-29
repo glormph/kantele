@@ -1,14 +1,14 @@
 from django.utils import timezone
 
 from kantele import settings
-from kantele.tests import BaseKanteleUnitTest
+from kantele.tests import BaseTest 
 from analysis import models as am
 from rawstatus import models as rm
 from datasets import models as dm
 from jobs import models as jm
 
 
-class MzmlTests(BaseKanteleUnitTest):
+class MzmlTests(BaseTest):
     def setUp(self):
         super().setUp()
         # workflow stuff

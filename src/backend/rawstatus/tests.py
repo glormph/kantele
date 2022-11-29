@@ -7,23 +7,21 @@ from datetime import timedelta, datetime
 from tempfile import mkdtemp
 
 from django.utils import timezone
-from django.test import TestCase, Client
 from django.contrib.auth.models import User
 
 from kantele import settings
+from kantele.tests import BaseTest
 from rawstatus import models as rm
 from analysis import models as am
 from analysis import models as am
 from jobs import models as jm
 
 
-class BaseFilesTest(TestCase):
+class BaseFilesTest(BaseTest):
     def setUp(self):
+        super().setUp()
         self.nottoken = 'blablabla'
         self.token= 'fghihj'
-        self.cl = Client()
-        self.fserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
-        self.ss = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.fserver, share='/home/testtmp')
         self.ft = rm.StoredFileType.objects.create(name='testft', filetype='tst', is_rawdata=True)
         self.uft = rm.StoredFileType.objects.create(name='ufileft', filetype='tst', is_rawdata=False)
         self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
@@ -32,12 +30,6 @@ class BaseFilesTest(TestCase):
         self.newraw = rm.RawFile.objects.create(name='file1', producer=self.prod,
                 source_md5='b7d55c322fa09ecd8bea141082c5419d',
                 size=100, date=timezone.now(), claimed=False)
-        self.username='testuser'
-        email = 'test@test.com'
-        self.password='12345'
-        self.user = User(username=self.username, email=email)
-        self.user.set_password(self.password)
-        self.user.save() 
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft)
@@ -58,16 +50,16 @@ class TransferStateTest(BaseFilesTest):
                 size=100, date=timezone.now(), claimed=False)
         self.multifileraw = rm.RawFile.objects.create(name='filemulti', producer=self.prod, source_md5='jsldjak8',
                 size=100, date=timezone.now(), claimed=False)
-        self.trfsf = rm.StoredFile.objects.create(rawfile=self.trfraw, filename=self.trfraw.name, servershare=self.ss,
+        self.trfsf = rm.StoredFile.objects.create(rawfile=self.trfraw, filename=self.trfraw.name, servershare=self.sstmp,
                 path='', md5=self.trfraw.source_md5, checked=False, filetype=self.ft)
-        self.donesf = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name, servershare=self.ss,
+        self.donesf = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name, servershare=self.sstmp,
                 path='', md5=self.doneraw.source_md5, checked=True, filetype=self.ft)
-        self.multisf1 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, servershare=self.ss,
+        self.multisf1 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, servershare=self.sstmp,
                 path='', md5=self.multifileraw.source_md5, checked=False, filetype=self.ft)
         # ft2 = rm.StoredFileType.objects.create(name='testft2', filetype='tst')
         # FIXME multisf with two diff filenames shouldnt be a problem right?
         multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, 
-                servershare=self.ss, path='', md5='', checked=False, filetype=self.ft)
+                servershare=self.sstmp, path='', md5='', checked=False, filetype=self.ft)
 
     def test_transferstate_done(self, token=False):
         if not token:
@@ -86,7 +78,7 @@ class TransferStateTest(BaseFilesTest):
                 size=100, date=timezone.now(), claimed=False)
 
         sflib = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name,
-                servershare=self.ss, path='', md5=self.doneraw.source_md5, checked=True,
+                servershare=self.sstmp, path='', md5=self.doneraw.source_md5, checked=True,
                 filetype=self.ft)
         lf = am.LibraryFile.objects.create(sfile=sflib, description='This is a libfile')
         self.test_transferstate_done()
@@ -99,7 +91,7 @@ class TransferStateTest(BaseFilesTest):
                 size=100, date=timezone.now(), claimed=False)
 
         sfusr = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name,
-                servershare=self.ss, path='', md5=self.doneraw.source_md5, checked=True,
+                servershare=self.sstmp, path='', md5=self.doneraw.source_md5, checked=True,
                 filetype=self.uft)
         uf = rm.UserFile.objects.create(sfile=sfusr,
                 description='This is a userfile', upload=self.uploadtoken)
@@ -299,8 +291,9 @@ class TestFileTransfer(BaseFilesTest):
     def test_transfer_again(self):
         '''Transfer already existing file, e.g. overwrites of previously
         found to be corrupt file'''
+        # FIXME 403, not overwrite (need overwrite?)
         rm.StoredFile.objects.create(rawfile=self.newraw, filetype=self.ft,
-                md5=self.newraw.source_md5, servershare=self.ss, path='',
+                md5=self.newraw.source_md5, servershare=self.sstmp, path='',
                 filename=self.newraw.name, checked=False)
         self.test_transfer_file(existing_file=True)
 
@@ -344,8 +337,7 @@ class TestArchiveFile(BaseFilesTest):
 
     def setUp(self):
         super().setUp()
-        login = self.cl.login(username=self.username, password=self.password)
-        self.sfile = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.ss.id,
+        self.sfile = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.sstmp.id,
                 path='', md5=self.newraw.source_md5, checked=False, filetype_id=self.ft.id)
 
     def test_get(self):
@@ -364,7 +356,7 @@ class TestArchiveFile(BaseFilesTest):
     def test_claimed_file(self):
         dset_raw = rm.RawFile.objects.create(name='dset_file', producer=self.prod, source_md5='kjlmnop1234',
                 size=100, date=timezone.now(), claimed=True)
-        sfile = rm.StoredFile.objects.create(rawfile=dset_raw, filename=dset_raw.name, servershare_id=self.ss.id,
+        sfile = rm.StoredFile.objects.create(rawfile=dset_raw, filename=dset_raw.name, servershare_id=self.sstmp.id,
                 path='', md5=dset_raw.source_md5, checked=False, filetype_id=self.ft.id)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
         self.assertEqual(resp.status_code, 403)
@@ -377,7 +369,7 @@ class TestArchiveFile(BaseFilesTest):
         self.assertEqual(resp.json()['error'], 'File is already archived')
 
     def test_deleted_file(self):
-        sfile1 = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.ss.id,
+        sfile1 = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.sstmp.id,
                 path='', md5='deletedmd5', checked=False, filetype_id=self.ft.id,
                 deleted=True)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile1.pk})
@@ -386,7 +378,7 @@ class TestArchiveFile(BaseFilesTest):
         # purged file to also test the check for it. Unrealistic to have it deleted but
         # not purged obviously
         sfile2 = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, 
-                servershare_id=self.ss.id, path='', md5='deletedmd5_2', checked=False, 
+                servershare_id=self.sstmp.id, path='', md5='deletedmd5_2', checked=False, 
                 filetype_id=self.ft.id, deleted=False, purged=True)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile2.pk})
         self.assertEqual(resp.status_code, 403)
@@ -407,7 +399,7 @@ class TestArchiveFile(BaseFilesTest):
         prod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
         ana_raw = rm.RawFile.objects.create(name='ana_file', producer=prod, source_md5='kjlmnop1234',
                 size=100, date=timezone.now(), claimed=True)
-        sfile = rm.StoredFile.objects.create(rawfile=ana_raw, filename=ana_raw.name, servershare_id=self.ss.id,
+        sfile = rm.StoredFile.objects.create(rawfile=ana_raw, filename=ana_raw.name, servershare_id=self.sstmp.id,
                 path='', md5=ana_raw.source_md5, checked=False, filetype_id=self.ft.id)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
         self.assertEqual(resp.status_code, 403)
@@ -431,7 +423,6 @@ class TestDownloadUploadScripts(BaseFilesTest):
 
     def setUp(self):
         super().setUp()
-        login = self.cl.login(username=self.username, password=self.password)
         self.tmpdir = mkdtemp()
 
     def tearDown(self):
