@@ -12,8 +12,15 @@ services:
         env_file:
             - ./testing.env
         volumes:
-          - ../backend:/kantele
-          - ../../data/test:/fixtures
+            - type: bind
+              source: ../backend
+              target: /kantele
+            - type: bind
+              source: ../../data/test
+              target: /fixtures
+            - type: bind 
+              source: ../../data/fakestorage
+              target: /storage
         environment:
             SECRET_KEY: test_secret
             HOST_DOMAIN: 'web'
@@ -22,8 +29,8 @@ services:
             DB_HOST: db
             RABBITHOST: mq
             STORAGESHARENAMES: "oldstorage,newstorage"
-            TMPSHARE: /fixtures/tmp
-            STORAGESHARES: '/fixtures/oldstorage,/fixtures/newstorage'
+            TMPSHARE: /storage/tmp
+            STORAGESHARES: '/storage/oldstorage,/storage/newstorage'
     
     db: 
         image: postgres:14.3

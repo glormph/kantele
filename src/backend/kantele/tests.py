@@ -1,5 +1,6 @@
 # Integration tests, including storage files etc
 import os
+import shutil
 from time import sleep
 
 from django.contrib.auth.models import User
@@ -15,6 +16,7 @@ from jobs import models as jm
 
 class BaseTest(TestCase):
     def setUp(self):
+        shutil.copytree('/fixtures', '/storage', dirs_exist_ok=True)
         self.cl = Client()
         username='testuser'
         email = 'test@test.com'
