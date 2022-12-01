@@ -298,7 +298,7 @@ def get_dataset_files(dsid, use_refined):
     dsfiles = rm.StoredFile.objects.select_related('rawfile').filter(
         rawfile__datasetrawfile__dataset_id=dsid, checked=True, deleted=False, purged=False)
     refineddsfiles = dsfiles.filter(mzmlfile__refined=True)
-    if use_refined and refineddsfiles.count() == dsfiles.filter(mzmlfile__isnull=True).count():
+    if use_refined and refineddsfiles.count() == dsfiles.filter(mzmlfile__refined=False).count():
         dsfiles = refineddsfiles
     else:
         # TODO this gets only mzml files from the dataset:
