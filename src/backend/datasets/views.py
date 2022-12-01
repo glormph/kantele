@@ -1235,7 +1235,7 @@ def move_dset_project_servershare(dset, dstsharename):
                 dstsharename=dstsharename)
     for other_ds in models.Dataset.objects.filter(deleted=False, purged=False,
             runname__experiment__project=dset.runname.experiment.project).exclude(pk=dset.pk):
-        create_job('move_dset_servershare', dset_id=dset.pk, srcsharename=dset.storageshare.name,
+        create_job('move_dset_servershare', dset_id=other_ds.pk, srcsharename=other_ds.storageshare.name,
                 dstsharename=dstsharename)
 
 

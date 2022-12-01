@@ -1,3 +1,4 @@
+import os
 from django.utils import timezone
 
 from kantele import settings
@@ -12,33 +13,42 @@ class MzmlTests(BaseTest):
     def setUp(self):
         super().setUp()
         # workflow stuff
-        ps = am.ParameterSet.objects.create(name='')
-        nfw = am.NextflowWorkflow.objects.create(description='', repo='')
-        self.nfwv = am.NextflowWfVersion.objects.create(update='', commit='', filename='', nfworkflow=nfw,
-                paramset=ps, kanteleanalysis_version=1, nfversion='')
-        self.pw = am.Proteowizard.objects.create(version_description='', container_version='', nf_version=self.nfwv, is_docker=True)
+        ps, _ = am.ParameterSet.objects.get_or_create(name='')
+        nfw, _ = am.NextflowWorkflow.objects.get_or_create(description='', repo='')
+        self.nfwv, _ = am.NextflowWfVersion.objects.get_or_create(update='', commit='', filename='',
+                nfworkflow=nfw, paramset=ps, kanteleanalysis_version=1, nfversion='')
+        self.pw, _ = am.Proteowizard.objects.get_or_create(version_description='',
+                container_version='', nf_version=self.nfwv, is_docker=True)
         # Stored files input
-        self.ssmzml = rm.ServerShare.objects.create(name=settings.MZMLINSHARENAME, server=self.newfserver,
-                share='/home/mzmls')
-        self.ft = rm.StoredFileType.objects.create(name='Thermo raw', filetype='raw')
-        self.prodqe = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
-        self.prodtims = rm.Producer.objects.create(name='prod2', client_id='abcdefg', shortname='p2')
-        self.tims = rm.MSInstrumentType.objects.create(name='timstof')
-        self.qe = rm.MSInstrumentType.objects.create(name='qe')
-        instqe = rm.MSInstrument.objects.create(producer=self.prodqe, instrumenttype=self.qe,
-                filetype=self.ft)
-        insttims = rm.MSInstrument.objects.create(producer=self.prodtims, instrumenttype=self.tims,
-                filetype=self.ft)
-        own1 = dm.DatasetOwner.objects.create(dataset=self.ds, user=self.user)
-        self.oldraw = rm.RawFile.objects.create(name='file1', producer=self.prodqe,
-                source_md5='52416cc60390c66e875ee6ed8e03103a',
-                size=100, date=timezone.now(), claimed=True)
-        self.sf = rm.StoredFile.objects.create(rawfile=self.oldraw, filename=self.oldraw.name, servershare=self.ds.storageshare,
-                path=self.storloc, md5=self.oldraw.source_md5, checked=True, filetype=self.ft)
+        self.ssmzml, _ = rm.ServerShare.objects.get_or_create(name=settings.MZMLINSHARENAME, 
+                server=self.newfserver, share='/home/mzmls')
+        self.ft, _ = rm.StoredFileType.objects.get_or_create(name='Thermo raw', filetype='raw')
+        self.prodqe, _ = rm.Producer.objects.get_or_create(name='qe_prod', client_id='abcdefg',
+                shortname='p1')
+        self.prodtims, _ = rm.Producer.objects.get_or_create(name='tims_prod', client_id='hijklm',
+                shortname='p2')
+        self.tims, _ = rm.MSInstrumentType.objects.get_or_create(name='timstof')
+        self.qe, _ = rm.MSInstrumentType.objects.get_or_create(name='qe')
+        instqe, _ = rm.MSInstrument.objects.get_or_create(producer=self.prodqe,
+                instrumenttype=self.qe, filetype=self.ft)
+        insttims, _ = rm.MSInstrument.objects.get_or_create(producer=self.prodtims,
+                instrumenttype=self.tims, filetype=self.ft)
+        own1, _ = dm.DatasetOwner.objects.get_or_create(dataset=self.ds, user=self.user)
+        self.run = dm.RunName.objects.create(name=self.id(), experiment=self.exp1)
+        self.storloc = os.path.join(self.p1.name, self.exp1.name, self.run.name) 
+        self.ds = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run,
+                datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=self.storloc)
+        self.qeraw, _ = rm.RawFile.objects.update_or_create(name='file1', defaults={
+            'producer': self.prodqe, 'source_md5': '52416cc60390c66e875ee6ed8e03103a',
+            'size': 100, 'date': timezone.now(), 'claimed': True})
+        self.qesf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.qeraw, 
+                filename=self.qeraw.name, defaults={'servershare': self.ds.storageshare,
+                    'path': self.storloc, 'md5': self.qeraw.source_md5, 'checked': True,
+                    'filetype': self.ft})
         self.timsraw = rm.RawFile.objects.create(name='file2', producer=self.prodtims,
                 source_md5='timsmd4',
                 size=100, date=timezone.now(), claimed=True)
-        dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=self.oldraw)
+        dm.DatasetRawFile.objects.update_or_create(rawfile=self.qeraw, defaults={'dataset': self.ds})
 
 
 class TestCreateMzmls(MzmlTests):
@@ -57,22 +67,24 @@ class TestCreateMzmls(MzmlTests):
         self.assertEqual(resp.status_code, 403)
         self.assertIn('does not exist or is deleted', resp.json()['error'])
         # dset with diff raw files
-        dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=self.timsraw)
+        timsdsr = dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=self.timsraw)
         resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
             'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('contains data from multiple instrument types', resp.json()['error'])
+        timsdsr.delete()
     
     def test_existing_mzmls(self):
-        am.MzmlFile.objects.create(sfile=self.sf, pwiz=self.pw)
+        exist_mzml = am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
         resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
             'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('already has existing mzML files of that proteowizard', resp.json()['error'])
+        exist_mzml.delete()
 
     def test_other_pwiz(self):
-        newpw = am.Proteowizard.objects.create(version_description='newer', container_version='', nf_version=self.nfwv)
-        am.MzmlFile.objects.create(sfile=self.sf, pwiz=newpw)
+        newpw, _ = am.Proteowizard.objects.get_or_create(version_description='newer', container_version='', nf_version=self.nfwv)
+        exist_mzml = am.MzmlFile.objects.create(sfile=self.qesf, pwiz=newpw)
         resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
             'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 200)
@@ -82,9 +94,10 @@ class TestCreateMzmls(MzmlTests):
                 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
-        self.sf.refresh_from_db()
-        self.assertTrue(self.sf.deleted)
-        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 0)
+        self.qesf.refresh_from_db()
+        self.assertTrue(self.qesf.deleted)
+        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare', kwargs__dset_id=self.ds.pk).count(), 0)
+        exist_mzml.delete()
 
     def test_create_mzml_qe(self):
         postdata = {'pwiz_id': self.pw.pk, 'dsid': self.ds.pk}
@@ -96,11 +109,12 @@ class TestCreateMzmls(MzmlTests):
                 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
-        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 0)
+        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
+            kwargs__dset_id=self.ds.pk).count(), 0)
 
     def test_create_mzml_tims(self):
-        self.oldraw.producer = self.prodtims
-        self.oldraw.save()
+        self.qeraw.producer = self.prodtims
+        self.qeraw.save()
         postdata = {'pwiz_id': self.pw.pk, 'dsid': self.ds.pk}
         resp = self.cl.post(self.url, content_type='application/json', data=postdata)
         self.assertEqual(resp.status_code, 200)
@@ -110,10 +124,15 @@ class TestCreateMzmls(MzmlTests):
                 'dstshare_id': self.ssmzml.pk, 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
-        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 0)
+        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
+            kwargs__dset_id=self.ds.pk).count(), 0)
 
     def test_with_filemove(self):
+        # Create new dataset on old storage proj that can be mock-"moved"
+        # Delete afterwards so the count job tests dont go bad between tests
+        moverun = dm.RunName.objects.create(name=self.id(), experiment=self.oldexp)
         self.ds.storageshare = self.ssoldstorage
+        self.ds.runname = moverun
         self.ds.save()
         postdata = {'pwiz_id': self.pw.pk, 'dsid': self.ds.pk}
         resp = self.cl.post(self.url, content_type='application/json', data=postdata)
@@ -124,7 +143,10 @@ class TestCreateMzmls(MzmlTests):
                 'dstshare_id': self.ssmzml.pk, 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
-        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 1)
+        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
+            kwargs__dset_id=self.ds.pk).count(), 1)
+        # cleanup, this should also remove dset
+        moverun.delete()
 
 
 class TestRefineMzmls(MzmlTests):
@@ -160,10 +182,10 @@ class TestRefineMzmls(MzmlTests):
         self.assertIn('Need to create normal mzMLs', resp.json()['error'])
 
         # refined exists already
-        refinedsf = rm.StoredFile.objects.create(rawfile=self.oldraw, filename=self.oldraw.name, servershare=self.ds.storageshare,
+        refinedsf = rm.StoredFile.objects.create(rawfile=self.qeraw, filename=self.qeraw.name, servershare=self.ds.storageshare,
                 path=self.storloc, md5='refined_md5', checked=True, filetype=self.ft)
         am.MzmlFile.objects.create(sfile=refinedsf, pwiz=self.pw, refined=True)
-        am.MzmlFile.objects.create(sfile=self.sf, pwiz=self.pw)
+        am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
         resp = self.cl.post(self.url, content_type='application/json', data={'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 403)
 
@@ -179,14 +201,21 @@ class TestRefineMzmls(MzmlTests):
             self.assertEqual(j.kwargs[k], val)
 
     def test_refine_mzml(self):
-        am.MzmlFile.objects.create(sfile=self.sf, pwiz=self.pw)
+        am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
         self.do_refine()
         self.do_refine()
-        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 0)
+        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
+            kwargs__dset_id=self.ds.pk).count(), 0)
 
     def test_with_filemove(self):
+        # Create new dataset on old storage proj that can be mock-"moved"
+        # Delete afterwards so the count job tests dont go bad between tests
+        moverun = dm.RunName.objects.create(name=self.id(), experiment=self.oldexp)
         self.ds.storageshare = self.ssoldstorage
+        self.ds.runname = moverun
         self.ds.save()
-        am.MzmlFile.objects.create(sfile=self.sf, pwiz=self.pw)
+        am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
         self.do_refine()
-        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare').count(), 1)
+        self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
+            kwargs__dset_id=self.ds.pk).count(), 1)
+        moverun.delete()

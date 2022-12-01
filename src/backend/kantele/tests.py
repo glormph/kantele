@@ -83,7 +83,7 @@ class BaseTest(TestCase):
         dm.DatasetOwner.objects.get_or_create(dataset=self.oldds, user=self.user)
         self.oldfpath = os.path.join(settings.SHAREMAP[self.ssoldstorage.name], self.oldstorloc)
         oldsize = os.path.getsize(os.path.join(self.oldfpath, oldfn))
-        self.oldraw = rm.RawFile.objects.create(name='file1', producer=self.prod,
+        self.oldraw = rm.RawFile.objects.create(name=oldfn, producer=self.prod,
                 source_md5='old_to_new_fakemd5',
                 size=oldsize, date=timezone.now(), claimed=True)
         dm.DatasetRawFile.objects.get_or_create(dataset=self.oldds, rawfile=self.oldraw)
