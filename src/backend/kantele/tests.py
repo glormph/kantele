@@ -122,6 +122,7 @@ class TestMultiStorageServers(BaseIntegrationTest):
         postdata = {'dataset_id': self.oldds.pk, 'added_files': {'fn2': {'id': self.tmpraw.pk}}, 'removed_files': {}}
         resp = self.cl.post(url, content_type='application/json', data=postdata)
         self.assertEqual(resp.status_code, 200)
+        self.assertTrue(os.path.exists(self.oldfpath))
         # call job runner to run rsync and move file. They do not wait
         call_command('runjobs')
         sleep(3)

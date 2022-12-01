@@ -260,7 +260,7 @@ class TestFileTransfer(BaseFilesTest):
             self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
             f'{self.registered_raw.name}, if you are re-uploading a previously '
             'deleted file, consider reactivating from backup, or contact admin'})
-        elif not self.uploadtoken.filetype.is_rawdata and not userdesc:
+        elif not self.uploadtoken.filetype.is_rawdata and not self.uploadtoken.is_library and not userdesc:
             self.assertEqual(resp.status_code, 403)
             self.assertIn('User file needs a description', resp.json()['error'])
         elif self.uploadtoken.is_library and not libdesc:

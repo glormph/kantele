@@ -5,6 +5,7 @@ from urllib.parse import urljoin
 
 from django.urls import reverse
 from celery import shared_task
+from celery.exceptions import MaxRetriesExceededError
 
 from kantele import settings
 from jobs.post import update_db, taskfail_update_db
