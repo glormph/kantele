@@ -22,14 +22,7 @@ class BaseFilesTest(BaseTest):
         super().setUp()
         self.nottoken = 'blablabla'
         self.token= 'fghihj'
-        self.ft = rm.StoredFileType.objects.create(name='testft', filetype='tst', is_rawdata=True)
-        self.uft = rm.StoredFileType.objects.create(name='ufileft', filetype='tst', is_rawdata=False)
-        self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1')
-        msit = rm.MSInstrumentType.objects.create(name='test')
-        rm.MSInstrument.objects.create(producer=self.prod, instrumenttype=msit, filetype=self.ft)
-        self.newraw = rm.RawFile.objects.create(name='file1', producer=self.prod,
-                source_md5='b7d55c322fa09ecd8bea141082c5419d',
-                size=100, date=timezone.now(), claimed=False)
+        self.uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst', is_rawdata=False)
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft)
@@ -37,6 +30,10 @@ class BaseFilesTest(BaseTest):
         rm.UploadToken.objects.create(user=self.user, token=self.nottoken, 
                 expires=timezone.now() - timedelta(1), expired=False, 
                 producer=self.prod, filetype=self.ft)
+
+        self.registered_raw, _ = rm.RawFile.objects.get_or_create(name='file1', producer=self.prod,
+                source_md5='b7d55c322fa09ecd8bea141082c5419d',
+                size=100, date=timezone.now(), claimed=False)
 
 
 class TransferStateTest(BaseFilesTest):
@@ -105,7 +102,7 @@ class TransferStateTest(BaseFilesTest):
 
     def test_transferstate_transfer(self):
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.newraw.id})
+                data={'token': self.token, 'fnid': self.registered_raw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'transfer')
 
@@ -166,7 +163,7 @@ class TestFileRegistered(BaseFilesTest):
                 data={'hello': 'test'})
         self.assertEqual(resp.status_code, 400)
         # Missing client ID /token (False)
-        stddata = {'fn': self.newraw.name, 'token': False, 'size': 200,
+        stddata = {'fn': self.registered_raw.name, 'token': False, 'size': 200,
                 'date': 'fake', 'md5': 'fake'}
         resp = self.cl.post(self.url, content_type='application/json',
                 data=stddata)
@@ -187,13 +184,13 @@ class TestFileRegistered(BaseFilesTest):
 
     def test_normal(self):
         nowdate = timezone.now()
-        stddata = {'fn': self.newraw.name, 'token': self.token, 'size': 100,
+        stddata = {'fn': self.registered_raw.name, 'token': self.token, 'size': 100,
                 'date': datetime.timestamp(nowdate), 'md5': 'fake'}
         resp = self.cl.post(self.url, content_type='application/json',
                 data=stddata)
         self.assertEqual(resp.status_code, 200)
         newraws = rm.RawFile.objects.filter(source_md5='fake', #date=nowdate,
-                name=self.newraw.name, producer=self.prod, size=100) 
+                name=self.registered_raw.name, producer=self.prod, size=100) 
         self.assertEqual(newraws.count(), 1)
         self.assertTrue(nowdate - newraws.get().date < timedelta(seconds=60))
 
@@ -202,13 +199,13 @@ class TestFileRegistered(BaseFilesTest):
         self.test_normal() 
         # try one with same MD5, check if only one file is there
         nowdate = timezone.now()
-        stddata = {'fn': self.newraw.name, 'token': self.token, 'size': 100,
+        stddata = {'fn': self.registered_raw.name, 'token': self.token, 'size': 100,
                 'date': datetime.timestamp(nowdate), 'md5': 'fake'}
         resp = self.cl.post(self.url, content_type='application/json',
                 data=stddata)
         self.assertEqual(resp.status_code, 200)
         newraws = rm.RawFile.objects.filter(source_md5='fake',
-                name=self.newraw.name, producer=self.prod, size=100) 
+                name=self.registered_raw.name, producer=self.prod, size=100) 
         self.assertEqual(newraws.count(), 1)
         self.assertEqual(resp.json()['state'], 'error')
         self.assertIn('is already registered', resp.json()['msg'])
@@ -225,8 +222,8 @@ class TestFileTransfer(BaseFilesTest):
         resp = self.cl.post(self.url, data={'hello': 'test'})
         self.assertEqual(resp.status_code, 400)
         # Missing client ID /token (False)
-        stddata = {'fn_id': self.newraw.pk, 'token': False,
-                'libdesc': False, 'userdesc': False, 'filename': self.newraw.name}
+        stddata = {'fn_id': self.registered_raw.pk, 'token': False,
+                'libdesc': False, 'userdesc': False, 'filename': self.registered_raw.name}
         resp = self.cl.post(self.url, data=stddata)
         self.assertEqual(resp.status_code, 403)
         # Wrong token
@@ -234,7 +231,7 @@ class TestFileTransfer(BaseFilesTest):
         self.assertEqual(resp.status_code, 403)
         # Wrong fn_id
         resp = self.cl.post(self.url, 
-                data={**stddata, 'fn_id': self.newraw.pk + 1000, 'token': self.token})
+                data={**stddata, 'fn_id': self.registered_raw.pk + 1000, 'token': self.token})
         self.assertEqual(resp.status_code, 403)
         # expired token
         resp = self.cl.post(self.url, data={**stddata, 'token': self.nottoken})
@@ -246,9 +243,10 @@ class TestFileTransfer(BaseFilesTest):
         fn = 'test_upload.txt'
         if not token:
             token = self.token
+        # FIXME rawstatus/ wrong place for uploads test files!
         with open(f'rawstatus/{fn}') as fp:
-            stddata = {'fn_id': self.newraw.pk, 'token': token,
-                    'filename': self.newraw.name, 'file': fp}
+            stddata = {'fn_id': self.registered_raw.pk, 'token': token,
+                    'filename': self.registered_raw.name, 'file': fp}
             if libdesc:
                 stddata['libdesc'] = libdesc
             elif userdesc:
@@ -260,7 +258,7 @@ class TestFileTransfer(BaseFilesTest):
         if existing_file:
             self.assertEqual(resp.status_code, 403)
             self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
-            f'{self.newraw.name}, if you are re-uploading a previously '
+            f'{self.registered_raw.name}, if you are re-uploading a previously '
             'deleted file, consider reactivating from backup, or contact admin'})
         elif not self.uploadtoken.filetype.is_rawdata and not userdesc:
             self.assertEqual(resp.status_code, 403)
@@ -270,21 +268,21 @@ class TestFileTransfer(BaseFilesTest):
             self.assertIn('Library file needs a description', resp.json()['error'])
         else:
             self.assertEqual(resp.status_code, 200)
-            self.assertEqual(resp.json(), {'state': 'ok', 'fn_id': self.newraw.pk})
-            sfns = rm.StoredFile.objects.filter(rawfile=self.newraw)
+            self.assertEqual(resp.json(), {'state': 'ok', 'fn_id': self.registered_raw.pk})
+            sfns = rm.StoredFile.objects.filter(rawfile=self.registered_raw)
             self.assertEqual(sfns.count(), 1)
             sf = sfns.get()
-            self.assertEqual(sf.md5, self.newraw.source_md5)
+            self.assertEqual(sf.md5, self.registered_raw.source_md5)
             self.assertFalse(sf.checked)
             upload_file = os.path.join(settings.TMP_UPLOADPATH,
-                    f'{self.newraw.pk}.{self.uploadtoken.filetype.filetype}')
+                    f'{self.registered_raw.pk}.{self.uploadtoken.filetype.filetype}')
             jobs = jm.Job.objects.filter(funcname='rsync_transfer', kwargs={
                 'src_path': upload_file, 'sf_id': sf.pk})
             self.assertEqual(jobs.count(), 1)
             job = jobs.get()
             # this may fail occasionally
             self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
-            upfile = f'{self.newraw.pk}.{sf.filetype.filetype}'
+            upfile = f'{self.registered_raw.pk}.{sf.filetype.filetype}'
             with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:
                 self.assertEqual(fp.read(), infile_contents)
 
@@ -292,9 +290,9 @@ class TestFileTransfer(BaseFilesTest):
         '''Transfer already existing file, e.g. overwrites of previously
         found to be corrupt file'''
         # FIXME 403, not overwrite (need overwrite?)
-        rm.StoredFile.objects.create(rawfile=self.newraw, filetype=self.ft,
-                md5=self.newraw.source_md5, servershare=self.sstmp, path='',
-                filename=self.newraw.name, checked=False)
+        sf = rm.StoredFile.objects.create(rawfile=self.registered_raw, filetype=self.ft,
+                md5=self.registered_raw.source_md5, servershare=self.sstmp, path='',
+                filename=self.registered_raw.name, checked=False)
         self.test_transfer_file(existing_file=True)
 
     def transfer_archive_only(self):
@@ -302,7 +300,7 @@ class TestFileTransfer(BaseFilesTest):
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft, archive_only=True)
         self.test_transfer_file(token='archiveonly')
-        sf = rm.StoredFile.objects.get(rawfile=self.newraw)
+        sf = rm.StoredFile.objects.get(rawfile=self.registered_raw)
         jobs = jm.Job.objects.filter(funcname='purge_files', kwargs={'sf_ids': [sf.pk]})
         self.assertEqual(jobs.count(), 1)
 
@@ -311,8 +309,9 @@ class TestFileTransfer(BaseFilesTest):
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft, is_library=True)
         self.test_transfer_file(libdesc='This is a libfile', token='libfile')
-        libs = am.LibraryFile.objects.filter(sfile__rawfile=self.newraw, description='This is a libfile')
+        libs = am.LibraryFile.objects.filter(sfile__rawfile=self.registered_raw, description='This is a libfile')
         self.assertEqual(libs.count(), 1)
+        libs.delete()
     
     def test_userfile(self):
         token = 'userfile'
@@ -320,9 +319,10 @@ class TestFileTransfer(BaseFilesTest):
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.uft)
         self.test_transfer_file(userdesc='This is a userfile', token=token)
-        ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.newraw,
+        ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.registered_raw,
                 description='This is a userfile', upload__token=token)
         self.assertEqual(ufiles.count(), 1)
+        ufiles.delete()
     
     def test_userlib_fail(self):
         token = 'userfilefail'
@@ -337,8 +337,8 @@ class TestArchiveFile(BaseFilesTest):
 
     def setUp(self):
         super().setUp()
-        self.sfile = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.sstmp.id,
-                path='', md5=self.newraw.source_md5, checked=False, filetype_id=self.ft.id)
+        self.sfile = rm.StoredFile.objects.create(rawfile=self.registered_raw, filename=self.registered_raw.name, servershare_id=self.sstmp.id,
+                path='', md5=self.registered_raw.source_md5, checked=False, filetype_id=self.ft.id)
 
     def test_get(self):
         resp = self.cl.get(self.url)
@@ -369,7 +369,7 @@ class TestArchiveFile(BaseFilesTest):
         self.assertEqual(resp.json()['error'], 'File is already archived')
 
     def test_deleted_file(self):
-        sfile1 = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, servershare_id=self.sstmp.id,
+        sfile1 = rm.StoredFile.objects.create(rawfile=self.registered_raw, filename=self.registered_raw.name, servershare_id=self.sstmp.id,
                 path='', md5='deletedmd5', checked=False, filetype_id=self.ft.id,
                 deleted=True)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile1.pk})
@@ -377,7 +377,7 @@ class TestArchiveFile(BaseFilesTest):
         self.assertEqual(resp.json()['error'], 'File is currently marked as deleted, can not archive')
         # purged file to also test the check for it. Unrealistic to have it deleted but
         # not purged obviously
-        sfile2 = rm.StoredFile.objects.create(rawfile=self.newraw, filename=self.newraw.name, 
+        sfile2 = rm.StoredFile.objects.create(rawfile=self.registered_raw, filename=self.registered_raw.name, 
                 servershare_id=self.sstmp.id, path='', md5='deletedmd5_2', checked=False, 
                 filetype_id=self.ft.id, deleted=False, purged=True)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile2.pk})
