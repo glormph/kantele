@@ -42,6 +42,9 @@ class RefineMzmls(DatasetJob):
             ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=dstshare.pk)
             mzmls.append({'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
                 'sfid': ref_sf.id})
+            if ref_sf.purged:
+                ref_sf.checked = False
+                ref_sf.purged = False
         if not mzmls:
             return
         mzml_ins = mzmlfiles.distinct('rawfile__producer__msinstrument__instrumenttype__name').get()
