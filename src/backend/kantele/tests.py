@@ -16,6 +16,9 @@ from jobs import models as jm
 
 class BaseTest(TestCase):
     def setUp(self):
+        for dirname in os.listdir('/storage'):
+            if os.path.isdir(dirname):
+                shutil.rmtree(os.path.join('/storage', dirname))
         shutil.copytree('/fixtures', '/storage', dirs_exist_ok=True)
         self.cl = Client()
         username='testuser'

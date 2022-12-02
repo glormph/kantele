@@ -1,9 +1,9 @@
 set -euo pipefail
 
-# remove old test results if needed
+# remove old test results if needed (locally)
 echo Cleaning up
-git clean -xf data/test
-git checkout -- data/test
+git clean -xf data/fakestorage
+git checkout -- data/fakestorage
 
 # Clean old containers
 docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml down
