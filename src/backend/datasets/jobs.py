@@ -25,7 +25,7 @@ class RenameProject(BaseJob):
     def process(self, **kwargs):
         """Fetch fresh project name here, then queue for move from there"""
         new_is_oldname = True
-        for ds in Dataset.objects.select_related('servershare').filter(
+        for ds in Dataset.objects.select_related('storageshare').filter(
                 runname__experiment__project_id=kwargs['proj_id']):
             ds_toploc = ds.storage_loc.split(os.path.sep)[0]
             ssharename = ds.storageshare.name

@@ -72,7 +72,11 @@ def rename_top_level_project_storage_dir(self, projsharename, srcname, newname, 
         taskfail_update_db(self.request.id, msg)
         raise RuntimeError(msg)
     try:
-        shutil.move(srcpath, dstpath)
+        os.rename(srcpath, dstpath)
+    except NotADirectoryError:
+        taskfail_update_db(self.request.id, msg=f'Failed renaming project {srcpath} is a directory '
+                f'but {dstpath} is a file')
+        raise
     except Exception:
         taskfail_update_db(self.request.id, msg='Failed renaming project for unknown reason')
         raise
@@ -123,19 +127,26 @@ def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, dstsharename, f
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def rename_dset_storage_location(self, ds_sharename, srcpath, dstpath, dset_id, sf_ids):
     """This expects one dataset per dir, as it will rename the whole dir"""
-    print('Renaming dataset storage {} to {}'.format(srcpath, dstpath))
+    print(f'Renaming dataset storage {srcpath} to {dstpath}')
     ds_share = settings.SHAREMAP[ds_sharename]
+    srcfull = os.path.join(ds_share, srcpath)
+    dstfull = os.path.join(ds_share, dstpath)
     try:
-        shutil.move(os.path.join(ds_share, srcpath), os.path.join(ds_share, dstpath))
-    except:
-        taskfail_update_db(self.request.id)
+        os.renames(srcfull, dstfull)
+    except NotADirectoryError:
+        taskfail_update_db(self.request.id, msg=f'Failed renaming project {srcfull} is a directory '
+                f'but {dstfull} is a file')
+        raise
+    except Exception:
+        taskfail_update_db(self.request.id, msg=f'Failed renaming dataset location {srcfull} '
+        f'to {dstfull} for unknown reason')
         raise
     # Go through dirs in path and delete empty ones caused by move
     splitpath = srcpath.split(os.sep)
     for pathlen in range(0, len(splitpath))[::-1]:
         # no rmdir on the leaf dir (would be pathlen+1) since that's been moved
         checkpath = os.path.join(ds_share, os.sep.join(splitpath[:pathlen]))
-        if not os.listdir(checkpath):
+        if os.path.exists(checkpath) and os.path.isdir(checkpath) and not os.listdir(checkpath):
             try:
                 os.rmdir(checkpath)
             except:

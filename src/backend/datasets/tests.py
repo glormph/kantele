@@ -1,20 +1,43 @@
 import os
 import json
+from time import sleep
 from datetime import datetime
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
+from django.core.management import call_command
 
 from kantele import settings
-from kantele.tests import BaseTest 
+from kantele.tests import BaseTest, BaseIntegrationTest
 from datasets import models as dm
 from jobs import models as jm
 from rawstatus import models as rm
 
 
+class UpdateDatasetTest(BaseIntegrationTest):
+    url = '/datasets/save/dataset/'
+
+    def test_update_dset_newexp_location(self):
+        newexpname = 'edited_exp'
+        self.assertEqual(dm.Experiment.objects.filter(name=newexpname).count(), 0)
+        resp = self.cl.post(self.url, content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'project_id': self.p1.pk, 'newexperimentname': newexpname,
+            'runname': self.run1.name, 'datatype_id': self.dtype.pk, 'prefrac_id': False,
+            'ptype_id': self.ptype.pk, 'externalcontact': self.contact.email})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(dm.Experiment.objects.filter(name=newexpname).count(), 1)
+        self.assertTrue(os.path.exists(self.f3path))
+        call_command('runjobs')
+        sleep(3)
+        self.assertFalse(os.path.exists(self.f3path))
+        new_ds_loc = os.path.join(self.p1.name, newexpname, self.dtype.name, self.run1.name)
+        self.assertNotEqual(self.ds.storage_loc, new_ds_loc)
+        self.ds.refresh_from_db()
+        self.assertEqual(self.ds.storage_loc, new_ds_loc)
+        self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ds.storageshare.name],
+            self.ds.storage_loc, self.f3sf.filename)))
 
 
-
-class RenameProjectTest(BaseTest):
+class RenameProjectTest(BaseIntegrationTest):
     url = '/datasets/rename/project/'
 
     def test_no_ownership_fail(self):
@@ -38,10 +61,13 @@ class RenameProjectTest(BaseTest):
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projid': self.p1.pk, 'newname': 'testnewname with spaces'})
         self.assertEqual(resp.status_code, 403)
-        self.assertIn(f'cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}', json.loads(resp.content)['error'])
+        self.assertIn(f'cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}',
+                json.loads(resp.content)['error'])
+        # existing proj name? proj name identical to old projname
 
     def test_rename_ok(self):
         newname = 'testnewname'
+        self.assertEqual(dm.Project.objects.filter(name=newname).count(), 0)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projid': self.p1.pk, 'newname': newname})
         self.assertEqual(resp.status_code, 200)
@@ -50,6 +76,17 @@ class RenameProjectTest(BaseTest):
         self.assertEqual(renamejobs.count(), 1)
         self.p1.refresh_from_db()
         self.assertEqual(self.p1.name, newname)
+        self.assertTrue(os.path.exists(self.f3path))
+        call_command('runjobs')
+        sleep(3)
+        self.assertFalse(os.path.exists(self.f3path))
+        new_loc = os.path.join(newname, self.exp1.name, self.dtype.name, self.run1.name)
+        self.assertNotEqual(self.ds.storage_loc, new_loc)
+        self.ds.refresh_from_db()
+        self.assertEqual(self.ds.storage_loc, new_loc)
+        self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ds.storageshare.name],
+            self.ds.storage_loc, self.f3sf.filename)))
+
 
 
 class MergeProjectsTest(BaseTest):

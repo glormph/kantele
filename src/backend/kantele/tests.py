@@ -40,7 +40,7 @@ class BaseTest(TestCase):
 
         # Datasets/projects prep
         dscomp, _ = dm.DatasetComponent.objects.get_or_create(name='files')
-        self.dtype, _ = dm.Datatype.objects.get_or_create(name='dttest')
+        self.dtype, _ = dm.Datatype.objects.get_or_create(name='dtype1')
         self.dtcomp, _ = dm.DatatypeComponent.objects.get_or_create(datatype=self.dtype, component=dscomp)
         qdt, _ = dm.Datatype.objects.get_or_create(name='Quantitative proteomics')
         self.ptype, _ = dm.ProjectTypeName.objects.get_or_create(name='testpt')
@@ -59,7 +59,7 @@ class BaseTest(TestCase):
         dm.ProjType.objects.get_or_create(project=self.p1, ptype=self.ptype)
         self.exp1, _ = dm.Experiment.objects.get_or_create(name='e1', project=self.p1)
         self.run1, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.exp1)
-        self.storloc = os.path.join(self.p1.name, self.exp1.name, self.run1.name)
+        self.storloc = os.path.join(self.p1.name, self.exp1.name, self.dtype.name, self.run1.name)
         self.ds, _ = dm.Dataset.objects.update_or_create(date=self.p1.registered, runname=self.run1,
                 datatype=self.dtype, defaults={'storageshare': self.ssnewstore, 
                     'storage_loc': self.storloc})
@@ -68,6 +68,17 @@ class BaseTest(TestCase):
         self.contact, _ = dm.ExternalDatasetContact.objects.get_or_create(dataset=self.ds,
                 defaults={'email': 'contactname'})
         dm.DatasetOwner.objects.get_or_create(dataset=self.ds, user=self.user)
+        self.f3path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
+        fn3 = 'raw3'
+        f3size = os.path.getsize(os.path.join(self.f3path, fn3))
+        self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,
+                source_md5='f3_fakemd5',
+                size=f3size, date=timezone.now(), claimed=True)
+        dm.DatasetRawFile.objects.get_or_create(dataset=self.ds, rawfile=self.f3raw)
+        self.f3sf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw, filename=fn3,
+                    md5=self.f3raw.source_md5, filetype=self.ft,
+                    defaults={'servershare': self.ssnewstore, 'path': self.storloc, 
+                        'checked': True})
 
         # Project/dataset/files on old storage
         oldfn = 'raw1'
