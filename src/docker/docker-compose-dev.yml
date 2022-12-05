@@ -3,11 +3,11 @@
 
 services:
     storage:
-        image: storage_test
+        image: django_test
         build:
             context: "${BUILD_CONTEXT_DEV:-./src}"
             dockerfile: ./docker/Dockerfile
-            target: storage_test
+            target: django_test
             args:
                 USER_ID: "${USER_ID:-You must run export USER_ID}"
                 GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
