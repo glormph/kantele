@@ -10,6 +10,7 @@ from kantele import settings
 from kantele.tests import BaseTest, BaseIntegrationTest
 from datasets import models as dm
 from jobs import models as jm
+from jobs.jobs import Jobstates
 from rawstatus import models as rm
 
 
@@ -19,13 +20,15 @@ class UpdateDatasetTest(BaseIntegrationTest):
     def test_update_dset_newexp_location(self):
         newexpname = 'edited_exp'
         self.assertEqual(dm.Experiment.objects.filter(name=newexpname).count(), 0)
-        resp = self.cl.post(self.url, content_type='application/json', data={
-            'dataset_id': self.ds.pk, 'project_id': self.p1.pk, 'newexperimentname': newexpname,
-            'runname': self.run1.name, 'datatype_id': self.dtype.pk, 'prefrac_id': False,
-            'ptype_id': self.ptype.pk, 'externalcontact': self.contact.email})
+        resp = self.post_json(data={'dataset_id': self.ds.pk, 'project_id': self.p1.pk,
+            'newexperimentname': newexpname, 'runname': self.run1.name,
+            'datatype_id': self.dtype.pk, 'prefrac_id': False, 'ptype_id': self.ptype.pk,
+            'externalcontact': self.contact.email})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(dm.Experiment.objects.filter(name=newexpname).count(), 1)
         self.assertTrue(os.path.exists(self.f3path))
+        rename_job = jm.Job.objects.filter(funcname='rename_dset_storage_loc').last()
+        self.assertEqual(rename_job.state, Jobstates.PENDING)
         call_command('runjobs')
         sleep(3)
         self.assertFalse(os.path.exists(self.f3path))
@@ -35,6 +38,132 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertEqual(self.ds.storage_loc, new_ds_loc)
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ds.storageshare.name],
             self.ds.storage_loc, self.f3sf.filename)))
+
+    def test_remove_files_wait_for_rename(self):
+        newexpname = 'edited_exp1'
+        # move dataset
+        mvdsresp = self.post_json({'dataset_id': self.ds.pk, 'project_id': self.p1.pk,
+            'newexperimentname': newexpname, 'runname': self.run1.name, 
+            'datatype_id': self.dtype.pk, 'prefrac_id': False, 'ptype_id': self.ptype.pk, 
+            'externalcontact': self.contact.email})
+        self.assertEqual(mvdsresp.status_code, 200)
+        rename_job = jm.Job.objects.filter(funcname='rename_dset_storage_loc').last()
+        self.assertEqual(rename_job.state, Jobstates.PENDING)
+        # remove files results in a job and claimed files still on tmp
+        rmresp = self.cl.post('/datasets/save/files/', content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'removed_files': {self.f3raw.pk: {'id': self.f3raw.pk}},
+            'added_files': {}})
+        self.assertEqual(rmresp.status_code, 200)
+        self.assertTrue(self.f3raw.claimed)
+        self.assertEqual(self.f3sf.servershare, self.ssnewstore)
+        self.assertEqual(self.f3sf.path, self.ds.storage_loc)
+        self.f3raw.refresh_from_db()
+        self.assertFalse(self.f3raw.claimed)
+        # execute dataset move on disk, should also move the removed files and update their DB
+        # the move job should be in waiting state still
+        call_command('runjobs')
+        sleep(3)
+        mvjob = jm.Job.objects.filter(funcname='move_stored_files_tmp').last()
+        self.assertEqual(mvjob.state, Jobstates.PENDING)
+        self.ds.refresh_from_db()
+        self.f3sf.refresh_from_db()
+        self.assertEqual(self.f3sf.servershare, self.ssnewstore)
+        self.assertEqual(self.f3sf.path, self.ds.storage_loc)
+        newf3sf_path = os.path.join(settings.SHAREMAP[self.sstmp.name], self.f3sf.filename)
+        self.assertFalse(os.path.exists(newf3sf_path))
+        # call twice to execute tmp-move files on disk, first call only resolves rename dset job
+        call_command('runjobs')
+        rename_job.refresh_from_db()
+        self.assertEqual(rename_job.state, Jobstates.DONE)
+        call_command('runjobs')
+        sleep(3)
+        mvjob.refresh_from_db()
+        self.assertEqual(mvjob.state, Jobstates.PROCESSING)
+        # f3 file should now exist in tmp
+        self.f3sf.refresh_from_db()
+        self.assertTrue(os.path.exists(newf3sf_path))
+        self.assertEqual(self.f3sf.path, '')
+        self.assertEqual(self.f3sf.servershare, self.sstmp)
+
+    def test_add_files_wait_for_rename(self):
+        '''Another job is running on dataset that changed the storage_loc,
+        do not add new files to old storage_loc'''
+        # FIXME maybe hardcode file paths instead of relying on ds.storage_path
+        newexpname = 'edited_exp1'
+        # move dataset
+        mvdsresp = self.post_json({'dataset_id': self.ds.pk, 'project_id': self.p1.pk,
+            'newexperimentname': newexpname, 'runname': self.run1.name,
+            'datatype_id': self.dtype.pk, 'prefrac_id': False, 'ptype_id': self.ptype.pk,
+            'externalcontact': self.contact.email})
+        self.assertEqual(mvdsresp.status_code, 200)
+        rename_job = jm.Job.objects.filter(funcname='rename_dset_storage_loc').last()
+        self.assertEqual(rename_job.state, Jobstates.PENDING)
+        # add files results in a job and claimed files still on tmp
+        resp = self.cl.post('/datasets/save/files/', content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
+            'removed_files': {}})
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 1)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(self.tmpraw.claimed)
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        self.tmpraw.refresh_from_db()
+        self.assertTrue(self.tmpraw.claimed)
+        # execute dataset move on disk, should not move the added files on tmp (nor update their DB)
+        call_command('runjobs')
+        sleep(3)
+        mvjob = jm.Job.objects.filter(funcname='move_files_storage').last()
+        self.assertEqual(mvjob.state, Jobstates.PENDING)
+        self.ds.refresh_from_db()
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        newtmpsf_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.ds.storage_loc,
+                self.tmpsf.filename)
+        self.assertFalse(os.path.exists(newtmpsf_path))
+        # call twice to execute add files on disk, first call only resolves rename dset job
+        call_command('runjobs')
+        call_command('runjobs')
+        sleep(3)
+        mvjob.refresh_from_db()
+        self.assertEqual(mvjob.state, Jobstates.PROCESSING)
+        # tmp file should now exist in dset folder
+        self.tmpsf.refresh_from_db()
+        self.assertTrue(os.path.exists(newtmpsf_path))
+        self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
+        self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
+
+        # clean up
+        newdsr.delete()
+
+
+class UpdateFilesTest(BaseIntegrationTest):
+    url = '/datasets/save/files/'
+
+    def test_add_files(self):
+        # Add files, check if added, also check if the job waits for another job on
+        # the dataset
+        resp = self.post_json({'dataset_id': self.ds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
+            'removed_files': {}})
+        self.assertEqual(resp.status_code, 200)
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 1)
+        self.assertFalse(self.tmpraw.claimed)
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        self.tmpraw.refresh_from_db()
+        self.assertTrue(self.tmpraw.claimed)
+        call_command('runjobs')
+        sleep(3)
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
+        self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
+        self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
+            self.ds.storage_loc, self.tmpsf.filename)))
+
+        # clean up
+        newdsr.delete()
 
 
 class RenameProjectTest(BaseIntegrationTest):
@@ -77,16 +206,76 @@ class RenameProjectTest(BaseIntegrationTest):
         self.p1.refresh_from_db()
         self.assertEqual(self.p1.name, newname)
         self.assertTrue(os.path.exists(self.f3path))
+        old_loc = self.ds.storage_loc
         call_command('runjobs')
         sleep(3)
         self.assertFalse(os.path.exists(self.f3path))
         new_loc = os.path.join(newname, self.exp1.name, self.dtype.name, self.run1.name)
-        self.assertNotEqual(self.ds.storage_loc, new_loc)
+        self.assertEqual(self.ds.storage_loc, old_loc)
         self.ds.refresh_from_db()
         self.assertEqual(self.ds.storage_loc, new_loc)
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ds.storageshare.name],
             self.ds.storage_loc, self.f3sf.filename)))
 
+    def test_if_added_removed_files_ok(self):
+        newname = 'testnewname'
+        self.assertEqual(dm.Project.objects.filter(name=newname).count(), 0)
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'projid': self.p1.pk, 'newname': newname})
+        self.assertEqual(resp.status_code, 200)
+        renamejobs = jm.Job.objects.filter(funcname='rename_top_lvl_projectdir',
+                kwargs={'proj_id': self.p1.pk, 'newname': newname}) 
+        self.assertEqual(renamejobs.count(), 1)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.name, newname)
+        # add files results in a job and claimed files still on tmp
+        mvresp = self.cl.post('/datasets/save/files/', content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
+            'removed_files': {}})
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 1)
+        self.assertEqual(mvresp.status_code, 200)
+        self.assertFalse(self.tmpraw.claimed)
+        self.tmpraw.refresh_from_db()
+        self.assertTrue(self.tmpraw.claimed)
+        # Now test rename project job
+        self.assertTrue(os.path.exists(self.f3path))
+        old_loc = self.ds.storage_loc
+        call_command('runjobs')
+        sleep(3)
+        self.assertFalse(os.path.exists(self.f3path))
+        new_loc = os.path.join(newname, self.exp1.name, self.dtype.name, self.run1.name)
+        self.assertEqual(self.ds.storage_loc, old_loc)
+        self.ds.refresh_from_db()
+        self.assertEqual(self.ds.storage_loc, new_loc)
+        self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ds.storageshare.name],
+            self.ds.storage_loc, self.f3sf.filename)))
+        # Check if added files are not there yet, being waited
+        mvjob = jm.Job.objects.filter(funcname='move_files_storage').last()
+        self.assertEqual(mvjob.state, Jobstates.PENDING)
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        self.ds.refresh_from_db()
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        newtmpsf_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.ds.storage_loc,
+                self.tmpsf.filename)
+        self.assertFalse(os.path.exists(newtmpsf_path))
+        # call twice to execute add files on disk, first call only resolves rename dset job
+        call_command('runjobs')
+        call_command('runjobs')
+        sleep(3)
+        mvjob.refresh_from_db()
+        self.assertEqual(mvjob.state, Jobstates.PROCESSING)
+        # tmp file should now exist in dset folder
+        self.tmpsf.refresh_from_db()
+        self.assertTrue(os.path.exists(newtmpsf_path))
+        self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
+        self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
+
+        # clean up
+        newdsr.delete()
 
 
 class MergeProjectsTest(BaseTest):

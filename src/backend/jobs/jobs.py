@@ -85,9 +85,21 @@ class SingleFileJob(BaseJob):
 
 
 class DatasetJob(BaseJob):
+    '''Any job that changes a dataset (rename, adding/removing files, backup, reactivate)'''
+
+    def get_sf_ids_jobrunner(self, **kwargs):
+        '''Let all files associated with dataset wait, including added files on other path, and 
+        removed files on dset path (will be moved to new folder before their move to tmp)'''
+        dset = dm.Dataset.objects.get(pk=kwargs['dset_id'])
+        dsfiles = StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=kwargs['dset_id'])
+        ds_ondisk = StoredFile.objects.filter(servershare=dset.storageshare, path=dset.storage_loc)
+        return [x.pk for x in dsfiles.union(ds_ondisk)]
 
     def getfiles_query(self, **kwargs):
-        return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=kwargs['dset_id'])
+        '''Get all files with same path as dset.storage_loc'''
+        dset = dm.Dataset.objects.get(pk=kwargs['dset_id'])
+        return StoredFile.objects.filter(servershare=dset.storageshare, path=dset.storage_loc)
+
 
 
 class MultiDatasetJob(BaseJob):

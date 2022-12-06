@@ -47,6 +47,8 @@ class RestoreFromPDC(SingleFileJob):
     task = tasks.pdc_restore
 
     def process(self, **kwargs):
+        '''Path must come from storedfile itself, not its dataset, since it
+        can be a file without a dataset'''
         sfile = self.getfiles_query(**kwargs)
         self.run_tasks.append((restore_file_pdc_runtask(sfile), {}))
         print('PDC restore task queued')

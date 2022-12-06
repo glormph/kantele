@@ -15,9 +15,15 @@ from jobs import models as jm
 
 
 class BaseTest(TestCase):
+    '''Normal django tests inherit here'''
+
+    def post_json(self, data):
+        return self.cl.post(self.url, content_type='application/json', data=data)
+
     def setUp(self):
+        # Clean directory containing storage servers
         for dirname in os.listdir('/storage'):
-            if os.path.isdir(dirname):
+            if os.path.isdir(os.path.join('/storage', dirname)):
                 shutil.rmtree(os.path.join('/storage', dirname))
         shutil.copytree('/fixtures', '/storage', dirs_exist_ok=True)
         self.cl = Client()
@@ -128,32 +134,46 @@ class BaseIntegrationTest(LiveServerTestCase):
     def setUp(self):
         BaseTest.setUp(self)
 
+    def post_json(self, data):
+        return self.cl.post(self.url, content_type='application/json', data=data)
+
+
 class TestMultiStorageServers(BaseIntegrationTest):
 
-    def test_move_dataset_old_new_storage(self):
+    def test_add_newtmp_files_to_old_dset(self):
         # Fresh start in case multiple tests
         url = '/datasets/save/files/'
         postdata = {'dataset_id': self.oldds.pk, 'added_files': {'fn2': {'id': self.tmpraw.pk}}, 'removed_files': {}}
         resp = self.cl.post(url, content_type='application/json', data=postdata)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(os.path.exists(self.oldfpath))
-        # call job runner to run rsync and move file. They do not wait
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.oldds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 1)
+        self.tmpraw.refresh_from_db()
+        self.assertTrue(self.tmpraw.claimed)
+        # call job runner to run rsync
         call_command('runjobs')
         sleep(3)
         self.assertFalse(os.path.exists(self.oldfpath))
         newdspath = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.oldstorloc)
         self.assertTrue(os.path.exists(os.path.join(newdspath, self.oldsf.filename)))
-        self.assertTrue(os.path.exists(os.path.join(newdspath, self.tmpsf.filename)))
-        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.oldds, rawfile=self.tmpraw)
-        self.assertEqual(newdsr.count(), 1)
-        self.tmpraw.refresh_from_db()
-        self.assertTrue(self.tmpraw.claimed)
-        self.oldds.refresh_from_db()
-        self.tmpsf.refresh_from_db()
-        self.assertEqual(self.tmpsf.servershare_id, self.ssnewstore.pk)
         self.oldsf.refresh_from_db()
         self.assertEqual(self.oldsf.servershare_id, self.ssnewstore.pk)
+        self.oldds.refresh_from_db()
         self.assertEqual(self.oldds.storageshare_id, self.ssnewstore.pk)
+        # Check if move file tmp to newstorage has waited for the rsync job
+        self.assertFalse(os.path.exists(os.path.join(newdspath, self.tmpsf.filename)))
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.path, '')
+        self.assertEqual(self.tmpsf.servershare_id, self.sstmp.pk)
+        # Now execute move file job
+        call_command('runjobs') # first mark prev job as DONE
+        call_command('runjobs')
+        sleep(3)
+        self.assertTrue(os.path.exists(os.path.join(newdspath, self.tmpsf.filename)))
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.servershare_id, self.ssnewstore.pk)
+        self.assertEqual(self.tmpsf.path, self.oldds.storage_loc)
         
         # Clean up
         newdsr.delete()

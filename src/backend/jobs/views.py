@@ -137,12 +137,13 @@ def renamed_project(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY, settings.ANALYSISCLIENT_APIKEY]):
         return HttpResponseForbidden()
-    # TODO this updates also deleted files? Good maybe in case restoring backup?
+    # this updates also deleted files. Good in case restoring backup etc
+    proj_sfiles = StoredFile.objects.filter(pk__in=data['sf_ids'])
     for dset in Dataset.objects.filter(runname__experiment__project_id=data['proj_id']):
         newstorloc = dsviews.rename_storage_loc_toplvl(data['newname'], dset.storage_loc)
         dset.storage_loc = newstorloc
         dset.save()
-        StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset).update(path=newstorloc)
+        proj_sfiles.filter(rawfile__datasetrawfile__dataset=dset).update(path=newstorloc)
     set_task_done(data['task'])
     return HttpResponse()
 

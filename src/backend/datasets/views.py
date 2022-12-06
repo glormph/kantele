@@ -560,9 +560,10 @@ def check_ownership(user, dset):
 
 
 def check_save_permission(dset_id, logged_in_user):
+    '''Only datasets which are not deleted can be saved, and a check_ownership is done'''
     try:
-        dset = models.Dataset.objects.filter(purged=False, pk=dset_id).select_related(
-            'runname__experiment__project').get()
+        dset = models.Dataset.objects.filter(purged=False, deleted=False,
+                pk=dset_id).select_related('runname__experiment__project').get()
     except models.Dataset.DoesNotExist:
         return HttpResponseNotFound()
     else:

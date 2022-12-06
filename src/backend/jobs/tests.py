@@ -52,8 +52,7 @@ class TestRenamedProject(BaseJobTest):
             filetype=sftype)
         resp = self.cl.post(self.url, content_type='application/json', data={
             'client_id': settings.STORAGECLIENT_APIKEY, 'task': self.taskid,
-            'proj_id': self.p1.pk, 'newname': self.p_newname,
-            })
+            'proj_id': self.p1.pk, 'newname': self.p_newname, 'sf_ids': [sf.pk]})
         self.assertEqual(resp.status_code, 200)
         newpath = os.path.join(self.p_newname, *self.ds.storage_loc.split(os.path.sep)[1:])
         sf.refresh_from_db()
