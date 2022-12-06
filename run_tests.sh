@@ -4,10 +4,8 @@ set -eo pipefail
 if [[ -z "$1" ]]
 then
     TESTCMD="python manage.py test"
-    echo will run empty $TESTCMD
 else
     TESTCMD="python manage.py test $1"
-    echo will run $TESTCMD
 fi
 
 # remove old test results if needed (locally)
@@ -17,6 +15,9 @@ git checkout -- data/fakestorage
 
 # Clean old containers
 docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml down
+
+export GROUP_ID=$(id -g)
+export USER_ID=$(id -u)
 
 # Lint seems to operate on the local dir
 echo Running linting
@@ -38,8 +39,6 @@ echo Created db container and started it
 sleep 5
 
 echo Running tests
-export GROUP_ID=$(id -g)
-export USER_ID=$(id -u)
 # Run tests
 docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml run --use-aliases web $TESTCMD || (docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml logs storage_mvfiles storage_downloads && exit 1)
 
