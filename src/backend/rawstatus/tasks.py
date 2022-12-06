@@ -241,11 +241,11 @@ def delete_empty_dir(self, servershare, directory):
         print('Trying to delete parent directory {}'.format(dirpath))
         try:
             os.rmdir(dirpath)
+        except FileNotFoundError:
+            print(f'Parent directory {dirpath} does not exist, possibly deleted in parallel task')
         except OSError:
             # OSError raised on dir not empty
             print(f'Parent directory {dirpath} not empty, stop deletion')
-        except FileNotFoundError:
-            print(f'Parent directory {dirpath} does not exist, possibly deleted in parallel task')
     # Report
     msg = ('Could not update database with deletion of dir {} :'
            '{}'.format(dirpath, '{}'))
@@ -352,7 +352,8 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id, isdir):
             raise
     except Exception:
         taskfail_update_db(self.request.id, 'DSMC retrieve command succeeded, but errors occurred '
-            'when retrieving archive by DSMC failed for file {}'.format(fileloc, CPE.returncode))
+            f'when retrieving archive by DSMC failed for file {fileloc} returncode was '
+            f'{CPE.returncode}')
         raise
     if isdir:
         basename_pdcpath = os.path.basename(pdcpath)

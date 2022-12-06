@@ -162,7 +162,6 @@ def get_analysis(request, anid):
             'fileparams': {},
             'isoquants': {},
             'added_results': {},
-            'base_analysis': False,
             }
     for ap in ana.analysisparam_set.all():
         if ap.param.ptype == 'flag' and ap.value:
@@ -198,6 +197,7 @@ def get_analysis(request, anid):
                 }
         ana_base_resfiles = {x['id'] for x in analysis['base_analysis']['resultfiles']}
     else:
+        analysis['base_analysis'] = False
         ana_base_resfiles = set()
     for afp in ana.analysisfileparam_set.all():
         # Looping input files, to find added results analysis

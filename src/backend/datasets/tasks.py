@@ -36,7 +36,7 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
     try:
         os.makedirs(outfullpath, exist_ok=True)
     except (OSError, PermissionError):
-        taskfail_update_db(task_id, 'Could not create output directory for analysis results')
+        taskfail_update_db(self.request.id, 'Could not create output directory for analysis results')
         raise
     token = False
     for raw in raws:
