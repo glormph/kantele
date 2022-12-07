@@ -170,15 +170,6 @@ class ConvertDatasetMzml(DatasetJob):
         # and old batch of files. Then the new files will come in before the worker is restarted.
         # The old files, which will at that point be lying around in their inbox: 
         # analysis/mzml_in folder, will then be 1.moved, 2.deleted, 3. new file move job will error
-        delete_sfids = []
-        for fn in StoredFile.objects.filter(rawfile__datasetrawfile__dataset=kwargs['dset_id'],
-                deleted=False, purged=False, checked=True, 
-                mzmlfile__isnull=False).exclude(mzmlfile__pwiz=pwiz).values('id'):
-            delete_sfids.append(fn['id'])
-        if len(delete_sfids):
-            print('Queueing {} old mzML files for deletion before creating '
-            'new files'.format(len(delete_sfids)))
-            create_job('purge_files', sf_ids=delete_sfids)
         nf_raws = []
         for fn in self.getfiles_query(**kwargs):
             mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz, servershare_id=res_share.pk)
@@ -243,14 +234,15 @@ class ConvertFileMzml(ConvertDatasetMzml):
 
 
 class DeleteDatasetMzml(DatasetJob):
-    """Removes dataset from active storage"""
+    """Removes dataset mzml files from active storage"""
     refname = 'delete_mzmls_dataset'
     task = filetasks.delete_file
 
     def process(self, **kwargs):
-        for fn in self.getfiles_query(**kwargs).filter(deleted=False, purged=False, checked=True, mzmlfile__isnull=False):
+        for fn in self.getfiles_query(**kwargs).filter(deleted=False, purged=False, checked=True,
+                mzmlfile__pwiz_id=kwargs['pwiz_id']):
             fullpath = os.path.join(fn.path, fn.filename)
-            print('Queueing deletion of mzML file {} from dataset {}'.format(fullpath, kwargs['dset_id']))
+            print('Queueing deletion of mzML file {fullpath} from dataset {kwargs["dset_id"]}')
             self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
 
 

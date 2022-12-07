@@ -7,6 +7,7 @@ from analysis import models as am
 from rawstatus import models as rm
 from datasets import models as dm
 from jobs import models as jm
+from jobs.jobs import Jobstates
 
 
 class MzmlTests(BaseTest):
@@ -83,13 +84,17 @@ class TestCreateMzmls(MzmlTests):
         exist_mzml.delete()
 
     def test_other_pwiz(self):
+        '''Test if old pwiz existing files get purge job BEFORE launching new job'''
         newpw, _ = am.Proteowizard.objects.get_or_create(version_description='newer', container_version='', nf_version=self.nfwv)
         exist_mzml = am.MzmlFile.objects.create(sfile=self.qesf, pwiz=newpw)
         resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
             'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 200)
-        j = jm.Job.objects.last()
-        self.assertEqual(j.funcname, 'convert_dataset_mzml')
+        purgej = jm.Job.objects.filter(funcname='delete_mzmls_dataset').last()
+        self.assertEqual(purgej.kwargs, {'dset_id': self.ds.pk, 'pwiz_id': newpw.pk})
+        self.assertEqual(purgej.state, Jobstates.PENDING)
+        j = jm.Job.objects.filter(funcname='convert_dataset_mzml').last()
+        self.assertEqual(j.state, Jobstates.PENDING)
         exp_kw  = {'options': [], 'filters': ['"peakPicking true 2"', '"precursorRefine"'], 
                 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():

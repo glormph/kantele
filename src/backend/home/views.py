@@ -860,11 +860,15 @@ def create_mzmls(request):
     num_rawfns = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=data['dsid']).count()
     mzmls_exist = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset,
             deleted=False, purged=False, checked=True, mzmlfile__isnull=False)
-    # set delete for UI, purging is done in job
-    mzmls_exist.exclude(mzmlfile__pwiz=pwiz).update(deleted=True)
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
         return JsonResponse({'error': 'This dataset already has existing mzML files of that '
             'proteowizard version'}, status=403)
+    # Remove other pwiz mzMLs
+    other_pwiz_mz = mzmls_exist.exclude(mzmlfile__pwiz=pwiz)
+    if other_pwiz_mz.count():
+        for sf in other_pwiz_mz.distinct('mzmlfile__pwiz_id').values('mzmlfile__pwiz_id'):
+            jj.create_job('delete_mzmls_dataset', dset_id=dset.pk, pwiz_id=sf['mzmlfile__pwiz_id'])
+        other_pwiz_mz.update(deleted=True)
     res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
     # Move entire project if not on same file server
     if dset.storageshare.server != res_share.server:
