@@ -255,7 +255,7 @@ def instrument_check_in(request):
     elif not upload:
         return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
                 status=403)
-    elif upload.expires < timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
+    elif upload.expires > timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
         upload.expired = True
         upload.save()
         newtoken = create_upload_token(upload.filetype_id, upload.user_id, upload.producer)
