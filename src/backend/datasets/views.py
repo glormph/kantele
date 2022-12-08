@@ -716,6 +716,9 @@ def merge_projects(request):
                 prefrac = pfds.prefractionation if pfds else False
                 hrrange_id = pfds.hiriefdataset.hirief_id if hasattr(pfds, 'hiriefdataset') else False
                 new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange_id)
+                if models.Dataset.objects.filter(storage_loc=new_storage_loc):
+                    return JsonResponse({'error': 'You cannot change the dataset path to an '
+                        f'existing dataset path {new_storage_loc}'}, status=403)
                 create_job('rename_dset_storage_loc', dset_id=dset.id,
                         dstpath=new_storage_loc)
             # Also, should we possibly NOT chaneg anything here but only check pre the job, then merge after job complete?
