@@ -43,3 +43,10 @@
         environment:
             - USER_ID: '{{ kanteleuid }}'
             - GROUP_ID: '{{ kantelegid }}'
+
+      - name: Cron job for downloading ENSEMBL/swiss fasta
+        ansible.builtin.cron:
+            name: Schedule job to download new FASTA 
+            hour: "*/4"
+            job: "cd {{ kanteledir }} && docker-compose --env {{ compose_env_file }} -f src/docker/docker-compose-base.yml -f src/docker/docker-compose-prod.yml exec -T web python manage.py download_latest_fasta "
+

@@ -200,11 +200,20 @@ class EnsemblFasta(models.Model):
 
 
 class UniProtFasta(models.Model):
+    class UniprotClass(models.IntegerChoices):
+        SWISS = 0, 'Swiss_canonical'
+        SWISS_ISOFORMS = 1, 'Swiss_canonical_isoforms'
+        REFERENCE = 2, 'Reference_proteome'
+    url_addons = {'SWISS': ' AND (reviewed:true)',
+            'SWISS_ISOFORMS': ' AND (reviewed:true)&includeIsoform=true',
+            'REFERENCE': '',
+            }
+
     libfile = models.OneToOneField(LibraryFile, on_delete=models.CASCADE)
     version = models.TextField()
     organism = models.TextField()
     #organismcode = models.IntegerField()
-    isoforms = models.BooleanField()
+    dbtype = models.IntegerField(choices=UniprotClass.choices)
 
 
 class AnalysisParam(models.Model):

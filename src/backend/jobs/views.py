@@ -14,8 +14,9 @@ from django.db.models import F
 from jobs import models
 from jobs.jobs import Jobstates, create_job, send_slack_message
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
-                              SwestoreBackedupFile, PDCBackedupFile, Producer)
-from analysis.models import AnalysisResultFile, NextflowSearch
+        SwestoreBackedupFile, PDCBackedupFile, Producer)
+from rawstatus.views import validate_token
+from analysis import models as am
 from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
@@ -52,6 +53,7 @@ alljobs = [
         anjobs.RunNextflowWorkflow,
         anjobs.RefineMzmls,
         anjobs.PurgeAnalysis,
+        anjobs.DownloadFastaFromRepos,
         ]
 jobmap = {job.refname: job for job in alljobs}
 
@@ -68,16 +70,15 @@ def taskclient_authorized(client_id, possible_ids):
 
 
 @require_POST
-def task_failed(request):
+def set_task_status(request):
     data = json.loads(request.body.decode('utf-8'))
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], settings.CLIENT_APIKEYS):
         return HttpResponseForbidden()
-    print('Failed task registered task id {}'.format(data['task']))
-    task = models.Task.objects.get(asyncid=data['task'])
-    task.state = states.FAILURE
+    task = models.Task.objects.get(asyncid=data['task_id'])
+    task.state = data['state']
     task.save()
-    if data['msg']:
+    if data.get('msg', False):
         models.TaskError.objects.create(task_id=task.id, message=data['msg'])
     return HttpResponse()
 
@@ -365,37 +366,44 @@ def store_longitudinal_qc(request):
 
 
 @require_POST
-def store_analysis_result(request):
+def confirm_internal_file(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
-    data = request.POST
-    # FIXME add token check!
-    # create analysis file
-    if ('client_id' not in data or
-            data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
+    data =  json.loads(request.POST['json'])
+    upload = validate_token(data['token'])
+    if not upload:
         return HttpResponseForbidden()
     dstshare = ServerShare.objects.get(name=data['dstsharename'])
-    try:
-        ftypeid = StoredFileType.objects.get(name=data['ftype']).pk
-    except StoredFileType.DoesNotExist:
-        return HttpResponseForbidden('File type does not exist')
 
     # Reruns lead to trying to store files multiple times, avoid that here:
-    sfile, created  = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
+    sfile, created = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
             md5=data['md5'],
-            defaults={'filetype_id': ftypeid, 'servershare': dstshare, 
+            defaults={'filetype': upload.filetype, 'servershare': dstshare, 
                 'path': data['outdir'], 'checked': True, 'filename': data['filename']})
-    if created:
-        AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)
+    if data['analysis_id'] and created:
+        am.AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)
+    elif data['is_fasta'] and created:
+        fa = data['is_fasta']
+        # set fasta download files
+        libfile = am.LibraryFile.objects.create(sfile=sfile, description=fa['desc'])
+        dbmodel = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[fa['dbname']]
+        kwargs = {'version': fa['version'], 'libfile_id': libfile.id, 'organism': fa['organism']}
+        subtype = False
+        if fa['dbname'] == 'uniprot':
+            subtype = am.UniProtFasta.UniprotClass[fa['dbtype']]
+            kwargs['dbtype'] = subtype
+        dbmodel.objects.create(**kwargs)
+        send_slack_message(f'New automatic fasta release done: {fa["dbname"]} - {fa["organism"]}' f'{f", {subtype.label}" if subtype else ""}, version {fa["version"]}', 'kantele')
+
     # Also store any potential servable file on share on web server
     if data['filename'] in settings.SERVABLE_FILENAMES and request.FILES:
         webshare = ServerShare.objects.get(name=settings.WEBSHARENAME)
         srvfile, srvcreated  = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
-                md5=data['md5'], defaults={'filetype_id': ftypeid,
+                md5=data['md5'], defaults={'filetype': upload.filetype,
                     'servershare': webshare, 'path': sfile.regdate.year,
                     'checked': True, 'filename': f'{sfile.pk}_{data["filename"]}'})
         if srvcreated:
-            AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=srvfile)
+            am.AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=srvfile)
         srvpath = os.path.join(settings.WEBSHARE, srvfile.path)
         srvdst = os.path.join(srvpath, srvfile.filename)
         try:
@@ -415,7 +423,7 @@ def store_analysis_result(request):
 def get_job_analysis(job):
     try:
         analysis = job.nextflowsearch.analysis
-    except NextflowSearch.DoesNotExist:
+    except am.NextflowSearch.DoesNotExist:
         analysis = False 
     return analysis
 

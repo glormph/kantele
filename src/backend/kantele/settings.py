@@ -113,8 +113,8 @@ ALLOWED_PROJEXPRUN_CHARS = 'A-Za-z0-9-_'
 # external datasets
 ENSEMBL_API = 'https://rest.ensembl.org/info/software'
 # human, canonical/isoform, only swiss
-UNIPROT_API = 'https://www.uniprot.org/uniprot/?query=organism:{}+AND+reviewed:yes&format=fasta{}'
-UP_ORGS = {'Homo sapiens': 9606, 'Mus musculus': 10090}
+UNIPROT_API = 'https://rest.uniprot.org/uniprotkb/stream?download=true&format=fasta&query=(proteome:{}){}'
+UP_ORGS = {'Homo sapiens': 'UP000005640', 'Mus musculus': 'UP000000589'}
 ENSEMBL_DL_URL = 'ftp://ftp.ensembl.org/pub/release-{}/fasta/{}/pep/'
 BIOMART_URL = 'https://ensembl.org/biomart/martservice'
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')

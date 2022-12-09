@@ -23,6 +23,4 @@ urlpatterns = [
     path('upload/', views.upload_servable_file, name='checkfileupload'),
     path('log/<int:nfs_id>', views.show_analysis_log),
     path('showfile/<int:file_id>', views.serve_analysis_file),
-    path('fastarelease/check/', views.check_fasta_release, name='checkfastarelease'),
-    path('fastarelease/set/', views.set_protein_database_lib, name='setfastarelease'),
 ]

@@ -45,8 +45,8 @@ class BaseJob:
         self.job_id = job_id
         self.run_tasks = []
     
-    def getfiles_query(self):
-        pass
+    def getfiles_query(self, **kwargs):
+        return []
 
     def get_sf_ids_jobrunner(self, **kwargs):
         """This is run before running job, to define files used by

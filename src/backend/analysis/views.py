@@ -236,26 +236,6 @@ def get_analysis(request, anid):
     return render(request, 'analysis/analysis.html', context)
 
 
-@require_GET
-def check_fasta_release(request):
-    dbmods = {'ensembl': am.EnsemblFasta, 'uniprot': am.UniProtFasta}
-    dbstates = []
-    for ftype in ['ensembl', 'uniprot']:
-        isoforms = [True, False] if ftype == 'uniprot' else [False]
-        for organism in settings.UP_ORGS:
-            if ftype in request.GET and request.GET[ftype]:
-                version = request.GET[ftype]
-                frecords = dbmods[ftype].objects.select_related('libfile__sfile').filter(version=version, organism=organism)
-                output = [{'db': ftype, 'version': version, 'state': False, 'organism': organism, 'isoforms': x} for x in isoforms]
-                for frec in frecords:
-                    if ftype == 'uniprot':
-                        [x.update({'state': frec.libfile.sfile.checked}) for x in output if x['isoforms'] == frec.isoforms]
-                    else:
-                        [x.update({'state': frec.libfile.sfile.checked}) for x in output]
-                dbstates.extend(output)
-    return JsonResponse({'dbstates': dbstates})
-
-
 def set_protein_database_lib(request):
     req = json.loads(request.body.decode('utf-8'))
     isoforms = 'isoforms' in req and req['isoforms']
