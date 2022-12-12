@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='uniprotfasta',
             name='dbtype',
-            field=models.IntegerField(choices=[(0, 'Swiss_canonical'), (1, 'Swiss_canonical_isoforms'), (2, 'Reference_proteome')]),
+            field=models.IntegerField(choices=[(0, 'Swiss_canonical'), (1, 'Swiss_canonical_isoforms'), (2, 'Reference_proteome')], default=0),
             preserve_default=False,
         ),
         migrations.RunPython(caniso_to_canisoref, reverse),
