@@ -204,9 +204,11 @@ class UniProtFasta(models.Model):
         SWISS = 0, 'Swiss_canonical'
         SWISS_ISOFORMS = 1, 'Swiss_canonical_isoforms'
         REFERENCE = 2, 'Reference_proteome'
+        REFERENCE_ISOFORMS = 3, 'Reference_proteome_isoforms'
     url_addons = {'SWISS': ' AND (reviewed:true)',
             'SWISS_ISOFORMS': ' AND (reviewed:true)&includeIsoform=true',
             'REFERENCE': '',
+            'REFERENCE_ISOFORMS': '&includeIsoform=true',
             }
 
     libfile = models.OneToOneField(LibraryFile, on_delete=models.CASCADE)

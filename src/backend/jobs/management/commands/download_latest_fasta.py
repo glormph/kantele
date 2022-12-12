@@ -19,9 +19,11 @@ class Command(BaseCommand):
                 stream=True)
         up_version = r.headers['X-UniProt-Release'] if r.ok else ''
         dbmods = {'ensembl': EnsemblFasta, 'uniprot': UniProtFasta}
-        to_download = {'ensembl': {'Homo sapiens', 'Mus musculus'}, 'uniprot': {'SWISS': 
-            {'Homo sapiens', 'Mus musculus'}, 'SWISS_ISOFORMS': {'Homo sapiens', 'Mus musculus'},
-            'REFERENCE': {'Homo sapiens', 'Mus musculus'}}}
+        to_download = {'ensembl': {'Homo sapiens', 'Mus musculus'}, 'uniprot': {
+            #'SWISS': {'Homo sapiens', 'Mus musculus'},
+            'SWISS_ISOFORMS': {'Homo sapiens', 'Mus musculus'},
+            #'REFERENCE': {'Homo sapiens', 'Mus musculus'},
+            'REFERENCE_ISOFORMS': {'Homo sapiens', 'Mus musculus'}}}
         for local_ens in EnsemblFasta.objects.filter(version=ens_version):
             to_download['ensembl'].remove(local_ens.organism)
         for local_up in UniProtFasta.objects.filter(version=up_version):
