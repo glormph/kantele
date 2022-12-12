@@ -28,7 +28,8 @@ class Command(BaseCommand):
             to_download['ensembl'].remove(local_ens.organism)
         for local_up in UniProtFasta.objects.filter(version=up_version):
             uptype = UniProtFasta.UniprotClass(local_up.dbtype).name
-            to_download['uniprot'][uptype].remove(local_up.organism)
+            if uptype in to_download['uniprot']:
+                to_download['uniprot'][uptype].remove(local_up.organism)
 
         # Queue jobs for downloading if needed
         dljobs = jm.Job.objects.filter(funcname='download_fasta_repos').exclude(state__in=[
