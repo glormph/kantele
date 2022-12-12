@@ -333,7 +333,7 @@ def mzml_convert_or_refine_file_done(request):
     dataset directory from the analysis dir"""
     # FIXME need to remove the empty dir after moving all the files, how?
     # create cleaning task queue on ana server
-    data = request.POST
+    data = json.loads(request.POST['json'])
     if ('client_id' not in data or
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
