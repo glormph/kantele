@@ -870,7 +870,7 @@ def serve_analysis_file(request, file_id):
 
 @require_POST
 def upload_servable_file(request):
-    data = request.POST
+    data = json.loads(request.body.decode('utf-8'))
     if 'client_id' not in data or data['client_id'] !=settings.ANALYSISCLIENT_APIKEY:
         return JsonResponse({'msg': 'Forbidden'}, status=403)
     elif 'fname' not in data or data['fname'] not in settings.SERVABLE_FILENAMES:
