@@ -151,6 +151,7 @@ class Analysis(models.Model):
     log = models.JSONField(default=list)
     deleted = models.BooleanField(default=False)
     purged = models.BooleanField(default=False)
+    storage_dir = models.TextField()
 
 
 # Can this be generalized to deleted log for also files?
