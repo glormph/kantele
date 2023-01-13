@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% load static %}
+
+{% block head %}
+  <link rel='stylesheet' href='{% static "mstulos/bundle.css" %}'>
+  <script defer src='{% static "mstulos/bundle.js" %}'></script>
+{% endblock head %}
+
+{% block content %}
+
+<div class="container" id="app"> </div>
+
+{% endblock content %}

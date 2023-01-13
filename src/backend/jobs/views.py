@@ -26,6 +26,7 @@ from kantele import settings
 from datasets import jobs as dsjobs
 from rawstatus import jobs as rsjobs
 from analysis import jobs as anjobs
+from mstulos import jobs as mtjobs
 
 alljobs = [
         dsjobs.RenameDatasetStorageLoc,
@@ -54,6 +55,7 @@ alljobs = [
         anjobs.RefineMzmls,
         anjobs.PurgeAnalysis,
         anjobs.DownloadFastaFromRepos,
+        mtjobs.ProcessAnalysis,
         ]
 jobmap = {job.refname: job for job in alljobs}
 
