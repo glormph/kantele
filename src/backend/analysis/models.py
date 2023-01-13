@@ -96,9 +96,25 @@ class NextflowWfVersion(models.Model):
     date = models.DateTimeField(auto_now=True)
     kanteleanalysis_version = models.IntegerField() # TODO remove this when noone uses v1 anymore
     nfversion = models.TextField()
-    
+
     def __str__(self):
         return '{} - {}'.format(self.nfworkflow.description, self.update)
+
+
+class WfOutput(models.Model):
+    nfwfversion = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
+    psmfile = models.TextField()
+    pepfile = models.TextField()
+    lookup = models.TextField()
+    peppeptide = models.TextField()
+    psmcountfield = models.TextField()
+    pepfdrfield = models.TextField()
+    psmfdrfield = models.TextField()
+    pepqval = models.TextField()
+    psmfnfield = models.TextField()
+    scanfield = models.TextField()
+    psmsetname = models.TextField()
+    psmpeptide = models.TextField()
 
 
 class PsetComponent(models.Model):
