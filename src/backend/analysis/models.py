@@ -102,7 +102,7 @@ class NextflowWfVersion(models.Model):
 
 
 class WfOutput(models.Model):
-    nfwfversion = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
+    nfwfversion = models.OneToOneField(NextflowWfVersion, on_delete=models.CASCADE)
     psmfile = models.TextField()
     pepfile = models.TextField()
     lookup = models.TextField()

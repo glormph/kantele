@@ -48,7 +48,7 @@ class Migration(migrations.Migration):
                 ('scanfield', models.TextField()),
                 ('psmsetname', models.TextField()),
                 ('psmpeptide', models.TextField()),
-                ('nfwfversion', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='analysis.nextflowwfversion')),
+                ('nfwfversion', models.OneToOneField(on_delete=models.deletion.CASCADE, to='analysis.nextflowwfversion')),
             ],
         ),
     ]
