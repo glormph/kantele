@@ -1,6 +1,7 @@
 from django.db import models
 
 from analysis import models as am
+from datasets import models as dm
 
 
 class Experiment(models.Model):
@@ -44,20 +45,51 @@ class ResidueMod(models.Model):
 
 class Gene(models.Model):
     name = models.TextField(unique=True)
+    organism = models.ForeignKey(dm.Species, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['gene', 'organism'], name='uni_gene')]
 
 
 class Protein(models.Model):
-    name = models.TextField(unique=True)
-    gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
+    '''A protein name can in theory map to different gene names in 
+    different experiments, depending on which input protein data is
+    used (e.g.  uniprot/ensembl versions, although not ENSP/ENSG).
+    Therefore we have protein/organism and gene/organism, a
+    protein/gene/experiment table, and a peptide/protein/experiment table
+    Ideally we keep track of protein fasta releases somewhere, like
+    we do for Uniprot/ENSEMBL mouse/human, but then we'd still miss 
+    a lot of other databases.
+    It is also not directly parseable from the pipeline which protein 
+    comes from which fasta file, and parsing full fasta files would
+    possibly make this table very full in case of proteogenomics
+    '''
+    name = models.TextField()
+    organism = models.ForeignKey(dm.Species, on_delete=models.CASCADE)
 
-    
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['name', 'organism'], name='uni_protein')]
+
+
 class PeptideSeq(models.Model):
     seq = models.TextField(unique=True)
 
 
+class ProteinGene(models.Model):
+    '''A table to connect proteins and genes, since this relationship 
+    may not be the same over multiple protein data versions (e.g. 
+    ENSEMBL, uniprot). Also if two species share a protein or gene
+    name'''
+    protein = models.ForeignKey(Protein, on_delete=models.CASCADE)
+    gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
+    experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
+
+
 class PeptideProtein(models.Model):
-    # A per-experiment peptide-protein relation, since experiments have
-    # different proteins (organisms, fasta versions, etc)
+    '''Pep can match multiple proteins, to avoid having peptides match
+    to irrelevant proteins (e.g. mouse in human experiment) we make this
+    table referencing the experiment. Also takes care of changed protein
+    names caused by different protein input db versions'''
     peptide = models.ForeignKey(PeptideSeq, on_delete=models.CASCADE)
     protein = models.ForeignKey(Protein, on_delete=models.CASCADE)
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
@@ -102,9 +134,11 @@ class AmountPSMsPeptide(models.Model):
 
 
 
-class PSMFDR(models.Model):
+class PSM(models.Model):
     fdr = models.FloatField()
     scan = models.IntegerField()
+    # score type in Wfoutput?
+    score = models.FloatField()
     # TODO no scan in DIA/TIMS/etc
     # TODO hardcode condition file/scan?
     condition = models.ForeignKey(Condition, on_delete=models.CASCADE)

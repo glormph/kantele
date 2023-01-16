@@ -113,6 +113,8 @@ class WfOutput(models.Model):
     pepqval = models.TextField()
     psmfnfield = models.TextField()
     scanfield = models.TextField()
+    psmscorefield = models.TextField()
+    # need score type?
     psmsetname = models.TextField()
     psmpeptide = models.TextField()
 

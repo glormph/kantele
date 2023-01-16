@@ -1,5 +1,6 @@
 import os
 import re
+import sqlite3
 
 from django.urls import reverse
 from celery import shared_task
@@ -13,19 +14,75 @@ from jobs.post import update_db
 # in this case we need the protein to be multiple, per experiment
 # upload proteins first, get IDs and track, 
 
+# TODO multi-organism (i.e. metaproteomics) is a bit different, the sample contains a blend
+# of organisms and you run multi-db, then we have to keep track of which proteins is which
+# organism -> some kind of parsing required. Our ddamsproteomics pipeline doesnt handle
+# that smoothly, youd like a fasta/organism coupling then (entered by user), and then
+# read fasta to keep track/lookup protein names to organism when running this
+
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
-def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, outheaders, samplesets, isobaric):
-    # FIXME proteins first:
-    upload protein/gene combinations, let backend sort it out with get_or_create
-    upload proteins/genes (ENSP/UP-ID/genename), get IDs in dict
-    maybe only proteins/genes in case we have a PSM w FDR:
-        so one big join on protein_psm and gene
-    maybe not do proteins when running 6FT? Need to make it selectable!
-    # FIXME exempt proteogenomics for now or make button (will be misused!)
+def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, outheaders, 
+        samplesets, isobaric, ):
+    # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
+    # FIXME exempt proteogenomics completely for now or make button (will be misused!)
+    # FIXME not all runs have genes
 
+    storedproteins = {}
+    protein_url = reverse('mstulos:upload_proteins')
+    con = sqlite3.Connection(os.path.join(settings.ANALYSISSHARE, lookupfile))
+    # TODO SQL depends on pipeline input and msstitch DB structure
+    # we should specify other methods on wf if not mssttich
+    # FIXME if genes:
+    # last JOIN protein_psm is to limit proteins to only those with PSMs in experiment
+    sql = ('SELECT DISTINCT p.protein_acc, ai.assoc_id FROM genename_proteins AS gp '
+            'JOIN proteins AS p ON p.pacc_id=gp.pacc_id '
+            'JOIN associated_ids AS ai ON ai.gn_id=gp.gn_id '
+            'JOIN protein_psm AS pp ON pp.protein_acc=p.protein_acc'
+            )
+    protgenes = []
+    for prot, gene in con.execute(sql):
+        protgenes.append((prot, gene))
+        if len(protgenes) == 1000:
+            resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token})
+            resp.raise_for_status()
+            storedproteins.update(resp.json()['protein_ids'])
+            protgenes = []
+    if len(protgenes):
+        resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token})
+        resp.raise_for_status()
+        storedproteins.update(resp.json()['protein_ids'])
+
+    # Now store all peptide sequences found with proteins association (easiest from SQL)
+    # Not in same join as above since that would make more lines to iterate: a protein
+    # can have many peptides
+    pepprots = []
+    pepprot_url = reverse('mstulos:upload_pepprots')
+    sql = ('SELECT DISTINCT ps.sequence, protein_acc FROM psms '
+            'JOIN peptide_sequences AS ps ON ps.pep_id=psms.pep_id '
+            'JOIN protein_psm AS pp ON pp.psm_id=psms.psm_id '
+            'JOIN proteins AS p on p.protein_acc=psms.pp.protein_acc'
+            )
     storedpeps = {} # for ID tracking
-    pepurl = reverse('mstulos:peptides')
+    for pep, prot in con.execute(sql):
+        # TODO MSGF-encoded, maybe do differently
+        bareseq = re.sub('[0-9\+\.]+', '', pep)
+        pepprots.append((pep, bareseq, storedproteins[prot]))
+        if len(pepprots) == 1000:
+            resp = update_db(pepprot_url, json={'pepprots': pepprots, 'token': token})
+            resp.raise_for_status()
+            storedpeps.update(resp.json()['pep_ids'])
+            pepprots = []
+    if len(pepprots):
+        resp = update_db(pepprot_url, json={'pepprots': pepprots, 'token': token})
+        resp.raise_for_status()
+        storedpeps.update(resp.json()['pep_ids'])
+
+    # we could instead use SQLite (if ddamsproteomics pipeline) as source 
+    # for storing peptides: it contains isoq, fdr, amount_psms and all other
+    # per-set data. But you get quite a complex SQL query with count(disticnt psms) 
+    # join sets etc. IIRC quite slow in pipeline also, esp for many set-experiments
+    pepurl = reverse('mstulos:upload_peptides')
     with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
         header = next(fp).strip('\n').split('\t')
         conditions = {'psmcount': [], 'qval': [], 'isobaric': []}
@@ -61,10 +118,8 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
             # on storing and on looking up!! A hash would be good of peptide
             # with mods 
             msgf_pep = line[pepfield]
-            bareseq = re.sub('[0-9\+\.]+', '', msgf_pep)
-            storepep = {'peptide': msgf_pep, 'bare': bareseq,
-                    'psmcount': {}, 'qval': {}, 'isobaric': {}}
-            # TODO get mods off pep
+            storepep = {'pep_id': storedpeps[msgfpep], 'psmcount': {}, 'qval': {}, 'isobaric': {}}
+            # TODO get mods from pep
             #mods... analysis['mods'] = {residue: mass: db_id, ...}
             for datatype, col_conds in conditions.items():
                 for col, cond_id in col_conds:
@@ -73,18 +128,15 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
             if len(pep_values) == 1000:
                 resp = update_db(pepurl, json={'peptides': pep_values, 'token': token})
                 resp.raise_for_status()
-                storedpeps.update(resp.json()['pep_ids'])
                 pep_values = []
         if len(pep_values):
             resp = update_db(pepurl, json={'peptides': pep_values, 'token': token})
             resp.raise_for_status()
-            storedpeps.update(resp.json()['pep_ids'])
 
     # Go through PSM table with peptide_ids as map
     psm_header = outheaders['psm']
     psms = []
-    psmurl = reverse('mstulos:psms')
-    # FIXME PSM without peptide (not enough FDR) should create the peptide!
+    psmurl = reverse('mstulos:upload_psms')
     with open(os.path.join(settings.ANALYSISSHARE, psm_file)) as fp:
         header = next(fp).strip('\n').split('\t')
         # FIXME catch these index() calls!
@@ -93,13 +145,14 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
         setcol = header.index(psm_header['setname'])
         pepcol = header.index(psm_header['peptide'])
         fdrcol = header.index(psm_header['fdr'])
+        scorecol = header.index(psm_header['score'])
         for line in fp:
             line = line.strip('\n').split('\t')
             storepsm = {}
             fn_cond_id = samplesets[line[setcol]]['files'][line[fncol]]
-            # FIXME catch no peps, no fdr, no scan
+            # FIXME catch no peps, no fdr, no scan -- what??
             storepsm = {'scan': line[scancol], 'qval': line[fdrcol], 'fncond': fn_cond_id,
-                    'pep_id': storedpeps[line[pepcol]]}
+                    'score': line[scorecol], 'pep_id': storedpeps[line[pepcol]]}
             psms.append(storepsm)
             if len(psms) > 10000:
                 resp = update_db(psmurl, json={'psms': psms, 'token', token})

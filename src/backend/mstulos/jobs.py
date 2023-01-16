@@ -100,7 +100,7 @@ class ProcessAnalysis(BaseJob):
         headers = {'pep': {'psmcount': output.psmcountfield, 'fdr': output.pepfdrfield,
             'peptide': output.peppeptide, 'isobaric': []},
             'psm': {'fdr': output.psmfdrfield, 'fn': output.psmfnfield, 'scan': output.scanfield,
-                'setname': output.psmsetname, 'peptide': output.psmpeptide}}
+                'setname': output.psmsetname, 'peptide': output.psmpeptide, 'score': output.scorefield}}
         for plextype in analysis.datasetsearch_set.filter(
                 dataset__quantdataset__quanttype__shortname__contains='plex').distinct(
                         'dataset__quantdataset__quanttype__shortname'):
