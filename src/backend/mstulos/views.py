@@ -119,24 +119,27 @@ def start_exp_upload(request):
 def upload_proteins(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
-        exp = m.Experiment.objects.get(token=data['token'], upload_comlete=False)
+        exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
     except m.Experiment.DoesNotExist:
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
     except KeyError:
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_prots = {}
-    organism_proteins = {x.name: x.pk for x in m.Protein.objects.filter(organism_id=data['organism_id'])}
-    organism_genes = {x.name: x.pk for x in m.Gene.objects.filter(organism_id=data['organism_id'])}
+    organism_genes = m.Gene.objects.filter(organism_id=data['organism_id'])
+    organism_proteins = m.Protein.objects.filter(proteingene__gene__in=organism_genes)
+    existing_genes = {x.name: x.pk for x in organism_genes}
+    existing_prots = {x.name: x.pk for x in organism_proteins}
     for prot, gene in data['protgenes']:
-        if prot in organism_proteins:
-            store_pid = organism_proteins[prot]
+        if gene in existing_genes:
+            store_gid = existing_genes[gene]
         else:
-            store_pid = m.Protein.objects.get_or_create(name=prot, organism_id=data['organism_id'])[0].pk
-        if gene in organism_proteins:
-            store_gid = organism_genes[gene]
+            store_gid = m.Gene.objects.get_or_create(name=gene, organism_id=data['organism_id'])[0].pk
+        if prot in existing_prots:
+            store_pid = existing_prots[prot]
         else:
-            store_gid = m.Gene.objects.get_or_create(name=gene, organism_id=data['organism'])[0].pk
-        m.ProteinGene.objects.get_or_create(protein_id=store_pid, gene=store_gid, experiment=exp)
+            # cannot get_or_create here, we only have name field
+            store_pid = m.Protein.objects.create(name=prot).pk
+        m.ProteinGene.objects.get_or_create(protein_id=store_pid, gene_id=store_gid, experiment=exp)
         stored_prots[prot] = store_pid
     return JsonResponse({'error': False, 'protein_ids': stored_prots})
 
@@ -178,9 +181,9 @@ def upload_peptides(request):
         for cond_id, fdr in pep['qval']:
             m.PeptideFDR.objects.create(peptide_id=pep['pep_id'], fdr=fdr, condition_id=cond_id)
         for cond_id, nrpsms in pep['psmcount']:
-            m.AmountPSMsPeptide.objects.create(peptide=pep['pep_id'], value=nrpsms, condition_id=cond_id)
+            m.AmountPSMsPeptide.objects.create(peptide_id=pep['pep_id'], value=nrpsms, condition_id=cond_id)
         for cond_id, quant in pep['isobaric']:
-            m.PeptideIsoQuant.objects.create(peptide=pep['pep_id'], value=quant, condition_id=cond_id)
+            m.PeptideIsoQuant.objects.create(peptide_id=pep['pep_id'], value=quant, condition_id=cond_id)
     return JsonResponse({'error': False, 'pep_ids': stored_peps})
 
 
@@ -196,6 +199,7 @@ def upload_psms(request):
     for psm in data['psms']:
         m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], scan=psm['scan'],
                 condition_id=psm['fncond'], score=psm['score'])
+    return JsonResponse({'error': False})
 
 
 @require_POST

@@ -14,6 +14,7 @@ urlpatterns = [
     url(r'^dash/', include('dashboard.urls')),
     url('', include('home.urls')),
     url(r'^analysis/', include('analysis.urls')),
+    url(r'^mstulos/', include('mstulos.urls')),
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
 ]

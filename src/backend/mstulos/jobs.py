@@ -115,5 +115,5 @@ class ProcessAnalysis(BaseJob):
         else:
             lookupfile = os.path.join(analysis.storage_dir, output.lookup)
             psmfile = os.path.join(analysis.storage_dir, output.psmfile)
-        self.run_tasks.append(((token, pepfile, psmfile, lookupfile, headers, samplesets, samples), {}))
+        self.run_tasks.append(((expana.experiment.token, pepfile, psmfile, lookupfile, headers, samplesets, samples), {}))
         print(self.run_tasks)
