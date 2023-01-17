@@ -72,6 +72,7 @@ http {
         location / {
             uwsgi_pass  django;
             include     /etc/nginx/uwsgi_params; # the uwsgi_params file you installed
+            uwsgi_read_timeout 600s;
         }
     }
 }
