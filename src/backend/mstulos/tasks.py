@@ -23,7 +23,7 @@ from jobs.post import update_db
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
 def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, outheaders, 
-        samplesets, isobaric, ):
+        samplesets):
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
@@ -118,12 +118,13 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
             # on storing and on looking up!! A hash would be good of peptide
             # with mods 
             msgf_pep = line[pepfield]
-            storepep = {'pep_id': storedpeps[msgfpep], 'psmcount': {}, 'qval': {}, 'isobaric': {}}
+            storepep = {'pep_id': storedpeps[msgfpep]}
             # TODO get mods from pep
             #mods... analysis['mods'] = {residue: mass: db_id, ...}
             for datatype, col_conds in conditions.items():
+                storepep[datatype] = []
                 for col, cond_id in col_conds:
-                    storepep[datatype][cond_id] = line[col]
+                    storepep[datatype].append((cond_id, line[col])
             pep_values.append(storepep)
             if len(pep_values) == 1000:
                 resp = update_db(pepurl, json={'peptides': pep_values, 'token': token})
@@ -155,11 +156,11 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
                     'score': line[scorecol], 'pep_id': storedpeps[line[pepcol]]}
             psms.append(storepsm)
             if len(psms) > 10000:
-                resp = update_db(psmurl, json={'psms': psms, 'token', token})
+                resp = update_db(psmurl, json={'psms': psms, 'token': token})
                 resp.raise_for_status()
                 psms = []
         if len(psms):
-            resp = update_db(psmurl, json={'psms': psms, 'token', token})
+            resp = update_db(psmurl, json={'psms': psms, 'token': token})
             resp.raise_for_status()
     
     # Finished, report done

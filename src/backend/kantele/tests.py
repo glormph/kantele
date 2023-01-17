@@ -45,6 +45,7 @@ class BaseTest(TestCase):
                 server=self.oldfserver, share='/home/storage')
 
         # Datasets/projects prep
+        self.species = dm.Species.objects.get_or_create(linnean='Homo sapiens', popname='Human')
         dscomp, _ = dm.DatasetComponent.objects.get_or_create(name='files')
         self.dtype, _ = dm.Datatype.objects.get_or_create(name='dtype1')
         self.dtcomp, _ = dm.DatatypeComponent.objects.get_or_create(datatype=self.dtype, component=dscomp)

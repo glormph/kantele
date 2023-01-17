@@ -8,6 +8,7 @@ class Experiment(models.Model):
     name = models.TextField()
     date = models.DateTimeField(auto_now_add=True)
     upload_complete = models.BooleanField(default=False)
+    # FIXME token must have invalidation time
     token = models.TextField()
 
 
@@ -48,7 +49,7 @@ class Gene(models.Model):
     organism = models.ForeignKey(dm.Species, on_delete=models.CASCADE)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['gene', 'organism'], name='uni_gene')]
+        constraints = [models.UniqueConstraint(fields=['name', 'organism'], name='uni_gene')]
 
 
 class Protein(models.Model):
@@ -65,10 +66,6 @@ class Protein(models.Model):
     possibly make this table very full in case of proteogenomics
     '''
     name = models.TextField()
-    organism = models.ForeignKey(dm.Species, on_delete=models.CASCADE)
-
-    class Meta:
-        constraints = [models.UniqueConstraint(fields=['name', 'organism'], name='uni_protein')]
 
 
 class PeptideSeq(models.Model):

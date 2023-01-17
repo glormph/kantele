@@ -3,6 +3,7 @@ import json
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.db.models import Q
 
 from mstulos import models as m
@@ -107,17 +108,22 @@ def start_exp_upload(request):
         exp = m.Experiment.objects.get(token=data['token'])
     except m.Experiment.DoesNotExist:
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     # need to open upload in a job, not a task  view??
     # FIXME open exp for uploads so we dont get duplicates when task runs multiple
     # times? Proba not nec bc will enforce unique on DB level
 
 
+@require_POST
 def upload_proteins(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
         exp = m.Experiment.objects.get(token=data['token'], upload_comlete=False)
     except m.Experiment.DoesNotExist:
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_prots = {}
     organism_proteins = {x.name: x.pk for x in m.Protein.objects.filter(organism_id=data['organism_id'])}
     organism_genes = {x.name: x.pk for x in m.Gene.objects.filter(organism_id=data['organism_id'])}
@@ -135,58 +141,73 @@ def upload_proteins(request):
     return JsonResponse({'error': False, 'protein_ids': stored_prots})
 
 
+@require_POST
 def upload_pepprots(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
         exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
     except m.Experiment.DoesNotExist:
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_peps = {}
     for pep, bareseq, prot_id in data['pepprots']:
         pepseq, _cr = m.PeptideSeq.objects.get_or_create(seq=bareseq)
-        m.PeptideProtein.objects.get_or_create(peptide=pepseq, protein_id=prot_id, experiment=exp)
-        mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq, encoded_pep=pep)
+        if _cr:
+            m.PeptideProtein.objects.create(peptide=pepseq, protein_id=prot_id, experiment=exp)
+            mol = m.PeptideMolecule.objects.create(sequence=pepseq, encoded_pep=pep)
+        else:
+            mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq, encoded_pep=pep)
         stored_peps[pep] = mol.pk
     return JsonResponse({'error': False, 'pep_ids': stored_peps})
 
 
+@require_POST
 def upload_peptides(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
         exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
     except m.Experiment.DoesNotExist:
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_peps = {}
     for pep in data['peptides']:
         # FIXME think of encodign for peptide to be created from e.g. MSGF or other SE
         # go over condistions!
-        for cond_id, fdr in pep['qval'].items():
+        for cond_id, fdr in pep['qval']:
             m.PeptideFDR.objects.create(peptide_id=pep['pep_id'], fdr=fdr, condition_id=cond_id)
-        for cond_id, nrpsms in pep['psmcount'].items():
+        for cond_id, nrpsms in pep['psmcount']:
             m.AmountPSMsPeptide.objects.create(peptide=pep['pep_id'], value=nrpsms, condition_id=cond_id)
-        for cond_id, quant in pep['isobaric'].items():
+        for cond_id, quant in pep['isobaric']:
             m.PeptideIsoQuant.objects.create(peptide=pep['pep_id'], value=quant, condition_id=cond_id)
     return JsonResponse({'error': False, 'pep_ids': stored_peps})
 
 
+@require_POST
 def upload_psms(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
         exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
     except m.Experiment.DoesNotExist:
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     for psm in data['psms']:
         m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], scan=psm['scan'],
                 condition_id=psm['fncond'], score=psm['score'])
 
 
-
+@require_POST
 def upload_done(request):
     data = json.loads(request.body.decode('utf-8'))
     try:
         exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
     except m.Experiment.DoesNotExist:
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
+
     exp.upload_complete = True
     exp.save()
     jv.set_task_done(data['task_id'])

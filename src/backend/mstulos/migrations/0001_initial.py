@@ -28,6 +28,7 @@ class Migration(migrations.Migration):
                 ('name', models.TextField()),
                 ('date', models.DateTimeField(auto_now_add=True)),
                 ('upload_complete', models.BooleanField(default=False)),
+                ('token', models.TextField()),
             ],
         ),
         migrations.CreateModel(
