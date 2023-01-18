@@ -369,7 +369,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
 
 
 @shared_task(bind=True, queue=settings.QUEUE_QC_NXF)
-def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
+def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_version):
     print('Got message to run QC workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
@@ -377,14 +377,6 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, nf_version):
                 'instrument': run['instrument'], 'filename': run['filename']}
     rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
-    # FIXME temp code tmp to remove when all QC is run in new QC WF (almost)
-    # dont forget to update the nf_version in teh DB before deleting this!
-    if '--raw' in stagefiles:
-        nf_version = '19.10.0' 
-        profiles = 'qc,docker,lehtio'
-    else:
-        nf_version = False
-        profiles = 'qc'
     try:
         outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError:
