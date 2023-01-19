@@ -2,10 +2,11 @@ import re
 import os
 from uuid import uuid4
 
+from django.db.models import Q
+
 from jobs.jobs import BaseJob
 from mstulos import models as m
 from mstulos import tasks as mt
-
 from analysis import models as am
 
 
@@ -51,6 +52,8 @@ class ProcessAnalysis(BaseJob):
         # TMT channel 126
         m.Condition.objects.filter(experiment=expana.experiment).delete()
         samplesets = {}
+        # FIXME non-set searches (have analysisdsinputfile)
+        organisms = set()
         for ads in analysis.analysisdatasetsetname_set.all():
             c_setn = m.Condition.objects.create(name=ads.setname.setname,
                     cond_type=m.Condition.Condtype['SAMPLESET'], experiment=expana.experiment)
@@ -63,12 +66,20 @@ class ProcessAnalysis(BaseJob):
                     frnum = re.match(ads.regex, dsf.sfile.filename).group(1)
                     c_fr = m.Condition.objects.create(name=frnum,
                             cond_type=m.Condition.Condtype['FRACTION'], experiment=expana.experiment)
-                    #sampleset['fractions'][frnum] = c_fr.pk
                     c_fr.parent_conds.add(c_setn)
                     c_fn.parent_conds.add(c_fr)
                 else:
                     c_fn.parent_conds.add(c_setn)
-            samplesets[ads.setname.setname] = sampleset
+            dsorganisms = ads.dataset.datasetspecies_set.all()
+            if not dsorganisms.count():
+                raise RuntimeError('Must enter organism in dataset metadata in order to load results')
+            organisms.update([x for x in dsorganisms])
+            clean_set = re.sub('[^a-zA-Z0-9_]', '_', ads.setname.setname)
+            samplesets[clean_set] = sampleset
+        if len(organisms) > 1:
+            raise RuntimeError('Multiple organism-datasets are not possible to load in result service')
+        organism_id = organisms.pop().pk
+
 
         # Sample name and group name are repeated in sampletable so they use get_or_create
         # Can also do that because they cant be duplicate in experiment, like e.g.
@@ -76,21 +87,24 @@ class ProcessAnalysis(BaseJob):
         # TODO exempt them from deletion above?
         samples = {'groups': {}, 'samples': {}, }
         for ch, setn, sample, sgroup in analysis.analysissampletable.samples:
+            clean_group = re.sub('[^a-zA-Z0-9_]', '_', sgroup)
+            clean_sample = re.sub('[^a-zA-Z0-9_]', '_', sample)
+            clean_set = re.sub('[^a-zA-Z0-9_]', '_', setn)
             if sgroup != '':
-                gss = f'{sgroup}_{sample}_{setn}___{ch}'
+                gss = f'{clean_group}_{clean_sample}_{clean_set}___{ch}'
                 c_group, _cr = m.Condition.objects.get_or_create(name=sgroup,
                         cond_type=m.Condition.Condtype['SAMPLEGROUP'], experiment=expana.experiment)
                 samples['groups'][gss] = c_group.pk
             else:
-                gss = f'{sample}_{setn}___{ch}'
+                gss = f'{clean_sample}_{clean_set}___{ch}'
             c_sample, _cr = m.Condition.objects.get_or_create(name=sample,
                     cond_type=m.Condition.Condtype['SAMPLE'], experiment=expana.experiment)
-            samples['samples'][gss] = c_sample.pk
+            #samples['samples'][gss] = c_sample.pk
             c_ch = m.Condition.objects.create(name=ch, cond_type=m.Condition.Condtype['CHANNEL'],
                     experiment=expana.experiment)
             samples[gss] = c_ch.pk
             # Now add hierarchy:
-            c_ch.parent_conds.add(samplesets[setn]['set_id'])
+            c_ch.parent_conds.add(samplesets[clean_set]['set_id'])
             c_ch.parent_conds.add(c_sample)
             # TODO how to treat non-grouped sample? currently this is X__POOL
             if sgroup != '':
@@ -100,11 +114,15 @@ class ProcessAnalysis(BaseJob):
         headers = {'pep': {'psmcount': output.psmcountfield, 'fdr': output.pepfdrfield,
             'peptide': output.peppeptide, 'isobaric': []},
             'psm': {'fdr': output.psmfdrfield, 'fn': output.psmfnfield, 'scan': output.scanfield,
-                'setname': output.psmsetname, 'peptide': output.psmpeptide, 'score': output.scorefield}}
-        for plextype in analysis.datasetsearch_set.filter(
-                dataset__quantdataset__quanttype__shortname__contains='plex').distinct(
-                        'dataset__quantdataset__quanttype__shortname'):
-            headers['pep']['isobaric'].append(plextype['dataset__quantdataset__quanttype__shortname'])
+                'setname': output.psmsetname, 'peptide': output.psmpeptide, 'score': output.psmscorefield}}
+
+        plexq = Q(dataset__quantdataset__quanttype__shortname__contains='plex')
+        plexq |= Q(dataset__quantdataset__quanttype__shortname='tmtpro')
+        for plextype in analysis.datasetsearch_set.filter(plexq).distinct(
+                'dataset__quantdataset__quanttype__shortname'):
+            ptname = plextype.dataset.quantdataset.quanttype.shortname
+            plextype_trf = {'tmtpro': 'tmt16plex'}.get(ptname, ptname)
+            headers['pep']['isobaric'].append(plextype_trf)
         pepfile = os.path.join(analysis.storage_dir, output.pepfile)
         b_ana_mgr = am.AnalysisBaseanalysis.objects.filter(analysis=analysis, rerun_from_psms=True)
         if b_ana_mgr.count():
@@ -115,5 +133,5 @@ class ProcessAnalysis(BaseJob):
         else:
             lookupfile = os.path.join(analysis.storage_dir, output.lookup)
             psmfile = os.path.join(analysis.storage_dir, output.psmfile)
-        self.run_tasks.append(((expana.experiment.token, pepfile, psmfile, lookupfile, headers, samplesets, samples), {}))
+        self.run_tasks.append(((expana.experiment.token, organism_id, lookupfile, pepfile, psmfile, headers, samplesets, samples), {}))
         print(self.run_tasks)

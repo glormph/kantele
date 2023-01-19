@@ -110,7 +110,6 @@ class WfOutput(models.Model):
     psmcountfield = models.TextField()
     pepfdrfield = models.TextField()
     psmfdrfield = models.TextField()
-    pepqval = models.TextField()
     psmfnfield = models.TextField()
     scanfield = models.TextField()
     psmscorefield = models.TextField()

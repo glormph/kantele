@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+from urllib.parse import urljoin
 
 from django.urls import reverse
 from celery import shared_task
@@ -22,14 +23,16 @@ from jobs.post import update_db
 
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
-def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, outheaders, 
+def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file, psm_file, outheaders, 
         samplesets, isobaric):
+    # FIXME 
+    settings.KANTELEHOST = 'http://nginx'
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
 
     storedproteins = {}
-    protein_url = reverse('mstulos:upload_proteins')
+    protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
     con = sqlite3.Connection(os.path.join(settings.ANALYSISSHARE, lookupfile))
     # TODO SQL depends on pipeline input and msstitch DB structure
     # we should specify other methods on wf if not mssttich
@@ -44,12 +47,14 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
     for prot, gene in con.execute(sql):
         protgenes.append((prot, gene))
         if len(protgenes) == 1000:
-            resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token})
+            resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
+                'organism_id': organism_id})
             resp.raise_for_status()
             storedproteins.update(resp.json()['protein_ids'])
             protgenes = []
     if len(protgenes):
-        resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token})
+        resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
+                'organism_id': organism_id})
         resp.raise_for_status()
         storedproteins.update(resp.json()['protein_ids'])
 
@@ -57,11 +62,11 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
     # Not in same join as above since that would make more lines to iterate: a protein
     # can have many peptides
     pepprots = []
-    pepprot_url = reverse('mstulos:upload_pepprots')
-    sql = ('SELECT DISTINCT ps.sequence, protein_acc FROM psms '
+    pepprot_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_pepprots'))
+    sql = ('SELECT DISTINCT ps.sequence, p.protein_acc FROM psms '
             'JOIN peptide_sequences AS ps ON ps.pep_id=psms.pep_id '
             'JOIN protein_psm AS pp ON pp.psm_id=psms.psm_id '
-            'JOIN proteins AS p on p.protein_acc=psms.pp.protein_acc'
+            'JOIN proteins AS p on p.protein_acc=pp.protein_acc'
             )
     storedpeps = {} # for ID tracking
     for pep, prot in con.execute(sql):
@@ -82,7 +87,7 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
     # for storing peptides: it contains isoq, fdr, amount_psms and all other
     # per-set data. But you get quite a complex SQL query with count(disticnt psms) 
     # join sets etc. IIRC quite slow in pipeline also, esp for many set-experiments
-    pepurl = reverse('mstulos:upload_peptides')
+    pepurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_peptides'))
     with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
         header = next(fp).strip('\n').split('\t')
         conditions = {'psmcount': [], 'qval': [], 'isobaric': []}
@@ -100,8 +105,11 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
                 setname = re.sub(f'_{pepheader["fdr"]}', '', field)
                 conditions['qval'].append((ix, samplesets[setname]['set_id']))
             elif pepheader['isobaric'] and any(plex in field for plex in pepheader['isobaric']):
-                sample_set_ch = re.sub('(.*)_[a-z0-9]+plex_(.*)', '\\1___\\2', field)
-                conditions['isobaric'].append((ix, isobaric[sample_set_ch]))
+                plex_re = '(.*)_[a-z0-9]+plex_([0-9NC])'
+                # Need to remove e.g. plex_126 - Quanted PSMs
+                if re.match(f'{plex_re}$', field):
+                    sample_set_ch = re.sub(plex_re, '\\1___\\2', field)
+                    conditions['isobaric'].append((ix, isobaric[sample_set_ch]))
 
         # parse peptide table and upload
         pep_values = []
@@ -137,7 +145,7 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
     # Go through PSM table with peptide_ids as map
     psm_header = outheaders['psm']
     psms = []
-    psmurl = reverse('mstulos:upload_psms')
+    psmurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_psms'))
     with open(os.path.join(settings.ANALYSISSHARE, psm_file)) as fp:
         header = next(fp).strip('\n').split('\t')
         # FIXME catch these index() calls!
@@ -164,7 +172,7 @@ def summarize_result_peptable(self, token, peptide_file, psm_file, lookupfile, o
             resp.raise_for_status()
     
     # Finished, report done
-    update_db(reverse('mstulos:upload_done'), json={'token': token, 'task_id': self.request.id})
+    update_db(urljoin(settings.KANTELEHOST, reverse('mstulos:upload_done')), json={'token': token, 'task_id': self.request.id})
 
 
 
