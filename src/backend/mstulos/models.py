@@ -5,16 +5,11 @@ from datasets import models as dm
 
 
 class Experiment(models.Model):
-    name = models.TextField()
     date = models.DateTimeField(auto_now_add=True)
     upload_complete = models.BooleanField(default=False)
     # FIXME token must have invalidation time
     token = models.TextField()
-
-
-class ExpAnalysis(models.Model):
     analysis = models.OneToOneField(am.Analysis, on_delete=models.CASCADE)
-    experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
 
 
 class Condition(models.Model):
