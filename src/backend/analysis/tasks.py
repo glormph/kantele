@@ -104,7 +104,7 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
         log_analysis(run['analysis_id'], 'Running command {}, nextflow version {}'.format(' '.join(cmd), env.get('NXF_VER', 'default')))
     nxf_sub = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, cwd=gitwfdir, env=env)
     try:
-        nxf_sub.wait()
+        stdout, stderr = nxf_sub.communicate()
     except exceptions.SoftTimeLimitExceeded:
         # celery has killed the job (task revoked) make sure nextflow is stopped and not left
         nxf_sub.kill()
@@ -112,7 +112,6 @@ def run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version):
         raise
     else:
         # raise any exceptions nextflow has caused
-        stdout, stderr = nxf_sub.communicate()
         if nxf_sub.returncode != 0:
             raise subprocess.CalledProcessError(nxf_sub.returncode, cmd, stdout, stderr=stderr)
     return outdir
