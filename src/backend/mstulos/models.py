@@ -67,16 +67,6 @@ class PeptideSeq(models.Model):
     seq = models.TextField(unique=True)
 
 
-class ProteinGene(models.Model):
-    '''A table to connect proteins and genes, since this relationship 
-    may not be the same over multiple protein data versions (e.g. 
-    ENSEMBL, uniprot). Also if two species share a protein or gene
-    name'''
-    protein = models.ForeignKey(Protein, on_delete=models.CASCADE)
-    gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
-    experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
-
-
 class PeptideProtein(models.Model):
     '''Pep can match multiple proteins, to avoid having peptides match
     to irrelevant proteins (e.g. mouse in human experiment) we make this
@@ -85,6 +75,15 @@ class PeptideProtein(models.Model):
     peptide = models.ForeignKey(PeptideSeq, on_delete=models.CASCADE)
     protein = models.ForeignKey(Protein, on_delete=models.CASCADE)
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
+
+
+class ProteinGene(models.Model):
+    '''A table to connect proteins and genes, since this relationship 
+    may not be the same over multiple protein data versions (e.g. 
+    ENSEMBL, uniprot), and not all experiments have genes included.
+    Also, two species can share a protein or gene name, etc'''
+    pepprot = models.OneToOneField(PeptideProtein, on_delete=models.CASCADE)
+    gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
 
 
 class PeptideMolecule(models.Model):

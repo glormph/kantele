@@ -5,10 +5,19 @@
 {% block head %}
   <link rel='stylesheet' href='{% static "mstulos/bundle.css" %}'>
   <script defer src='{% static "mstulos/bundle.js" %}'></script>
+  {{ tulos_data | json_script:'tulos_data'}}
+  {{ filters | json_script:'prefilters'}}
+  <script>
+  let data = JSON.parse(document.getElementById('tulos_data').textContent);
+  let prefilters = JSON.parse(document.getElementById('prefilters').textContent);
+  </script>
 {% endblock head %}
 
 {% block content %}
 
-<div class="container" id="app"> </div>
+<div class="container is-fluid" id="app">
 
+
+
+</div>
 {% endblock content %}

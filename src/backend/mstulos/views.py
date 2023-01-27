@@ -1,46 +1,139 @@
 import json
+from base64 import b64decode
 
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
+from django.contrib.postgres.aggregates import ArrayAgg
 from django.views.decorators.http import require_POST
-from django.db.models import Q
+from django.db.models import Q, Count
+from django.db.models.functions import Upper
+from django.core.paginator import Paginator
 
 from mstulos import models as m
 from jobs import views as jv
 
 
-def frontpage_context():
-    context = {
-            'proteins': [],
-            'peptides': [],
-            'genes': [],
-            'exps': [],
-            'search': [],
-        }
-    return context
+# FIXME have shareable URLs for search including unrolls
 
-
+# peptide centric:
 @login_required
 def frontpage(request):
-    context = {
-            'searchresult': [
-                {'name': 'TP53', 'type': 'Gene', 'expnr': 20, 'active': True},
-                {'name': 'IAMAPEPTID', 'type': 'Peptide', 'expnr': 2320, 'active': False},
-                {'name': 'IAMAPEPTIDANDIAMREALLYREALLYREALLYREALLYLARGE', 'type': 'Peptide', 'expnr': 2320, 'active': False},
-                {'name': 'ALL_CCK', 'type': 'Experiment', 'expnr': 2, 'active': False},
-                ],
-            'expresult': [
-                {'name': 'My great experiment', 'date': '2020-04-23', 'user': 'maria', 'cond': '5/12', 'psms': '0.0023'},
-                {'name': 'CAR T CCK big advanced', 'date': '2018-09-05', 'user': 'rozbeh', 'cond': '22/25', 'psms': '0.0052'},
-                {'name': 'A431, what else?', 'date': '2017-12-20', 'user': 'rui', 'cond': '8/8', 'psms': '0.0005'},
-                ],
-            'proteins': [],
-        'peptides': [],
-        'genes': [],
-        'exps': [],
-        }
-    return render(request, 'mstulos/front.html', context)
+    rawq = request.GET.get('q', False)
+    qfields = ['peptides', 'proteins', 'genes', 'experiments']
+    textfields = [f'{x}_text' for x in qfields]
+    idfields = [f'{x}_id' for x in qfields]
+    if rawq:
+        # fields/text/id must have right order as in client?
+        # this because client doesnt send keys to have shorter b64 qstring
+        getq = json.loads(b64decode(rawq))
+        print(getq)
+        q = {f: getq[i] for i, f in enumerate(idfields + textfields)}
+        q['expand'] = {k: v for k,v in zip(qfields[1:], getq[8:])}
+    else:
+        q = {f: [] for f in idfields}
+        q.update({f: '' for f in textfields})
+        q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
+
+    print(q)
+    # first query filtering:
+    qset = m.PeptideSeq.objects
+    if q['peptides_id']:
+        qset = qset.filter(pk__in=q['peptides_id'])
+    if q['peptides_text']:
+        qset = qset.filter(seq__in=q['peptides_text'].split('\n'))
+    if q['experiments_id']:
+        qset = qset.filter(peptideprotein__experiment__in=q['experiments_id'])
+    if q['experiments_text']:
+        exp_t_q = Q()
+        for exp_t in q['experiments_text'].split('\n'):
+            exp_t_q |= Q(eupp__contains=exp_t.upper())
+
+        qset = qset.annotate(eupp=Upper('peptideprotein__experiment__analysis__name')).filter(exp_t_q)
+        #(eupp__in=[x.upper() for x in q['experiments_text'].split('\n')])
+    if q['proteins_id']:
+        qset = qset.filter(peptideprotein__protein__in=q['proteins_id'])
+    if q['proteins_text']:
+        qset = qset.annotate(pupp=Upper('peptideprotein__protein__name')).filter(pupp__in=[x.upper() for x in q['proteins_text'].split('\n')])
+    if q['genes_id']:
+        qset = qset.filter(peptideprotein__proteingene__gene__in=q['genes_id'])
+    if q['genes_text']:
+        qset = qset.annotate(gupp=Upper('peptideprotein__proteingene__gene__name')).filter(gupp__in=[x.upper() for x in q['genes_text'].split('\n')])
+    
+    fields = {'seq', 'id', 
+            'peptideprotein__protein__name', 'peptideprotein__protein_id',
+            'peptideprotein__proteingene__gene__name', 'peptideprotein__proteingene__gene_id', 'peptideprotein__experiment__analysis__name', 'peptideprotein__experiment_id'}
+    agg_fields = {
+            'proteins': ('peptideprotein__protein__name', 'peptideprotein__protein_id'),
+            'genes': ('peptideprotein__proteingene__gene__name', 'peptideprotein__proteingene__gene_id'),
+            'experiments': ('peptideprotein__experiment__analysis__name', 'peptideprotein__experiment_id'),
+            }
+    for aggr_col in qfields[1:]:
+        if not q['expand'][aggr_col]:
+            qset = qset.annotate(**{aggr_col: ArrayAgg(agg_fields[aggr_col][0])})
+            idkey = f'{aggr_col}_id'
+            qset = qset.annotate(**{idkey: ArrayAgg(agg_fields[aggr_col][1])})
+            fields.update((aggr_col, idkey))
+            fields.difference_update(agg_fields[aggr_col])
+        
+    qset = qset.values(*fields).order_by('pk')
+    pages = Paginator(qset, 100)
+    pnr = q.get('page', 1)
+    page = pages.get_page(pnr)
+    rows = []
+    for pep in page:
+        print(pep)
+        agg_prots = pep.get('proteins', False)
+        agg_genes = pep.get('genes', False)
+        agg_exps = pep.get('experiments', False)
+        prot = pep.get('peptideprotein__protein__name', False)
+        pid = pep.get('peptideprotein__protein_id', False)
+        gene = pep.get('peptideprotein__proteingene__gene__name', False)
+        gid = pep.get('peptideprotein__proteingene__gene_id', False)
+        exp = pep.get('peptideprotein__experiment__analysis__name', False)
+        eid = pep.get('peptideprotein__experiment_id', False)
+        row = {'id': pep['id'], 'seq': pep['seq']}
+            # Have to set() the below in case there are duplicates:
+            # not sure if those can be fished out WITHOUT keeping the
+            # ID order and name order correlate, either in PG SQL or python
+        if agg_prots:
+            row['proteins'] = list(set(zip(pep['proteins_id'], agg_prots)))
+        if agg_genes:
+            row['genes'] = list(set(zip(pep['genes_id'], agg_genes)))
+        if agg_exps:
+            row['experiments'] = list(set(zip(pep['experiments_id'], agg_exps)))
+        if not agg_prots:
+            row['proteins'] = [(pid, prot)]
+        if not agg_genes:
+            row['genes'] = [(gid, gene)]
+        if not agg_exps:
+            row['experiments'] = [(eid, exp)]
+        rows.append(row)
+    return render(request, 'mstulos/front.html', {'tulos_data': rows, 
+        'filters': q, 'page_nr': pnr})
+    
+
+
+#@login_required
+#def frontpage(request):
+#    context = {
+#            'searchresult': [
+#                {'name': 'TP53', 'type': 'Gene', 'expnr': 20, 'active': True},
+#                {'name': 'IAMAPEPTID', 'type': 'Peptide', 'expnr': 2320, 'active': False},
+#                {'name': 'IAMAPEPTIDANDIAMREALLYREALLYREALLYREALLYLARGE', 'type': 'Peptide', 'expnr': 2320, 'active': False},
+#                {'name': 'ALL_CCK', 'type': 'Experiment', 'expnr': 2, 'active': False},
+#                ],
+#            'expresult': [
+#                {'name': 'My great experiment', 'date': '2020-04-23', 'user': 'maria', 'cond': '5/12', 'psms': '0.0023'},
+#                {'name': 'CAR T CCK big advanced', 'date': '2018-09-05', 'user': 'rozbeh', 'cond': '22/25', 'psms': '0.0052'},
+#                {'name': 'A431, what else?', 'date': '2017-12-20', 'user': 'rui', 'cond': '8/8', 'psms': '0.0005'},
+#                ],
+#            'proteins': [],
+#        'peptides': [],
+#        'genes': [],
+#        'exps': [],
+#        }
+#    return render(request, 'mstulos/front.html', context)
 
 @login_required
 def find_query(request):
@@ -124,9 +217,9 @@ def upload_proteins(request):
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
     except KeyError:
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
-    stored_prots = {}
+    stored_prots, stored_genes = {}, {}
     organism_genes = m.Gene.objects.filter(organism_id=data['organism_id'])
-    organism_proteins = m.Protein.objects.filter(proteingene__gene__in=organism_genes)
+    organism_proteins = m.Protein.objects.filter(peptideprotein__proteingene__gene__in=organism_genes)
     existing_genes = {x.name: x.pk for x in organism_genes}
     existing_prots = {x.name: x.pk for x in organism_proteins}
     for prot, gene in data['protgenes']:
@@ -139,9 +232,9 @@ def upload_proteins(request):
         else:
             # cannot get_or_create here, we only have name field
             store_pid = m.Protein.objects.create(name=prot).pk
-        m.ProteinGene.objects.get_or_create(protein_id=store_pid, gene_id=store_gid, experiment=exp)
         stored_prots[prot] = store_pid
-    return JsonResponse({'error': False, 'protein_ids': stored_prots})
+        stored_genes[gene] = store_gid
+    return JsonResponse({'error': False, 'protein_ids': stored_prots, 'gene_ids': stored_genes})
 
 
 @require_POST
@@ -154,13 +247,17 @@ def upload_pepprots(request):
     except KeyError:
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_peps = {}
-    for pep, bareseq, prot_id in data['pepprots']:
+    for pep, bareseq, prot_id, gene_id in data['pepprots']:
         pepseq, _cr = m.PeptideSeq.objects.get_or_create(seq=bareseq)
         if _cr:
-            m.PeptideProtein.objects.create(peptide=pepseq, protein_id=prot_id, experiment=exp)
+            #m.PeptideProtein.objects.create(peptide=pepseq, protein_id=prot_id, experiment=exp)
             mol = m.PeptideMolecule.objects.create(sequence=pepseq, encoded_pep=pep)
         else:
             mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq, encoded_pep=pep)
+        pepprot, _cr = m.PeptideProtein.objects.get_or_create(peptide=pepseq, protein_id=prot_id, experiment=exp)
+        if gene_id:
+            m.ProteinGene.objects.get_or_create(pepprot=pepprot, gene_id=gene_id)
+            
         stored_peps[pep] = mol.pk
     return JsonResponse({'error': False, 'pep_ids': stored_peps})
 
@@ -216,5 +313,3 @@ def upload_done(request):
     exp.save()
     jv.set_task_done(data['task_id'])
     return JsonResponse({'error': False})
-
-

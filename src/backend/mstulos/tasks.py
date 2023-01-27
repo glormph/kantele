@@ -31,8 +31,6 @@ def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
 
-    storedproteins = {}
-    protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
     con = sqlite3.Connection(os.path.join(settings.ANALYSISSHARE, lookupfile))
     # TODO SQL depends on pipeline input and msstitch DB structure
     # we should specify other methods on wf if not mssttich
@@ -44,6 +42,8 @@ def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file
             'JOIN protein_psm AS pp ON pp.protein_acc=p.protein_acc'
             )
     protgenes = []
+    storedproteins, storedgenes = {}, {}
+    protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
     for prot, gene in con.execute(sql):
         protgenes.append((prot, gene))
         if len(protgenes) == 1000:
@@ -51,28 +51,32 @@ def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file
                 'organism_id': organism_id})
             resp.raise_for_status()
             storedproteins.update(resp.json()['protein_ids'])
+            storedgenes.update(resp.json()['gene_ids'])
             protgenes = []
     if len(protgenes):
         resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
                 'organism_id': organism_id})
         resp.raise_for_status()
         storedproteins.update(resp.json()['protein_ids'])
+        storedgenes.update(resp.json()['gene_ids'])
 
     # Now store all peptide sequences found with proteins association (easiest from SQL)
     # Not in same join as above since that would make more lines to iterate: a protein
     # can have many peptides
     pepprots = []
     pepprot_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_pepprots'))
-    sql = ('SELECT DISTINCT ps.sequence, p.protein_acc FROM psms '
+    sql = ('SELECT DISTINCT ps.sequence, p.protein_acc, ai.assoc_id FROM psms '
             'JOIN peptide_sequences AS ps ON ps.pep_id=psms.pep_id '
             'JOIN protein_psm AS pp ON pp.psm_id=psms.psm_id '
-            'JOIN proteins AS p on p.protein_acc=pp.protein_acc'
+            'JOIN proteins AS p on p.protein_acc=pp.protein_acc '
+            'JOIN genename_proteins AS gp on p.pacc_id=gp.pacc_id '
+            'JOIN associated_ids AS ai on ai.gn_id=gp.gn_id'
             )
     storedpeps = {} # for ID tracking
-    for pep, prot in con.execute(sql):
+    for pep, prot, gene in con.execute(sql):
         # TODO MSGF-encoded, maybe do differently
         bareseq = re.sub('[0-9\+\.]+', '', pep)
-        pepprots.append((pep, bareseq, storedproteins[prot]))
+        pepprots.append((pep, bareseq, storedproteins[prot], storedgenes[gene]))
         if len(pepprots) == 1000:
             resp = update_db(pepprot_url, json={'pepprots': pepprots, 'token': token})
             resp.raise_for_status()

@@ -31,15 +31,11 @@ class ProcessAnalysis(BaseJob):
         analysis = am.Analysis.objects.select_related('nextflowsearch__nfworkflow__wfoutput').get(
                 pk=kwargs['analysis_id'])
         output = analysis.nextflowsearch.nfworkflow.wfoutput
-       # new_exp = False
         try:
-            expana = m.ExpAnalysis.objects.get(analysis=analysis)
-        except m.ExpAnalysis.DoesNotExist:
-       #     new_exp = True
-
-            exp = m.Experiment.objects.create(name=analysis.name, token=str(uuid4()))
-            expana = m.ExpAnalysis.objects.create(analysis=analysis, experiment=exp)
-        if expana.experiment.upload_complete:
+            exp = m.Experiment.objects.get(analysis=analysis)
+        except m.Experiment.DoesNotExist:
+            exp = m.Experiment.objects.create(analysis=analysis, token=str(uuid4()))
+        if exp.upload_complete:
             return
 
         # TODO currently only recent and isobaric data, as  a start
@@ -50,22 +46,22 @@ class ProcessAnalysis(BaseJob):
         # Delete all conditions before rerunning again, since it is not possible to only
         # get_or_create on name/exp, as there are duplicates in the DB e.g. multiple sets with
         # TMT channel 126
-        m.Condition.objects.filter(experiment=expana.experiment).delete()
+        m.Condition.objects.filter(experiment=exp).delete()
         samplesets = {}
         # FIXME non-set searches (have analysisdsinputfile)
         organisms = set()
         for ads in analysis.analysisdatasetsetname_set.all():
             c_setn = m.Condition.objects.create(name=ads.setname.setname,
-                    cond_type=m.Condition.Condtype['SAMPLESET'], experiment=expana.experiment)
+                    cond_type=m.Condition.Condtype['SAMPLESET'], experiment=exp)
             sampleset = {'set_id': c_setn.pk, 'fractions': {}, 'files': {}}
             for dsf in ads.analysisdsinputfile_set.all():
                 c_fn = m.Condition.objects.create(name=dsf.sfile.filename,
-                        cond_type=m.Condition.Condtype['FILE'], experiment=expana.experiment)
+                        cond_type=m.Condition.Condtype['FILE'], experiment=exp)
                 sampleset['files'][dsf.sfile.filename] = c_fn.pk
                 if ads.regex != '':
                     frnum = re.match(ads.regex, dsf.sfile.filename).group(1)
                     c_fr = m.Condition.objects.create(name=frnum,
-                            cond_type=m.Condition.Condtype['FRACTION'], experiment=expana.experiment)
+                            cond_type=m.Condition.Condtype['FRACTION'], experiment=exp)
                     c_fr.parent_conds.add(c_setn)
                     c_fn.parent_conds.add(c_fr)
                 else:
@@ -93,15 +89,15 @@ class ProcessAnalysis(BaseJob):
             if sgroup != '':
                 gss = f'{clean_group}_{clean_sample}_{clean_set}___{ch}'
                 c_group, _cr = m.Condition.objects.get_or_create(name=sgroup,
-                        cond_type=m.Condition.Condtype['SAMPLEGROUP'], experiment=expana.experiment)
+                        cond_type=m.Condition.Condtype['SAMPLEGROUP'], experiment=exp)
                 samples['groups'][gss] = c_group.pk
             else:
                 gss = f'{clean_sample}_{clean_set}___{ch}'
             c_sample, _cr = m.Condition.objects.get_or_create(name=sample,
-                    cond_type=m.Condition.Condtype['SAMPLE'], experiment=expana.experiment)
+                    cond_type=m.Condition.Condtype['SAMPLE'], experiment=exp)
             #samples['samples'][gss] = c_sample.pk
             c_ch = m.Condition.objects.create(name=ch, cond_type=m.Condition.Condtype['CHANNEL'],
-                    experiment=expana.experiment)
+                    experiment=exp)
             samples[gss] = c_ch.pk
             # Now add hierarchy:
             c_ch.parent_conds.add(samplesets[clean_set]['set_id'])
@@ -133,5 +129,5 @@ class ProcessAnalysis(BaseJob):
         else:
             lookupfile = os.path.join(analysis.storage_dir, output.lookup)
             psmfile = os.path.join(analysis.storage_dir, output.psmfile)
-        self.run_tasks.append(((expana.experiment.token, organism_id, lookupfile, pepfile, psmfile, headers, samplesets, samples), {}))
+        self.run_tasks.append(((exp.token, organism_id, lookupfile, pepfile, psmfile, headers, samplesets, samples), {}))
         print(self.run_tasks)
