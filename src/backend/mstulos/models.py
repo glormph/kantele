@@ -40,7 +40,7 @@ class ResidueMod(models.Model):
 
 
 class Gene(models.Model):
-    name = models.TextField(unique=True)
+    name = models.TextField()
     organism = models.ForeignKey(dm.Species, on_delete=models.CASCADE)
 
     class Meta:
@@ -124,14 +124,13 @@ class AmountPSMsPeptide(models.Model):
         constraints = [models.UniqueConstraint(fields=['condition', 'peptide'], name='uni_pepnrpsms')]
 
 
-
 class PSM(models.Model):
     fdr = models.FloatField()
     scan = models.IntegerField()
     # score type in Wfoutput?
     score = models.FloatField()
     # TODO no scan in DIA/TIMS/etc
-    # TODO hardcode condition file/scan?
+    # TODO hardcode condition fieldname is file?
     condition = models.ForeignKey(Condition, on_delete=models.CASCADE)
     peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
 

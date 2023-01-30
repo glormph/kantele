@@ -204,140 +204,166 @@ page refresh to keep the names
 <style>
 </style>
 
-  <h2 class="title is-2">MSTulos </h2>
+<h2 class="title is-2">MSTulos </h2>
 
-  Filters are applied as such:
-  any peptide is shown matching a combination of ALL of the text matches :
-  e.g. pep-sequence AND (protein1 OR protein2) AND (experiment1 OR experiment2)
-  Clicking on the filter funnel icon further narrows down the search
-  to ONLY matching peptides matching all of the ID filters, e.g. the 
-  above AND only matching geneA
-  First prepare your filtering criteria, then click the filter button.
-
-  <div class="columns">
-    <div class="column">
-      <div>
-        <label class="label">Peptides (exact match)</label>
-        <div class="field has-addons">
-          <div class="control">
-            <textarea bind:value={filters.peptides_text}></textarea>
-          </div>
-        </div>
-      </div>
-      <div>
-        <label class="label">Peptides (ids)</label>
-        {#if !filters.peptides_id.size}
-        -
-        {/if}
-        <div class="field is-grouped is-grouped-multiline">
-          {#each Array.from(filters.peptides_id) as pepid}
-          <div class="control">
-            <span class="tags has-addons">
-              <span class="tag">{pepid}</span>
-              <span class="tag is-primary">{idlookups.peptides[pepid]}
-              <button class="delete"/>
-              </span>
-            </span>
-          </div>
-          {/each}
-        </div>
-      </div>
-    </div>
-    <div class="column">
-      <label class="label">Proteins (exact, case-insensitive)</label>
-      <div class="field has-addons">
-        <div class="control">
-          <textarea bind:value={filters.proteins_text}></textarea>
-        </div>
-      </div>
-      <div>
-        <label class="label">Proteins (ids)</label>
-        {#if !filters.proteins_id.size}
-        -
-        {/if}
-        <div class="field is-grouped is-grouped-multiline">
-          {#each Array.from(filters.proteins_id) as pid}
-          <div class="control">
-            <span class="tags has-addons">
-              <span class="tag">{pid}</span>
-              <span class="tag is-primary">{idlookups.proteins[pid]}
-              <button class="delete"/>
-              </span>
-            </span>
-          </div>
-          {/each}
-        </div>
-      </div>
-    </div>
-    <div class="column">
-      <label class="label">Genes (exact, case-insensitive)</label>
-      <div class="field has-addons">
-        <div class="control">
-          <textarea bind:value={filters.genes_text}></textarea>
-        </div>
-      </div>
-      <div>
-        <label class="label">Genes (ids)</label>
-        {#if !filters.genes_id.size}
-        -
-        {/if}
-        <div class="field is-grouped is-grouped-multiline">
-          {#each Array.from(filters.genes_id) as gid}
-          <div class="control">
-            <span class="tags has-addons">
-              <span class="tag">{gid}</span>
-              <span class="tag is-primary">{idlookups.genes[gid]}
-              <button class="delete"/>
-              </span>
-            </span>
-          </div>
-          {/each}
-        </div>
-      </div>
-    </div>
-    <div class="column">
-      <label class="label">Experiments (partial match)</label>
-      <div class="field has-addons">
-        <div class="control">
-          <textarea bind:value={filters.experiments_text}></textarea>
-        </div>
-      </div>
-      <div>
-        <label class="label">Experiments(ids)</label>
-        {#if !filters.experiments_id.size}
-        -
-        {/if}
-        <div class="field is-grouped is-grouped-multiline">
-          {#each Array.from(filters.experiments_id) as eid}
-          <div class="control">
-            <span class="tags has-addons">
-              <span class="tag">{eid}</span>
-              <span class="tag is-primary">{idlookups.experiments[eid]}
-              <button class="delete"/>
-              </span>
-            </span>
-          </div>
-          {/each}
-        </div>
-      </div>
-    </div>
+<div class="tile is-ancestor">
+  <div class="tile is-parent is-2">
+    <article class="tile is-child notification is-info is-light">
+      Selected peptides:
+      - Show PSM table
+      - Plot data
+    </article>
   </div>
+  <div class="tile is-parent">
+    <article class="tile is-child notification is-success is-light">
+      <div class="tile is-parent is-vertical">
+        <div class="tile is-child">
+          <h3 class="title is-5">Filtering</h3>
+          Filters are applied as such:
+          any peptide is shown matching a combination of ALL of the text matches :
+          e.g. pep-sequence AND (protein1 OR protein2) AND (experiment1 OR experiment2)
+          Clicking on the filter funnel icon further narrows down the search
+          to ONLY matching peptides matching all of the ID filters, e.g. the 
+          above AND only matching geneA
+          First prepare your filtering criteria, then click the filter button.
+        </div>
+        <div class="tile is-child">
+          <div class="columns"> 
+            <div class="column">
+              {#each keys.slice(1) as k}
+              <div>
+                <input bind:checked={filters.expand[k]} type="checkbox">Expand {k}
+              </div>
+              {/each}
 
-  {#each keys.slice(1) as k}
-  <input bind:checked={filters.expand[k]} type="checkbox">Expand {k}
-  {/each}
-  <button class="button" on:click={test}>Apply filter</button>
+            </div>
+            <div class="column">
+              <div>
+                <label class="label">Peptides (exact match)</label>
+                <div class="field has-addons">
+                  <div class="control">
+                    <textarea bind:value={filters.peptides_text}></textarea>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label class="label">Peptides (ids)</label>
+                {#if !filters.peptides_id.size}
+                -
+                {/if}
+                <div class="field is-grouped is-grouped-multiline">
+                  {#each Array.from(filters.peptides_id) as pepid}
+                  <div class="control">
+                    <span class="tags has-addons">
+                      <span class="tag">{pepid}</span>
+                      <span class="tag is-primary">{idlookups.peptides[pepid]}
+                        <button class="delete"/>
+                      </span>
+                    </span>
+                  </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <label class="label">Proteins (exact, case-insensitive)</label>
+              <div class="field has-addons">
+                <div class="control">
+                  <textarea bind:value={filters.proteins_text}></textarea>
+                </div>
+              </div>
+              <div>
+                <label class="label">Proteins (ids)</label>
+                {#if !filters.proteins_id.size}
+                -
+                {/if}
+                <div class="field is-grouped is-grouped-multiline">
+                  {#each Array.from(filters.proteins_id) as pid}
+                  <div class="control">
+                    <span class="tags has-addons">
+                      <span class="tag">{pid}</span>
+                      <span class="tag is-primary">{idlookups.proteins[pid]}
+                        <button class="delete"/>
+                      </span>
+                    </span>
+                  </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <label class="label">Genes (exact, case-insensitive)</label>
+              <div class="field has-addons">
+                <div class="control">
+                  <textarea bind:value={filters.genes_text}></textarea>
+                </div>
+              </div>
+              <div>
+                <label class="label">Genes (ids)</label>
+                {#if !filters.genes_id.size}
+                -
+                {/if}
+                <div class="field is-grouped is-grouped-multiline">
+                  {#each Array.from(filters.genes_id) as gid}
+                  <div class="control">
+                    <span class="tags has-addons">
+                      <span class="tag">{gid}</span>
+                      <span class="tag is-primary">{idlookups.genes[gid]}
+                        <button class="delete"/>
+                      </span>
+                    </span>
+                  </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <label class="label">Experiments (partial match)</label>
+              <div class="field has-addons">
+                <div class="control">
+                  <textarea bind:value={filters.experiments_text}></textarea>
+                </div>
+              </div>
+              <div>
+                <label class="label">Experiments(ids)</label>
+                {#if !filters.experiments_id.size}
+                -
+                {/if}
+                <div class="field is-grouped is-grouped-multiline">
+                  {#each Array.from(filters.experiments_id) as eid}
+                  <div class="control">
+                    <span class="tags has-addons">
+                      <span class="tag">{eid}</span>
+                      <span class="tag is-primary">{idlookups.experiments[eid]}
+                        <button class="delete"/>
+                      </span>
+                    </span>
+                  </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tile is-child">
+          <button class="button" on:click={test}>Apply filter</button>
+        </div>
+      </div>
+    </article>
+  </div>
+</div>
 
-  <table class="table is-striped is-fullwidth">
-    <thead>
-      {#each keys as th}
-      <th>{th[0].toUpperCase()}{th.slice(1)}</th>
-      {/each}
-    </thead>
-    <tbody>
-      {#each data as row}
-      <Tablerow first={['peptides', row.seq, row.id]} rest={row} keys={keys} bind:filters={filters} bind:idlookups={idlookups} />
-      {/each}
-    </tbody>
-  </table>
+<table class="table is-striped is-fullwidth">
+  <thead>
+    <th></th>
+    {#each keys as th}
+    <th>{th[0].toUpperCase()}{th.slice(1)}</th>
+    {/each}
+  </thead>
+  <tbody>
+    {#each data as row}
+    <Tablerow first={['peptides', row.seq, row.id]} rest={row} keys={keys} bind:filters={filters} bind:idlookups={idlookups} />
+    {/each}
+  </tbody>
+</table>
 

@@ -1,5 +1,4 @@
 <script>
-import Tablefield from './Tablefield.svelte';
 
 export let first;
 export let rest;
@@ -35,6 +34,7 @@ function toggleFromFilter(key, itemid, itemname) {
 </script>
 
 <tr>
+  <td><input type="checkbox"></td>
   <td>
     <span class="has-text-link" on:click={e => toggleFromFilter(keys[0], first[2], first[1])}>
       {#if filters[`${first[0]}_id`].has(first[2])}

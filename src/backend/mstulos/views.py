@@ -14,7 +14,13 @@ from mstulos import models as m
 from jobs import views as jv
 
 
-# FIXME have shareable URLs for search including unrolls
+# FIXME:
+# fix fixmes in job/task
+# have shareable URLs for search including unrolls
+# create plots for TMT
+# PSM tables
+# PSM plots?
+# gene/protein centric tables
 
 # peptide centric:
 @login_required
@@ -27,15 +33,12 @@ def frontpage(request):
         # fields/text/id must have right order as in client?
         # this because client doesnt send keys to have shorter b64 qstring
         getq = json.loads(b64decode(rawq))
-        print(getq)
         q = {f: getq[i] for i, f in enumerate(idfields + textfields)}
         q['expand'] = {k: v for k,v in zip(qfields[1:], getq[8:])}
     else:
         q = {f: [] for f in idfields}
         q.update({f: '' for f in textfields})
         q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
-
-    print(q)
     # first query filtering:
     qset = m.PeptideSeq.objects
     if q['peptides_id']:
@@ -82,7 +85,6 @@ def frontpage(request):
     page = pages.get_page(pnr)
     rows = []
     for pep in page:
-        print(pep)
         agg_prots = pep.get('proteins', False)
         agg_genes = pep.get('genes', False)
         agg_exps = pep.get('experiments', False)

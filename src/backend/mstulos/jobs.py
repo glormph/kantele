@@ -10,6 +10,10 @@ from mstulos import tasks as mt
 from analysis import models as am
 
 
+# DDA pipeline 2.8 and up have OK format, before that: amount/count
+# before 2.6 there is X__POOL
+# before 2.3 # PSMs is not correct (identical)
+
 class ProcessAnalysis(BaseJob): 
     refname = 'process_p_search_results'
     task = mt.summarize_result_peptable
@@ -48,7 +52,7 @@ class ProcessAnalysis(BaseJob):
         # TMT channel 126
         m.Condition.objects.filter(experiment=exp).delete()
         samplesets = {}
-        # FIXME non-set searches (have analysisdsinputfile)
+        # FIXME non-set searches (have analysisdsinputfile), also non-sampletable (same?)
         organisms = set()
         for ads in analysis.analysisdatasetsetname_set.all():
             c_setn = m.Condition.objects.create(name=ads.setname.setname,
@@ -69,12 +73,12 @@ class ProcessAnalysis(BaseJob):
             dsorganisms = ads.dataset.datasetspecies_set.all()
             if not dsorganisms.count():
                 raise RuntimeError('Must enter organism in dataset metadata in order to load results')
-            organisms.update([x for x in dsorganisms])
+            organisms.update([x.species_id for x in dsorganisms])
             clean_set = re.sub('[^a-zA-Z0-9_]', '_', ads.setname.setname)
             samplesets[clean_set] = sampleset
         if len(organisms) > 1:
             raise RuntimeError('Multiple organism-datasets are not possible to load in result service')
-        organism_id = organisms.pop().pk
+        organism_id = organisms.pop()
 
 
         # Sample name and group name are repeated in sampletable so they use get_or_create
@@ -121,8 +125,14 @@ class ProcessAnalysis(BaseJob):
             headers['pep']['isobaric'].append(plextype_trf)
         pepfile = os.path.join(analysis.storage_dir, output.pepfile)
         b_ana_mgr = am.AnalysisBaseanalysis.objects.filter(analysis=analysis, rerun_from_psms=True)
-        if b_ana_mgr.count():
+        base_analysis = False
+        # Get potentially nested base analysis for PSM tables:
+        while b_ana_mgr.count():
             base_analysis = b_ana_mgr.get().base_analysis
+            b_ana_mgr = am.AnalysisBaseanalysis.objects.filter(analysis=base_analysis,
+                    rerun_from_psms=True)
+
+        if base_analysis:
             base_output = base_analysis.nextflowsearch.nfworkflow.wfoutput
             lookupfile = os.path.join(base_analysis.storage_dir, base_output.lookup)
             psmfile = os.path.join(base_analysis.storage_dir, base_output.psmfile)
