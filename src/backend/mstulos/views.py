@@ -113,29 +113,59 @@ def frontpage(request):
         rows.append(row)
     return render(request, 'mstulos/front.html', {'tulos_data': rows, 
         'filters': q, 'page_nr': pnr})
-    
 
 
 #@login_required
-#def frontpage(request):
-#    context = {
-#            'searchresult': [
-#                {'name': 'TP53', 'type': 'Gene', 'expnr': 20, 'active': True},
-#                {'name': 'IAMAPEPTID', 'type': 'Peptide', 'expnr': 2320, 'active': False},
-#                {'name': 'IAMAPEPTIDANDIAMREALLYREALLYREALLYREALLYLARGE', 'type': 'Peptide', 'expnr': 2320, 'active': False},
-#                {'name': 'ALL_CCK', 'type': 'Experiment', 'expnr': 2, 'active': False},
-#                ],
-#            'expresult': [
-#                {'name': 'My great experiment', 'date': '2020-04-23', 'user': 'maria', 'cond': '5/12', 'psms': '0.0023'},
-#                {'name': 'CAR T CCK big advanced', 'date': '2018-09-05', 'user': 'rozbeh', 'cond': '22/25', 'psms': '0.0052'},
-#                {'name': 'A431, what else?', 'date': '2017-12-20', 'user': 'rui', 'cond': '8/8', 'psms': '0.0005'},
-#                ],
-#            'proteins': [],
-#        'peptides': [],
-#        'genes': [],
-#        'exps': [],
-#        }
-#    return render(request, 'mstulos/front.html', context)
+def peptide_table(request):
+    rawq = request.GET.get('q', False)
+    #qfields = ['peptides', 'proteins', 'genes', 'experiments']
+    #textfields = [f'{x}_text' for x in qfields]
+    #idfields = [f'{x}_id' for x in qfields]
+    if rawq:
+        pass
+        # fields/text/id must have right order as in client?
+        # this because client doesnt send keys to have shorter b64 qstring
+#        getq = json.loads(b64decode(rawq))
+#        q = {f: getq[i] for i, f in enumerate(idfields + textfields)}
+#        q['expand'] = {k: v for k,v in zip(qfields[1:], getq[8:])}
+#    else:
+#        q = {f: [] for f in idfields}
+#        q.update({f: '' for f in textfields})
+#        q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
+    
+
+
+
+#@login_required
+def psm_table(request):
+    '''Given a combination of peptide-sequence-ids and experiments they are in,
+    produce a PSM table'''
+    # TODO is it faster to loop over the peptides (all given peps x all given experiments) 
+    # in python, or should we keep the SQL statement?
+    rawq = request.GET.get('q', False)
+    if rawq:
+        '''{ peptide_id: [exp_id, exp_id2, ...], ...}'''
+        pepquery = json.loads(b64decode(rawq))
+    else:
+        pepquery = {}
+    #qfields = ['peptides', 'proteins', 'genes', 'experiments']
+    #textfields = [f'{x}_text' for x in qfields]
+    #idfields = [f'{x}_id' for x in qfields]
+
+    #exp = m.Experiment.objects.filter(
+    all_exp_ids = {y for x in pepquery.values() for y in x}
+    exp_files = {eid: m.Condition.objects.filter(cond_type=m.Condition.Condtype['FILE'],
+        experiment=eid) for eid in all_exp_ids}
+    filterq = Q()
+    for pepid, exps in pepquery.items():
+        pepexps = [exp_files[eid] for eid in exps]
+        filterq |= Q(peptide__sequence_id=pepid) & Q(condition__in=pepexps[0].union(*pepexps[1:]).values('pk'))
+    qset = m.PSM.objects.filter(filterq)
+    pages = Paginator(qset, 100)
+    pnr = request.GET.get('page', 1)
+    page = pages.get_page(pnr)
+    return render(request, 'mstulos/psms.html', context={'psms': page})
+
 
 @login_required
 def find_query(request):
@@ -195,19 +225,6 @@ def get_data(request):
             except KeyError:
                 pepquant[sam] = {pq.peptide_id: (pq.peptide.encoded_pep, pq.value)}
     return JsonResponse({'pepfdr': pepfdr, 'pepquant': {}})
-
-
-def start_exp_upload(request):
-    data = json.loads(request.body.decode('utf-8'))
-    try:
-        exp = m.Experiment.objects.get(token=data['token'])
-    except m.Experiment.DoesNotExist:
-        return JsonResponse({'error': 'Not allowed to access'}, status=403)
-    except KeyError:
-        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
-    # need to open upload in a job, not a task  view??
-    # FIXME open exp for uploads so we dont get duplicates when task runs multiple
-    # times? Proba not nec bc will enforce unique on DB level
 
 
 @require_POST

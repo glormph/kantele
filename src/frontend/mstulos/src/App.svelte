@@ -1,11 +1,11 @@
 <script>
 
 import { onMount } from 'svelte';
-import { getJSON, postJSON } from '../../datasets/src/funcJSON.js';
+//import { getJSON, postJSON } from '../../datasets/src/funcJSON.js';
 //import NestedLinePlot from './NestedLinePlot.svelte';
-import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
+//import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 import Tablerow from './Tablerow.svelte';
-import { schemeSet1 } from 'd3-scale-chromatic';
+//import { schemeSet1 } from 'd3-scale-chromatic';
 
 /*
 let searchresults = {};
@@ -157,43 +157,45 @@ function removeExpFromPlots() {
 
 */
 
-//        q = {'pep_ids': q[0], 
-//                'protein_ids': q[1],
-//                'gene_ids': q[2], 
-//                'experiment_ids': q[3],
-//                'sequences': q[4],
-//                'protein_names': q[5],
-//                'gene_names': q[6],
-//                'experiment_names': q[7],
-//                'aggr': q[8],
-//                }
-
 const keys = ['peptides', 'proteins', 'genes', 'experiments'];
 const idfilterkeys = keys.map(x => `${x}_id`);
 const textfilterkeys = keys.map(x => `${x}_text`);
-//const filterkeys = idfilterkeys.concat(textfilterkeys);
 
+let selectedrows = {};
 let idlookups = Object.fromEntries(keys.map(x => [x, {}]));
 
 let filters  = Object.fromEntries(textfilterkeys.concat(idfilterkeys).map(x => [x, new Set()]));
 filters.expand = Object.fromEntries(keys.slice(1).map(x => [x, 0]));
 
-function test() {
-  console.log(filters.expand);
+function filterItems() {
   let ppge = idfilterkeys.map(x => Array.from(filters[x])).concat(textfilterkeys.map(x => filters[x]))
   ppge = ppge.concat(keys.slice(1).map(x => filters.expand[x]));
-    //(push(Array.from(filters.expand));
   const b64filter = btoa(JSON.stringify(ppge));
   location.search = `q=${b64filter}`;
 }
 
+function toggleSelectRow(event) {
+  const [row, exps] = event.detail;
+  console.log(row);
+  console.log(exps);
+  if (row in selectedrows) {
+    delete(selectedrows[row]);
+  } else {
+    selectedrows[row] = exps;
+  }
+}
+
+function openPSMTable() {
+  console.log(selectedrows);
+  const b64pepexps = btoa(JSON.stringify(selectedrows));
+  open(`/mstulos/psms/?q=${b64pepexps}`, '_blank');
+}
 
 onMount(async() => {
   const idfilters = Object.fromEntries(idfilterkeys.map(x => [x, new Set(prefilters[x])]));;
   const textfilters = Object.fromEntries(textfilterkeys.map(x => [x, prefilters[x]]));;
   filters = Object.assign(idfilters, textfilters, {expand: prefilters.expand});
   idlookups = Object.fromEntries(keys.map(x => [x, {}]));
-  //filters.expand = filters.expand;
 });
 
 /* FIXME Id lookups for filters shouldn ot be sent to the server, but they should be sent to the client on
@@ -209,8 +211,8 @@ page refresh to keep the names
 <div class="tile is-ancestor">
   <div class="tile is-parent is-2">
     <article class="tile is-child notification is-info is-light">
-      Selected peptides:
-      - Show PSM table
+      <h5 class="title is-5">Selected peptides</h5>
+      <button on:click={openPSMTable} class="button">Show PSMs</button>
       - Plot data
     </article>
   </div>
@@ -346,7 +348,7 @@ page refresh to keep the names
           </div>
         </div>
         <div class="tile is-child">
-          <button class="button" on:click={test}>Apply filter</button>
+          <button class="button" on:click={filterItems}>Apply filter</button>
         </div>
       </div>
     </article>
@@ -362,7 +364,7 @@ page refresh to keep the names
   </thead>
   <tbody>
     {#each data as row}
-    <Tablerow first={['peptides', row.seq, row.id]} rest={row} keys={keys} bind:filters={filters} bind:idlookups={idlookups} />
+    <Tablerow first={['peptides', row.seq, row.id]} rest={row} keys={keys} on:togglecheck={toggleSelectRow} bind:filters={filters} bind:idlookups={idlookups} />
     {/each}
   </tbody>
 </table>
