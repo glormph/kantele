@@ -191,6 +191,12 @@ function openPSMTable() {
   open(`/mstulos/psms/?q=${b64pepexps}`, '_blank');
 }
 
+function openPeptideTable() {
+  const b64pepexps = btoa(JSON.stringify(selectedrows));
+  open(`/mstulos/peptides/?q=${b64pepexps}`, '_blank');
+}
+
+
 onMount(async() => {
   const idfilters = Object.fromEntries(idfilterkeys.map(x => [x, new Set(prefilters[x])]));;
   const textfilters = Object.fromEntries(textfilterkeys.map(x => [x, prefilters[x]]));;
@@ -213,6 +219,7 @@ page refresh to keep the names
     <article class="tile is-child notification is-info is-light">
       <h5 class="title is-5">Selected peptides</h5>
       <button on:click={openPSMTable} class="button">Show PSMs</button>
+      <button on:click={openPeptideTable} class="button">Show peptides</button>
       - Plot data
     </article>
   </div>

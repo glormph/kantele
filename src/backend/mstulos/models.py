@@ -97,31 +97,26 @@ class MoleculeMod(models.Model):
     molecule = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
 
 
+class IdentifiedPeptide(models.Model):
+    setorsample = models.ForeignKey(Condition, on_delete=models.CASCADE)
+    peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
+
+
 class PeptideIsoQuant(models.Model):
     value = models.FloatField()
-    # condition will be a CHANNEL
-    condition = models.ForeignKey(Condition, on_delete=models.CASCADE)
+    channel = models.OneToOneField(Condition, on_delete=models.CASCADE)
     peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
 
 
 class PeptideFDR(models.Model):
     fdr = models.FloatField()
-    # TODO hardcode condition as set name? Can be sample also
-    condition = models.ForeignKey(Condition, on_delete=models.CASCADE)
-    peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
-
-    class Meta:
-        constraints = [models.UniqueConstraint(fields=['condition', 'peptide'], name='uni_pepfdr')]
+    idpep = models.OneToOneField(IdentifiedPeptide, on_delete=models.CASCADE)
 
 
 class AmountPSMsPeptide(models.Model):
+    # TODO can we merge amountPSM and FDR? PepValues or somethign?
     value = models.IntegerField()
-    # TODO hardcode condition as set name? Can be sample also
-    condition = models.ForeignKey(Condition, on_delete=models.CASCADE)
-    peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
-
-    class Meta:
-        constraints = [models.UniqueConstraint(fields=['condition', 'peptide'], name='uni_pepnrpsms')]
+    idpep = models.OneToOneField(IdentifiedPeptide, on_delete=models.CASCADE)
 
 
 class PSM(models.Model):
@@ -131,8 +126,8 @@ class PSM(models.Model):
     score = models.FloatField()
     # TODO no scan in DIA/TIMS/etc
     # TODO hardcode condition fieldname is file?
-    condition = models.ForeignKey(Condition, on_delete=models.CASCADE)
+    filecond = models.ForeignKey(Condition, on_delete=models.CASCADE)
     peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['condition', 'scan'], name='uni_psmscans')]
+        constraints = [models.UniqueConstraint(fields=['filecond', 'scan'], name='uni_psmscans')]

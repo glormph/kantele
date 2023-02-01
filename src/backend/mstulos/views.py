@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.views.decorators.http import require_POST
-from django.db.models import Q, Count
+from django.db.models import Q, Count, F
 from django.db.models.functions import Upper
 from django.core.paginator import Paginator
 
@@ -18,8 +18,6 @@ from jobs import views as jv
 # fix fixmes in job/task
 # have shareable URLs for search including unrolls
 # create plots for TMT
-# PSM tables
-# PSM plots?
 # gene/protein centric tables
 
 # peptide centric:
@@ -118,22 +116,22 @@ def frontpage(request):
 #@login_required
 def peptide_table(request):
     rawq = request.GET.get('q', False)
-    #qfields = ['peptides', 'proteins', 'genes', 'experiments']
-    #textfields = [f'{x}_text' for x in qfields]
-    #idfields = [f'{x}_id' for x in qfields]
     if rawq:
-        pass
-        # fields/text/id must have right order as in client?
-        # this because client doesnt send keys to have shorter b64 qstring
-#        getq = json.loads(b64decode(rawq))
-#        q = {f: getq[i] for i, f in enumerate(idfields + textfields)}
-#        q['expand'] = {k: v for k,v in zip(qfields[1:], getq[8:])}
-#    else:
-#        q = {f: [] for f in idfields}
-#        q.update({f: '' for f in textfields})
-#        q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
+        '''{ peptide_id: [exp_id, exp_id2, ...], ...}'''
+        pepquery = json.loads(b64decode(rawq))
+    else:
+        pepquery = {}
+    peptides = []
+    filterq = Q()
+    setorsample = 'SAMPLESET'
+    for pepid, exps in pepquery.items():
+        filterq |= Q(peptide__sequence_id=pepid, setorsample__experiment__in=exps)
+    peptides = m.IdentifiedPeptide.objects.filter(filterq).values('peptide__encoded_pep', 'peptidefdr__fdr', 'amountpsmspeptide__value', 'setorsample__name', 'setorsample__experiment__analysis__name').order_by('peptide_id', 'setorsample__experiment_id', 'setorsample_id')
+    pages = Paginator(peptides, 100)
+    pnr = request.GET.get('page', 1)
+    page = pages.get_page(pnr)
+    return render(request, 'mstulos/peptides.html', context={'peptides': page})
     
-
 
 
 #@login_required
@@ -148,19 +146,16 @@ def psm_table(request):
         pepquery = json.loads(b64decode(rawq))
     else:
         pepquery = {}
-    #qfields = ['peptides', 'proteins', 'genes', 'experiments']
-    #textfields = [f'{x}_text' for x in qfields]
-    #idfields = [f'{x}_id' for x in qfields]
-
-    #exp = m.Experiment.objects.filter(
     all_exp_ids = {y for x in pepquery.values() for y in x}
     exp_files = {eid: m.Condition.objects.filter(cond_type=m.Condition.Condtype['FILE'],
         experiment=eid) for eid in all_exp_ids}
+
     filterq = Q()
     for pepid, exps in pepquery.items():
         pepexps = [exp_files[eid] for eid in exps]
-        filterq |= Q(peptide__sequence_id=pepid) & Q(condition__in=pepexps[0].union(*pepexps[1:]).values('pk'))
-    qset = m.PSM.objects.filter(filterq)
+        filterq |= Q(peptide__sequence_id=pepid, filecond__experiment__in=exps)
+    sample_cond = 'filecond__parent_conds__name'
+    qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score', 'filecond__experiment__analysis__name', 'sample_or_set').order_by('peptide_id', 'filecond__experiment_id', 'sample_or_set_id')
     pages = Paginator(qset, 100)
     pnr = request.GET.get('page', 1)
     page = pages.get_page(pnr)
@@ -293,13 +288,16 @@ def upload_peptides(request):
     stored_peps = {}
     for pep in data['peptides']:
         # FIXME think of encodign for peptide to be created from e.g. MSGF or other SE
-        # go over condistions!
+        idpeps = {}
+        # TODO go over condistions!
         for cond_id, fdr in pep['qval']:
-            m.PeptideFDR.objects.create(peptide_id=pep['pep_id'], fdr=fdr, condition_id=cond_id)
+            idpep = m.IdentifiedPeptide.objects.create(peptide_id=pep['pep_id'], setorsample_id=cond_id)
+            idpeps[cond_id] = idpep
+            m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
         for cond_id, nrpsms in pep['psmcount']:
-            m.AmountPSMsPeptide.objects.create(peptide_id=pep['pep_id'], value=nrpsms, condition_id=cond_id)
+            m.AmountPSMsPeptide.objects.create(value=nrpsms, idpep=idpeps[cond_id])
         for cond_id, quant in pep['isobaric']:
-            m.PeptideIsoQuant.objects.create(peptide_id=pep['pep_id'], value=quant, condition_id=cond_id)
+            m.PeptideIsoQuant.objects.create(peptide_id=pep['pep_id'], value=quant, channel_id=cond_id)
     return JsonResponse({'error': False, 'pep_ids': stored_peps})
 
 
@@ -314,7 +312,7 @@ def upload_psms(request):
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     for psm in data['psms']:
         m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], scan=psm['scan'],
-                condition_id=psm['fncond'], score=psm['score'])
+                filecond=psm['fncond'], score=psm['score'])
     return JsonResponse({'error': False})
 
 
