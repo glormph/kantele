@@ -2,6 +2,7 @@
 
 import {  createEventDispatcher } from 'svelte';
 
+export let selected;
 export let first;
 export let rest;
 export let keys;
@@ -32,7 +33,7 @@ function toggleSelect() {
 
 <tr>
   <td>
-    <input type=checkbox on:change={toggleSelect} />
+    <input type=checkbox checked={selected} on:change={toggleSelect} />
   </td>
   <td>
     <span class="has-text-link" on:click={e => toggleFromFilter(keys[0], first[2], first[1])}>

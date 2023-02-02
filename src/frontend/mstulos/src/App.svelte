@@ -30,6 +30,14 @@ function toggleFromFilter(key, itemid, itemname) {
   filters[idkey] = filters[idkey];
 }
 
+function selectAll() {
+  if (data.length === Object.keys(selectedrows).length) {
+    selectedrows = {};
+  } else {
+    data.forEach(x => selectedrows[x.id] = x.experiments.map(x => x[0]))
+  }
+}
+
 function toggleSelectRow(event) {
   const [row, exps] = event.detail;
   if (row in selectedrows) {
@@ -208,14 +216,14 @@ onMount(async() => {
 
 <table class="table is-striped is-fullwidth">
   <thead>
-    <th></th>
+    <th><input type=checkbox on:change={selectAll} /></th>
     {#each keys as th}
     <th>{th[0].toUpperCase()}{th.slice(1)}</th>
     {/each}
   </thead>
   <tbody>
     {#each data as row}
-    <Tablerow first={['peptides', row.seq, row.id]} rest={row} keys={keys} on:togglecheck={toggleSelectRow} toggleFromFilter={toggleFromFilter} bind:filters={filters} />
+    <Tablerow selected={selectedrows[row.id]} first={['peptides', row.seq, row.id]} rest={row} keys={keys} on:togglecheck={toggleSelectRow} toggleFromFilter={toggleFromFilter} bind:filters={filters} />
     {/each}
   </tbody>
 </table>
