@@ -40,41 +40,66 @@ def paginate(qset, pnr):
 def frontpage(request):
     rawq = request.GET.get('q', False)
     qfields = ['peptides', 'proteins', 'genes', 'experiments']
-    textfields = [f'{x}_text' for x in qfields]
+    textfields = [f'{x}_text' for x in qfields] 
+    exactfields = [f'{x}_text_exact' for x in qfields]
     idfields = [f'{x}_id' for x in qfields]
     if rawq:
         # fields/text/id must have right order as in client?
         # this because client doesnt send keys to have shorter b64 qstring
         getq = json.loads(b64decode(rawq))
-        q = {f: getq[i] for i, f in enumerate(idfields + textfields)}
-        q['expand'] = {k: v for k,v in zip(qfields[1:], getq[8:])}
+        q = {f: getq[i] for i, f in enumerate(idfields + textfields + exactfields)}
+        q['expand'] = {k: v for k,v in zip(qfields[1:],
+            getq[len(idfields + textfields + exactfields):])}
     else:
         q = {f: [] for f in idfields}
-        q.update({f: '' for f in textfields})
+        q.update({**{f: '' for f in textfields}, **{f: 1 for f in exactfields}})
+        q['experiments_text_exact'] = 0
         q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
     # first query filtering:
     qset = m.PeptideSeq.objects
     if q['peptides_id']:
         qset = qset.filter(pk__in=[x[0] for x in q['peptides_id']])
     if q['peptides_text']:
-        qset = qset.filter(seq__in=q['peptides_text'].split('\n'))
+        qset = qset.annotate(pepupp=Upper('seq'))
+        if q['peptides_text_exact']:
+            qset = qset.filter(pepupp__in=q['peptides_text'].upper().split('\n'))
+        else:
+            peptq = Q()
+            for pept in q['peptides_text'].upper().split('\n'):
+                peptq |= Q(pepupp__contains=pept)
+            qset = qset.filter(peptq)
+            print(peptq)
     if q['experiments_id']:
         qset = qset.filter(peptideprotein__experiment__in=[x[0] for x in q['experiments_id']])
     if q['experiments_text']:
+        qset = qset.annotate(eupp=Upper('peptideprotein__experiment__analysis__name'))
         exp_t_q = Q()
-        for exp_t in q['experiments_text'].split('\n'):
-            exp_t_q |= Q(eupp__contains=exp_t.upper())
-
-        qset = qset.annotate(eupp=Upper('peptideprotein__experiment__analysis__name')).filter(exp_t_q)
+        for exp_t in q['experiments_text'].upper().split('\n'):
+            exp_t_q |= Q(eupp__contains=exp_t)
+        qset = qset.filter(exp_t_q)
         #(eupp__in=[x.upper() for x in q['experiments_text'].split('\n')])
     if q['proteins_id']:
         qset = qset.filter(peptideprotein__protein__in=[x[0] for x in q['proteins_id']])
     if q['proteins_text']:
-        qset = qset.annotate(pupp=Upper('peptideprotein__protein__name')).filter(pupp__in=[x.upper() for x in q['proteins_text'].split('\n')])
+        qset = qset.annotate(pupp=Upper('peptideprotein__protein__name'))
+        if q['proteins_text_exact']:
+            qset = qset.filter(pupp__in=[x.upper() for x in q['proteins_text'].split('\n')])
+        else:
+            ptxtq = Q()
+            for ptxt in q['proteins_text'].upper().split('\n'):
+                ptxtq |= Q(pupp__contains=ptxt)
+            qset = qset.filter(ptxtq)
     if q['genes_id']:
         qset = qset.filter(peptideprotein__proteingene__gene__in=[x[0] for x in q['genes_id']])
     if q['genes_text']:
-        qset = qset.annotate(gupp=Upper('peptideprotein__proteingene__gene__name')).filter(gupp__in=[x.upper() for x in q['genes_text'].split('\n')])
+        qset = qset.annotate(gupp=Upper('peptideprotein__proteingene__gene__name'))
+        if q['genes_text_exact']:
+            qset = qset.filter(gupp__in=[x.upper() for x in q['genes_text'].split('\n')])
+        else:
+            gtxtq = Q()
+            for gtxt in q['genes_text'].upper().split('\n'):
+                gtxtq |= Q(gupp__contains=gtxt)
+            qset = qset.filter(gtxtq)
     
     fields = {'seq', 'id', 
             'peptideprotein__protein__name', 'peptideprotein__protein_id',

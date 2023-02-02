@@ -6,14 +6,22 @@ import Tablerow from './Tablerow.svelte';
 const keys = ['peptides', 'proteins', 'genes', 'experiments'];
 const idfilterkeys = keys.map(x => `${x}_id`);
 const textfilterkeys = keys.map(x => `${x}_text`);
+const exacttextfilterkeys = keys.map(x => `${x}_text_exact`);
 
 let selectedrows = {};
 
-let filters  = Object.fromEntries(textfilterkeys.map(x => [x, '']).concat(idfilterkeys.map(x => [x, {}])));
+let filters  = Object.fromEntries(
+  textfilterkeys.map(x => [x, ''])
+  .concat(idfilterkeys.map(x => [x, {}]))
+  .concat(exacttextfilterkeys.map(x => [x, 0]))
+);
 filters.expand = Object.fromEntries(keys.slice(1).map(x => [x, 0]));
 
 function filterItems() {
-  let ppge = idfilterkeys.map(x => Object.entries(filters[x])).concat(textfilterkeys.map(x => filters[x]))
+  let ppge = idfilterkeys
+    .map(x => Object.entries(filters[x]))
+    .concat(textfilterkeys.map(x => filters[x]))
+    .concat(exacttextfilterkeys.map(x => filters[x]));
   ppge = ppge.concat(keys.slice(1).map(x => filters.expand[x]));
   const b64filter = btoa(JSON.stringify(ppge));
   location.search = `q=${b64filter}`;
@@ -61,7 +69,8 @@ function openPeptideTable() {
 onMount(async() => {
   const idfilters = Object.fromEntries(idfilterkeys.map(x => [x, Object.fromEntries(prefilters[x])]));;
   const textfilters = Object.fromEntries(textfilterkeys.map(x => [x, prefilters[x]]));;
-  filters = Object.assign(idfilters, textfilters, {expand: prefilters.expand});
+  const exactfilters = Object.fromEntries(exacttextfilterkeys.map(x => [x, prefilters[x]]));
+  filters = Object.assign(idfilters, textfilters, exactfilters, {expand: prefilters.expand});
 });
 </script>
 
@@ -99,14 +108,13 @@ onMount(async() => {
 
             </div>
             <div class="column">
-              <div>
-                <label class="label">Peptides (exact match)</label>
+                <label class="label">Peptides</label>
+                <input type=checkbox bind:checked={filters.peptides_text_exact}> Exact match (faster)
                 <div class="field has-addons">
                   <div class="control">
                     <textarea bind:value={filters.peptides_text}></textarea>
                   </div>
                 </div>
-              </div>
               <div>
                 <label class="label">Peptides (ids)</label>
                 {#if !Object.keys(filters.peptides_id).length}
@@ -127,7 +135,8 @@ onMount(async() => {
               </div>
             </div>
             <div class="column">
-              <label class="label">Proteins (exact, case-insensitive)</label>
+              <label class="label">Proteins</label>
+              <input type=checkbox bind:checked={filters.proteins_text_exact}> Exact match (faster)
               <div class="field has-addons">
                 <div class="control">
                   <textarea bind:value={filters.proteins_text}></textarea>
@@ -153,14 +162,15 @@ onMount(async() => {
               </div>
             </div>
             <div class="column">
-              <label class="label">Genes (exact, case-insensitive)</label>
+              <label class="label">Genes</label>
+              <input type=checkbox bind:checked={filters.genes_text_exact}> Exact match (faster)
               <div class="field has-addons">
                 <div class="control">
                   <textarea bind:value={filters.genes_text}></textarea>
                 </div>
               </div>
               <div>
-                <label class="label">Genes (ids)</label>
+                <label class="label">Genes</label>
                 {#if !Object.keys(filters.genes_id).length}
                 -
                 {/if}
@@ -179,7 +189,8 @@ onMount(async() => {
               </div>
             </div>
             <div class="column">
-              <label class="label">Experiments (partial match)</label>
+              <label class="label">Experiments</label>
+              <input type=checkbox bind:checked={filters.experiments_text_exact}> Exact match (faster)
               <div class="field has-addons">
                 <div class="control">
                   <textarea bind:value={filters.experiments_text}></textarea>
