@@ -1,161 +1,7 @@
 <script>
 
 import { onMount } from 'svelte';
-//import { getJSON, postJSON } from '../../datasets/src/funcJSON.js';
-//import NestedLinePlot from './NestedLinePlot.svelte';
-//import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 import Tablerow from './Tablerow.svelte';
-//import { schemeSet1 } from 'd3-scale-chromatic';
-
-/*
-let searchresults = {};
-let searchresultorder = []
-let expresultorder = [];
-let expresults = {};
-let query;
-let selected_peps = new Set();
-let selected_exps = new Set();
-
-let plots = {
-  pepfdr: '',
-  pepquant: '',
-};
-//let data = {
-//  pepfdr: [],
-//  pepquant: [],
-//};
-let dls = {
-  pepfdr: [],
-  pepquant: [],
-};
-let series = {};
-*/
-
-
-/*
-async function searchQ() {
-  searchresults = {};
-  searchresultorder = [];
-  const resp = await getJSON(`find/?q=${query}`);
-  resp.results.map(x => ({selected: false, ...x})).forEach(x => {
-    searchresults[x.id] = x;
-    searchresultorder.push(x.id);
-  });
-}
-
-function toggleResults(srid) {
-  if (!searchresults[srid].selected) {
-    searchresults[srid].selected = true;
-    searchresults[srid].experiments.forEach(x => {
-      if (!(x.id in expresults)) {
-        expresults[x.id] = x;
-        expresultorder.push(x.id);
-      }
-    });
-    selected_peps.add(srid);
-    addSearchedItemToPlots(searchresults[srid].id, searchresults[srid].type);
-    // add to plots
-  } else {
-    searchresults[srid].selected = false;
-    selected_peps.delete(srid)
-    removeItemFromPlots(srid);
-  }
-}
-
-function toggleExperiment(expid) {
-  if (!expresults[expid].selected) {
-    expresults[expid].selected = true;
-    selected_exps.add(expid);
-    addExpToPlots(expid);
-  } else {
-    expresults[expid].selected = false;
-    selected_exps.delete(expid);
-    removeExpFromPlots(expid);
-  }
-}
-
-function replot() {
-  console.log(dls);
-  ['pepfdr'].forEach(k => {
-  //['pepfdr', 'pepquant'].forEach(k => {
-    data[k] = Object.entries(dls[k]).map(([sam, peps]) => ({sam: sam, 
-    ...Object.fromEntries(Object.entries(peps).map(([pid, nameval]) => [nameval[0], nameval[1]])) }));
-    series[k] = new Set(data[k].map(d => Object.keys(d)).flat());
-  // Timeout to let series propagate to the plot, for some reason it remains undefined in the plot component otherwise
-    setTimeout(() => {
-      plots[k].plot();
-    }, 0);
-  });
-}
-
-async function addExpToPlots(eid) {
-  if (selected_peps.size) {
-    ['pepfdr', 'pepquant'].forEach(async k => {
-      const resp = await postJSON('data/', {type: 'peptide', ids: Array.from(selected_peps), experiments: [eid]});
-      Object.entries(resp[k]).forEach(([exp, sampeps]) => {
-        if (exp in dls[k]) {
-          Object.entries(sampeps).forEach(([sam, peps]) => {
-            if (sam in dls[k][exp]) {
-              dls[k][exp][sam] = {...dls[k][exp][sam], ...peps};
-            } else {
-              dls[k][exp][sam] = peps;
-            }
-          });
-        } else {
-          dls[k][exp] = sampeps;
-          // dls[k][sam] = {...dls[k][sam], ...resp[k][sam]};
-        //} else {
-         // dls[k][sam] = resp[k][sam];
-        }
-      });
-    });
-    replot();
-  }
-}
-
-
-async function addSearchedItemToPlots(sid, stype) {
-  if (selected_exps.size) {
-    //['pepfdr', 'pepquant'].forEach(async k => {
-    ['pepquant'].forEach(async k => {
-      const resp = await postJSON('data/', {type: stype, ids: [sid], experiments: Array.from(selected_exps)});
-      // [{featid: 2, expid: 3, val: 0.03, sam: setA}]
-      Object.keys(resp[k]).forEach(point => {
-        if (sam in dls[k]) {
-          dls[k][sam] = {...dls[k][sam], ...resp[k][sam]};
-        } else {
-          dls[k][sam] = resp[k][sam];
-        }
-      });
-    });
-    replot();
-//    // probably make plot-only-function of this:
-//    data.pepfdr = Object.entries(data.pepfdr_dl).map(([sam, peps]) => ({sam: sam, ...peps}));
-//    console.log(data.pepfdr);
-//    series.pepfdr = new Set(data.pepfdr.map(d => Object.keys(d)).flat());
-//    // Timeout to let series propagate to the plot, for some reason it remains undefined in the plot component otherwise
-//    setTimeout(() => {
-//      plots.pepfdr.plot();
-//    }, 0);
-  }
-}
-
-function removeItemFromPlots(iid) {
-  ['pepfdr', 'pepquant'].forEach(k => {
-    delete(dls[k][iid]);
-  });
-  selected_peps.size && selected_exps.size ? replot() : false;
-}
-
-function removeExpFromPlots() {
-  Object.keys(data).forEach(k => {
-    
-  });
-  selected_peps.size && selected_exps.size ? replot() : false;
-}
-
-
-*/
 
 const keys = ['peptides', 'proteins', 'genes', 'experiments'];
 const idfilterkeys = keys.map(x => `${x}_id`);
@@ -186,8 +32,6 @@ function toggleFromFilter(key, itemid, itemname) {
 
 function toggleSelectRow(event) {
   const [row, exps] = event.detail;
-  console.log(row);
-  console.log(exps);
   if (row in selectedrows) {
     delete(selectedrows[row]);
   } else {
@@ -196,7 +40,6 @@ function toggleSelectRow(event) {
 }
 
 function openPSMTable() {
-  console.log(selectedrows);
   const b64pepexps = btoa(JSON.stringify(selectedrows));
   open(`/mstulos/psms/?q=${b64pepexps}`, '_blank');
 }

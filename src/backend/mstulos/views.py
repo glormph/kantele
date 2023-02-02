@@ -173,71 +173,11 @@ def psm_table(request):
         filterq |= Q(peptide__sequence_id=pepid, filecond__experiment__in=exps)
     sample_cond = 'filecond__parent_conds__name'
     sample_cond_id = 'filecond__parent_conds__id'
-    qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score', 'filecond__experiment__analysis__name', 'sample_or_set').order_by('peptide_id', 'filecond__experiment_id', sample_cond_id)
+    qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score', 'filecond__experiment__analysis__name', 'sample_or_set').order_by('peptide_id', 'filecond__experiment_id', sample_cond_id, 'filecond_id')
     pnr = request.GET.get('page', 1)
     page, page_context = paginate(qset, pnr)
     context = {'psms': page, **page_context}
     return render(request, 'mstulos/psms.html', context=context)
-
-
-@login_required
-def find_query(request):
-    pepseq = request.GET['q'].upper()
-    query = Q(bareseq__seq__contains=pepseq)
-    query |= Q(encoded_pep__contains=pepseq)
-    pepmols = m.PeptideMolecule.objects.filter(query).filter(pepfdr__isnull=False)
-    results = [{'id': x.pk, 'txt': x.encoded_pep,
-        'type': 'peptide',
-        'expnum': x.pepfdr_set.distinct('condition__experiment').count(),
-        'condnum': x.pepfdr_set.count(),
-        'experiments': [{'name': pf['condition__experiment__name'],
-            'id': pf['condition__experiment__pk'],
-            } for pf in x.pepfdr_set.distinct('condition__experiment').values('condition__experiment__name', 'condition__experiment__pk')],
-        } for x in pepmols]
-    return JsonResponse({'results': results})
-
-
-@login_required
-def get_results(request, restype, resid):
-    if restype == 'peptide':
-        m.PepFDR.objects.filter(peptide_id=resid)
-    return JsonResponse({})
-
-
-@login_required
-def get_data(request):
-    """
-    input:
-    {type: peptide, ids: [1,2,3,4], experiments: [1,2,3,4]}
-    
-    output:
-    {pepfdr: 
-          {exp_id: {name: exp_name, samples: 
-    maybe [{exp: 1, sam: 3, 3: 0.002, 4: 0.001, 5: 0, ...}...]
-    """
-    data = json.loads(request.body.decode('utf-8'))
-    pepquant, pepfdr = {}, {}
-    if data['type'] == 'peptide':
-        for pf in m.PepFDR.objects.filter(peptide_id__in=data['ids'],
-                condition__experiment_id__in=data['experiments']).select_related(
-                'peptide').order_by('condition__experiment_id'):
-            #pepquant[pf.condition.experiment_id].append('sam': sam, 'featid': pf.peptide_id, 'value': pf.value})
-            if pf.condition.experiment_id not in pepfdr:
-                pepfdr[pf.condition.experiment_id] = {}
-            sam = pf.condition.name
-            try:
-                pepfdr[pf.condition.experiment_id][sam][pf.peptide_id] = pf.value
-            except KeyError:
-                pepfdr[pf.condition.experiment_id][sam] = {pf.peptide_id: pf.value}
-        for pq in m.PeptideQuantResult.objects.filter(peptide_id__in=data['ids'],
-                condition__experiment_id__in=data['experiments']).select_related(
-                'peptide'):
-            sam = pq.condition.name
-            try:
-                pepquant[sam][pq.peptide_id] = (pq.peptide.encoded_pep, pq.value)
-            except KeyError:
-                pepquant[sam] = {pq.peptide_id: (pq.peptide.encoded_pep, pq.value)}
-    return JsonResponse({'pepfdr': pepfdr, 'pepquant': {}})
 
 
 @require_POST
