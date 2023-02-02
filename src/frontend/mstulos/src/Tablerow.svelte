@@ -6,8 +6,7 @@ export let first;
 export let rest;
 export let keys;
 export let filters;
-export let idlookups;
-export let selected;
+export let toggleFromFilter
 
 const dispatch = createEventDispatcher();
 let expanded = false;
@@ -24,17 +23,6 @@ function toggleExpandCollapse(key) {
   }
 }
 
-function toggleFromFilter(key, itemid, itemname) {
-  const idkey = `${key}_id`;
-  if (!filters[idkey].delete(itemid)) {
-    filters[idkey].add(itemid);
-    idlookups[key][itemid] = itemname;
-  } else {
-    delete(idlookups[key][itemid]);
-  }
-  filters[idkey] = filters[idkey];
-}
-
 function toggleSelect() {
   // TODO parametrize this for gene/protein-centric tables
   dispatch('togglecheck', [first[2], rest.experiments.map(x => x[0])]);
@@ -48,7 +36,7 @@ function toggleSelect() {
   </td>
   <td>
     <span class="has-text-link" on:click={e => toggleFromFilter(keys[0], first[2], first[1])}>
-      {#if filters[`${first[0]}_id`].has(first[2])}
+      {#if first[2] in filters[`${first[0]}_id`]}
     <icon class="icon fa fa-trash-alt" />
     {:else}
     <icon class="icon fa fa-filter" />
@@ -62,7 +50,7 @@ function toggleSelect() {
     <span class="has-text-link" on:click={e => toggleExpandCollapse(k)}><icon class={`icon fa fa-${triangles[k]}`} /></span>{rest[k].length} {k}
     {:else}
     <span class="has-text-link" on:click={e => toggleFromFilter(k, rest[k][0][0], rest[k][0][1])}>
-      {#if filters[`${k}_id`].has(rest[k][0][0])}
+      {#if rest[k][0][0] in filters[`${k}_id`]}
     <icon class="icon fa fa-trash-alt" />
     {:else}
     <icon class="icon fa fa-filter" />
@@ -80,7 +68,7 @@ function toggleSelect() {
     {#each rest[expanded] as [eid, name]}
     <span class="tag is-medium is-rounded">
     <span class="has-text-link" on:click={e => toggleFromFilter(expanded, eid, name)}>
-      {#if filters[`${expanded}_id`].has(eid)}
+      {#if eid in filters[`${expanded}_id`]}
       <icon class="icon fa fa-trash-alt" />
       {:else}
       <icon class="icon fa fa-filter" />

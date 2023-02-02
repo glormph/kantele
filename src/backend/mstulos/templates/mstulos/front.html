@@ -3,7 +3,6 @@
 {% load static %}
 
 {% block head %}
-  <link rel='stylesheet' href='{% static "mstulos/bundle.css" %}'>
   <script defer src='{% static "mstulos/bundle.js" %}'></script>
   {{ tulos_data | json_script:'tulos_data'}}
   {{ filters | json_script:'prefilters'}}

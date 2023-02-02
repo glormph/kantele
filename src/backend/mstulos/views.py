@@ -55,11 +55,11 @@ def frontpage(request):
     # first query filtering:
     qset = m.PeptideSeq.objects
     if q['peptides_id']:
-        qset = qset.filter(pk__in=q['peptides_id'])
+        qset = qset.filter(pk__in=[x[0] for x in q['peptides_id']])
     if q['peptides_text']:
         qset = qset.filter(seq__in=q['peptides_text'].split('\n'))
     if q['experiments_id']:
-        qset = qset.filter(peptideprotein__experiment__in=q['experiments_id'])
+        qset = qset.filter(peptideprotein__experiment__in=[x[0] for x in q['experiments_id']])
     if q['experiments_text']:
         exp_t_q = Q()
         for exp_t in q['experiments_text'].split('\n'):
@@ -68,11 +68,11 @@ def frontpage(request):
         qset = qset.annotate(eupp=Upper('peptideprotein__experiment__analysis__name')).filter(exp_t_q)
         #(eupp__in=[x.upper() for x in q['experiments_text'].split('\n')])
     if q['proteins_id']:
-        qset = qset.filter(peptideprotein__protein__in=q['proteins_id'])
+        qset = qset.filter(peptideprotein__protein__in=[x[0] for x in q['proteins_id']])
     if q['proteins_text']:
         qset = qset.annotate(pupp=Upper('peptideprotein__protein__name')).filter(pupp__in=[x.upper() for x in q['proteins_text'].split('\n')])
     if q['genes_id']:
-        qset = qset.filter(peptideprotein__proteingene__gene__in=q['genes_id'])
+        qset = qset.filter(peptideprotein__proteingene__gene__in=[x[0] for x in q['genes_id']])
     if q['genes_text']:
         qset = qset.annotate(gupp=Upper('peptideprotein__proteingene__gene__name')).filter(gupp__in=[x.upper() for x in q['genes_text'].split('\n')])
     

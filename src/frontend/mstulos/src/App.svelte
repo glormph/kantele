@@ -162,16 +162,26 @@ const idfilterkeys = keys.map(x => `${x}_id`);
 const textfilterkeys = keys.map(x => `${x}_text`);
 
 let selectedrows = {};
-let idlookups = Object.fromEntries(keys.map(x => [x, {}]));
 
-let filters  = Object.fromEntries(textfilterkeys.concat(idfilterkeys).map(x => [x, new Set()]));
+let filters  = Object.fromEntries(textfilterkeys.map(x => [x, '']).concat(idfilterkeys.map(x => [x, {}])));
 filters.expand = Object.fromEntries(keys.slice(1).map(x => [x, 0]));
 
 function filterItems() {
-  let ppge = idfilterkeys.map(x => Array.from(filters[x])).concat(textfilterkeys.map(x => filters[x]))
+  let ppge = idfilterkeys.map(x => Object.entries(filters[x])).concat(textfilterkeys.map(x => filters[x]))
   ppge = ppge.concat(keys.slice(1).map(x => filters.expand[x]));
   const b64filter = btoa(JSON.stringify(ppge));
   location.search = `q=${b64filter}`;
+}
+
+function toggleFromFilter(key, itemid, itemname) {
+  const idkey = `${key}_id`;
+  if (itemid in filters[idkey]) {
+    delete(filters[idkey][itemid]);
+  } else {
+    filters[idkey][itemid] = itemname;
+  }
+  // refresh for svelte to update elements
+  filters[idkey] = filters[idkey];
 }
 
 function toggleSelectRow(event) {
@@ -198,21 +208,12 @@ function openPeptideTable() {
 
 
 onMount(async() => {
-  const idfilters = Object.fromEntries(idfilterkeys.map(x => [x, new Set(prefilters[x])]));;
+  const idfilters = Object.fromEntries(idfilterkeys.map(x => [x, Object.fromEntries(prefilters[x])]));;
   const textfilters = Object.fromEntries(textfilterkeys.map(x => [x, prefilters[x]]));;
   filters = Object.assign(idfilters, textfilters, {expand: prefilters.expand});
-  idlookups = Object.fromEntries(keys.map(x => [x, {}]));
 });
-
-/* FIXME Id lookups for filters shouldn ot be sent to the server, but they should be sent to the client on
-page refresh to keep the names
-*/
 </script>
 
-<style>
-</style>
-
-<h2 class="title is-2">MSTulos </h2>
 
 <div class="tile is-ancestor">
   <div class="tile is-parent is-2">
@@ -257,16 +258,16 @@ page refresh to keep the names
               </div>
               <div>
                 <label class="label">Peptides (ids)</label>
-                {#if !filters.peptides_id.size}
+                {#if !Object.keys(filters.peptides_id).length}
                 -
                 {/if}
                 <div class="field is-grouped is-grouped-multiline">
-                  {#each Array.from(filters.peptides_id) as pepid}
+                  {#each Object.entries(filters.peptides_id) as [pepid, pepseq]}
                   <div class="control">
                     <span class="tags has-addons">
                       <span class="tag">{pepid}</span>
-                      <span class="tag is-primary">{idlookups.peptides[pepid]}
-                        <button class="delete"/>
+                      <span class="tag is-primary">{pepseq}
+                        <button on:click={e => toggleFromFilter('peptides', pepid, '')} class="delete"/>
                       </span>
                     </span>
                   </div>
@@ -283,16 +284,16 @@ page refresh to keep the names
               </div>
               <div>
                 <label class="label">Proteins (ids)</label>
-                {#if !filters.proteins_id.size}
+                {#if !Object.keys(filters.proteins_id).length}
                 -
                 {/if}
                 <div class="field is-grouped is-grouped-multiline">
-                  {#each Array.from(filters.proteins_id) as pid}
+                  {#each Object.entries(filters.proteins_id) as [pid, pname]}
                   <div class="control">
                     <span class="tags has-addons">
                       <span class="tag">{pid}</span>
-                      <span class="tag is-primary">{idlookups.proteins[pid]}
-                        <button class="delete"/>
+                      <span class="tag is-primary">{pname}
+                        <button on:click={e => toggleFromFilter('proteins', pid, '')} class="delete"/>
                       </span>
                     </span>
                   </div>
@@ -309,16 +310,16 @@ page refresh to keep the names
               </div>
               <div>
                 <label class="label">Genes (ids)</label>
-                {#if !filters.genes_id.size}
+                {#if !Object.keys(filters.genes_id).length}
                 -
                 {/if}
                 <div class="field is-grouped is-grouped-multiline">
-                  {#each Array.from(filters.genes_id) as gid}
+                  {#each Object.entries(filters.genes_id) as [gid, gn]}
                   <div class="control">
                     <span class="tags has-addons">
                       <span class="tag">{gid}</span>
-                      <span class="tag is-primary">{idlookups.genes[gid]}
-                        <button class="delete"/>
+                      <span class="tag is-primary">{gn}
+                        <button on:click={e => toggleFromFilter('genes', gid, '')} class="delete"/>
                       </span>
                     </span>
                   </div>
@@ -335,16 +336,16 @@ page refresh to keep the names
               </div>
               <div>
                 <label class="label">Experiments(ids)</label>
-                {#if !filters.experiments_id.size}
+                {#if !Object.keys(filters.experiments_id).length}
                 -
                 {/if}
                 <div class="field is-grouped is-grouped-multiline">
-                  {#each Array.from(filters.experiments_id) as eid}
+                  {#each Object.entries(filters.experiments_id) as [eid, ename]}
                   <div class="control">
                     <span class="tags has-addons">
                       <span class="tag">{eid}</span>
-                      <span class="tag is-primary">{idlookups.experiments[eid]}
-                        <button class="delete"/>
+                      <span class="tag is-primary">{ename}
+                        <button on:click={e => toggleFromFilter('experiments', eid, '')} class="delete"/>
                       </span>
                     </span>
                   </div>
@@ -371,7 +372,7 @@ page refresh to keep the names
   </thead>
   <tbody>
     {#each data as row}
-    <Tablerow first={['peptides', row.seq, row.id]} rest={row} keys={keys} on:togglecheck={toggleSelectRow} bind:filters={filters} bind:idlookups={idlookups} />
+    <Tablerow first={['peptides', row.seq, row.id]} rest={row} keys={keys} on:togglecheck={toggleSelectRow} toggleFromFilter={toggleFromFilter} bind:filters={filters} />
     {/each}
   </tbody>
 </table>
