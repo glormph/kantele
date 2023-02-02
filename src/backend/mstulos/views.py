@@ -31,7 +31,6 @@ def paginate(qset, pnr):
     page_context = {'last_res_nr': page.end_index(), 'total_res_nr': pages.count,
             'first_res_nr': page.start_index(), 'page_nr': pnr,
             'pagerange': [x for x in pages.get_elided_page_range(pnr, on_each_side=2, on_ends=1)]}
-    print(page_context)
     return page, page_context
 
 

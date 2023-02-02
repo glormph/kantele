@@ -81,7 +81,6 @@ onMount(async() => {
       <h5 class="title is-5">Selected peptides</h5>
       <button on:click={openPSMTable} class="button">Show PSMs</button>
       <button on:click={openPeptideTable} class="button">Show peptides</button>
-      - Plot data
     </article>
   </div>
   <div class="tile is-parent">
@@ -238,4 +237,8 @@ onMount(async() => {
     {/each}
   </tbody>
 </table>
+
+{#if !data.length}
+<div class="has-text-centered">No data found for this query</div>
+{/if}
 

@@ -23,10 +23,11 @@
   </h4>
   {% endblock titles %}
 
-  {% block pages %}
-  <div> Showing row {{ first_res_nr }} to {{ last_res_nr }} of {{ total_res_nr }} </div>
+  {% if tulos_data|length %}
+  <div class="container is-fluid"> Showing row {{ first_res_nr }} to {{ last_res_nr }} of {{ total_res_nr }}
    {% include 'mstulos/pagination.html' %}
-  {% endblock pages %}
+  </div>
+  {% endif %}
 
 
 {% block tables %}

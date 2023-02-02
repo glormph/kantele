@@ -6,10 +6,6 @@ urlpatterns = [
         path('', views.frontpage, name='front'),
         path('peptides/', views.peptide_table),
         path('psms/', views.psm_table),
-        path('find/', views.find_query),
-        path('result/<str:restype>/<int:resid>/', views.get_results),
-        path('data/', views.get_data),
-
         path('upload/proteins/', views.upload_proteins, name='upload_proteins'),
         path('upload/peptide_proteins/', views.upload_pepprots, name='upload_pepprots'),
         path('upload/peptides/', views.upload_peptides, name='upload_peptides'),
