@@ -1,0 +1,43 @@
+{% extends "mstulos/front.html" %}
+
+
+{% block head %}
+{% endblock head %}
+
+
+<!-- at the moment this is a django template, reconsider to do JS when needed, but keep in mind that this is the least complex! -->
+
+<!-- TODO
+  sorting on score, FDR, scan number
+  linking back to analysis in home view?
+  modification things?
+-->
+
+{% block titles %}
+{% endblock titles %}
+
+{% block tables %}
+  <table class="table is-striped">
+    <thead>
+      <th>Sequence</th>
+      <th>FDR</th>
+      <th>PSM count</th>
+      <th>Sample / set</th>
+      <th>Experiment</th>
+    </thead>
+
+    <tbody>
+      {%for pep in peptides %}
+      <tr>
+        <td> {{ pep.peptide__encoded_pep }} </td>
+        <td> {{ pep.peptidefdr__fdr }} </td>
+        <td> {{ pep.amountpsmspeptide__value }} </td>
+        <td> {{ pep.setorsample__name }} </td>
+        <td> {{ pep.setorsample__experiment__analysis__name }} </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+
+{% endblock tables %}

@@ -20,6 +20,21 @@ from jobs import views as jv
 # create plots for TMT
 # gene/protein centric tables
 
+def paginate(qset, pnr):
+    pages = Paginator(qset, 100)
+    pages.ELLIPSIS = '__'
+    try:
+        pnr = int(pnr)
+    except ValueError:
+        pnr = 1
+    page = pages.get_page(pnr)
+    page_context = {'last_res_nr': page.end_index(), 'total_res_nr': pages.count,
+            'first_res_nr': page.start_index(), 'page_nr': pnr,
+            'pagerange': [x for x in pages.get_elided_page_range(pnr, on_each_side=2, on_ends=1)]}
+    print(page_context)
+    return page, page_context
+
+
 # peptide centric:
 @login_required
 def frontpage(request):
@@ -78,10 +93,9 @@ def frontpage(request):
             fields.difference_update(agg_fields[aggr_col])
         
     qset = qset.values(*fields).order_by('pk')
-    pages = Paginator(qset, 100)
-    pnr = q.get('page', 1)
-    page = pages.get_page(pnr)
     rows = []
+    pnr = request.GET.get('page', 1)
+    page, page_context = paginate(qset, pnr)
     for pep in page:
         agg_prots = pep.get('proteins', False)
         agg_genes = pep.get('genes', False)
@@ -109,8 +123,11 @@ def frontpage(request):
         if not agg_exps:
             row['experiments'] = [(eid, exp)]
         rows.append(row)
-    return render(request, 'mstulos/front.html', {'tulos_data': rows, 
-        'filters': q, 'page_nr': pnr})
+    context = {'tulos_data': rows, 'filters': q, **page_context,
+            'total_exp': m.Experiment.objects.filter(upload_complete=True).count(), 'q': rawq or '',
+            'total_pep': m.PeptideSeq.objects.count(),
+            }
+    return render(request, 'mstulos/front_pep.html', context=context)
 
 
 #@login_required
@@ -127,10 +144,10 @@ def peptide_table(request):
     for pepid, exps in pepquery.items():
         filterq |= Q(peptide__sequence_id=pepid, setorsample__experiment__in=exps)
     peptides = m.IdentifiedPeptide.objects.filter(filterq).values('peptide__encoded_pep', 'peptidefdr__fdr', 'amountpsmspeptide__value', 'setorsample__name', 'setorsample__experiment__analysis__name').order_by('peptide_id', 'setorsample__experiment_id', 'setorsample_id')
-    pages = Paginator(peptides, 100)
     pnr = request.GET.get('page', 1)
-    page = pages.get_page(pnr)
-    return render(request, 'mstulos/peptides.html', context={'peptides': page})
+    page, page_context = paginate(peptides, pnr)
+    context = {'peptides': page, **page_context}
+    return render(request, 'mstulos/peptides.html', context=context)
     
 
 
@@ -155,11 +172,12 @@ def psm_table(request):
         pepexps = [exp_files[eid] for eid in exps]
         filterq |= Q(peptide__sequence_id=pepid, filecond__experiment__in=exps)
     sample_cond = 'filecond__parent_conds__name'
-    qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score', 'filecond__experiment__analysis__name', 'sample_or_set').order_by('peptide_id', 'filecond__experiment_id', 'sample_or_set_id')
-    pages = Paginator(qset, 100)
+    sample_cond_id = 'filecond__parent_conds__id'
+    qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score', 'filecond__experiment__analysis__name', 'sample_or_set').order_by('peptide_id', 'filecond__experiment_id', sample_cond_id)
     pnr = request.GET.get('page', 1)
-    page = pages.get_page(pnr)
-    return render(request, 'mstulos/psms.html', context={'psms': page})
+    page, page_context = paginate(qset, pnr)
+    context = {'psms': page, **page_context}
+    return render(request, 'mstulos/psms.html', context=context)
 
 
 @login_required

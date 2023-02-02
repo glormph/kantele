@@ -15,9 +15,25 @@
 
 {% block content %}
 
-<div class="container is-fluid" id="app">
+<div class="container is-fluid">
+
+  {% block titles %}
+  <h3 class="title is-3">MSTulos </h3>
+  <h4 class="subtitle is-4">
+    Results DB contains {{ total_pep }} peptide sequences from {{ total_exp }} experiments
+  </h4>
+  {% endblock titles %}
+
+  {% block pages %}
+  <div> Showing row {{ first_res_nr }} to {{ last_res_nr }} of {{ total_res_nr }} </div>
+   {% include 'mstulos/pagination.html' %}
+  {% endblock pages %}
 
 
+{% block tables %}
+{% endblock tables %}
 
-</div>
+   {% include 'mstulos/pagination.html' %}
+</div> 
+
 {% endblock content %}
