@@ -137,8 +137,13 @@ def recurse_nrdsets_baseanalysis(aba):
     # First get stripnames of old ds
     strips = {}
     for oldads in aba.base_analysis.analysisdatasetsetname_set.select_related('dataset__prefractionationdataset__hiriefdataset'):
-        hirief = oldads.dataset.prefractionationdataset.hiriefdataset.hirief
-        strips[oldads.dataset_id] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(hirief).split('-')])
+        if hasattr(oldads.dataset, 'prefractionationdataset'):
+            pfd = oldads.dataset.prefractionationdataset
+            if hasattr(pfd, 'hiriefdataset'):
+                hirief = pfd.hiriefdataset.hirief
+                strips[oldads.dataset_id] = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(hirief).split('-')])
+            else:
+                strips[oldads.dataset_id] = pfd.prefractionation.name
     # Put old files fields into the run dict, group them by set so we dont get duplicates in case an analysis chain is:
     # 1. setA + setB
     # 2. setB rerun based on 1.
@@ -149,11 +154,16 @@ def recurse_nrdsets_baseanalysis(aba):
     for asf in models.AnalysisDSInputFile.objects.filter(
             analysis=aba.base_analysis).select_related(
                     'sfile__rawfile__producer', 'analysisdset__setname'):
+        if asf.analysisdset.regex:
+            frnr = re.match(asf.analysisdset.regex, asf.sfile.filename) or False
+            frnr = frnr.group(1) if frnr else 'NA'
+        else:
+            frnr = 'NA'
         oldasf = {'fn': asf.sfile.filename,
                 'instrument': asf.sfile.rawfile.producer.name,
                 'setname': asf.analysisdset.setname.setname,
                 'plate': strips[asf.analysisdset.dataset_id],
-                'fraction': re.match(asf.analysisdset.regex, asf.sfile.filename).group(1),
+                'fraction': frnr,
                 }
         try:
             single_ana_oldmzml[asf.analysisdset.setname.setname].append(oldasf)
