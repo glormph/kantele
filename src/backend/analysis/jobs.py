@@ -113,7 +113,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 
             'job_id': self.job_id, 'workflow_id': wf.id, 'token': 'nf-{}'.format(uuid4)},
             analysis=analysis)
-        self.run_tasks.append(((run, params, stagefiles, nfwf.nfversion), {}))
+        self.run_tasks.append(((run, params, stagefiles, ','.join(nfwf.profiles), nfwf.nfversion), {}))
         analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()
 
