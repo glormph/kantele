@@ -83,7 +83,7 @@ class StoredFile(models.Model):
     path = models.TextField()
     regdate = models.DateTimeField(auto_now_add=True)
     md5 = models.CharField(max_length=32, unique=True)
-    checked = models.BooleanField()
+    checked = models.BooleanField(default=False)
     # TODO put filetype on the RawFile instead of storedfile? Possible?
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     deleted = models.BooleanField(default=False) # marked for deletion by user, only UI

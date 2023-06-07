@@ -78,7 +78,7 @@ def import_external_data(request):
                 StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
                         filetype_id=extprod.msinstrument.filetype_id, filename=fn,
                         defaults={'servershare_id': share.id, 'path': os.path.join(req['dirname'], path),
-                            'md5': fakemd5, 'checked': False})
+                            'md5': fakemd5})
         # Jobs to get MD5 etc
         jobutil.create_job('register_external_raw', dset_id=dset.id, rawfnids=raw_ids, sharename=share.name)
     return JsonResponse({})
@@ -539,7 +539,7 @@ def transfer_file(request):
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
             defaults={'servershare': dstshare, 'path': settings.TMPPATH,
-                'filename': fname, 'checked': False})
+                'filename': fname})
     if not created:
         # This could happen in the future when there is some kind of bypass of the above
         # check sfns.count(). 
@@ -810,7 +810,7 @@ def download_px_project(request):
             ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw').id
             StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'], filetype_id=ftid,
                     filename=fn, defaults={'servershare_id': tmpshare, 'path': '',
-                        'md5': fakemd5, 'checked': False})
+                        'md5': fakemd5})
     rsjob = jobutil.create_job(
         'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], sharename=settings.TMPSHARENAME, shasums=shasums)
     return HttpResponse()

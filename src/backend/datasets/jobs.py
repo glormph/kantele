@@ -295,7 +295,7 @@ def get_or_create_mzmlentry(fn, pwiz, refined=False, servershare_id=False):
         servershare_id = fn.servershare_id
     mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
     mzsf, cr = StoredFile.objects.update_or_create(mzmlfile__pwiz=pwiz, mzmlfile__refined=refined,
-            rawfile_id=fn.rawfile_id, filetype_id=fn.filetype_id, defaults={'checked': False,
+            rawfile_id=fn.rawfile_id, filetype_id=fn.filetype_id, defaults={
                 'md5': f'mzml_{fn.rawfile.source_md5[5:]}', 'servershare_id': servershare_id,
                 'filename': mzmlfilename, 'path': fn.rawfile.datasetrawfile.dataset.storage_loc})
     if cr:

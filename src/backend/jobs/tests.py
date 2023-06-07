@@ -120,7 +120,7 @@ class TestUpdateStorageLocFile(BaseJobTest):
                 source_md5='r328j9dqhj32qh98ddh3982q',
                 size=100, date=timezone.now(), claimed=False)
         sf2 = rm.StoredFile.objects.create(rawfile=raw2, filename=raw2.name, servershare=self.ssnewstore,
-                path='', md5=raw2.source_md5, checked=False, filetype=self.ft)
+                path='', md5=raw2.source_md5, filetype=self.ft)
         newshare = rm.ServerShare.objects.create(name='newshare', server=self.newfserver, share='/')
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'client_id': settings.ANALYSISCLIENT_APIKEY, 'fn_ids': [self.oldsf.pk, sf2.pk],
