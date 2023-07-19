@@ -407,7 +407,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             if cts_id not in ledger:
                 logger.warning(f'Could not find file with ID {fndata["fn_id"]} locally')
                 continue
-            ldesc, udesc = library_descs.get(fndata['fpath']), user_descs.get(fndata['fpath'])
+            ldesc, udesc = library_descs.get(fndata['fpath'], False), user_descs.get(fndata['fpath'], False)
             try:
                 resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
                         ldesc, udesc, cookies, kantelehost)
@@ -482,7 +482,7 @@ def main():
     proc_log_configure(logqueue)
     clientname = config.get('hostname', '')
     logger = logging.getLogger(f'{clientname}.producer.main')
-    libdesc, userdesc = False, False
+    libdescs, userdescs = {}, {}
 
     if not config.get('client_id', False):
         # Parse token gotten from web UI, this is needed so Kantele knows
@@ -493,7 +493,6 @@ def main():
         except ValueError:
             print('Incorrect token')
             sys.exit(1)
-        libdescs, userdescs = {}, {}
         # Windows doesnt have shell expansion or multi-arguments in cmd.exe, so use glob
         if sys.platform.startswith('win'):
             args.files = glob(args.files[0])
@@ -539,7 +538,7 @@ def main():
         processes = [collect_p]
         collect_p.start()
         processes.extend(start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
-            donebox, False, config['host'], clientname, libdescs, userdescs))
+            donebox, config['host'], clientname, libdescs, userdescs))
     elif args.files:
         print('New files found, calculating checksum')
         # Multi file upload by user with token from web GUI
