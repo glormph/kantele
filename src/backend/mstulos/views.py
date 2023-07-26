@@ -12,6 +12,7 @@ from django.core.paginator import Paginator
 
 from mstulos import models as m
 from jobs import views as jv
+from datasets import models as dm
 
 
 # FIXME:
@@ -52,11 +53,13 @@ def frontpage(request):
         for feat, exp_ix in zip(featfields[1:], range(field_ix + 1, field_ix + 4)):
             q['expand'][feat] = getq[exp_ix]
         q['pep_excludes'] = getq[exp_ix + 1]
+        q['datatypes'] = getq[exp_ix + 2]
     else:
         q = {f: [] for f in idfields}
         q.update({**{f: '' for f in textfields}, **{f: 1 for f in exactfields}})
         q['experiments_text_exact'] = 0
         q['pep_excludes'] = ''
+        q['datatypes'] = {'dia': True, 'dda': True}
         q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
     # first query filtering:
     qset = m.PeptideSeq.objects
@@ -107,6 +110,17 @@ def frontpage(request):
             for ptxt in q['proteins_text'].upper().split('\n'):
                 ptxtq |= Q(pupp__contains=ptxt)
             qset = qset.filter(ptxtq)
+
+    if not all(q['datatypes'].values()):
+        # FIXME datasets can migrate to have proper DB col for DIA/DDA, will get easier
+        # lookups here
+        dt_q = Q()
+        dtypes_db = {x.value.upper(): x for x in dm.SelectParameterOption.objects.filter(param__title='Acquisition mode')}
+        for dtype, keep_dt in q['datatypes'].items():
+            if keep_dt:
+                dt_q |= Q(peptideprotein__experiment__analysis__datasetsearch__dataset__selectparametervalue__value=dtypes_db[dtype.upper()])
+        qset = qset.filter(dt_q)
+
     if q['genes_id']:
         qset = qset.filter(peptideprotein__proteingene__gene__in=[x[0] for x in q['genes_id']])
     if q['genes_text']:

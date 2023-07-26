@@ -304,6 +304,7 @@ class DatasetSearch(models.Model):
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     # cannot put setname here because of searches without dset/setname
     # purely a reporting model this is
+    # Also used in e.g. mstulos finding datasets to an analysis
 
 
 class AnalysisIsoquant(models.Model):

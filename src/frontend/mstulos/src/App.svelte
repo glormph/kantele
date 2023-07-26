@@ -18,6 +18,7 @@ function clearFilters() {
     .concat(exacttextfilterkeys.map(x => [x, 0]))
   );
   filters.pep_excludes = '';
+  filters.datatypes = {dia: false, dda: false};
   filters.expand = Object.fromEntries(keys.slice(1).map(x => [x, 0]));
 }
 clearFilters();
@@ -27,7 +28,8 @@ function filterItems() {
     .map(x => Object.entries(filters[x]))
     .concat(textfilterkeys.map(x => filters[x]))
     .concat(exacttextfilterkeys.map(x => filters[x]));
-  ppge = ppge.concat(keys.slice(1).map(x => filters.expand[x])).concat(filters.pep_excludes);
+  ppge = ppge.concat(keys.slice(1).map(
+    x => filters.expand[x])).concat(filters.pep_excludes).concat(filters.datatypes);
   const b64filter = btoa(JSON.stringify(ppge));
   location.search = `q=${b64filter}`;
 }
@@ -75,7 +77,11 @@ onMount(async() => {
   const idfilters = Object.fromEntries(idfilterkeys.map(x => [x, Object.fromEntries(prefilters[x])]));;
   const textfilters = Object.fromEntries(textfilterkeys.map(x => [x, prefilters[x]]));;
   const exactfilters = Object.fromEntries(exacttextfilterkeys.map(x => [x, prefilters[x]]));
-  filters = Object.assign(idfilters, textfilters, exactfilters, {expand: prefilters.expand, pep_excludes: prefilters.pep_excludes});
+  filters = Object.assign(idfilters, textfilters, exactfilters, {
+    expand: prefilters.expand,
+    pep_excludes: prefilters.pep_excludes,
+    datatypes: prefilters.datatypes,
+  });
 });
 </script>
 
@@ -104,14 +110,6 @@ onMount(async() => {
         </div>
         <div class="tile is-child">
           <div class="columns"> 
-            <div class="column">
-              {#each keys.slice(1) as k}
-              <div>
-                <input bind:checked={filters.expand[k]} type="checkbox">Expand {k}
-              </div>
-              {/each}
-
-            </div>
             <div class="column">
                 <label class="label">Peptides</label>
                 <input type=checkbox bind:checked={filters.peptides_text_exact}> Exact match (faster)
@@ -223,12 +221,38 @@ onMount(async() => {
           </div>
         </div>
         <div class="tile is-child">
-          <label class="label">Exclude sequences containing:</label>
-          Use sequences or write e.g. <code>intC</code> <br>for internal Cysteine
-          <div class="field has-addons">
-            <div class="control">
-              <textarea bind:value={filters.pep_excludes}></textarea>
+          <div class="columns">
+            <div class="column">
+              <label class="label">Exclude sequences containing:</label>
+              Use sequences or write e.g. <code>intC</code> for internal Cysteine
+              <div class="field has-addons">
+                <div class="control">
+                  <textarea bind:value={filters.pep_excludes}></textarea>
+                </div>
+              </div>
             </div>
+            <div class="column">
+              <div class="field">
+                <label class="label">Acquisition types</label>
+                <div class="control">
+                  <input type=checkbox bind:checked={filters.datatypes.dia} />DIA
+                </div>
+                <div class="control">
+                  <input type=checkbox bind:checked={filters.datatypes.dda} />DDA
+                </div>
+              </div>
+            </div>
+            <div class="column">
+            </div>
+            <div class="column">
+              <label class="label">Expand ("unroll") peptides per feature</label>
+              {#each keys.slice(1) as k}
+              <div>
+                <input bind:checked={filters.expand[k]} type="checkbox">Expand {k}
+              </div>
+              {/each}
+            </div>
+
           </div>
         </div>
         <div class="tile is-child">
