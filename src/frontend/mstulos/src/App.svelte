@@ -22,7 +22,7 @@ function filterItems() {
     .map(x => Object.entries(filters[x]))
     .concat(textfilterkeys.map(x => filters[x]))
     .concat(exacttextfilterkeys.map(x => filters[x]));
-  ppge = ppge.concat(keys.slice(1).map(x => filters.expand[x]));
+  ppge = ppge.concat(keys.slice(1).map(x => filters.expand[x])).concat(filters.pep_excludes);
   const b64filter = btoa(JSON.stringify(ppge));
   location.search = `q=${b64filter}`;
 }
@@ -70,7 +70,7 @@ onMount(async() => {
   const idfilters = Object.fromEntries(idfilterkeys.map(x => [x, Object.fromEntries(prefilters[x])]));;
   const textfilters = Object.fromEntries(textfilterkeys.map(x => [x, prefilters[x]]));;
   const exactfilters = Object.fromEntries(exacttextfilterkeys.map(x => [x, prefilters[x]]));
-  filters = Object.assign(idfilters, textfilters, exactfilters, {expand: prefilters.expand});
+  filters = Object.assign(idfilters, textfilters, exactfilters, {expand: prefilters.expand, pep_excludes: prefilters.pep_excludes});
 });
 </script>
 
@@ -95,6 +95,7 @@ onMount(async() => {
           to ONLY matching peptides matching all of the ID filters, e.g. the 
           above AND only matching geneA
           First prepare your filtering criteria, then click the filter button.
+          Multiple filters in the same box are separated by newlines.
         </div>
         <div class="tile is-child">
           <div class="columns"> 
@@ -217,7 +218,17 @@ onMount(async() => {
           </div>
         </div>
         <div class="tile is-child">
+          <label class="label">Exclude sequences containing:</label>
+          Use sequences or write e.g. <code>intC</code> <br>for internal Cysteine
+          <div class="field has-addons">
+            <div class="control">
+              <textarea bind:value={filters.pep_excludes}></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="tile is-child">
           <button class="button" on:click={filterItems}>Apply filter</button>
+          <button class="button" on:click={clearFilters}>Clear filters</button>
         </div>
       </div>
     </article>

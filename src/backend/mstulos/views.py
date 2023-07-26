@@ -47,19 +47,21 @@ def frontpage(request):
         # this because client doesnt send keys to have shorter b64 qstring
         getq = json.loads(b64decode(rawq))
         q = {f: getq[i] for i, f in enumerate(idfields + textfields + exactfields)}
+        q['pep_excludes'] = getq[-1]
         q['expand'] = {k: v for k,v in zip(qfields[1:],
             getq[len(idfields + textfields + exactfields):])}
     else:
         q = {f: [] for f in idfields}
         q.update({**{f: '' for f in textfields}, **{f: 1 for f in exactfields}})
         q['experiments_text_exact'] = 0
+        q['pep_excludes'] = ''
         q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
     # first query filtering:
     qset = m.PeptideSeq.objects
+    qset = qset.annotate(pepupp=Upper('seq'))
     if q['peptides_id']:
         qset = qset.filter(pk__in=[x[0] for x in q['peptides_id']])
     if q['peptides_text']:
-        qset = qset.annotate(pepupp=Upper('seq'))
         if q['peptides_text_exact']:
             qset = qset.filter(pepupp__in=q['peptides_text'].upper().split('\n'))
         else:
@@ -67,7 +69,22 @@ def frontpage(request):
             for pept in q['peptides_text'].upper().split('\n'):
                 peptq |= Q(pepupp__contains=pept)
             qset = qset.filter(peptq)
-            print(peptq)
+
+    # Exclude sequences if any
+    do_exclude, pepexq = False, Q()
+    internal_aa = []
+    pep_excludes = q['pep_excludes'].split('\n') if q['pep_excludes'] else []
+    for pepex in pep_excludes:
+        do_exclude = True
+        if len(pepex) == 4 and pepex[:3] == 'int':
+            internal_aa.append(pepex[-1].upper())
+        else:
+            pepexq |= Q(pepupp__contains=pepex)
+    if internal_aa:
+        pepexq |= Q(pepupp__regex=f'[A-Z]+[{"".join(internal_aa)}][A-Z]+')
+    if do_exclude:
+        qset = qset.exclude(pepexq)
+
     if q['experiments_id']:
         qset = qset.filter(peptideprotein__experiment__in=[x[0] for x in q['experiments_id']])
     if q['experiments_text']:
