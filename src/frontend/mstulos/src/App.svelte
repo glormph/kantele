@@ -9,13 +9,18 @@ const textfilterkeys = keys.map(x => `${x}_text`);
 const exacttextfilterkeys = keys.map(x => `${x}_text_exact`);
 
 let selectedrows = {};
+let filters;
 
-let filters  = Object.fromEntries(
-  textfilterkeys.map(x => [x, ''])
-  .concat(idfilterkeys.map(x => [x, {}]))
-  .concat(exacttextfilterkeys.map(x => [x, 0]))
-);
-filters.expand = Object.fromEntries(keys.slice(1).map(x => [x, 0]));
+function clearFilters() {
+  filters = Object.fromEntries(
+    textfilterkeys.map(x => [x, ''])
+    .concat(idfilterkeys.map(x => [x, {}]))
+    .concat(exacttextfilterkeys.map(x => [x, 0]))
+  );
+  filters.pep_excludes = '';
+  filters.expand = Object.fromEntries(keys.slice(1).map(x => [x, 0]));
+}
+clearFilters();
 
 function filterItems() {
   let ppge = idfilterkeys
