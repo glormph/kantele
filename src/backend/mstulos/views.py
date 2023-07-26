@@ -38,18 +38,20 @@ def paginate(qset, pnr):
 @login_required
 def frontpage(request):
     rawq = request.GET.get('q', False)
-    qfields = ['peptides', 'proteins', 'genes', 'experiments']
-    textfields = [f'{x}_text' for x in qfields] 
-    exactfields = [f'{x}_text_exact' for x in qfields]
-    idfields = [f'{x}_id' for x in qfields]
+    featfields = ['peptides', 'proteins', 'genes', 'experiments']
+    textfields = [f'{x}_text' for x in featfields] 
+    exactfields = [f'{x}_text_exact' for x in featfields]
+    idfields = [f'{x}_id' for x in featfields]
     if rawq:
         # fields/text/id must have right order as in client?
         # this because client doesnt send keys to have shorter b64 qstring
         getq = json.loads(b64decode(rawq))
-        q = {f: getq[i] for i, f in enumerate(idfields + textfields + exactfields)}
-        q['pep_excludes'] = getq[-1]
-        q['expand'] = {k: v for k,v in zip(qfields[1:],
-            getq[len(idfields + textfields + exactfields):])}
+        q = {'expand': {}}
+        for field_ix, f in enumerate(idfields + textfields + exactfields):
+            q[f] = getq[field_ix] 
+        for feat, exp_ix in zip(featfields[1:], range(field_ix + 1, field_ix + 4)):
+            q['expand'][feat] = getq[exp_ix]
+        q['pep_excludes'] = getq[exp_ix + 1]
     else:
         q = {f: [] for f in idfields}
         q.update({**{f: '' for f in textfields}, **{f: 1 for f in exactfields}})
@@ -125,7 +127,7 @@ def frontpage(request):
             'genes': ('peptideprotein__proteingene__gene__name', 'peptideprotein__proteingene__gene_id'),
             'experiments': ('peptideprotein__experiment__analysis__name', 'peptideprotein__experiment_id'),
             }
-    for aggr_col in qfields[1:]:
+    for aggr_col in featfields[1:]:
         if not q['expand'][aggr_col]:
             qset = qset.annotate(**{aggr_col: ArrayAgg(agg_fields[aggr_col][0])})
             idkey = f'{aggr_col}_id'
