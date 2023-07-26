@@ -5,7 +5,7 @@ services:
     storage:
         image: django_test
         build:
-            context: "${BUILD_CONTEXT_DEV:-./src}"
+            context: "${BUILD_CONTEXT_DEV:-../}"
             dockerfile: ./docker/Dockerfile
             target: django_test
             args:
@@ -13,14 +13,13 @@ services:
                 GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
         volumes:
             - ../../data/storage:/storage
-              #- ../../data/newstorage:/s3storage
+            - ../../data/newstorage:/s3storage
             - ../backend:/kantele
         environment:
             APIKEY: "${APIKEY_STORAGE}"
             KANTELEHOST: nginx
             PROTOCOL: http
-            TMPSHARE: '/storage/tmp'
-            WEBSHARE: '/storage/web'
+            TMPSHARE: '/s3storage/tmp'
             ANALYSISSHARE: '/storage/analysis'
             RABBITHOST: mq
             RABBIT_VHOST: "${RABBIT_VHOST}"
@@ -28,3 +27,4 @@ services:
             RABBITPASS: "${RABBITPASS:-guest}"
             STORAGESHARENAMES: "storage,s3storage"
             STORAGESHARES: '/storage/storage,/s3storage/storage'
+            PRIMARY_STORAGE: s3storage

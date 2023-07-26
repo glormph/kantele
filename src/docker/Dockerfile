@@ -49,8 +49,31 @@ RUN cd /src/frontend/home && npm install && npm run build
 FROM nginx:1.21 AS nginx_stage
 COPY --from=django_static /kantele/static /static
 
+
 # For prod also copy in the relevant config files
 FROM nginx_stage AS nginx_prod
 COPY --from=build_frontend /static /static
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/uwsgi_params /etc/nginx/uwsgi_params
+
+
+# Rsync SSH host for testing (SSHD would run on the web host machine outside of container
+# in normal circumstances)
+FROM ubuntu:22.04 AS rsync_storage
+RUN apt-get update && apt-get install -y openssh-server rsync
+ARG USER_ID
+ARG GROUP_ID
+RUN addgroup --system --gid $GROUP_ID kantele
+RUN adduser --system --uid $USER_ID --gid $GROUP_ID --shell /bin/bash kantele
+RUN mkdir /home/kantele/.ssh && chown kantele:kantele /home/kantele/.ssh && chmod 700 /home/kantele/.ssh
+RUN mkdir /root/.ssh && chmod 700 /root/.ssh
+CMD service ssh start -D
+
+
+# Analysis if needed
+FROM django AS nextflow
+USER root
+RUN apt install -y openjdk-17-jre
+RUN mkdir /nxf && cd /nxf && curl -s https://get.nextflow.io | bash
+RUN chown -R kantele:kantele /nxf
+USER kantele
