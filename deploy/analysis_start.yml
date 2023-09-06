@@ -1,0 +1,80 @@
+# Playbook to start analysis workers
+#
+- hosts: analysis
+  remote_user: '{{ analysis_connect_user }}'
+  tasks:
+      - name: Mount storages
+        become: yes
+        mount:
+            path: "{{ item.0 }}"
+            src: "{{ item.1 }}"
+            state: mounted
+            fstype: cifs
+            opts: credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}
+        loop: "{{ storagedirs | zip(storageservers) | list }}"
+        
+      - name: Mount analysis
+        become: yes
+        mount:
+            path: "{{ item.0 }}"
+            src: "{{ item.1 }}"
+            state: mounted
+            fstype: cifs
+            opts: rw,credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}
+        loop: "{{ analysisdirs | zip(analysisservers) | list }}"
+
+      - name: Mount work and stage disks
+        become: yes
+        mount:
+            path: "{{ item[0] }}"
+            src: "{{ item[1] }}"
+            state: mounted
+            fstype: ext4
+            opts: rw
+        loop:
+            - "{{ [ stage_mount, stage_device] }}"
+            - "{{ [ baserun_mount, baserun_device] }}"
+
+            ### DOCKER UP
+            ### SLURM UP
+            ### SLURM MYSQL>???
+      - name: Create work and stage dirs
+        become: yes
+        file: 
+            path: "{{ item }}"
+            state: directory
+            owner: "{{ kanteleuser }}"
+            group: "{{ kanteleuser }}"
+        loop:
+            - "{{ stage_dir }}"
+            - "{{ baserun_dir }}"
+            - "{{ larger_rundir }}"
+
+      - name: Kantele celery env file
+        become: yes
+        become_user: "{{ kanteleuser }}"
+        template:
+            src: celery_analysis_systemd_env.j2
+            dest: "{{ celeryenv_file }}"
+            mode: 0400
+
+      - name: Kantele celery analysis tasks
+        become: yes
+        template:
+            src: analysis_celery_systemd.j2
+            dest: /etc/systemd/system/kantele_analysis.service
+            mode: 0644
+        
+      - name: Kantele log dir
+        file:
+            path: "{{ kantelelogdir }}"
+            state: directory
+            owner: "{{ kanteleuser }}"
+            group: "{{ kanteleuser }}"
+
+      - name: Start celery
+        become: yes
+        systemd:
+            state: started 
+            daemon_reload: yes
+            name: kantele_analysis

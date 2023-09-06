@@ -1,0 +1,32 @@
+---
+# Stops workers on storage controller
+
+- hosts: storage
+  remote_user: '{{ storage_connect_user }}'
+  become: yes
+  become_user: '{{ storage_user }}'
+  tasks:
+      - name: Get celery processes running
+        shell: "ps x | grep -v grep | grep -w celery | awk '{print $1}'"
+        register: running_celery
+
+      - name: Kill running celery
+        command: "kill {{ item }}"
+        register: result
+        failed_when:
+            - result.rc != 0
+            - "'no process killed' not in result.stderr"
+            - "'No such process' not in result.stderr"
+        loop: "{{ running_celery.stdout_lines }}"
+
+      - wait_for:
+          path: "/proc/{{ item }}/status"
+          state: absent
+          timeout: 300
+        loop: "{{ running_celery.stdout_lines }}"
+        ignore_errors: yes
+        register: killed_processes
+         
+      - name: Kill -9 celery that doesnt die
+        shell: "kill -9 {{ item }}"
+        loop: "{{ killed_processes.results | select('failed') | map(attribute='item') | list }}"
