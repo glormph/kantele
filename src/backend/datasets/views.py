@@ -211,6 +211,28 @@ def dataset_sampleprep(request, dataset_id):
 
 
 @login_required
+def dataset_seqsamples(request, dataset_id):
+    response_json = empty_seqsamples_json()
+    if dataset_id:
+        dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
+        response_json['samples'] = {fn.id: {'model': '', 'newprojsample': ''} 
+                for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
+        if not dset:
+            return HttpResponseNotFound()
+        ssfiles = models.SeqSampleFile.objects.filter(
+            rawfile__dataset_id=dataset_id)
+        response_json['samples'].update(
+                {fn.rawfile_id: {'model': str(fn.projsample_id), 'newprojsample': ''}
+                    for fn in ssfiles})
+        # species for dset and mostused ones TODO make sample specific
+        response_json['species'] = [{'id': x.species.id, 'linnean': x.species.linnean, 'name': x.species.popname} 
+                for x in models.DatasetSpecies.objects.select_related('species').filter(dataset_id=dataset_id)]
+        #########
+        get_admin_params_for_dset(response_json, dataset_id, 'seqsamples')
+    return JsonResponse(response_json)
+
+
+@login_required
 def show_pooled_lc_nods(request):
     return show_pooled_lc(request, False)
 
@@ -1134,6 +1156,16 @@ def empty_sampleprep_json():
             }
 
 
+def empty_seqsamples_json():
+    params = get_dynamic_emptyparams('seqsamples')
+    return {'params': params, 'species': [],
+            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
+                'name': x['species__popname'], 'total': x['total']} 
+                for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
+            }
+
+
 def fill_admin_selectparam(params, p, value=False):
     """Fills params dict with select parameters passed, in proper JSON format
     This takes care of both empty params (for new dataset), filled parameters,
@@ -1531,6 +1563,65 @@ def save_sampleprep(request):
     models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
         dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
     set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
+    return JsonResponse({})
+
+
+@login_required
+def save_sequencing_samples(request):
+    '''This endpoint is for saving samples that are not MS, so only file+sample,
+    typically for sequencing datasets with files like BAM, etc'''
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return user_denied
+    dset_id = data['dataset_id']
+    dsr_ids = [fid for fid in [x['associd'] for x in data['filenames']]]
+    if models.SeqSampleFile.objects.filter(rawfile_id__in=dsr_ids).count():
+        return update_sequencing_samples(data)
+
+    models.SeqSampleFile.objects.bulk_create([
+            models.SeqSampleFile(rawfile_id=fid, projsample_id=data['samples'][str(fid)]['model'])
+            for fid in dsr_ids])
+    # TODO sample type, species to sample specific
+    save_admin_defined_params(data, dset_id)
+    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
+        dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
+    set_component_state(dset_id, 'seqsamples', COMPSTATE_OK)
+    return JsonResponse({})
+
+
+def update_sequencing_samples(data):
+    dset_id = data['dataset_id']
+    oldssf = models.SeqSampleFile.objects.filter(
+        rawfile__dataset_id=dset_id)
+    oldssf = {x.rawfile_id: x for x in oldssf}
+    # iterate filenames because that is correct object, 'samples'
+    # can contain models that are not active
+    for fn in data['filenames']:
+        try:
+            samplefile = oldssf.pop(fn['associd'])
+        except KeyError:
+            models.SeqSampleFile.objects.create(
+                rawfile_id=fn['associd'],
+                projsample_id=data['samples'][str(fn['associd'])]['model'])
+        else:
+            if data['samples'][str(fn['associd'])]['model'] != samplefile.projsample_id:
+                samplefile.projsample_id = data['samples'][str(fn['associd'])]['model']
+                samplefile.save()
+    # delete non-existing ssf (files have been popped)
+    [ssf.delete() for ssf in oldssf.values()]
+    dset = models.Dataset.objects.get(pk=dset_id)
+    update_admin_defined_params(dset, data, 'seqsamples')
+    # update species, TODO sample specific!
+    savedspecies = {x.species_id for x in
+                    models.DatasetSpecies.objects.filter(dataset_id=dset_id)}
+    newspec = {int(x['id']) for x in data['species']}
+    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
+        dataset_id=dset_id, species_id=spid)
+        for spid in newspec.difference(savedspecies)])
+    models.DatasetSpecies.objects.filter(
+        species_id__in=savedspecies.difference(newspec)).delete()
+    set_component_state(dset_id, 'seqsamples', COMPSTATE_OK)
     return JsonResponse({})
 
 

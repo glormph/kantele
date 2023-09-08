@@ -236,6 +236,11 @@ class ProjectSample(models.Model):
         unique_together = [['sample', 'project']]
 
 
+class SeqSampleFile(models.Model):
+    rawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
+    projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+
+
 class QuantSampleFile(models.Model):
     rawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
