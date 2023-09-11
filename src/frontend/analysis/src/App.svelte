@@ -313,7 +313,7 @@ async function fetchDatasetDetails(fetchdsids) {
     // API v1 stuff
     const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
     config.version_dep.v1.dtype = dtypes.size > 1 ? 'mixed' : dtypes.keys().next().value;
-    const qtypes = new Set(Object.values(dsets).map(ds => ds.details.qtypeshort));
+    const qtypes = new Set(Object.values(dsets).map(ds => ds.details.qtype.short));
     if (config.v1 && qtypes.size > 1) {
       notif.errors['Mixed quant types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
     } else {
@@ -456,7 +456,7 @@ function updateIsoquant() {
       notif.errors[errmsg] = 0;
       if (ds.setname && !(ds.setname in config.isoquants)) {
         config.isoquants[ds.setname] = {
-          chemistry: ds.details.qtypeshort,
+          chemistry: ds.details.qtype.short,
           channels: ds.details.channels,
           samplegroups: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, ''])),
           denoms: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, false])),
@@ -642,7 +642,7 @@ onMount(async() => {
   {#each Object.values(dsets) as ds}
   <div class="box">
     {#if ds.dtype.toLowerCase() === 'labelcheck'}
-    <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.details.qtype} // {ds.details.instruments.join(',')}</span>
+    <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.details.qtype.name} // {ds.details.instruments.join(',')}</span>
     {:else}
 		<div class="columns">
 		  <div class="column">
@@ -671,7 +671,7 @@ onMount(async() => {
         </div>
         {/if}
 			  <div class="subtitle is-6">
-				  <span>{ds.details.qtype} </span>
+				  <span>{ds.details.qtype.name}</span>
           {#each Object.entries(ds.details.nrstoredfiles) as sf}
 		      <span> // {sf[1]} {sf[0]} files </span>
           {/each}

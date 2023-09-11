@@ -338,10 +338,7 @@ def get_datasets(request):
             dsdetails['setname'] = ''
             dsdetails['frregex'] = '.*fr([0-9]+).*mzML$'
         dsdetails.update({'details': hv.fetch_dset_details(dset)})
-        try:
-            dsdetails['details']['qtype'] = dset.quantdataset.quanttype.name
-            dsdetails['details']['qtypeshort'] = dset.quantdataset.quanttype.shortname
-        except dm.QuantDataset.DoesNotExist:
+        if dsdetails['details']['qtype'] is False:
             response['error'] = True
             response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
         else:
