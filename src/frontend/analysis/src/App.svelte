@@ -388,7 +388,7 @@ async function loadBaseAnalysis() {
       if (dsid in dsets) {
         dsets[dsid].setname = result.datasets[dsid].setname;
         overlapping_setnames.add(dsets[dsid].setname);
-        dsets[dsid].regex = result.datasets[dsid].regex;
+        dsets[dsid].frregex = result.datasets[dsid].frregex;
       }
     }
     for (const sname in result.base_analysis.isoquants) {

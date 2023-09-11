@@ -116,7 +116,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
     if hasattr(ana, 'analysismzmldef') and am.PsetComponent.objects.filter(
             pset_id=new_pset_id, component__name='mzmldef'):
         analysis['mzmldef'] = ana.analysismzmldef.mzmldef
-    dsets = {ads.dataset_id: {'setname': ads.setname.setname, 'regex': ads.regex} for ads in ana.analysisdatasetsetname_set.all()}
+    dsets = {ads.dataset_id: {'setname': ads.setname.setname, 'frregex': ads.regex} for ads in ana.analysisdatasetsetname_set.all()}
     try:
         sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
     except am.AnalysisSampletable.DoesNotExist:
