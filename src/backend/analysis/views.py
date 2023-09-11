@@ -481,6 +481,12 @@ def show_analysis_log(request, nfs_id):
 @require_POST
 def store_analysis(request):
     """Edits or stores a new analysis"""
+    # Init
+    jobparams = defaultdict(list)
+    isoq_cli = []
+    db_isoquant = {}
+
+    # First do checks so we dont save stuff on errors:
     req = json.loads(request.body.decode('utf-8'))
     dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related('prefractionationdataset__prefractionation')
     if dsetquery.filter(deleted=True).exists():
@@ -491,6 +497,63 @@ def store_analysis(request):
             return JsonResponse({'error': 'You do not have permission to edit this analysis'})
         elif analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'})
+
+    # Check if files have not changed while editing an analysis (e.g. long open window)
+    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['fractions']}, set()
+    dsfiles = {dsid: get_dataset_files(dsid, use_refined=True) for dsid in req['dsids']}
+    for dsid in req['dsids']:
+        for sf in dsfiles[dsid]:
+            if sf.pk in frontend_files_not_in_ds:
+                frontend_files_not_in_ds.remove(sf.pk)
+            else:
+                ds_withfiles_not_in_frontend.add(dsid)
+    if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
+        return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
+            'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
+
+    # Check if labelcheck 
+    is_lcheck = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid'], paramset__psetcomponent__component__name='labelcheck').exists()
+    if is_lcheck:
+        try:
+            qtype = dsetquery.values('quantdataset__quanttype__shortname').distinct().get()
+        except dm.Dataset.MultipleObjectsReturned:
+            return JsonResponse({'error': 'Labelcheck pipeline cannot handle mixed isobaric types'})
+        else:
+            jobparams['--isobaric'] = [qtype['quantdataset__quanttype__shortname']]
+
+    # Check if isoquant is OK
+    def parse_isoquant(quants):
+        vals = {'sweep': False, 'report_intensity': False, 'denoms': {}}
+        if quants['sweep']:
+            vals['sweep'] = True
+            calc_psm = 'sweep'
+        elif quants['report_intensity']:
+            vals['report_intensity'] = True
+            calc_psm = 'intensity'
+        elif quants['denoms']:
+            vals['denoms'] = quants['denoms']
+            calc_psm = ':'.join([ch for ch, is_denom in vals['denoms'].items() if is_denom])
+        else:
+            return False, False
+        return vals, calc_psm
+
+    # FIXME isobaric quant is API v1/v2 diff, fix it
+    # need passed: setname, any denom, or sweep or intensity
+    if req['isoquant'] and not is_lcheck:
+        for setname, quants in req['isoquant'].items():
+            if setname not in set(req['dssetnames'].values()):
+                return JsonResponse({'error': f'Isobaric setname {setname} '
+                'could not be matched to dataset setnames, something went wrong'})
+            vals, calc_psm = parse_isoquant(quants)
+            if not vals:
+                return JsonResponse({'error': 'Need to select one of '
+                    f'sweep/intensity/denominator for set {setname}'})
+            db_isoquant[setname] = vals
+            isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
+        jobparams['--isobaric'] = [' '.join(isoq_cli)]
+
+    # Checks passed, now start database actions
+    if req['analysis_id']:
         analysis.name = req['analysisname']
         analysis.save()
         dss = am.DatasetSearch.objects.filter(analysis=analysis)
@@ -499,8 +562,7 @@ def store_analysis(request):
         am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
     else:
-        analysis = am.Analysis(name=req['analysisname'], user_id=request.user.id)
-        analysis.save()
+        analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
         am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
 
     components = {k: v for k, v in req['components'].items() if v}
@@ -538,7 +600,7 @@ def store_analysis(request):
                 defaults={'setname_id': setname_ids[setname], 'regex': regex},
                 analysis=analysis, dataset_id=dsid) 
         new_ads[ads.pk] = created
-        for sf in get_dataset_files(dsid, use_refined=True):
+        for sf in dsfiles[dsid]:
             am.AnalysisDSInputFile.objects.update_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
             data_args['setnames'][sf.pk] = setname
         dset = dsets[dsid]
@@ -551,18 +613,6 @@ def store_analysis(request):
                 data_args['platenames'][dsid] = pfd.prefractionation.name
     am.AnalysisDatasetSetname.objects.filter(analysis=analysis).exclude(pk__in=new_ads).delete()
 
-    # Check if files have not changed while editing an analysis (e.g. long open window)
-    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['fractions']}, set()
-    for dsid in req['dsids']:
-        for sf in get_dataset_files(dsid, use_refined=True):
-            if sf.pk in frontend_files_not_in_ds:
-                frontend_files_not_in_ds.remove(sf.pk)
-            else:
-                ds_withfiles_not_in_frontend.add(dsid)
-    if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
-        return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
-            'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
-
     # store samples if non-prefrac labelfree files are sets
     am.AnalysisFileSample.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fnsetnames']).delete()
     for sfid, sample in req['fnsetnames'].items():
@@ -571,7 +621,6 @@ def store_analysis(request):
     data_args['setnames'].update({sfid: sample for sfid, sample in req['fnsetnames'].items()})
 
     # Store params
-    jobparams = defaultdict(list)
     passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams'], **req['params']['multicheck']}
     am.AnalysisParam.objects.filter(analysis=analysis).exclude(param_id__in=passedparams_exdelete).delete()
     paramopts = {po.pk: po.value for po in am.ParamOption.objects.all()}
@@ -606,43 +655,17 @@ def store_analysis(request):
             except KeyError:
                 jobinputs['multifiles'][afp.param.nfparam] = [sfid]
 
-    # Labelcheck special stuff:
-    is_lcheck = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid'], paramset__psetcomponent__component__name='labelcheck').exists()
-    if is_lcheck:
-        try:
-            qtype = dsetquery.values('quantdataset__quanttype__shortname').distinct().get()
-        except dm.Dataset.MultipleObjectsReturned:
-            return JsonResponse({'error': True, 'errmsg': 'Labelcheck pipeline cannot handle mixed isobaric types'})
-        else:
-            jobparams['--isobaric'] = [qtype['quantdataset__quanttype__shortname']]
-
-    def parse_isoquant(quants):
-        vals = {'sweep': False, 'report_intensity': False, 'denoms': {}}
-        if quants['sweep']:
-            vals['sweep'] = True
-            calc_psm = 'sweep'
-        elif quants['report_intensity']:
-            vals['report_intensity'] = True
-            calc_psm = 'intensity'
-        elif quants['denoms']:
-            vals['denoms'] = quants['denoms']
-            calc_psm = ':'.join([ch for ch, is_denom in vals['denoms'].items() if is_denom])
-        else:
-            return False, False
-        return vals, calc_psm
-
-    isoq_cli = []
     # Base analysis
     if req['base_analysis']['selected']:
         # parse isoquants from base analysis (and possibly its base analysis,
         # which it will have accumulated)
         base_ana = am.Analysis.objects.select_related('analysissampletable').get(pk=req['base_analysis']['selected'])
-        shadow_dss = {x.dataset_id: {'setname': x.setname.setname, 'regex': x.regex}
-                for x in base_ana.analysisdatasetsetname_set.all()}
         if hasattr(base_ana, 'analysissampletable'):
             sampletables = base_ana.analysissampletable.samples
         else:
             sampletables = {}
+        shadow_dss = {x.dataset_id: {'setname': x.setname.setname, 'regex': x.regex}
+                for x in base_ana.analysisdatasetsetname_set.all()}
         shadow_isoquants = get_isoquants(base_ana, sampletables)
         try:
             baseana_dbrec = am.AnalysisBaseanalysis.objects.get(analysis=base_ana)
@@ -681,18 +704,12 @@ def store_analysis(request):
         # - pass old_mzmls to task in job, task with fn/instr/set/plate/fraction 
         # - store mzmldef in results, pass it automatically - easiest?
             
-    # Add isobaric quant (NB there may already be some in the job params from base analysis above
-    # FIXME isobaric quant is API v1/v2 diff, fix it
-    # need passed: setname, any denom, or sweep or intensity
+    # Already did parsing isoquants in checking part, now (re)create DB objects
     if req['isoquant'] and not is_lcheck:
         am.AnalysisIsoquant.objects.filter(analysis=analysis).exclude(setname_id__in=setname_ids.values()).delete()
-        for setname, quants in req['isoquant'].items():
-            vals, calc_psm = parse_isoquant(quants)
-            if not vals:
-                return JsonResponse({'error': True, 'errmsg': 'Need to select one of sweep/intensity/denominator for set {}'.format(setname)})
-            isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
-            am.AnalysisIsoquant.objects.update_or_create(defaults={'value': vals}, analysis=analysis, setname_id=setname_ids[setname])
-        jobparams['--isobaric'] = [' '.join(isoq_cli)]
+        for setname, quantvals in db_isoquant.items():
+            am.AnalysisIsoquant.objects.update_or_create(defaults={'value': quantvals},
+                    analysis=analysis, setname_id=setname_ids[setname])
 
     # If any, store sampletable
     if 'sampletable' in components:
