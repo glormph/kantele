@@ -503,8 +503,8 @@ async function populate_analysis() {
   for (const key of ['analysisname', 'mzmldef', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
     config[key] = existing_analysis[key];
   }
-  await fetchWorkflow();
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
+  await fetchWorkflow();
   base_analysis = existing_analysis.base_analysis || base_analysis;
   // FIXME now repopulate files with sample names if any
 }
