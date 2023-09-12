@@ -382,6 +382,7 @@ async function loadBaseAnalysis() {
     for (const key of ['runFromPSM', 'isComplement']) {
       base_analysis[key] = false;
     }
+    // svelte reactivity, this updates object
     base_analysis = base_analysis;
     let overlapping_setnames = new Set();
     for (const dsid in result.datasets) {
@@ -401,6 +402,9 @@ async function loadBaseAnalysis() {
     }
     Object.assign(config.multifileparams, result.base_analysis.multifileparams);
     config = config;
+    // svelte reactivity, this updates object so the options of the file params are updated
+    // which triggers the select to update its intext via inputdone()
+    libfiles = libfiles;
   }
 }
 
