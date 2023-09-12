@@ -103,7 +103,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
-    for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
+    for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
         if afp.param_id in multifiles:
             try:
                 fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
