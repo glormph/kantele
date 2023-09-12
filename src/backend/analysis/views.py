@@ -102,16 +102,14 @@ def load_base_analysis(request, wfversion_id, baseanid):
         elif ap.param.ptype == 'text':
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
-    multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
     for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
-        if afp.param_id in multifiles:
-            try:
-                fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
-            except KeyError:
-                fnr = 0
-                analysis['multifileparams'][afp.param_id] = {}
-            analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
-        else:
+        try:
+            fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
+        except KeyError:
+            fnr = 0
+            analysis['multifileparams'][afp.param_id] = {}
+        analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
+    for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
             analysis['fileparams'][afp.param_id] = afp.sfile_id
     if hasattr(ana, 'analysismzmldef') and am.PsetComponent.objects.filter(
             pset_id=new_pset_id, component__name='mzmldef'):
