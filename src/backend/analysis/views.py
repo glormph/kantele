@@ -320,82 +320,131 @@ def get_base_analyses(request):
 @login_required
 @require_GET
 def get_datasets(request):
-    """Fetches datasets to analysis"""
+    """Fetches datasets to analysis, populates dataset/analysis-specific fields"""
     dsids = request.GET['dsids'].split(',')
     anid = int(request.GET['anid'])
     response = {'error': False, 'errmsg': []}
-    dsjobs = rm.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
-        storedfile__rawfile__datasetrawfile__dataset_id__in=dsids).select_related('job')
-    info = {'jobs': [unijob for unijob in
-                    {x.job.id: {'name': x.job.funcname, 'state': x.job.state}
-                     for x in dsjobs}.values()]}
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
     deleted = dbdsets.filter(deleted=True)
     if deleted.count():
         response['error'] = True
         response['errmsg'].append('Deleted datasets can not be analysed')
-    dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
-    qsfiles = {qsf.rawfile_id: qsf.projsample.sample for qsf in dm.QuantSampleFile.objects.filter(rawfile__dataset_id__in=dsids)}
-    qfcsfiles = {qfcs.dsrawfile_id: qfcs.projsample.sample for qfcs in dm.QuantFileChannelSample.objects.filter(dsrawfile__dataset_id__in=dsids)}
-    for dsid, dsdetails in dsetinfo.items():
-        dset = dsdetails.pop('dbentry')
+    dsetinfo = {}
+    for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
+            'quantdataset'):
+        prefrac, hr = False, False
+        if hasattr(dset, 'prefractionationdataset'):
+            pf = dset.prefractionationdataset
+            prefrac = str(pf.prefractionation.name)
+            if 'hirief' in pf.prefractionation.name.lower():
+                hr = f'HiRIEF {str(pf.hiriefdataset.hirief)}'
+
+        setname, frregex = '', '.*fr([0-9]+).*mzML$'
         if anid and am.AnalysisDatasetSetname.objects.filter(analysis_id=anid):
             adsn = dset.analysisdatasetsetname_set.get(analysis_id=anid)
-            dsdetails['setname'] = adsn.setname.setname
-            dsdetails['frregex'] = adsn.regex
-        else:
-            dsdetails['setname'] = ''
-            dsdetails['frregex'] = '.*fr([0-9]+).*mzML$'
-        dsdetails.update({'details': hv.fetch_dset_details(dset)})
-        if dsdetails['details']['qtype'] is False:
-            response['error'] = True
-            response['errmsg'].append('Dataset with runname {} has no quant details, please fill in sample prep fields'.format(dsdetails['run']))
-        else:
-            nrneededfiles = dsdetails['details']['nrstoredfiles']['raw']
-            dsfiles = get_dataset_files(dsid, use_refined=True)
-    # FIXME default to refined mzmls if exist, now we enforce if exist for simplicity, make optional
-    # FIXME if refined have been deleted, state it, maybe old auto-deleted and need to remake
+            setname = adsn.setname.setname
+            frregex = adsn.regex
+
+        dssffiles = rm.StoredFile.objects.select_related('rawfile__producer', 'servershare',
+                'filetype').filter(rawfile__datasetrawfile__dataset_id=dset.id)
+        dsrawfiles = dssffiles.filter(mzmlfile__isnull=True)
+        nrrawfiles = dsrawfiles.count()
+        producers = dssffiles.distinct('rawfile__producer')
+
+        # FIXME This needs to depend on mzML input component more explicit than quantdataset?
+        # Could put this in own function in that case, each component gets function?
+        if hasattr(dset, 'quantdataset'):
+            qtype = {'name': dset.quantdataset.quanttype.name,
+                    'short': dset.quantdataset.quanttype.shortname}
+
+            # FIXME enforcing refined mzML
+            non_deleted_mzmlfiles = dssffiles.filter(mzmlfile__isnull=False, deleted=False,
+                    purged=False)
+            refineddsfiles = non_deleted_mzmlfiles.filter(mzmlfile__refined=True)
+            if refineddsfiles.count():
+                usefiles = refineddsfiles
+            elif non_deleted_mzmlfiles.count():
+                usefiles = non_deleted_mzmlfiles
+            else:
+                usefiles = non_deleted_mzmlfiles
+
+            # FIXME tease out isoquant / LF / mzML from eachother
             sample_error = False
-            if dsfiles.count() != nrneededfiles:
+            if usefiles.filter(checked=True).count() != nrrawfiles:
                 sample_error = True
                 response['error'] = True
-                response['errmsg'].append('Need to create or finish refining mzML files first in dataset {}'.format(dsdetails['run']))
-            dsdetails['channels'] = {}
-            dsdetails['files'] = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''} for x in dsfiles}
+                response['errmsg'].append('Need to create or finish refining mzML files first '
+                        f'in dataset {dset.runname.name}')
+            channels = {}
+            resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''}
+                    for x in usefiles}
             qsf_error = False
-            if 'lex' in dset.quantdataset.quanttype.name:
-                for fn in dsfiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
-                    dsdetails['files'][fn.id]['sample'] = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample if hasattr(fn.rawfile.datasetrawfile, 'quantfilechannelsample') else ''
-                dsdetails['details']['channels'] = {
+            if 'plex' in dset.quantdataset.quanttype.name.lower():
+                # isobaric multiplex
+                for fn in usefiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
+                    try:
+                        qfcs = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample
+                    except dm.QuantFileChannelSample.DoesNotExist:
+                        qfcs = ''
+                    resp_files[fn.id]['sample'] = qfcs
+                channels = {
                     ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
                     dm.QuantChannelSample.objects.select_related(
-                        'projsample', 'channel__channel').filter(dataset_id=dsid)}
-
+                        'projsample', 'channel__channel').filter(dataset_id=dset.pk)}
             else:
-                for fn in dsfiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
+                # Labelfree
+                for fn in usefiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
                     try:
                         qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
                     except dm.QuantSampleFile.DoesNotExist:
                         qsf_error = True
                     else:
-                        dsdetails['files'][fn.id]['sample'] = qsf_sample
+                        resp_files[fn.id]['sample'] = qsf_sample
                 if qsf_error:
                     response['error'] = True
-                    response['errmsg'].append('File(s) in the dataset do '
+                    response['errmsg'].append(f'File(s) in dataset {dset.runname.name} do '
                         'not have a sample annotation, please edit the dataset first')
 
-            # Add stored analysis file-setnames if any:
+            filesaresets = False
             if anid:
+                # Add possible already stored analysis file-setnames
+                # FIXME files need match dset!
                 for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
-                    dsdetails['files'][afs.sfile_id]['setname'] = afs.sample
-                dsdetails['filesaresets'] = any((x['setname'] != '' for x in dsdetails['files'].values()))
+                    resp_files[afs.sfile_id]['setname'] = afs.sample
+                filesaresets = any((x['setname'] != '' for x in resp_files.values()))
             elif not qsf_error and not sample_error:
+                # Sample is the fallback, set in dataset creation, 
+                # FIXME no need to check if setname == '', is always that bc not set
+                # except in other if branch above
                 [x.update({'setname': x['sample'] if x['setname'] == '' else x['setname']})
-                        for x in dsdetails['files'].values()]
-                dsdetails['filesaresets'] = False
-            # to list, keep ordering correct:
-            dsdetails['files'] = [dsdetails['files'][x.id] for x in dsfiles]
-    # FIXME labelfree quantsamplefile without sample prep error msg
+                        for x in resp_files.values()]
+            # to list for frontend
+            resp_files = [resp_files[x.id] for x in usefiles]
+        else:
+            qtype = False
+            response['error'] = True
+            response['errmsg'].append(f'Dataset with runname {dset.runname.name} has no quant '
+                    'details, please fill in sample prep fields')
+
+        # Fill response object
+        dsetinfo[dset.pk] = {
+                'id': dset.pk,
+                'proj': dset.runname.experiment.project.name,
+                'exp': dset.runname.experiment.name,
+                'run': dset.runname.name,
+                'dtype': dset.datatype.name,
+                'prefrac': prefrac,
+                'hr': hr,
+                'setname': setname,
+                'frregex': frregex,
+                'instruments': [x.rawfile.producer.name for x in producers],
+                'instrument_types': [x.rawfile.producer.shortname for x in producers],
+                'qtype': qtype,
+                'nrstoredfiles': {'raw': nrrawfiles},
+                'channels': channels,
+                'files': resp_files,
+                'filesaresets': filesaresets,
+                }
     response['dsets'] = dsetinfo
     return JsonResponse(response)
 
