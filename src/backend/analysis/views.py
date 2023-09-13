@@ -114,7 +114,18 @@ def load_base_analysis(request, wfversion_id, baseanid):
     if hasattr(ana, 'analysismzmldef') and am.PsetComponent.objects.filter(
             pset_id=new_pset_id, component__name='mzmldef'):
         analysis['mzmldef'] = ana.analysismzmldef.mzmldef
-    dsets = {ads.dataset_id: {'setname': ads.setname.setname, 'frregex': ads.regex} for ads in ana.analysisdatasetsetname_set.all()}
+
+    # Get datasets from base analysis for their setnames/filesamples etc
+    dsets = {x: {'setname': '', 'frregex': '', 'files': {}} for x in new_ana_dsids}
+    for ads in ana.analysisdatasetsetname_set.all():
+        dsets[ads.dataset_id] = {'setname': ads.setname.setname, 'frregex': ads.regex,
+                'files': {}} 
+    for dsid in new_ana_dsids:
+        for fn in am.AnalysisFileSample.objects.filter(analysis=ana,
+                sfile__rawfile__datasetrawfile__dataset_id=dsid):
+            dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'setname': fn.sample}
+        dsets[dsid]['filesaresets'] = any((x['setname'] != '' for x in dsets[dsid]['files'].values()))
+
     try:
         sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
     except am.AnalysisSampletable.DoesNotExist:

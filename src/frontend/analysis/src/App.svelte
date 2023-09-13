@@ -385,11 +385,16 @@ async function loadBaseAnalysis() {
     // svelte reactivity, this updates object
     base_analysis = base_analysis;
     let overlapping_setnames = new Set();
-    for (const dsid in result.datasets) {
-      if (dsid in dsets) {
-        dsets[dsid].setname = result.datasets[dsid].setname;
+    for (const dsid in dsets) {
+      if (dsid in result.datasets) {
+        const resds = result.datasets[dsid];
+        dsets[dsid].setname = resds.setname;
         overlapping_setnames.add(dsets[dsid].setname);
-        dsets[dsid].frregex = result.datasets[dsid].frregex;
+        dsets[dsid].frregex = resds.frregex;
+        dsets[dsid].filesaresets = resds.filesaresets;
+        dsets[dsid].files.filter(x => x.id in resds.files).forEach(x => {
+          x.setname = resds.files[x.id].setname;
+        });
       }
     }
     for (const sname in result.base_analysis.isoquants) {
