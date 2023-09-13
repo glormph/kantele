@@ -382,13 +382,19 @@ async function loadBaseAnalysis() {
     for (const key of ['runFromPSM', 'isComplement']) {
       base_analysis[key] = false;
     }
+    // svelte reactivity, this updates object
     base_analysis = base_analysis;
     let overlapping_setnames = new Set();
-    for (const dsid in result.datasets) {
-      if (dsid in dsets) {
-        dsets[dsid].setname = result.datasets[dsid].setname;
+    for (const dsid in dsets) {
+      if (dsid in result.datasets) {
+        const resds = result.datasets[dsid];
+        dsets[dsid].setname = resds.setname;
         overlapping_setnames.add(dsets[dsid].setname);
-        dsets[dsid].frregex = result.datasets[dsid].frregex;
+        dsets[dsid].frregex = resds.frregex;
+        dsets[dsid].filesaresets = resds.filesaresets;
+        dsets[dsid].files.filter(x => x.id in resds.files).forEach(x => {
+          x.setname = resds.files[x.id].setname;
+        });
       }
     }
     for (const sname in result.base_analysis.isoquants) {
@@ -401,6 +407,9 @@ async function loadBaseAnalysis() {
     }
     Object.assign(config.multifileparams, result.base_analysis.multifileparams);
     config = config;
+    // svelte reactivity, this updates object so the options of the file params are updated
+    // which triggers the select to update its intext via inputdone()
+    libfiles = libfiles;
   }
 }
 
@@ -499,8 +508,8 @@ async function populate_analysis() {
   for (const key of ['analysisname', 'mzmldef', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
     config[key] = existing_analysis[key];
   }
-  await fetchWorkflow();
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
+  await fetchWorkflow();
   base_analysis = existing_analysis.base_analysis || base_analysis;
   // FIXME now repopulate files with sample names if any
 }

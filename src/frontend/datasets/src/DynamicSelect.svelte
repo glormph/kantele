@@ -5,6 +5,9 @@ import { createEventDispatcher } from 'svelte';
 
 const dispatch = createEventDispatcher();
 
+// intext only exported for initial value if no options (e.g. base analysis needs options fetched)
+export let intext;
+
 export let selectval = '';
 export let fixedoptions = {};
 export let fixedorder = [];
@@ -13,7 +16,6 @@ export let fetchedData;
 export let niceName = function(text) { return text; }
 export let unknowninput = '__ILLEGAL_PLACEHOLDER__';
 
-let intext;
 let options;
 $: {
   // When options change (e.g. loaded from base analysis during first page load),
