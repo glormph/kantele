@@ -17,7 +17,6 @@ urlpatterns = [
     path('baseanalysis/load/<int:wfversion_id>/<int:baseanid>/', views.load_base_analysis),
     path('resultfiles/load/<int:anid>/', views.load_analysis_resultfiles),
     path('workflow/', views.get_workflow_versioned),
-    path('workflows/', views.get_allwfs),
     path('logappend/', views.append_analysis_log, name='appendlog'),
     path('nflogappend/', views.nextflow_analysis_log, name='nflog'),
     path('upload/', views.upload_servable_file, name='checkfileupload'),

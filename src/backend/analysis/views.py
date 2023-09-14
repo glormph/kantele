@@ -28,9 +28,10 @@ from jobs import models as jm
 @login_required
 @require_GET
 def get_analysis_init(request):
+    '''Serves up the analysis HTML page, without anything in it'''
     dsids = request.GET['dsids'].split(',')
     try:
-        context = {'dsids': dsids, 'analysis': False}
+        context = {'dsids': dsids, 'analysis': False, 'wfs': get_allwfs()}
     except:
         return HttpResponseForbidden()
     return render(request, 'analysis/analysis.html', context)
@@ -241,6 +242,7 @@ def get_analysis(request, anid):
     context = {
             'dsids': dsids,
             'analysis': analysis,
+            'wfs': get_allwfs()
             }
     return render(request, 'analysis/analysis.html', context)
 
@@ -264,10 +266,7 @@ def set_protein_database_lib(request):
     return HttpResponse()
 
 
-@login_required
-@require_GET
-def get_allwfs(request):
-    #dsids = request.GET['dsids'].split(',')
+def get_allwfs():
     allwfs = [{
         'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name, 
         'wftype': x.shortname.name,
@@ -275,12 +274,10 @@ def get_allwfs(request):
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d'), }
                  for wfv in am.NextflowWfVersion.objects.filter(nfworkflow_id=x.nfworkflow_id).order_by('pk')][::-1]
     }
-#        'wf': get_workflow(request, x.id, dsids)} for x in
             for x in am.Workflow.objects.filter(public=True).order_by('pk')[::-1]]
-    #versions[0]['latest'] = True
     order = [x['id'] for x in allwfs]
     allwfs = {x['id']: x for x in allwfs}
-    return JsonResponse({'allwfs': allwfs, 'order': order})
+    return {'wfs': allwfs, 'order': order}
 
 
 def get_dataset_files(dsid, use_refined):

@@ -18,9 +18,7 @@ let runButtonActive = true;
 let postingAnalysis = false;
 
 let analysis_id = existing_analysis ? existing_analysis.analysis_id : false;
-let allwfs = {};
 let wf = false;
-let wforder = [];
 let dsets = {};
 
 let libfiles = {};
@@ -275,19 +273,6 @@ async function fetchWorkflow() {
   }
 }
 
-async function fetchAllWorkflows() {
-  let url = new URL('/analysis/workflows', document.location)
-  const result = await getJSON(url);
-  loadingItems = true;
-  if ('error' in result) {
-    const msg = `While fetching workflows, encountered: ${result.error}`;
-    notif.errors[msg] = 1;
-    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
-  } else {
-    allwfs = result.allwfs;
-    wforder = result.order;
-  }
-}
 
 async function fetchDatasetDetails(fetchdsids) {
   let url = new URL('/analysis/dsets/', document.location)
@@ -520,7 +505,6 @@ async function populate_analysis() {
 
 
 onMount(async() => {
-  await fetchAllWorkflows();
   if (existing_analysis) {
     await populate_analysis();
   }
