@@ -13,3 +13,5 @@ node_modules/
 # DB mount
 data/db
 
+# Docker env 
+.env
