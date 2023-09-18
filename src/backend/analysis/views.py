@@ -58,6 +58,7 @@ def load_analysis_resultfiles(request, anid):
     return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
 
 
+@require_GET
 @login_required
 def load_base_analysis(request, wfversion_id, baseanid):
     """Find analysis to base current analysis on, for either copying parameters,
@@ -71,7 +72,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
         new_ana_dsids = [int(x) for x in request.GET['dsids'].split(',')]
         added_ana_ids = [int(x) for x in request.GET['added_ana_ids'].split(',') if x]
     except KeyError:
-        return JsonResponse({'error': 'Something wrong when asking for base analysis, contact admin', 'status': 400})
+        return JsonResponse({'error': 'Something wrong when asking for base analysis, contact admin'}, status=400)
     try:
         new_pset_id = am.NextflowWfVersion.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
     except am.NextflowWfVersion.DoesNotExist:
@@ -90,7 +91,6 @@ def load_base_analysis(request, wfversion_id, baseanid):
             'multifileparams': {},
             'fileparams': {},
             'isoquants': {},
-            'resultfiles': [],
             }
     for ap in ana.analysisparam_set.filter(param__psetparam__pset_id=new_pset_id):
         if ap.param.ptype == 'flag' and ap.value:

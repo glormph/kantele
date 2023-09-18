@@ -85,6 +85,11 @@ class BaseTest(TestCase):
                     md5=self.f3raw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssnewstore, 'path': self.storloc, 
                         'checked': True})
+        qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
+        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=qt)
+        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
+        self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=qt, channel=self.qch)
+
 
         # Project/dataset/files on old storage
         oldfn = 'raw1'
@@ -96,6 +101,7 @@ class BaseTest(TestCase):
         self.oldds, _ = dm.Dataset.objects.update_or_create(date=self.oldp.registered,
                 runname=self.oldrun, datatype=self.dtype, defaults={
                     'storageshare': self.ssoldstorage, 'storage_loc': self.oldstorloc})
+        dm.QuantDataset.objects.get_or_create(dataset=self.oldds, quanttype=qt)
         dm.DatasetComponentState.objects.get_or_create(dataset=self.oldds, dtcomp=self.dtcomp,
                 state='OK')
         self.contact, _ = dm.ExternalDatasetContact.objects.get_or_create(dataset=self.oldds,
@@ -123,6 +129,13 @@ class BaseTest(TestCase):
                 md5=self.tmpraw.source_md5, defaults={'filename': tmpfn, 'servershare': self.sstmp,
                     'path': '', 'checked': True, 'filetype': self.ft})
 
+        # Analysis files
+        self.anaprod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
+        self.ana_raw = rm.RawFile.objects.create(name='ana_file', producer=self.anaprod, source_md5='kjlmnop1234',
+                size=100, date=timezone.now(), claimed=True)
+        self.anasfile = rm.StoredFile.objects.create(rawfile=self.ana_raw, filename=self.ana_raw.name,
+                servershare_id=self.sstmp.id, path='', md5=self.ana_raw.source_md5,
+                filetype_id=self.ft.id)
 
 
 class BaseIntegrationTest(LiveServerTestCase):

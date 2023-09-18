@@ -157,11 +157,6 @@ class TestCreateMzmls(MzmlTests):
 class TestRefineMzmls(MzmlTests):
     url = '/refinemzml/'
 
-    def setUp(self):
-        super().setUp()
-        qt = dm.QuantType.objects.create(name='testqt', shortname='tqt')
-        dm.QuantDataset.objects.create(dataset=self.ds, quanttype=qt)
-
     def test_fail_requests(self):
         # GET
         resp = self.cl.get(self.url)

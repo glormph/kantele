@@ -396,12 +396,7 @@ class TestArchiveFile(BaseFilesTest):
         self.assertIn('Derived mzML files are not archived', resp.json()['error'])
 
     def test_analysisfile(self):
-        prod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
-        ana_raw = rm.RawFile.objects.create(name='ana_file', producer=prod, source_md5='kjlmnop1234',
-                size=100, date=timezone.now(), claimed=True)
-        sfile = rm.StoredFile.objects.create(rawfile=ana_raw, filename=ana_raw.name, servershare_id=self.sstmp.id,
-                path='', md5=ana_raw.source_md5, filetype_id=self.ft.id)
-        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.anasfile.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('Analysis result files are not archived', resp.json()['error'])
 
