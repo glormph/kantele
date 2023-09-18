@@ -100,14 +100,14 @@ class LoadBaseAnaTest(AnalysisTest):
                 samples=[[self.qch.name, self.anaset.setname, self.projsam.sample, 'thegroup']])
 
 
-    def test_ok(self):
+    def test_diff_dsets(self):
         url = f'{self.url}{self.nfwf.pk}/{self.ana.pk}/'
         resp = self.cl.get(url, data={'dsids': self.ds.pk, 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         for key, val in  [('analysis_id', self.ana.pk),
                 ('dsets_identical', False),
-                ('mzmldef', False),
+                ('mzmldef', 'testmzd'),
                 ('flags', [self.param1.pk]),
                 ('multicheck', [f'{self.param2.pk}___{self.anamcparam.value[0]}']),
                 ('inputparams', {f'{self.param3.pk}': self.ananormparam.value}),
@@ -120,7 +120,7 @@ class LoadBaseAnaTest(AnalysisTest):
             self.assertEqual(rj['base_analysis'][key], val)
         self.assertEqual(len(rj['resultfiles']), 1)
         self.assertEqual(rj['resultfiles'][0]['id'], self.resultfn.sfile.pk)
-        self.assertEqual(len(rj['datasets'].keys()), 2)
+        self.assertEqual(len(rj['datasets'].keys()), 1)
         for dspk, rds in rj['datasets'].items():
             ads = am.AnalysisDatasetSetname.objects.get(analysis=self.ana, dataset_id=dspk)
             self.assertEqual(rds['setname'], ads.setname.setname)
@@ -155,8 +155,9 @@ class LoadBaseAnaTest(AnalysisTest):
             self.assertEqual(rds['filesaresets'], False)
             self.assertEqual(rds['files'], {})
 
-
-    def test_no_params(self):
+    def test_no_params_or_post(self):
         url = f'{self.url}1/1/'
         resp = self.cl.get(url)
         self.assertEqual(resp.status_code, 400)
+        resp = self.cl.post(url)
+        self.assertEqual(resp.status_code, 405)

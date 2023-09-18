@@ -116,8 +116,9 @@ def load_base_analysis(request, wfversion_id, baseanid):
         analysis['mzmldef'] = ana.analysismzmldef.mzmldef
 
     # Get datasets from base analysis for their setnames/filesamples etc
+    # Only overlapping datasets are fetched here
     dsets = {x: {'setname': '', 'frregex': '', 'files': {}} for x in new_ana_dsids}
-    for ads in ana.analysisdatasetsetname_set.all():
+    for ads in ana.analysisdatasetsetname_set.filter(dataset_id__in=new_ana_dsids):
         dsets[ads.dataset_id] = {'setname': ads.setname.setname, 'frregex': ads.regex,
                 'files': {}} 
     for dsid in new_ana_dsids:
