@@ -56,7 +56,8 @@ if (existing_analysis && existing_analysis.added_results) {
 $: {
   fetched_resultfiles = added_analyses_order.flatMap(x => added_results[x].fns);
   resfn_arr = fetched_resultfiles.concat(base_analysis.resultfiles).concat(prev_resultfiles);
-  resultfiles = Object.fromEntries(resfn_arr.map(x=> [x.id, x]));
+  resultfiles = Object.fromEntries(resfn_arr.map(x=> [x.id, {id: x.id,
+    name: `${x.fn} - Result of ${x.ana} (${x.date})`}]));
   resultfnorder = resfn_arr.map(x => x.id);
 }
 

@@ -52,8 +52,9 @@ def load_analysis_resultfiles(request, anid):
     else:
         base_ana_resfiles_ids = []
     already_loaded_files = analysis_prev_resfiles_ids + base_ana_resfiles_ids
-    resultfiles = [{'id': x.sfile_id,
-        'name': f'{x.sfile.filename} - Result of {aj.get_ana_fullname(ana)} ({analysis_date})'}
+    ananame = aj.get_ana_fullname(ana)
+    anadate = datetime.strftime(ana.date, '%Y-%m-%d')
+    resultfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
     return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
 
@@ -143,13 +144,13 @@ def load_base_analysis(request, wfversion_id, baseanid):
     added_files_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
         analysis_id__in=added_ana_ids).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
     already_loaded_files = analysis_prev_resfiles_ids + added_files_ids
-    base_resfiles = [{'id': x.sfile_id, 
-        'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(ana), datetime.strftime(ana.date, '%Y-%m-%d'))}
+    base_resfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': aj.get_ana_fullname(ana),
+        'date':datetime.strftime(ana.date, '%Y-%m-%d')}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
     return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': base_resfiles})
 
 
-
+@require_GET
 @login_required
 def get_analysis(request, anid):
     try:
@@ -192,13 +193,15 @@ def get_analysis(request, anid):
     if ana_base.exists():
         ana_base = ana_base.get()
         base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetsearch_set.all()]
+        baname = aj.get_ana_fullname(ana_base.base_analysis)
+        badate = datetime.strftime(ana_base.base_analysis.date, '%Y-%m-%d')
         analysis['base_analysis'] = {
                 #### these are repeated in ana/wf if same dsets
-                'resultfiles':  [{'id': x.sfile_id,
-                    'name': f'{x.sfile.filename} - Result of {aj.get_ana_fullname(ana_base.base_analysis)} ({datetime.strftime(ana_base.base_analysis.date, "%Y-%m-%d")})',
-                    } for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
+                'resultfiles':  [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': baname,
+                    'date': badate}
+                    for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
                 'selected': ana_base.base_analysis_id,
-                'typedname': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(ana_base.base_analysis),
+                'typedname': '{} - {} - {} - {} - {}'.format(baname,
                 ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
                 ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
                 'isComplement': ana_base.is_complement,
@@ -209,6 +212,9 @@ def get_analysis(request, anid):
     else:
         analysis['base_analysis'] = False
         ana_base_resfiles = set()
+
+    ananame = aj.get_ana_fullname(ana)
+    anadate = datetime.strftime(ana.date, '%Y-%m-%d')
     for afp in ana.analysisfileparam_set.all():
         # Looping input files, to find added results analysis
         if (hasattr(afp.sfile, 'analysisresultfile') and not hasattr(afp.sfile, 'libraryfile')
@@ -216,8 +222,7 @@ def get_analysis(request, anid):
                 and afp.sfile.analysisresultfile.analysis_id not in analysis['added_results']):
             arf = afp.sfile.analysisresultfile
             arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
-            arf_fns = [{'id': x.sfile_id, 
-                'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(arf.analysis), arf_date)}
+            arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
                 for x in arf.analysis.analysisresultfile_set.all()]
             analysis['added_results'][arf.analysis_id] = {'analysisname': aj.get_ana_fullname(arf.analysis), 'date': arf_date, 'fns': arf_fns}
 
@@ -472,9 +477,10 @@ def get_prev_resultfiles(dsids, only_ids=False):
     if only_ids:
         prev_resultfiles = [x['sfile_id'] for x in qset_arf.values('sfile_id')]
     else:
-        prev_resultfiles = [{'id': x.sfile.id, 'name': f'{x.sfile.filename} - '
-        f'Result of {aj.get_ana_fullname(x.analysis)} ({datetime.strftime(x.analysis.date, "%Y-%m-%d")})'
-        } for x in qset_arf.select_related('analysis')]
+        prev_resultfiles = [{'id': x.sfile.id, 'fn': x.sfile.filename,
+            'ana': aj.get_ana_fullname(x.analysis),
+            'date': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
+        for x in qset_arf.select_related('analysis')]
     return prev_resultfiles
 
 

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.utils import timezone
 
 from kantele.tests import BaseTest, BaseIntegrationTest
@@ -45,9 +47,60 @@ class AnalysisTest(BaseTest):
                 filename='main.nf', profiles=[], nfworkflow=self.nfw, paramset=self.pset,
                 kanteleanalysis_version=1, # FIXME remove
                 nfversion='22')
+        anajob, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
+                timestamp=timezone.now())
+        self.nfs, _ = am.NextflowSearch.objects.get_or_create(analysis=self.ana, nfworkflow=self.nfwf,
+                workflow=self.wf, token='tok123', job=anajob)
+
+        am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param1, value=True)
+        self.anamcparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param2,
+                value=[self.popt1.value])
+        self.ananormparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana,
+                param=self.param3, value=3)
+        self.anamfparam, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.ana,
+                param=self.pfn1, sfile=self.tmpsf)
+        self.anafparam, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.ana,
+                param=self.pfn2, sfile=self.txtsf)
 
 
-class TestNewAnalysis(AnalysisTest):
+        self.resultfn, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.ana,
+                sfile=self.anasfile)
+        self.projsam1, _ = dm.ProjectSample.objects.get_or_create(sample='sample1',
+                project=self.ds.runname.experiment.project)
+        self.projsam2, _ = dm.ProjectSample.objects.get_or_create(sample='sample2',
+                project=self.ds.runname.experiment.project)
+
+        self.mzmldef, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.ana, mzmldef='testmzd')
+
+
+class AnalysisIsobaric(AnalysisTest):
+    def setUp(self):
+        super().setUp()
+        self.anaset, _ = am.AnalysisSetname.objects.get_or_create(analysis=self.ana, setname='set1')
+        self.ads1, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
+                dataset=self.ds, setname=self.anaset, regex='hej')
+        self.ads2, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
+                dataset=self.oldds, setname=self.anaset, regex='hej2')
+
+        self.qcs, _  = dm.QuantChannelSample.objects.get_or_create(dataset=self.ds, channel=self.qtch,
+                projsample=self.projsam1)
+        self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
+        am.AnalysisIsoquant.objects.get_or_create(analysis=self.ana, setname=self.anaset,
+                value=self.isoqvals)
+        self.samples, _ = am.AnalysisSampletable.objects.get_or_create(analysis=self.ana,
+                samples=[[self.qch.name, self.anaset.setname, self.projsam1.sample, 'thegroup']])
+
+
+class AnalysisLabelfreeSamples(AnalysisTest):
+    def setUp(self):
+        super().setUp()
+        dm.QuantSampleFile.objects.get_or_create(rawfile=self.f3dsr, projsample=self.projsam1)
+        dm.QuantSampleFile.objects.get_or_create(rawfile=self.olddsr, projsample=self.projsam2)
+        self.afs1, _ = am.AnalysisFileSample.objects.get_or_create(analysis=self.ana, sample=self.projsam1.sample, sfile=self.f3sf)
+        self.afs2, _ = am.AnalysisFileSample.objects.get_or_create(analysis=self.ana, sample='newname2', sfile=self.oldsf)
+
+
+class TestNewAnalysis(AnalysisIsobaric):
     url = '/analysis/new/'
 
     def test_ok(self):
@@ -59,101 +112,61 @@ class TestNewAnalysis(AnalysisTest):
         self.assertEqual(resp.status_code, 405)
 
 
-class LoadBaseAnaTest(AnalysisTest):
+class LoadBaseAnaTestIso(AnalysisIsobaric):
     url = '/analysis/baseanalysis/load/'
-
-    def setUp(self):
-        super().setUp()
-        am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param1, value=True)
-        self.anamcparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param2,
-                value=[self.popt1.value])
-        self.ananormparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana,
-                param=self.param3, value=3)
-        anajob, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
-                timestamp=timezone.now())
-        self.anamfparam, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.ana,
-                param=self.pfn1, sfile=self.tmpsf)
-        self.anafparam, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.ana,
-                param=self.pfn2, sfile=self.txtsf)
-
-
-        am.NextflowSearch.objects.get_or_create(analysis=self.ana, nfworkflow=self.nfwf,
-                workflow=self.wf, token='tok123', job=anajob)
-        self.resultfn, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.ana,
-                sfile=self.anasfile)
-        self.anaset, _ = am.AnalysisSetname.objects.get_or_create(analysis=self.ana, setname='set1')
-        self.ads1, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
-                dataset=self.ds, setname=self.anaset, regex='hej')
-        self.ads2, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
-                dataset=self.oldds, setname=self.anaset, regex='hej2')
-
-        self.projsam, _ = dm.ProjectSample.objects.get_or_create(sample='thesample',
-                project=self.ds.runname.experiment.project)
-        self.qcs, _  = dm.QuantChannelSample.objects.get_or_create(dataset=self.ds, channel=self.qtch,
-                projsample=self.projsam)
-        self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
-        am.AnalysisIsoquant.objects.get_or_create(analysis=self.ana, setname=self.anaset,
-                value=self.isoqvals)
-
-        am.AnalysisMzmldef.objects.get_or_create(analysis=self.ana, mzmldef='testmzd')
-        self.samples, _ = am.AnalysisSampletable.objects.get_or_create(analysis=self.ana,
-                samples=[[self.qch.name, self.anaset.setname, self.projsam.sample, 'thegroup']])
-
 
     def test_diff_dsets(self):
         url = f'{self.url}{self.nfwf.pk}/{self.ana.pk}/'
         resp = self.cl.get(url, data={'dsids': self.ds.pk, 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
-        for key, val in  [('analysis_id', self.ana.pk),
-                ('dsets_identical', False),
-                ('mzmldef', 'testmzd'),
-                ('flags', [self.param1.pk]),
-                ('multicheck', [f'{self.param2.pk}___{self.anamcparam.value[0]}']),
-                ('inputparams', {f'{self.param3.pk}': self.ananormparam.value}),
-                ('multifileparams', {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}}),
-                ('fileparams', {f'{self.pfn2.pk}': self.txtsf.pk}),
-                ('isoquants', {self.anaset.setname: {**self.isoqvals, 'chemistry': self.ds.quantdataset.quanttype.shortname,
-                    'channels': {self.qch.name: [self.projsam.sample, self.qch.pk]},
-                    'samplegroups': {'thech': 'thegroup'}}}),
-                ]:
-            self.assertEqual(rj['base_analysis'][key], val)
-        self.assertEqual(len(rj['resultfiles']), 1)
-        self.assertEqual(rj['resultfiles'][0]['id'], self.resultfn.sfile.pk)
-        self.assertEqual(len(rj['datasets'].keys()), 1)
-        for dspk, rds in rj['datasets'].items():
-            ads = am.AnalysisDatasetSetname.objects.get(analysis=self.ana, dataset_id=dspk)
-            self.assertEqual(rds['setname'], ads.setname.setname)
-            self.assertEqual(rds['frregex'], ads.regex)
-            self.assertEqual(rds['filesaresets'], False)
-            self.assertEqual(rds['files'], {})
+        checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
+                'mzmldef': self.mzmldef.mzmldef,
+                'flags': [self.param1.pk],
+                'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
+                'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
+                'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
+                'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
+                'isoquants': {self.ads1.setname.setname: {**self.isoqvals,
+                    'chemistry': self.ds.quantdataset.quanttype.shortname,
+                    'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
+                    'samplegroups': {self.samples.samples[0][0]: self.samples.samples[0][3]}}},
+                },
+                'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfn.sfile.filename,
+                    'ana': f'{self.nfs.workflow.shortname}_{self.ana.name}',
+                    'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
+                'datasets': {f'{self.ds.pk}': {'frregex': f'{self.ads1.regex}',
+                    'setname': f'{self.ads1.setname.setname}', 'filesaresets': False,
+                    'files': {}}}
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
     def test_same_dsets(self):
         url = f'{self.url}{self.nfwf.pk}/{self.ana.pk}/'
         resp = self.cl.get(url, data={'dsids': f'{self.ds.pk},{self.oldds.pk}', 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
-        for key, val in  [('analysis_id', self.ana.pk),
-                ('dsets_identical', True),
-                ('mzmldef', 'testmzd'),
-                ('flags', [self.param1.pk]),
-                ('multicheck', [f'{self.param2.pk}___{self.anamcparam.value[0]}']),
-                ('inputparams', {f'{self.param3.pk}': self.ananormparam.value}),
-                ('multifileparams', {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}}),
-                ('fileparams', {f'{self.pfn2.pk}': self.txtsf.pk}),
-                ('isoquants', {self.anaset.setname: {**self.isoqvals, 'chemistry': self.ds.quantdataset.quanttype.shortname,
-                    'channels': {self.qch.name: [self.projsam.sample, self.qch.pk]},
-                    'samplegroups': {'thech': 'thegroup'}}}),
-                ]:
-            self.assertEqual(rj['base_analysis'][key], val)
-        self.assertEqual(len(rj['resultfiles']), 0)
-        self.assertEqual(len(rj['datasets'].keys()), 2)
-        for dspk, rds in rj['datasets'].items():
-            ads = am.AnalysisDatasetSetname.objects.get(analysis=self.ana, dataset_id=dspk)
-            self.assertEqual(rds['setname'], ads.setname.setname)
-            self.assertEqual(rds['frregex'], ads.regex)
-            self.assertEqual(rds['filesaresets'], False)
-            self.assertEqual(rds['files'], {})
+        checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': True,
+                'mzmldef': self.mzmldef.mzmldef,
+                'flags': [self.param1.pk],
+                'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
+                'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
+                'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
+                'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
+                'isoquants': {self.ads1.setname.setname: {**self.isoqvals,
+                    'chemistry': self.ds.quantdataset.quanttype.shortname,
+                    'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
+                    'samplegroups': {self.samples.samples[0][0]: self.samples.samples[0][3]}}},
+                },
+                'resultfiles': [],
+                'datasets': {f'{self.ds.pk}': {'frregex': f'{self.ads1.regex}',
+                    'setname': f'{self.ads1.setname.setname}',
+                    'filesaresets': False, 'files': {}},
+                f'{self.oldds.pk}': {'frregex': f'{self.ads2.regex}',
+                    'setname': f'{self.ads2.setname.setname}',
+                    'filesaresets': False, 'files': {}}}
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
     def test_no_params_or_post(self):
         url = f'{self.url}1/1/'
