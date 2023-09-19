@@ -174,3 +174,69 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         self.assertEqual(resp.status_code, 400)
         resp = self.cl.post(url)
         self.assertEqual(resp.status_code, 405)
+
+
+class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
+    url = '/analysis/baseanalysis/load/'
+
+    def test_diff_dsets(self):
+        url = f'{self.url}{self.nfwf.pk}/{self.ana.pk}/'
+        resp = self.cl.get(url, data={'dsids': self.ds.pk, 'added_ana_ids': ''})
+        self.assertEqual(resp.status_code, 200)
+        rj = resp.json()
+        checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
+                'mzmldef': self.mzmldef.mzmldef,
+                'flags': [self.param1.pk],
+                'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
+                'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
+                'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
+                'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
+                'isoquants': {},
+                },
+                'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfn.sfile.filename,
+                    'ana': f'{self.nfs.workflow.shortname}_{self.ana.name}',
+                    'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
+                'datasets': {f'{self.ds.pk}': {'frregex': '', 'setname': '', 'filesaresets': True,
+                    'files': {f'{self.afs1.sfile_id}': {'id': self.afs1.sfile_id,
+                        'setname': self.afs1.sample}}},
+                    },
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+
+class TestGetAnalysis(AnalysisIsobaric):
+    url = '/analysis/'
+
+    # FIXME load_base and get_analysis do the same serialization on the inputs I think,
+    # maybe it's worth centralizing that function
+    def test_no_params_or_post(self):
+        url = f'{self.url}1abc/'
+        resp = self.cl.get(url)
+        self.assertEqual(resp.status_code, 404)
+        url = f'{self.url}1/'
+        resp = self.cl.post(url)
+        self.assertEqual(resp.status_code, 405)
+
+    def test_ok(self):
+        url = f'{self.url}{self.ana.nextflowsearch.pk}/'
+        resp = self.cl.get(url)
+        self.assertEqual(resp.status_code, 200)
+        resphtml = resp.content.decode('utf-8')
+        html_dsids = f'''<script>
+        let dsids = [
+                      
+                      "{self.ds.pk}",
+
+                      "{self.oldds.pk}",
+                            
+                            ];
+        let existing_analysis = JSON.parse(document.getElementById('analysis_data').textContent);
+        </script>
+        '''
+        self.assertInHTML(html_dsids, resphtml)
+        self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
+        html_ana = f'''<script id="analysis_data" type="application/json">
+        {{"analysis_id": {self.ana.pk}, "editable": false, "wfversion_id": {self.nfwf.pk}, "wfid": {self.nfw.pk}, "mzmldef": "{self.mzmldef.mzmldef}", "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": [{self.qch.pk}], "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
+        </script>
+        '''
+        self.assertInHTML(html_ana, resphtml)

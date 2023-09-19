@@ -80,7 +80,7 @@ class BaseTest(TestCase):
         self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,
                 source_md5='f3_fakemd5',
                 size=f3size, date=timezone.now(), claimed=True)
-        dm.DatasetRawFile.objects.get_or_create(dataset=self.ds, rawfile=self.f3raw)
+        self.f3dsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=self.ds, rawfile=self.f3raw)
         self.f3sf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw, filename=fn3,
                     md5=self.f3raw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssnewstore, 'path': self.storloc, 
@@ -112,7 +112,7 @@ class BaseTest(TestCase):
         self.oldraw = rm.RawFile.objects.create(name=oldfn, producer=self.prod,
                 source_md5='old_to_new_fakemd5',
                 size=oldsize, date=timezone.now(), claimed=True)
-        dm.DatasetRawFile.objects.get_or_create(dataset=self.oldds, rawfile=self.oldraw)
+        self.olddsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=self.oldds, rawfile=self.oldraw)
         self.oldsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.oldraw, filename=oldfn,
                     md5=self.oldraw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssoldstorage, 'path': self.oldstorloc, 
