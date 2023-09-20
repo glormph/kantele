@@ -118,16 +118,25 @@ def load_base_analysis(request, wfversion_id, baseanid):
 
     # Get datasets from base analysis for their setnames/filesamples etc
     # Only overlapping datasets are fetched here
-    dsets = {x: {'setname': '', 'frregex': '', 'files': {}} for x in new_ana_dsids}
+    dsets = {x: {} for x in new_ana_dsids}
     for ads in ana.analysisdatasetsetname_set.filter(dataset_id__in=new_ana_dsids):
         dsets[ads.dataset_id] = {'setname': ads.setname.setname, 'frregex': ads.regex,
                 'files': {}} 
     for dsid in new_ana_dsids:
         for fn in am.AnalysisFileSample.objects.filter(analysis=ana,
                 sfile__rawfile__datasetrawfile__dataset_id=dsid):
-            dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'setname': fn.sample}
-        dsets[dsid]['filesaresets'] = any((x['setname'] != '' for x in dsets[dsid]['files'].values()))
+            # FIXME files should maybe be called filesamples -> less confusion
+            try:
+                dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'setname': fn.sample}
+            except KeyError:
+                dsets[dsid]['files'] = {fn.sfile_id: {'id': fn.sfile_id, 'setname': fn.sample}}
+        if 'files' in dsets[dsid]:
+            # Must check if dset is actually in the overlap before setting filesaresets, else it errors
+            dsets[dsid]['filesaresets'] = any((x['setname'] != '' for x in dsets[dsid]['files'].values()))
+    [dsets.pop(x) for x in new_ana_dsids if not dsets[x]]
 
+    # Isoquants, sampletables, and also shadow isoquants (isoquants from the base analysis
+    # own base analysis)
     try:
         sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
     except am.AnalysisSampletable.DoesNotExist:
@@ -327,19 +336,20 @@ def get_base_analyses(request):
 @require_GET
 def get_datasets(request):
     """Fetches datasets to analysis"""
-    dsids = request.GET['dsids'].split(',')
-    anid = int(request.GET['anid'])
+    try:
+        dsids = request.GET['dsids'].split(',')
+        anid = int(request.GET['anid'])
+    except (KeyError, ValueError):
+        return JsonResponse({'error': True, 'errmsg': ['Something wrong when asking datasets, contact admin']}, status=400)
+    dbdsets = dm.Dataset.objects.filter(pk__in=dsids, deleted=False).select_related('quantdataset__quanttype')
+    if not dbdsets.count():
+        return JsonResponse({'error': True, 'errmsg': ['Could not find those datasets, either it has been removed or there is a problem']}, status=404)
     response = {'error': False, 'errmsg': []}
     dsjobs = rm.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
         storedfile__rawfile__datasetrawfile__dataset_id__in=dsids).select_related('job')
     info = {'jobs': [unijob for unijob in
                     {x.job.id: {'name': x.job.funcname, 'state': x.job.state}
                      for x in dsjobs}.values()]}
-    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
-    deleted = dbdsets.filter(deleted=True)
-    if deleted.count():
-        response['error'] = True
-        response['errmsg'].append('Deleted datasets can not be analysed')
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
     qsfiles = {qsf.rawfile_id: qsf.projsample.sample for qsf in dm.QuantSampleFile.objects.filter(rawfile__dataset_id__in=dsids)}
     qfcsfiles = {qfcs.dsrawfile_id: qfcs.projsample.sample for qfcs in dm.QuantFileChannelSample.objects.filter(dsrawfile__dataset_id__in=dsids)}

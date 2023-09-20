@@ -62,6 +62,7 @@ class BaseTest(TestCase):
 
         # Project/dset on new storage
         self.p1, _ = dm.Project.objects.get_or_create(name='p1', pi=self.pi)
+        self.projsam1, _ = dm.ProjectSample.objects.get_or_create(sample='sample1', project=self.p1)
         dm.ProjType.objects.get_or_create(project=self.p1, ptype=self.ptype)
         self.exp1, _ = dm.Experiment.objects.get_or_create(name='e1', project=self.p1)
         self.run1, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.exp1)
@@ -94,6 +95,7 @@ class BaseTest(TestCase):
         # Project/dataset/files on old storage
         oldfn = 'raw1'
         self.oldp, _ = dm.Project.objects.get_or_create(name='oldp', pi=self.pi)
+        self.projsam2, _ = dm.ProjectSample.objects.get_or_create(sample='sample2', project=self.oldp)
         dm.ProjType.objects.get_or_create(project=self.oldp, ptype=self.ptype)
         self.oldexp, _ = dm.Experiment.objects.get_or_create(name='olde', project=self.oldp)
         self.oldrun, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.oldexp)
@@ -135,6 +137,11 @@ class BaseTest(TestCase):
                 size=100, date=timezone.now(), claimed=True)
         self.anasfile = rm.StoredFile.objects.create(rawfile=self.ana_raw, filename=self.ana_raw.name,
                 servershare_id=self.sstmp.id, path='', md5=self.ana_raw.source_md5,
+                filetype_id=self.ft.id)
+        self.ana_raw2 = rm.RawFile.objects.create(name='ana_file2', producer=self.anaprod, source_md5='anarawabc1234',
+                size=100, date=timezone.now(), claimed=True)
+        self.anasfile2 = rm.StoredFile.objects.create(rawfile=self.ana_raw, filename=self.ana_raw.name,
+                servershare_id=self.sstmp.id, path='', md5=self.ana_raw2.source_md5,
                 filetype_id=self.ft.id)
 
 

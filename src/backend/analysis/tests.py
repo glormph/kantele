@@ -12,9 +12,6 @@ from datasets import models as dm
 class AnalysisTest(BaseTest):
     def setUp(self):
         super().setUp()
-        self.ana, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana', storage_dir='testdir')
-        am.DatasetSearch.objects.get_or_create(analysis=self.ana, dataset=self.ds)
-        am.DatasetSearch.objects.get_or_create(analysis=self.ana, dataset=self.oldds)
         self.pset, _ = am.ParameterSet.objects.get_or_create(name='ps1')
         self.param1, _ = am.Param.objects.get_or_create(name='a flag', nfparam='--flag', ptype='flag', help='flag help')
         self.param2, _ = am.Param.objects.get_or_create(name='a chbox', nfparam='--multi', ptype='multi', help='help')
@@ -47,11 +44,13 @@ class AnalysisTest(BaseTest):
                 filename='main.nf', profiles=[], nfworkflow=self.nfw, paramset=self.pset,
                 kanteleanalysis_version=1, # FIXME remove
                 nfversion='22')
+        # Create analysis for isoquant:
+        self.ana, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_iso', storage_dir='testdir_iso')
+        am.DatasetSearch.objects.get_or_create(analysis=self.ana, dataset=self.ds)
         anajob, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
                 timestamp=timezone.now())
         self.nfs, _ = am.NextflowSearch.objects.get_or_create(analysis=self.ana, nfworkflow=self.nfwf,
                 workflow=self.wf, token='tok123', job=anajob)
-
         am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param1, value=True)
         self.anamcparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param2,
                 value=[self.popt1.value])
@@ -61,27 +60,40 @@ class AnalysisTest(BaseTest):
                 param=self.pfn1, sfile=self.tmpsf)
         self.anafparam, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.ana,
                 param=self.pfn2, sfile=self.txtsf)
-
-
         self.resultfn, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.ana,
                 sfile=self.anasfile)
-        self.projsam1, _ = dm.ProjectSample.objects.get_or_create(sample='sample1',
-                project=self.ds.runname.experiment.project)
-        self.projsam2, _ = dm.ProjectSample.objects.get_or_create(sample='sample2',
-                project=self.ds.runname.experiment.project)
-
         self.mzmldef, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.ana, mzmldef='testmzd')
+
+        # Create analysis for LF
+        self.analf, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_lf', storage_dir='testdirlf')
+        am.DatasetSearch.objects.get_or_create(analysis=self.analf, dataset=self.oldds)
+        anajoblf, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
+                timestamp=timezone.now())
+        self.nfslf, _ = am.NextflowSearch.objects.get_or_create(analysis=self.analf, nfworkflow=self.nfwf,
+                workflow=self.wf, token='tok12344', job=anajoblf)
+
+        am.AnalysisParam.objects.get_or_create(analysis=self.analf, param=self.param1, value=True)
+        self.anamcparamlf, _ = am.AnalysisParam.objects.get_or_create(analysis=self.analf, param=self.param2,
+                value=[self.popt1.value])
+        self.ananormparamlf, _ = am.AnalysisParam.objects.get_or_create(analysis=self.analf,
+                param=self.param3, value=3)
+        self.anamfparamlf, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.analf,
+                param=self.pfn1, sfile=self.tmpsf)
+        self.anafparamlf, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.analf,
+                param=self.pfn2, sfile=self.txtsf)
+        self.resultfnlf, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.analf,
+                sfile=self.anasfile2)
+        self.mzmldeflf, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.analf, mzmldef='lfmz')
 
 
 class AnalysisIsobaric(AnalysisTest):
+    '''For preloaded isobaric analysis (base or new) we load setnames and isoquant'''
+
     def setUp(self):
         super().setUp()
         self.anaset, _ = am.AnalysisSetname.objects.get_or_create(analysis=self.ana, setname='set1')
         self.ads1, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
                 dataset=self.ds, setname=self.anaset, regex='hej')
-        self.ads2, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
-                dataset=self.oldds, setname=self.anaset, regex='hej2')
-
         self.qcs, _  = dm.QuantChannelSample.objects.get_or_create(dataset=self.ds, channel=self.qtch,
                 projsample=self.projsam1)
         self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
@@ -92,15 +104,15 @@ class AnalysisIsobaric(AnalysisTest):
 
 
 class AnalysisLabelfreeSamples(AnalysisTest):
+    '''For preloaded LF analysis (base or new) we load file/sample annotations'''
+
     def setUp(self):
         super().setUp()
-        dm.QuantSampleFile.objects.get_or_create(rawfile=self.f3dsr, projsample=self.projsam1)
         dm.QuantSampleFile.objects.get_or_create(rawfile=self.olddsr, projsample=self.projsam2)
-        self.afs1, _ = am.AnalysisFileSample.objects.get_or_create(analysis=self.ana, sample=self.projsam1.sample, sfile=self.f3sf)
-        self.afs2, _ = am.AnalysisFileSample.objects.get_or_create(analysis=self.ana, sample='newname2', sfile=self.oldsf)
+        self.afs2, _ = am.AnalysisFileSample.objects.get_or_create(analysis=self.analf, sample='newname2', sfile=self.oldsf)
 
 
-class TestNewAnalysis(AnalysisIsobaric):
+class TestNewAnalysis(BaseTest):
     url = '/analysis/new/'
 
     def test_ok(self):
@@ -116,8 +128,11 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
     url = '/analysis/baseanalysis/load/'
 
     def test_diff_dsets(self):
+        '''Base analysis requested has a single dataset connected, this one asks for two, so we 
+        need to get resultfiles from the base analysis as they will not be included in the 
+        dropdowns already (any resultfile from an analysis with identical dsets as input will be)'''
         url = f'{self.url}{self.nfwf.pk}/{self.ana.pk}/'
-        resp = self.cl.get(url, data={'dsids': self.ds.pk, 'added_ana_ids': ''})
+        resp = self.cl.get(url, data={'dsids': f'{self.ds.pk},{self.oldds.pk}', 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
@@ -132,7 +147,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
                     'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
                     'samplegroups': {self.samples.samples[0][0]: self.samples.samples[0][3]}}},
                 },
-                'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfn.sfile.filename,
+                'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfnlf.sfile.filename,
                     'ana': f'{self.nfs.workflow.shortname}_{self.ana.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
                 'datasets': {f'{self.ds.pk}': {'frregex': f'{self.ads1.regex}',
@@ -142,8 +157,12 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
     def test_same_dsets(self):
+        '''Base analysis requested has a single dset connected, this analysis too, so we need
+        output which has no base analysis resultfiles as they will already be loaded as part
+        of the other same analysis
+        '''
         url = f'{self.url}{self.nfwf.pk}/{self.ana.pk}/'
-        resp = self.cl.get(url, data={'dsids': f'{self.ds.pk},{self.oldds.pk}', 'added_ana_ids': ''})
+        resp = self.cl.get(url, data={'dsids': self.ds.pk, 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': True,
@@ -162,9 +181,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
                 'datasets': {f'{self.ds.pk}': {'frregex': f'{self.ads1.regex}',
                     'setname': f'{self.ads1.setname.setname}',
                     'filesaresets': False, 'files': {}},
-                f'{self.oldds.pk}': {'frregex': f'{self.ads2.regex}',
-                    'setname': f'{self.ads2.setname.setname}',
-                    'filesaresets': False, 'files': {}}}
+                    }
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
@@ -180,12 +197,15 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
     url = '/analysis/baseanalysis/load/'
 
     def test_diff_dsets(self):
-        url = f'{self.url}{self.nfwf.pk}/{self.ana.pk}/'
-        resp = self.cl.get(url, data={'dsids': self.ds.pk, 'added_ana_ids': ''})
+        '''Base analysis has a single dset attached, this one has two, so we will
+        not have dsets_identical and thus we will deliver resultfiles
+        '''
+        url = f'{self.url}{self.nfwf.pk}/{self.analf.pk}/'
+        resp = self.cl.get(url, data={'dsids': f'{self.oldds.pk},{self.ds.pk}', 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
-        checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
-                'mzmldef': self.mzmldef.mzmldef,
+        checkjson = {'base_analysis': {'analysis_id': self.analf.pk, 'dsets_identical': False,
+                'mzmldef': self.mzmldeflf.mzmldef,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
@@ -193,12 +213,12 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
                 'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
                 'isoquants': {},
                 },
-                'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfn.sfile.filename,
-                    'ana': f'{self.nfs.workflow.shortname}_{self.ana.name}',
+                'resultfiles': [{'id': self.resultfnlf.sfile.pk, 'fn': self.resultfnlf.sfile.filename,
+                    'ana': f'{self.nfs.workflow.shortname}_{self.analf.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
-                'datasets': {f'{self.ds.pk}': {'frregex': '', 'setname': '', 'filesaresets': True,
-                    'files': {f'{self.afs1.sfile_id}': {'id': self.afs1.sfile_id,
-                        'setname': self.afs1.sample}}},
+                'datasets': {f'{self.oldds.pk}': {'filesaresets': True,
+                    'files': {f'{self.afs2.sfile_id}': {'id': self.afs2.sfile_id,
+                        'setname': self.afs2.sample}}},
                     },
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
@@ -226,8 +246,6 @@ class TestGetAnalysis(AnalysisIsobaric):
         let dsids = [
                       
                       "{self.ds.pk}",
-
-                      "{self.oldds.pk}",
                             
                             ];
         let existing_analysis = JSON.parse(document.getElementById('analysis_data').textContent);
