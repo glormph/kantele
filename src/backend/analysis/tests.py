@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from django.utils import timezone
+from django.db.models import Max
 
 from kantele.tests import BaseTest, BaseIntegrationTest
 from analysis import models as am
@@ -258,3 +259,81 @@ class TestGetAnalysis(AnalysisIsobaric):
         </script>
         '''
         self.assertInHTML(html_ana, resphtml)
+
+
+class TestGetDatasets(AnalysisTest):
+    url = '/analysis/dsets/'
+
+    def test_bad_req(self):
+        resp = self.cl.post(self.url)
+        self.assertEqual(resp.status_code, 405)
+        resp = self.cl.get(self.url)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_without_analysis_no_mzmls(self):
+        resp = self.cl.get(self.url, data={'dsids': f'{self.ds.pk}', 'anid': 0})
+        self.assertEqual(resp.status_code, 200)
+        checkjson = {
+                'dsets': {f'{self.ds.pk}': {
+                    'ana_ids': [self.ana.pk],
+                    'channels': {}, # FIXME no ch?
+                    'deleted': self.ds.deleted,
+                    'details': {
+                        'allowners': {f'{self.user.id}': ' '},
+                        'compstates': {'files': 'OK'},
+                        'convert_dataset_mzml': [],
+                        'instrument_types': [self.prod.shortname],
+                        'instruments': [self.prod.name],
+                        'nrstoredfiles': {'raw': self.ds.datasetrawfile_set.count()},
+                        'nrbackupfiles': 0,
+                        'owners': {f'{self.user.id}': self.user.username},
+                        'pwiz_sets': [],
+                        'pwiz_versions': {},
+                        'qtype': {'name': self.ds.quantdataset.quanttype.name,
+                            'short': self.ds.quantdataset.quanttype.shortname},
+                        'refine_mzmls': [],
+                        'refine_versions': [{'id': 15, 'name': 'v1.0'}],
+                        'storage_loc': f'{self.ds.storageshare.server.uri} - {self.ds.storage_loc}',
+                        },
+                    'dtype': self.ds.datatype.name,
+                    'exp': self.ds.runname.experiment.name,
+                    'files': [],
+                    'fn_ids': [self.f3sf.pk],
+                    'frregex': '.*fr([0-9]+).*mzML$',
+                    'id': self.ds.pk,
+                    'own': True,
+                    'prefrac': False,
+                    'proj': self.ds.runname.experiment.project.name,
+                    'ptype': self.ds.runname.experiment.project.projtype.ptype.name,
+                    'run': self.ds.runname.name,
+                    'setname': '', # not set yet, no analysis passed
+                    'smallstatus': [], # only for home reporting mzML
+                    'storestate': 'active-only', # no backups
+                    'usr': self.user.username,
+                    }},
+                'error': True,
+                'errmsg': ['Need to create or finish refining mzML files first in dataset '
+                f'{self.ds.runname.name}'],
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+    def test_error(self):
+        '''This test is on single dataset which will fail, so it needs to be in right
+        order (adding features to dset until good, in same order of view)'''
+        # Non-existing dataset
+        maxds = dm.Dataset.objects.aggregate(Max('pk'))['pk__max']
+        resp = self.cl.get(self.url, data={'dsids': f'{maxds + 10}', 'anid': 0})
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()['errmsg'],
+                ['Could not find those datasets, either it has been removed or there is a problem'])
+        # No quant details
+        newrun, _ = dm.RunName.objects.get_or_create(experiment=self.ds.runname.experiment,
+                name='noqt_ds')
+        newds, _ = dm.Dataset.objects.get_or_create(runname=newrun, datatype=self.ds.datatype, 
+                storage_loc='noqt_stor', storageshare=self.ds.storageshare,
+                defaults={'date': timezone.now()})
+        dm.DatasetOwner.objects.get_or_create(dataset=newds, user=self.user)
+        resp = self.cl.get(self.url, data={'dsids': f'{newds.pk}', 'anid': 0})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(f'Dataset with runname {newrun.name} has no quant details, please fill in '
+                'sample prep fields', resp.json()['errmsg'])
