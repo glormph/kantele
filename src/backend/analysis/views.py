@@ -421,8 +421,11 @@ def get_datasets(request):
 def get_workflow_versioned(request):
     try:
         wf = am.NextflowWfVersion.objects.get(pk=request.GET['wfvid'])
+        dsids = request.GET['dsids'].split(',')
+    except KeyError:
+        return JsonResponse({'error': 'Something is wrong, contact admin'}, status=400)
     except am.NextflowWfVersion.DoesNotExist:
-        return HttpResponseNotFound()
+        return JsonResponse({'error': 'Could not find workflow'}, status=404)
     params = wf.paramset.psetparam_set.select_related('param')
     files = wf.paramset.psetfileparam_set.select_related('param')
     multifiles = wf.paramset.psetmultifileparam_set.select_related('param')
@@ -465,7 +468,8 @@ def get_workflow_versioned(request):
                 'name': x.sfile.filename}
                 for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}
     }
-    resp['prev_resultfiles'] = get_prev_resultfiles(request.GET['dsids'].split(','))
+
+    resp['prev_resultfiles'] = get_prev_resultfiles(dsids)
     return JsonResponse({'wf': resp})
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.utils import timezone
 from django.db.models import Max
@@ -22,7 +22,7 @@ class AnalysisTest(BaseTest):
         self.pfn1, _ = am.FileParam.objects.get_or_create(name='fp1', nfparam='--fp1', filetype=self.ft, help='help')
 
         self.ft2, _ = rm.StoredFileType.objects.get_or_create(name='result ft', filetype='txt')
-        self.pfn2, _ = am.FileParam.objects.get_or_create(name='fp1', nfparam='--fp1', filetype=self.ft2, help='helppi')
+        self.pfn2, _ = am.FileParam.objects.get_or_create(name='fp1', nfparam='--fp2', filetype=self.ft2, help='helppi')
         self.txtraw, _ = rm.RawFile.objects.get_or_create(name='txtfn', producer=self.anaprod,
                 source_md5='txtraw_fakemd5', size=1234, date=timezone.now(), claimed=False)
         self.txtsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.txtraw,
@@ -337,3 +337,73 @@ class TestGetDatasets(AnalysisTest):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(f'Dataset with runname {newrun.name} has no quant details, please fill in '
                 'sample prep fields', resp.json()['errmsg'])
+
+
+class TestGetWorkflowVersionDetails(AnalysisTest):
+    url = '/analysis/workflow/'
+
+    def test_bad_req(self):
+        resp = self.cl.post(self.url)
+        self.assertEqual(resp.status_code, 405)
+        resp = self.cl.get(self.url)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()['error'], 'Something is wrong, contact admin')
+        maxpk = am.NextflowWorkflow.objects.aggregate(Max('pk'))['pk__max']
+        resp = self.cl.get(self.url, data={'wfvid': maxpk + 10, 'dsids': f'{self.ds.pk}'})
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()['error'], 'Could not find workflow')
+
+    def test_ok(self):
+        # Add some usr file to make it show up in the dropdown, and make sure the other
+        # userfile is not (wrong filetype)
+        usrfraw_ft, _ = rm.RawFile.objects.update_or_create(name='userfile_right_ft', 
+                producer=self.prod, source_md5='usrf_rightft_md5',
+                size=100, defaults={'claimed': False, 'date': timezone.now()})
+        sfusr_ft, _ = rm.StoredFile.objects.update_or_create(rawfile=usrfraw_ft,
+                md5=usrfraw_ft.source_md5, filetype=self.ft2, defaults={'filename': usrfraw_ft.name,
+                    'servershare': self.sstmp, 'path': '', 'checked': True})
+        utoken_ft, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='token_ft',
+                expired=False, producer=self.prod, filetype=sfusr_ft.filetype, defaults={
+                    'expires': timezone.now() + timedelta(1)})
+        userfile_ft, _ = rm.UserFile.objects.get_or_create(sfile=sfusr_ft,
+                description='This is a userfile', upload=utoken_ft)
+        resp = self.cl.get(self.url, data={'wfvid': self.nfwf.pk, 'dsids': f'{self.ds.pk}'})
+        self.assertEqual(resp.status_code, 200)
+        checkjson = {'wf': {'analysisapi': self.nfwf.kanteleanalysis_version,
+            'components': {x.component.name: x.component.value 
+                for x in  self.nfwf.paramset.psetcomponent_set.all()},
+            'flags': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='flag')],
+            'numparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='number')],
+            'textparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='text')],
+            'multicheck': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'opts': {f'{po.pk}': po.name for po in x.param.paramoption_set.all()},
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='multi')],
+            'fileparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'ftype': x.param.filetype_id, 'allow_resultfile': x.allow_resultfiles,
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetfileparam_set.all()],
+            'multifileparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'ftype': x.param.filetype_id, 'allow_resultfile': x.allow_resultfiles,
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetmultifileparam_set.all()],
+            # FIXME going to remove fixed files anyway
+            'fixedfileparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'ftype': x.param.filetype_id, 'allow_resultfile': x.allow_resultfiles,
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetpredeffileparam_set.all()],
+            'libfiles': {f'{ft}': [{'id': x.sfile.id, 'desc': x.description,
+                'name': x.sfile.filename} for x in [self.lf, userfile_ft]
+                if x.sfile.filetype_id == ft]
+                for ft in [self.lf.sfile.filetype_id, sfusr_ft.filetype_id]},
+            'prev_resultfiles': [{'ana': f'{self.nfs.workflow.shortname}_{self.ana.name}',
+                'date': datetime.strftime(self.ana.date, '%Y-%m-%d'), 'id': self.resultfn.sfile_id,
+                'fn': self.resultfn.sfile.filename}],
+            }}
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
