@@ -2,6 +2,7 @@
 import os
 import shutil
 from time import sleep
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase, LiveServerTestCase, Client
@@ -12,6 +13,7 @@ from kantele import settings
 from datasets import models as dm
 from rawstatus import models as rm
 from jobs import models as jm
+from analysis import models as am
 
 
 class BaseTest(TestCase):
@@ -111,9 +113,9 @@ class BaseTest(TestCase):
         dm.DatasetOwner.objects.get_or_create(dataset=self.oldds, user=self.user)
         self.oldfpath = os.path.join(settings.SHAREMAP[self.ssoldstorage.name], self.oldstorloc)
         oldsize = os.path.getsize(os.path.join(self.oldfpath, oldfn))
-        self.oldraw = rm.RawFile.objects.create(name=oldfn, producer=self.prod,
-                source_md5='old_to_new_fakemd5',
-                size=oldsize, date=timezone.now(), claimed=True)
+        self.oldraw, _ = rm.RawFile.objects.get_or_create(name=oldfn, producer=self.prod,
+                source_md5='old_to_new_fakemd5', size=oldsize, defaults={'date': timezone.now(),
+                    'claimed': True})
         self.olddsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=self.oldds, rawfile=self.oldraw)
         self.oldsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.oldraw, filename=oldfn,
                     md5=self.oldraw.source_md5, filetype=self.ft,
@@ -125,24 +127,47 @@ class BaseTest(TestCase):
         tmpfpathfn = os.path.join(settings.SHAREMAP[self.sstmp.name], tmpfn)
         tmpsize = os.path.getsize(tmpfpathfn)
         self.tmpraw, _ = rm.RawFile.objects.get_or_create(name=tmpfn, producer=self.prod,
-                source_md5='tmpraw_fakemd5',
-                size=tmpsize, date=timezone.now(), claimed=False)
+                source_md5='tmpraw_fakemd5', size=tmpsize, defaults={'date': timezone.now(),
+                    'claimed': False})
         self.tmpsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.tmpraw,
                 md5=self.tmpraw.source_md5, defaults={'filename': tmpfn, 'servershare': self.sstmp,
                     'path': '', 'checked': True, 'filetype': self.ft})
 
+        # Library and user files
+        self.libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone', producer=self.prod, source_md5='libfilemd5',
+                size=100, defaults={'claimed': False, 'date': timezone.now()})
+
+        self.sflib, _ = rm.StoredFile.objects.update_or_create(rawfile=self.libraw,
+                md5=self.libraw.source_md5, filetype=self.ft, defaults={'checked': True, 
+                    'filename': self.libraw.name, 'servershare': self.sstmp, 'path': ''})
+        self.lf, _ = am.LibraryFile.objects.get_or_create(sfile=self.sflib, description='This is a libfile')
+        self.usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone', producer=self.prod, source_md5='usrfmd5',
+                size=100, defaults={'claimed': False, 'date': timezone.now()})
+
+        self.uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
+                is_rawdata=False)
+        self.sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=self.usrfraw,
+                md5=self.usrfraw.source_md5, filetype=self.uft,
+                defaults={'filename': self.usrfraw.name, 'servershare': self.sstmp,
+                    'path': '', 'checked': True})
+        self.usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
+                expired=False, producer=self.prod, filetype=self.uft, defaults={
+                    'expires': timezone.now() + timedelta(1)})
+        self.userfile, _ = rm.UserFile.objects.get_or_create(sfile=self.sfusr,
+                description='This is a userfile', upload=self.usedtoken)
+
         # Analysis files
         self.anaprod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
-        self.ana_raw = rm.RawFile.objects.create(name='ana_file', producer=self.anaprod, source_md5='kjlmnop1234',
-                size=100, date=timezone.now(), claimed=True)
-        self.anasfile = rm.StoredFile.objects.create(rawfile=self.ana_raw, filename=self.ana_raw.name,
-                servershare_id=self.sstmp.id, path='', md5=self.ana_raw.source_md5,
-                filetype_id=self.ft.id)
-        self.ana_raw2 = rm.RawFile.objects.create(name='ana_file2', producer=self.anaprod, source_md5='anarawabc1234',
-                size=100, date=timezone.now(), claimed=True)
-        self.anasfile2 = rm.StoredFile.objects.create(rawfile=self.ana_raw, filename=self.ana_raw.name,
-                servershare_id=self.sstmp.id, path='', md5=self.ana_raw2.source_md5,
-                filetype_id=self.ft.id)
+        self.ana_raw, _ = rm.RawFile.objects.get_or_create(name='ana_file', producer=self.anaprod, source_md5='kjlmnop1234',
+                size=100, defaults={'date': timezone.now(), 'claimed': True})
+        self.anasfile, _ = rm.StoredFile.objects.get_or_create(rawfile=self.ana_raw,
+                filetype_id=self.ft.id, defaults={'filename': self.ana_raw.name,
+                    'servershare': self.sstmp, 'path': '', 'md5': self.ana_raw.source_md5})
+        self.ana_raw2, _ = rm.RawFile.objects.get_or_create(name='ana_file2', producer=self.anaprod,
+                source_md5='anarawabc1234', size=100, defaults={'date': timezone.now(), 'claimed': True})
+        self.anasfile2, _ = rm.StoredFile.objects.get_or_create(rawfile=self.ana_raw2,
+                filetype_id=self.ft.id, defaults={'filename': self.ana_raw.name, 'filetype': self.ft,
+                    'servershare_id': self.sstmp.id, 'path': '', 'md5': self.ana_raw2.source_md5})
 
 
 class BaseIntegrationTest(LiveServerTestCase):
