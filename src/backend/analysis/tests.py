@@ -29,7 +29,7 @@ class AnalysisTest(BaseTest):
                 md5=self.txtraw.source_md5, defaults={'filename': self.txtraw.name,
                     'servershare': self.sstmp, 'path': '', 'checked': True, 'filetype': self.ft2})
 
-        wfc, _ = am.WFInputComponent.objects.get_or_create(name='mzmldef', value=[1,2,3])
+        wfc, _ = am.WFInputComponent.objects.get_or_create(name='mzmldef', value={'a': ['plate',2,3]})
         am.PsetComponent.objects.get_or_create(pset=self.pset, component=wfc)
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param1)
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param2)
@@ -255,7 +255,7 @@ class TestGetAnalysis(AnalysisIsobaric):
         self.assertInHTML(html_dsids, resphtml)
         self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
         html_ana = f'''<script id="analysis_data" type="application/json">
-        {{"analysis_id": {self.ana.pk}, "editable": false, "wfversion_id": {self.nfwf.pk}, "wfid": {self.nfw.pk}, "mzmldef": "{self.mzmldef.mzmldef}", "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": [{self.qch.pk}], "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
+        {{"analysis_id": {self.ana.pk}, "editable": false, "wfversion_id": {self.nfwf.pk}, "wfid": {self.wf.pk}, "mzmldef": "{self.mzmldef.mzmldef}", "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": [{self.qch.pk}], "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
         </script>
         '''
         self.assertInHTML(html_ana, resphtml)
@@ -288,7 +288,7 @@ class TestGetDatasets(AnalysisTest):
                         'nrbackupfiles': 0,
                         'owners': {f'{self.user.id}': self.user.username},
                         'pwiz_sets': [],
-                        'pwiz_versions': {},
+                        'pwiz_versions': {f'{self.pwiz.pk}': self.pwiz.version_description},
                         'qtype': {'name': self.ds.quantdataset.quanttype.name,
                             'short': self.ds.quantdataset.quanttype.shortname},
                         'refine_mzmls': [],

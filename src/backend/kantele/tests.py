@@ -88,11 +88,20 @@ class BaseTest(TestCase):
                     md5=self.f3raw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssnewstore, 'path': self.storloc, 
                         'checked': True})
-        qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
-        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=qt)
+        # Pwiz/mzml
+        pset, _ = am.ParameterSet.objects.get_or_create(name='pwiz_pset_base')
+        nfw, _ = am.NextflowWorkflow.objects.get_or_create(
+                description='pwiz_repo_base desc', repo='pwiz_repo_base')
+        wfv, _ = am.NextflowWfVersion.objects.get_or_create(update='pwiz wfv base',
+                commit='pwiz ci base', filename='pwiz.nf', nfworkflow=nfw,
+                paramset=pset, kanteleanalysis_version=1, nfversion='')
+        self.pwiz = am.Proteowizard.objects.create(version_description='',
+                container_version='', nf_version=wfv)
+        am.MzmlFile.objects.get_or_create(sfile=self.f3sf, pwiz=self.pwiz)
+        self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
+        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
         self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
-        self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=qt, channel=self.qch)
-
+        self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
 
         # Project/dataset/files on old storage
         oldfn = 'raw1'
@@ -105,7 +114,7 @@ class BaseTest(TestCase):
         self.oldds, _ = dm.Dataset.objects.update_or_create(date=self.oldp.registered,
                 runname=self.oldrun, datatype=self.dtype, defaults={
                     'storageshare': self.ssoldstorage, 'storage_loc': self.oldstorloc})
-        dm.QuantDataset.objects.get_or_create(dataset=self.oldds, quanttype=qt)
+        dm.QuantDataset.objects.get_or_create(dataset=self.oldds, quanttype=self.qt)
         dm.DatasetComponentState.objects.get_or_create(dataset=self.oldds, dtcomp=self.dtcomp,
                 state='OK')
         self.contact, _ = dm.ExternalDatasetContact.objects.get_or_create(dataset=self.oldds,
@@ -133,17 +142,21 @@ class BaseTest(TestCase):
                 md5=self.tmpraw.source_md5, defaults={'filename': tmpfn, 'servershare': self.sstmp,
                     'path': '', 'checked': True, 'filetype': self.ft})
 
-        # Library and user files
-        self.libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone', producer=self.prod, source_md5='libfilemd5',
-                size=100, defaults={'claimed': False, 'date': timezone.now()})
+        # FIXME should go to analysis? Maybe reuse in home etc views
+        # Library files, for use as input, so claimed and ready
+        self.libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone',
+                producer=self.prod, source_md5='libfilemd5',
+                size=100, defaults={'claimed': True, 'date': timezone.now()})
 
         self.sflib, _ = rm.StoredFile.objects.update_or_create(rawfile=self.libraw,
                 md5=self.libraw.source_md5, filetype=self.ft, defaults={'checked': True, 
                     'filename': self.libraw.name, 'servershare': self.sstmp, 'path': ''})
         self.lf, _ = am.LibraryFile.objects.get_or_create(sfile=self.sflib, description='This is a libfile')
-        self.usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone', producer=self.prod, source_md5='usrfmd5',
-                size=100, defaults={'claimed': False, 'date': timezone.now()})
 
+        # User files for input
+        self.usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone',
+                producer=self.prod, source_md5='usrfmd5', size=100, 
+                defaults={'claimed': True, 'date': timezone.now()})
         self.uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
                 is_rawdata=False)
         self.sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=self.usrfraw,
