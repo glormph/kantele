@@ -422,3 +422,67 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
                 'fn': self.resultfn.sfile.filename}],
             }}
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+
+class TestStoreAnalysis(AnalysisTest):
+    url = '/analysis/store/'
+
+    def test_bad_req(self):
+        resp = self.cl.get(self.url)
+        self.assertEqual(resp.status_code, 405)
+        resp = self.cl.post(self.url)
+        self.assertEqual(resp.status_code, 400)
+        resp = self.cl.post(self.url, content_type='application/json', data={})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_new_analysis(self):
+        quant = self.ds.quantdataset.quanttype
+        params = {'flags': {self.param1.pk: True}, 'inputparams': {self.param3.pk: 42}, 
+                'multicheck': {self.param2.pk: [self.popt1.pk]}}
+        postdata = {'dsids': [f'{self.ds.pk}'],
+            'analysis_id': False,
+            'fractions': {self.f3sfmz.pk: 1},
+            'nfwfvid': self.nfwf.pk,
+            'isoquant': {'setA': {'chemistry': quant.shortname,
+                'denoms': {x.channel.name: [f'{x}_sample', x.channel.id] for x in quant.quanttypechannel_set.all()},
+                'report_intensity': False,
+                'sweep': False,
+                }},
+            'dssetnames': {self.ds.pk: 'setA'},
+            'components': {'mzmldef': 'a', 'sampletable': {'hello': 'yes'}},
+            'analysisname': 'Test new analysis',
+            'frregex': {f'{self.ds.pk}': 'fr_find'},
+            'fnsetnames': {},
+            'params': params,
+            'singlefiles': {self.pfn2.pk: self.sflib.pk},
+            'multifiles': {self.pfn1.pk: [self.sfusr.pk]},
+            # FIXME use self.ana here
+            'base_analysis': {'isComplement': False,
+                'dsets_identical': False,
+                'selected': False,
+                'typedname': '',
+                'fetched': {},
+                'resultfiles': [],
+                },
+            'wfid': self.wf.pk,
+            }
+        resp = self.cl.post(self.url, content_type='application/json', data=postdata)
+        self.assertEqual(resp.status_code, 200)
+        ana = am.Analysis.objects.last()
+        self.assertEqual(ana.analysismzmldef.mzmldef, postdata['components']['mzmldef'])
+        self.assertEqual(ana.analysissampletable.samples, {'hello': 'yes'})
+        for adsif in ana.analysisdsinputfile_set.all():
+            self.assertEqual(adsif.analysisdset.dataset_id, self.ds.pk)
+            self.assertEqual(adsif.analysisdset.setname.setname, postdata['dssetnames'][self.ds.pk])
+            self.assertEqual(adsif.analysisdset.regex, postdata['frregex'][f'{self.ds.pk}'])
+        for ap in ana.analysisparam_set.all():
+            pt = {'multi': 'multicheck', 'text': 'inputparams', 'number': 'inputparams',
+                    'flag': 'flags'}[ap.param.ptype]
+            self.assertEqual(ap.value, params[pt][ap.param_id])
+        self.assertEqual(ana.name, postdata['analysisname'])
+        checkjson = {'error': False, 'analysis_id': ana.pk}
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+    # FIXME existing ana
+
+    # FIXME fail tests

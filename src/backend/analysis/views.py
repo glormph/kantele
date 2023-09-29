@@ -517,7 +517,26 @@ def store_analysis(request):
     db_isoquant = {}
 
     # First do checks so we dont save stuff on errors:
-    req = json.loads(request.body.decode('utf-8'))
+    try:
+        req = json.loads(request.body.decode('utf-8'))
+        req['dsids']
+        req['analysis_id']
+        req['fractions']
+        req['nfwfvid']
+        req['isoquant']
+        req['dssetnames']
+        req['analysisname']
+        req['frregex']
+        req['fnsetnames']
+        req['params']
+        req['singlefiles']
+        req['multifiles']
+        req['base_analysis']
+        req['wfid']
+    except json.decoder.JSONDecodeError:
+        return JsonResponse({'error': 'Something went wrong, contact admin'}, status=400)
+    except KeyError:
+        return JsonResponse({'error': 'Something went wrong, contact admin'}, status=400)
     dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related('prefractionationdataset__prefractionation')
     if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
