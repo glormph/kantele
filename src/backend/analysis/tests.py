@@ -270,7 +270,9 @@ class TestGetDatasets(AnalysisTest):
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 400)
 
-    def test_without_analysis_no_mzmls(self):
+    def test_without_analysis_no_sampledata(self):
+        '''Gets datasets for an analysis with self.nfwf workflow. But these being from
+        a dataset without sample info, it will also give an error message'''
         resp = self.cl.get(self.url, data={'dsids': f'{self.ds.pk}', 'anid': 0})
         self.assertEqual(resp.status_code, 200)
         checkjson = {
@@ -287,8 +289,20 @@ class TestGetDatasets(AnalysisTest):
                         'nrstoredfiles': {'raw': self.ds.datasetrawfile_set.count()},
                         'nrbackupfiles': 0,
                         'owners': {f'{self.user.id}': self.user.username},
-                        'pwiz_sets': [],
-                        'pwiz_versions': {f'{self.pwiz.pk}': self.pwiz.version_description},
+                        'pwiz_sets': [{'active': True,
+                            'created': self.f3sfmz.regdate.date().strftime('%Y-%m-%d'),
+                            'notcreated': 0,
+                            'deleted': 0,
+                            'existing': 1,
+                            'pws_id': f'{self.pwiz.pk}_{self.f3sfmz.mzmlfile.refined}',
+                            'state': 'Ready',
+                            'refined': self.f3sfmz.mzmlfile.refined,
+                            'refineready': True,
+                            'id': self.pwiz.pk,
+                            'version': self.pwiz.version_description,
+                            }],
+                        # Versions are only the available OTHER versions (not used for this ds)
+                        'pwiz_versions': {},
                         'qtype': {'name': self.ds.quantdataset.quanttype.name,
                             'short': self.ds.quantdataset.quanttype.shortname},
                         'refine_mzmls': [],
@@ -297,8 +311,9 @@ class TestGetDatasets(AnalysisTest):
                         },
                     'dtype': self.ds.datatype.name,
                     'exp': self.ds.runname.experiment.name,
-                    'files': [],
-                    'fn_ids': [self.f3sf.pk],
+                    'files': [{'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename,
+                        'fr': '', 'setname': ''}],
+                    'fn_ids': [self.f3sf.pk, self.f3sfmz.pk],
                     'frregex': '.*fr([0-9]+).*mzML$',
                     'id': self.ds.pk,
                     'own': True,
@@ -307,19 +322,19 @@ class TestGetDatasets(AnalysisTest):
                     'ptype': self.ds.runname.experiment.project.projtype.ptype.name,
                     'run': self.ds.runname.name,
                     'setname': '', # not set yet, no analysis passed
-                    'smallstatus': [], # only for home reporting mzML
+                    # only for home reporting mzML
+                    'smallstatus': [{'text': 'mzML', 'state': 'active'}],
                     'storestate': 'active-only', # no backups
                     'usr': self.user.username,
                     }},
                 'error': True,
-                'errmsg': ['Need to create or finish refining mzML files first in dataset '
-                f'{self.ds.runname.name}'],
+                'errmsg': ['File(s) in the dataset do not have a sample annotation, '
+                        'please edit the dataset first'],
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
     def test_error(self):
-        '''This test is on single dataset which will fail, so it needs to be in right
-        order (adding features to dset until good, in same order of view)'''
+        '''This test is on single dataset which will fail, in various ways'''
         # Non-existing dataset
         maxds = dm.Dataset.objects.aggregate(Max('pk'))['pk__max']
         resp = self.cl.get(self.url, data={'dsids': f'{maxds + 10}', 'anid': 0})

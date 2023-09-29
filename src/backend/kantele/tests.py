@@ -97,7 +97,10 @@ class BaseTest(TestCase):
                 paramset=pset, kanteleanalysis_version=1, nfversion='')
         self.pwiz = am.Proteowizard.objects.create(version_description='',
                 container_version='', nf_version=wfv)
-        am.MzmlFile.objects.get_or_create(sfile=self.f3sf, pwiz=self.pwiz)
+        self.f3sfmz, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw,
+                filename=f'{fn3}.mzML', md5='md5_for_f3sf_mzml', filetype=self.ft,
+                defaults={'servershare': self.ssnewstore, 'path': self.storloc, 'checked': True})
+        am.MzmlFile.objects.get_or_create(sfile=self.f3sfmz, pwiz=self.pwiz)
         self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
         dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
         self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
