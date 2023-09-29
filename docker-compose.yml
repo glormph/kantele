@@ -15,8 +15,6 @@ services:
             DB_HOST: db
             #DB_HOST: "${HOST_FQDN}"
             RABBITHOST: mq
-            STORAGESHARENAMES: "storage,s3storage"
-            PRIMARY_STORAGE: s3storage
             ANALYSISSHARE: '/analysisfiles' # test only, remove
         volumes:
             - ./src/backend:/kantele
@@ -74,8 +72,6 @@ services:
             DB_HOST: db
             RABBITHOST: mq
             HOST_UPLOADDIR: "${CONTAINER_UPLOADPATH}"
-            STORAGESHARENAMES: "storage,oldstorage"
-
 
     storage_mvfiles:
         depends_on:
