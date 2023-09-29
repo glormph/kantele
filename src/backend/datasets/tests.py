@@ -40,6 +40,9 @@ class UpdateDatasetTest(BaseIntegrationTest):
             self.ds.storage_loc, self.f3sf.filename)))
 
     def test_remove_files_wait_for_rename(self):
+        '''First queue a move dataset job, to new experiment name. Then queue a remove
+        files job from dataset. The second job should wait for the first one, so the removed
+        file should first be moved to the new dset location'''
         newexpname = 'edited_exp1'
         # move dataset
         mvdsresp = self.post_json({'dataset_id': self.ds.pk, 'project_id': self.p1.pk,

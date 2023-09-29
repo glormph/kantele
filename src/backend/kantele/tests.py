@@ -16,6 +16,14 @@ from jobs import models as jm
 from analysis import models as am
 
 
+# FIXME
+# This is mainly fixtures and its getting out of hand
+# We need to separate them better, because the actions in the
+# tests modify these things, and tests will become order-dependent.
+# BAD!
+# Only keep base fixutres that are not user-editable, e.g. pwiz, filetype etc
+# In tests, any thing which is modified needs its own fixture, not from base
+
 class BaseTest(TestCase):
     '''Normal django tests inherit here'''
 

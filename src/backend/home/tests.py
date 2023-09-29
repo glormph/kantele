@@ -20,6 +20,7 @@ class MzmlTests(BaseTest):
                 nfworkflow=nfw, paramset=ps, kanteleanalysis_version=1, nfversion='')
         self.pw, _ = am.Proteowizard.objects.get_or_create(version_description='',
                 container_version='', nf_version=self.nfwv, is_docker=True)
+
         # Stored files input
         self.ssmzml, _ = rm.ServerShare.objects.get_or_create(name=settings.MZMLINSHARENAME, 
                 server=self.newfserver, share='/home/mzmls')

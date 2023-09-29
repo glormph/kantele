@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 from django.db.models import Max
 
-from kantele.tests import BaseTest, BaseIntegrationTest
+from kantele.tests import BaseTest
 from analysis import models as am
 from rawstatus import models as rm
 from jobs import models as jm

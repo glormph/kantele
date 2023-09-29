@@ -78,6 +78,7 @@ class NextflowWorkflow(models.Model):
 
 class Workflow(models.Model):
     name = models.TextField()
+    # FIXME shortname is bad name for field, sounds like a string
     shortname = models.ForeignKey(WorkflowType, on_delete=models.CASCADE)
     nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
     public = models.BooleanField()
@@ -231,10 +232,11 @@ class AnalysisParam(models.Model):
 class AnalysisSampletable(models.Model):
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
     samples = models.JSONField()
-    # could we instead do: four columns channel - set - sample - group ?
+    # FIXME could we instead do: four columns channel - set - sample - group ?
     # Doesnt give a big improvement, if wf sampletable format will change, this DB table will change
     # But then we can keep representation correct instead of leaving the JSON intact
     # I don't see the JSON benefit except somewhat easier because it's passed around as JSON a lot
+    # Added benefit: clearer DB representation, stricter
 
 
 class AnalysisMzmldef(models.Model):
@@ -264,6 +266,7 @@ class AnalysisDatasetSetname(models.Model):
 
 
 class AnalysisDSInputFile(models.Model):
+    '''Input files for set-based analysis (isobaric and prefraction-datasets)'''
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
     analysisdset = models.ForeignKey(AnalysisDatasetSetname, on_delete=models.CASCADE)
@@ -286,13 +289,14 @@ class DatasetSearch(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     # cannot put setname here because of searches without dset/setname
-    # purely a reporting model this is
+    # model used in reporting, and also for finding datasets for base analysis etc
 
 
 class AnalysisIsoquant(models.Model):
+    # FIXME can we not split the JSON field into denoms -JSON, 2x boolean, default=False?
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE)
-    #{denoms: [ch_id, ch_id], sweep: false, intensity: false}
+    #{denoms: [ch_id, ch_id], sweep: false, report_intensity: false}
     value = models.JSONField() 
 
     class Meta:

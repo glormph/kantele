@@ -28,6 +28,7 @@ from jobs import models as jm
 @login_required
 @require_GET
 def get_analysis_init(request):
+    '''New page, empty analysis, only gets datasets'''
     dsids = request.GET['dsids'].split(',')
     try:
         context = {'dsids': dsids, 'analysis': False}
@@ -38,6 +39,7 @@ def get_analysis_init(request):
 
 @login_required
 def load_analysis_resultfiles(request, anid):
+    # FIXME need test
     try:
         ana = am.Analysis.objects.get(pk=anid)
     except am.Analysis.DoesNotExist:
@@ -64,10 +66,10 @@ def load_analysis_resultfiles(request, anid):
 def load_base_analysis(request, wfversion_id, baseanid):
     """Find analysis to base current analysis on, for either copying parameters,
     complementing with new sample sets, or a rerun from PSM table.
-
-    FIXME: This method, and the belonging DB model for base analysis is coupled to the DDA
-    MS proteomics pipeline, and therefore not very general, due to the complement and rerun
-    functionality. Maybe find a way around that, breaking those off from regular base analysis.
+    wfversion_id - current workflow version
+    baseanid - base analysis to load onto this
+    GET['dsids'] - datasets used in current analysis
+    GET['added_ana_ids'] - analyses already added to exclude resultfiles from, so they dont show up in duplicates in dropdowns
     """
     try:
         new_ana_dsids = [int(x) for x in request.GET['dsids'].split(',')]
@@ -314,6 +316,10 @@ def get_dataset_files(dsid, use_refined):
 @login_required
 @require_GET
 def get_base_analyses(request):
+    '''Querying this returns a list of analyses that have a name matching with 
+    the input'''
+    # TODO could reuse this in general analysis finding?
+    # FIXME needs test
     if 'q' in request.GET:
         query = Q()
         searchterms = request.GET['q'].split()
@@ -396,6 +402,8 @@ def get_datasets(request):
                     else:
                         dsdetails['files'][fn.id]['sample'] = qsf_sample
                 if qsf_error:
+                    # FIXME is this possible, that you pass the "no sample prep" check,
+                    # but not the sample annotation?
                     response['error'] = True
                     response['errmsg'].append('File(s) in the dataset do '
                         'not have a sample annotation, please edit the dataset first')
@@ -956,7 +964,6 @@ def write_analysis_log(logline, analysis_id):
 
 def nextflow_analysis_log(request):
     req = json.loads(request.body.decode('utf-8'))
-    print(req)
     if 'runName' not in req or not req['runName']:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     try:
