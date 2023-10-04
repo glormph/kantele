@@ -27,6 +27,7 @@ from jobs import models as jm
 
 @login_required
 @require_GET
+def get_analysis_init(request):
     '''New page, empty analysis, only gets datasets'''
     dsids = request.GET['dsids'].split(',')
     try:
@@ -344,10 +345,14 @@ def get_datasets(request):
         return JsonResponse({'error': True, 'errmsg': ['Something wrong when asking datasets, contact admin']}, status=400)
     response = {'error': False, 'errmsg': []}
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
-    deleted = dbdsets.filter(deleted=True)
-    if deleted.count():
+    deleted = dbdsets.filter(deleted=True).count()
+    if deleted:
         response['error'] = True
         response['errmsg'].append('Deleted datasets can not be analysed')
+    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
+        response['error'] = True
+        response['errmsg'].append('Some datasets could not be found, they may not exist')
+
     dsetinfo = {}
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
             'quantdataset'):
@@ -443,6 +448,9 @@ def get_datasets(request):
             resp_files = [resp_files[x.id] for x in usefiles]
         else:
             qtype = False
+            channels = {}
+            resp_files = []
+            filesaresets = False
             response['error'] = True
             response['errmsg'].append(f'Dataset with runname {dset.runname.name} has no quant '
                     'details, please fill in sample prep fields')
