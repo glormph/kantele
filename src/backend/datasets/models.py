@@ -19,6 +19,7 @@ class Project(models.Model):
 
 
 class ProjectTypeName(models.Model):
+    # FIXME can be enum?
     name = models.TextField()
 
 
@@ -252,7 +253,8 @@ class QuantChannelSample(models.Model):
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
 
 
-class QuantFileChannelSample(models.Model):  # used for labelcheck
+class QuantFileChannelSample(models.Model):
+    '''In non-pooled labelchecks there exist single-channel files'''
     channel = models.ForeignKey(QuantTypeChannel, on_delete=models.CASCADE)
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
     dsrawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)

@@ -778,6 +778,7 @@ def fetch_dset_details(dset):
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles = {'raw': rawfiles.count()}
         info.update({'refine_mzmls': [], 'convert_dataset_mzml': []})
+        # FIXME hardcoded refine version, wtf
         info['refine_versions'] = [{'id': 15, 'name': 'v1.0'}]
         for mzj in filemodels.FileJob.objects.exclude(job__state__in=jj.JOBSTATES_DONE).filter(
                 storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(

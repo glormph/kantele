@@ -28,6 +28,7 @@ from jobs import models as jm
 @login_required
 @require_GET
 def get_analysis_init(request):
+    '''New page, empty analysis, only gets datasets'''
     dsids = request.GET['dsids'].split(',')
     try:
         context = {'dsids': dsids, 'analysis': False}
@@ -38,6 +39,7 @@ def get_analysis_init(request):
 
 @login_required
 def load_analysis_resultfiles(request, anid):
+    # FIXME need test
     try:
         ana = am.Analysis.objects.get(pk=anid)
     except am.Analysis.DoesNotExist:
@@ -52,26 +54,28 @@ def load_analysis_resultfiles(request, anid):
     else:
         base_ana_resfiles_ids = []
     already_loaded_files = analysis_prev_resfiles_ids + base_ana_resfiles_ids
-    resultfiles = [{'id': x.sfile_id,
-        'name': f'{x.sfile.filename} - Result of {aj.get_ana_fullname(ana)} ({analysis_date})'}
+    ananame = aj.get_ana_fullname(ana)
+    anadate = datetime.strftime(ana.date, '%Y-%m-%d')
+    resultfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
     return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
 
 
+@require_GET
 @login_required
 def load_base_analysis(request, wfversion_id, baseanid):
     """Find analysis to base current analysis on, for either copying parameters,
     complementing with new sample sets, or a rerun from PSM table.
-
-    FIXME: This method, and the belonging DB model for base analysis is coupled to the DDA
-    MS proteomics pipeline, and therefore not very general, due to the complement and rerun
-    functionality. Maybe find a way around that, breaking those off from regular base analysis.
+    wfversion_id - current workflow version
+    baseanid - base analysis to load onto this
+    GET['dsids'] - datasets used in current analysis
+    GET['added_ana_ids'] - analyses already added to exclude resultfiles from, so they dont show up in duplicates in dropdowns
     """
     try:
         new_ana_dsids = [int(x) for x in request.GET['dsids'].split(',')]
         added_ana_ids = [int(x) for x in request.GET['added_ana_ids'].split(',') if x]
     except KeyError:
-        return JsonResponse({'error': 'Something wrong when asking for base analysis, contact admin', 'status': 400})
+        return JsonResponse({'error': 'Something wrong when asking for base analysis, contact admin'}, status=400)
     try:
         new_pset_id = am.NextflowWfVersion.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
     except am.NextflowWfVersion.DoesNotExist:
@@ -90,7 +94,6 @@ def load_base_analysis(request, wfversion_id, baseanid):
             'multifileparams': {},
             'fileparams': {},
             'isoquants': {},
-            'resultfiles': [],
             }
     for ap in ana.analysisparam_set.filter(param__psetparam__pset_id=new_pset_id):
         if ap.param.ptype == 'flag' and ap.value:
@@ -116,16 +119,26 @@ def load_base_analysis(request, wfversion_id, baseanid):
         analysis['mzmldef'] = ana.analysismzmldef.mzmldef
 
     # Get datasets from base analysis for their setnames/filesamples etc
-    dsets = {x: {'setname': '', 'frregex': '', 'files': {}} for x in new_ana_dsids}
-    for ads in ana.analysisdatasetsetname_set.all():
+    # Only overlapping datasets are fetched here
+    dsets = {x: {} for x in new_ana_dsids}
+    for ads in ana.analysisdatasetsetname_set.filter(dataset_id__in=new_ana_dsids):
         dsets[ads.dataset_id] = {'setname': ads.setname.setname, 'frregex': ads.regex,
                 'files': {}} 
     for dsid in new_ana_dsids:
         for fn in am.AnalysisFileSample.objects.filter(analysis=ana,
                 sfile__rawfile__datasetrawfile__dataset_id=dsid):
-            dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'setname': fn.sample}
-        dsets[dsid]['filesaresets'] = any((x['setname'] != '' for x in dsets[dsid]['files'].values()))
+            # FIXME files should maybe be called filesamples -> less confusion
+            try:
+                dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'setname': fn.sample}
+            except KeyError:
+                dsets[dsid]['files'] = {fn.sfile_id: {'id': fn.sfile_id, 'setname': fn.sample}}
+        if 'files' in dsets[dsid]:
+            # Must check if dset is actually in the overlap before setting filesaresets, else it errors
+            dsets[dsid]['filesaresets'] = any((x['setname'] != '' for x in dsets[dsid]['files'].values()))
+    [dsets.pop(x) for x in new_ana_dsids if not dsets[x]]
 
+    # Isoquants, sampletables, and also shadow isoquants (isoquants from the base analysis
+    # own base analysis)
     try:
         sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
     except am.AnalysisSampletable.DoesNotExist:
@@ -142,13 +155,13 @@ def load_base_analysis(request, wfversion_id, baseanid):
     added_files_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
         analysis_id__in=added_ana_ids).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
     already_loaded_files = analysis_prev_resfiles_ids + added_files_ids
-    base_resfiles = [{'id': x.sfile_id, 
-        'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(ana), datetime.strftime(ana.date, '%Y-%m-%d'))}
+    base_resfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': aj.get_ana_fullname(ana),
+        'date':datetime.strftime(ana.date, '%Y-%m-%d')}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
     return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': base_resfiles})
 
 
-
+@require_GET
 @login_required
 def get_analysis(request, anid):
     try:
@@ -191,13 +204,15 @@ def get_analysis(request, anid):
     if ana_base.exists():
         ana_base = ana_base.get()
         base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetsearch_set.all()]
+        baname = aj.get_ana_fullname(ana_base.base_analysis)
+        badate = datetime.strftime(ana_base.base_analysis.date, '%Y-%m-%d')
         analysis['base_analysis'] = {
                 #### these are repeated in ana/wf if same dsets
-                'resultfiles':  [{'id': x.sfile_id,
-                    'name': f'{x.sfile.filename} - Result of {aj.get_ana_fullname(ana_base.base_analysis)} ({datetime.strftime(ana_base.base_analysis.date, "%Y-%m-%d")})',
-                    } for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
+                'resultfiles':  [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': baname,
+                    'date': badate}
+                    for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
                 'selected': ana_base.base_analysis_id,
-                'typedname': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(ana_base.base_analysis),
+                'typedname': '{} - {} - {} - {} - {}'.format(baname,
                 ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
                 ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
                 'isComplement': ana_base.is_complement,
@@ -208,6 +223,9 @@ def get_analysis(request, anid):
     else:
         analysis['base_analysis'] = False
         ana_base_resfiles = set()
+
+    ananame = aj.get_ana_fullname(ana)
+    anadate = datetime.strftime(ana.date, '%Y-%m-%d')
     for afp in ana.analysisfileparam_set.all():
         # Looping input files, to find added results analysis
         if (hasattr(afp.sfile, 'analysisresultfile') and not hasattr(afp.sfile, 'libraryfile')
@@ -215,8 +233,7 @@ def get_analysis(request, anid):
                 and afp.sfile.analysisresultfile.analysis_id not in analysis['added_results']):
             arf = afp.sfile.analysisresultfile
             arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
-            arf_fns = [{'id': x.sfile_id, 
-                'name': '{} - Result of {} ({})'.format(x.sfile.filename, aj.get_ana_fullname(arf.analysis), arf_date)}
+            arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
                 for x in arf.analysis.analysisresultfile_set.all()]
             analysis['added_results'][arf.analysis_id] = {'analysisname': aj.get_ana_fullname(arf.analysis), 'date': arf_date, 'fns': arf_fns}
 
@@ -299,6 +316,10 @@ def get_dataset_files(dsid, use_refined):
 @login_required
 @require_GET
 def get_base_analyses(request):
+    '''Querying this returns a list of analyses that have a name matching with 
+    the input'''
+    # TODO could reuse this in general analysis finding?
+    # FIXME needs test
     if 'q' in request.GET:
         query = Q()
         searchterms = request.GET['q'].split()
@@ -321,19 +342,20 @@ def get_base_analyses(request):
 @require_GET
 def get_datasets(request):
     """Fetches datasets to analysis"""
-    dsids = request.GET['dsids'].split(',')
-    anid = int(request.GET['anid'])
+    try:
+        dsids = request.GET['dsids'].split(',')
+        anid = int(request.GET['anid'])
+    except (KeyError, ValueError):
+        return JsonResponse({'error': True, 'errmsg': ['Something wrong when asking datasets, contact admin']}, status=400)
+    dbdsets = dm.Dataset.objects.filter(pk__in=dsids, deleted=False).select_related('quantdataset__quanttype')
+    if not dbdsets.count():
+        return JsonResponse({'error': True, 'errmsg': ['Could not find those datasets, either it has been removed or there is a problem']}, status=404)
     response = {'error': False, 'errmsg': []}
     dsjobs = rm.FileJob.objects.exclude(job__state=jj.Jobstates.DONE).filter(
         storedfile__rawfile__datasetrawfile__dataset_id__in=dsids).select_related('job')
     info = {'jobs': [unijob for unijob in
                     {x.job.id: {'name': x.job.funcname, 'state': x.job.state}
                      for x in dsjobs}.values()]}
-    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
-    deleted = dbdsets.filter(deleted=True)
-    if deleted.count():
-        response['error'] = True
-        response['errmsg'].append('Deleted datasets can not be analysed')
     dsetinfo = hv.populate_dset(dbdsets, request.user, showjobs=False, include_db_entry=True)
     qsfiles = {qsf.rawfile_id: qsf.projsample.sample for qsf in dm.QuantSampleFile.objects.filter(rawfile__dataset_id__in=dsids)}
     qfcsfiles = {qfcs.dsrawfile_id: qfcs.projsample.sample for qfcs in dm.QuantFileChannelSample.objects.filter(dsrawfile__dataset_id__in=dsids)}
@@ -380,6 +402,8 @@ def get_datasets(request):
                     else:
                         dsdetails['files'][fn.id]['sample'] = qsf_sample
                 if qsf_error:
+                    # FIXME is this possible, that you pass the "no sample prep" check,
+                    # but not the sample annotation?
                     response['error'] = True
                     response['errmsg'].append('File(s) in the dataset do '
                         'not have a sample annotation, please edit the dataset first')
@@ -405,8 +429,11 @@ def get_datasets(request):
 def get_workflow_versioned(request):
     try:
         wf = am.NextflowWfVersion.objects.get(pk=request.GET['wfvid'])
+        dsids = request.GET['dsids'].split(',')
+    except KeyError:
+        return JsonResponse({'error': 'Something is wrong, contact admin'}, status=400)
     except am.NextflowWfVersion.DoesNotExist:
-        return HttpResponseNotFound()
+        return JsonResponse({'error': 'Could not find workflow'}, status=404)
     params = wf.paramset.psetparam_set.select_related('param')
     files = wf.paramset.psetfileparam_set.select_related('param')
     multifiles = wf.paramset.psetmultifileparam_set.select_related('param')
@@ -449,7 +476,8 @@ def get_workflow_versioned(request):
                 'name': x.sfile.filename}
                 for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}
     }
-    resp['prev_resultfiles'] = get_prev_resultfiles(request.GET['dsids'].split(','))
+
+    resp['prev_resultfiles'] = get_prev_resultfiles(dsids)
     return JsonResponse({'wf': resp})
 
 
@@ -471,9 +499,10 @@ def get_prev_resultfiles(dsids, only_ids=False):
     if only_ids:
         prev_resultfiles = [x['sfile_id'] for x in qset_arf.values('sfile_id')]
     else:
-        prev_resultfiles = [{'id': x.sfile.id, 'name': f'{x.sfile.filename} - '
-        f'Result of {aj.get_ana_fullname(x.analysis)} ({datetime.strftime(x.analysis.date, "%Y-%m-%d")})'
-        } for x in qset_arf.select_related('analysis')]
+        prev_resultfiles = [{'id': x.sfile.id, 'fn': x.sfile.filename,
+            'ana': aj.get_ana_fullname(x.analysis),
+            'date': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
+        for x in qset_arf.select_related('analysis')]
     return prev_resultfiles
 
 
@@ -496,7 +525,26 @@ def store_analysis(request):
     db_isoquant = {}
 
     # First do checks so we dont save stuff on errors:
-    req = json.loads(request.body.decode('utf-8'))
+    try:
+        req = json.loads(request.body.decode('utf-8'))
+        req['dsids']
+        req['analysis_id']
+        req['fractions']
+        req['nfwfvid']
+        req['isoquant']
+        req['dssetnames']
+        req['analysisname']
+        req['frregex']
+        req['fnsetnames']
+        req['params']
+        req['singlefiles']
+        req['multifiles']
+        req['base_analysis']
+        req['wfid']
+    except json.decoder.JSONDecodeError:
+        return JsonResponse({'error': 'Something went wrong, contact admin'}, status=400)
+    except KeyError:
+        return JsonResponse({'error': 'Something went wrong, contact admin'}, status=400)
     dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related('prefractionationdataset__prefractionation')
     if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
@@ -916,7 +964,6 @@ def write_analysis_log(logline, analysis_id):
 
 def nextflow_analysis_log(request):
     req = json.loads(request.body.decode('utf-8'))
-    print(req)
     if 'runName' not in req or not req['runName']:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     try:

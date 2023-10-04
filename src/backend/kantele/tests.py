@@ -2,6 +2,7 @@
 import os
 import shutil
 from time import sleep
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase, LiveServerTestCase, Client
@@ -12,7 +13,16 @@ from kantele import settings
 from datasets import models as dm
 from rawstatus import models as rm
 from jobs import models as jm
+from analysis import models as am
 
+
+# FIXME
+# This is mainly fixtures and its getting out of hand
+# We need to separate them better, because the actions in the
+# tests modify these things, and tests will become order-dependent.
+# BAD!
+# Only keep base fixutres that are not user-editable, e.g. pwiz, filetype etc
+# In tests, any thing which is modified needs its own fixture, not from base
 
 class BaseTest(TestCase):
     '''Normal django tests inherit here'''
@@ -62,6 +72,7 @@ class BaseTest(TestCase):
 
         # Project/dset on new storage
         self.p1, _ = dm.Project.objects.get_or_create(name='p1', pi=self.pi)
+        self.projsam1, _ = dm.ProjectSample.objects.get_or_create(sample='sample1', project=self.p1)
         dm.ProjType.objects.get_or_create(project=self.p1, ptype=self.ptype)
         self.exp1, _ = dm.Experiment.objects.get_or_create(name='e1', project=self.p1)
         self.run1, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.exp1)
@@ -80,15 +91,33 @@ class BaseTest(TestCase):
         self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,
                 source_md5='f3_fakemd5',
                 size=f3size, date=timezone.now(), claimed=True)
-        dm.DatasetRawFile.objects.get_or_create(dataset=self.ds, rawfile=self.f3raw)
+        self.f3dsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=self.ds, rawfile=self.f3raw)
         self.f3sf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw, filename=fn3,
                     md5=self.f3raw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssnewstore, 'path': self.storloc, 
                         'checked': True})
+        # Pwiz/mzml
+        pset, _ = am.ParameterSet.objects.get_or_create(name='pwiz_pset_base')
+        nfw, _ = am.NextflowWorkflow.objects.get_or_create(
+                description='pwiz_repo_base desc', repo='pwiz_repo_base')
+        wfv, _ = am.NextflowWfVersion.objects.get_or_create(update='pwiz wfv base',
+                commit='pwiz ci base', filename='pwiz.nf', nfworkflow=nfw,
+                paramset=pset, kanteleanalysis_version=1, nfversion='')
+        self.pwiz = am.Proteowizard.objects.create(version_description='',
+                container_version='', nf_version=wfv)
+        self.f3sfmz, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw,
+                filename=f'{fn3}.mzML', md5='md5_for_f3sf_mzml', filetype=self.ft,
+                defaults={'servershare': self.ssnewstore, 'path': self.storloc, 'checked': True})
+        am.MzmlFile.objects.get_or_create(sfile=self.f3sfmz, pwiz=self.pwiz)
+        self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
+        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
+        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
+        self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
 
         # Project/dataset/files on old storage
         oldfn = 'raw1'
         self.oldp, _ = dm.Project.objects.get_or_create(name='oldp', pi=self.pi)
+        self.projsam2, _ = dm.ProjectSample.objects.get_or_create(sample='sample2', project=self.oldp)
         dm.ProjType.objects.get_or_create(project=self.oldp, ptype=self.ptype)
         self.oldexp, _ = dm.Experiment.objects.get_or_create(name='olde', project=self.oldp)
         self.oldrun, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.oldexp)
@@ -96,6 +125,7 @@ class BaseTest(TestCase):
         self.oldds, _ = dm.Dataset.objects.update_or_create(date=self.oldp.registered,
                 runname=self.oldrun, datatype=self.dtype, defaults={
                     'storageshare': self.ssoldstorage, 'storage_loc': self.oldstorloc})
+        dm.QuantDataset.objects.get_or_create(dataset=self.oldds, quanttype=self.qt)
         dm.DatasetComponentState.objects.get_or_create(dataset=self.oldds, dtcomp=self.dtcomp,
                 state='OK')
         self.contact, _ = dm.ExternalDatasetContact.objects.get_or_create(dataset=self.oldds,
@@ -103,10 +133,10 @@ class BaseTest(TestCase):
         dm.DatasetOwner.objects.get_or_create(dataset=self.oldds, user=self.user)
         self.oldfpath = os.path.join(settings.SHAREMAP[self.ssoldstorage.name], self.oldstorloc)
         oldsize = os.path.getsize(os.path.join(self.oldfpath, oldfn))
-        self.oldraw = rm.RawFile.objects.create(name=oldfn, producer=self.prod,
-                source_md5='old_to_new_fakemd5',
-                size=oldsize, date=timezone.now(), claimed=True)
-        dm.DatasetRawFile.objects.get_or_create(dataset=self.oldds, rawfile=self.oldraw)
+        self.oldraw, _ = rm.RawFile.objects.get_or_create(name=oldfn, producer=self.prod,
+                source_md5='old_to_new_fakemd5', size=oldsize, defaults={'date': timezone.now(),
+                    'claimed': True})
+        self.olddsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=self.oldds, rawfile=self.oldraw)
         self.oldsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.oldraw, filename=oldfn,
                     md5=self.oldraw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssoldstorage, 'path': self.oldstorloc, 
@@ -117,12 +147,51 @@ class BaseTest(TestCase):
         tmpfpathfn = os.path.join(settings.SHAREMAP[self.sstmp.name], tmpfn)
         tmpsize = os.path.getsize(tmpfpathfn)
         self.tmpraw, _ = rm.RawFile.objects.get_or_create(name=tmpfn, producer=self.prod,
-                source_md5='tmpraw_fakemd5',
-                size=tmpsize, date=timezone.now(), claimed=False)
+                source_md5='tmpraw_fakemd5', size=tmpsize, defaults={'date': timezone.now(),
+                    'claimed': False})
         self.tmpsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.tmpraw,
                 md5=self.tmpraw.source_md5, defaults={'filename': tmpfn, 'servershare': self.sstmp,
                     'path': '', 'checked': True, 'filetype': self.ft})
 
+        # FIXME should go to analysis? Maybe reuse in home etc views
+        # Library files, for use as input, so claimed and ready
+        self.libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone',
+                producer=self.prod, source_md5='libfilemd5',
+                size=100, defaults={'claimed': True, 'date': timezone.now()})
+
+        self.sflib, _ = rm.StoredFile.objects.update_or_create(rawfile=self.libraw,
+                md5=self.libraw.source_md5, filetype=self.ft, defaults={'checked': True, 
+                    'filename': self.libraw.name, 'servershare': self.sstmp, 'path': ''})
+        self.lf, _ = am.LibraryFile.objects.get_or_create(sfile=self.sflib, description='This is a libfile')
+
+        # User files for input
+        self.usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone',
+                producer=self.prod, source_md5='usrfmd5', size=100, 
+                defaults={'claimed': True, 'date': timezone.now()})
+        self.uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
+                is_rawdata=False)
+        self.sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=self.usrfraw,
+                md5=self.usrfraw.source_md5, filetype=self.uft,
+                defaults={'filename': self.usrfraw.name, 'servershare': self.sstmp,
+                    'path': '', 'checked': True})
+        self.usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
+                expired=False, producer=self.prod, filetype=self.uft, defaults={
+                    'expires': timezone.now() + timedelta(1)})
+        self.userfile, _ = rm.UserFile.objects.get_or_create(sfile=self.sfusr,
+                description='This is a userfile', upload=self.usedtoken)
+
+        # Analysis files
+        self.anaprod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
+        self.ana_raw, _ = rm.RawFile.objects.get_or_create(name='ana_file', producer=self.anaprod, source_md5='kjlmnop1234',
+                size=100, defaults={'date': timezone.now(), 'claimed': True})
+        self.anasfile, _ = rm.StoredFile.objects.get_or_create(rawfile=self.ana_raw,
+                filetype_id=self.ft.id, defaults={'filename': self.ana_raw.name,
+                    'servershare': self.sstmp, 'path': '', 'md5': self.ana_raw.source_md5})
+        self.ana_raw2, _ = rm.RawFile.objects.get_or_create(name='ana_file2', producer=self.anaprod,
+                source_md5='anarawabc1234', size=100, defaults={'date': timezone.now(), 'claimed': True})
+        self.anasfile2, _ = rm.StoredFile.objects.get_or_create(rawfile=self.ana_raw2,
+                filetype_id=self.ft.id, defaults={'filename': self.ana_raw.name, 'filetype': self.ft,
+                    'servershare_id': self.sstmp.id, 'path': '', 'md5': self.ana_raw2.source_md5})
 
 
 class BaseIntegrationTest(LiveServerTestCase):
