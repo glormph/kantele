@@ -20,6 +20,7 @@ class MzmlTests(BaseTest):
                 nfworkflow=nfw, paramset=ps, kanteleanalysis_version=1, nfversion='')
         self.pw, _ = am.Proteowizard.objects.get_or_create(version_description='',
                 container_version='', nf_version=self.nfwv, is_docker=True)
+
         # Stored files input
         self.ssmzml, _ = rm.ServerShare.objects.get_or_create(name=settings.MZMLINSHARENAME, 
                 server=self.newfserver, share='/home/mzmls')
@@ -39,6 +40,7 @@ class MzmlTests(BaseTest):
         self.storloc = os.path.join(self.p1.name, self.exp1.name, self.run.name) 
         self.ds = dm.Dataset.objects.create(date=self.p1.registered, runname=self.run,
                 datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=self.storloc)
+        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
         self.qeraw, _ = rm.RawFile.objects.update_or_create(name='file1', defaults={
             'producer': self.prodqe, 'source_md5': '52416cc60390c66e875ee6ed8e03103a',
             'size': 100, 'date': timezone.now(), 'claimed': True})
@@ -134,33 +136,40 @@ class TestCreateMzmls(MzmlTests):
 
     def test_with_filemove(self):
         # Create new dataset on old storage proj that can be mock-"moved"
-        # Delete afterwards so the count job tests dont go bad between tests
+        ds = self.ds
+        ds.pk = None
         moverun = dm.RunName.objects.create(name=self.id(), experiment=self.oldexp)
-        self.ds.storageshare = self.ssoldstorage
-        self.ds.runname = moverun
-        self.ds.save()
-        postdata = {'pwiz_id': self.pw.pk, 'dsid': self.ds.pk}
+        ds.storageshare = self.ssoldstorage
+        ds.runname = moverun
+        ds.storage_loc = 'test_with_filemove'
+        ds.save()
+        # Add file to mzML
+        qeraw = self.qeraw
+        qeraw.pk, qeraw.source_md5 = None, 'test_with_filemove_bcd1234'
+        qeraw.save()
+        dm.DatasetRawFile.objects.update_or_create(rawfile=qeraw, defaults={'dataset': ds})
+        qesf = self.qesf
+        qesf.pk, qesf.md5, qesf.path = None, qeraw.source_md5, ds.storage_loc
+        qesf.rawfile, qesf.filename = qeraw, qeraw.name
+        qesf.save()
+        postdata = {'pwiz_id': self.pw.pk, 'dsid': ds.pk}
         resp = self.cl.post(self.url, content_type='application/json', data=postdata)
         self.assertEqual(resp.status_code, 200)
         j = jm.Job.objects.last()
         self.assertEqual(j.funcname, 'convert_dataset_mzml')
         exp_kw  = {'options': [], 'filters': ['"peakPicking true 2"', '"precursorRefine"'], 
-                'dstshare_id': self.ssmzml.pk, 'dset_id': self.ds.pk, 'pwiz_id': self.pw.pk}
+                'dstshare_id': self.ssmzml.pk, 'dset_id': ds.pk, 'pwiz_id': self.pw.pk}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
         self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
-            kwargs__dset_id=self.ds.pk).count(), 1)
+            kwargs__dset_id=ds.pk).count(), 1)
         # cleanup, this should also remove dset
-        moverun.delete()
+        # FIXME why?
+        #moverun.delete()
 
 
 class TestRefineMzmls(MzmlTests):
     url = '/refinemzml/'
-
-    def setUp(self):
-        super().setUp()
-        qt = dm.QuantType.objects.create(name='testqt', shortname='tqt')
-        dm.QuantDataset.objects.create(dataset=self.ds, quanttype=qt)
 
     def test_fail_requests(self):
         # GET
@@ -194,8 +203,8 @@ class TestRefineMzmls(MzmlTests):
         resp = self.cl.post(self.url, content_type='application/json', data={'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 403)
 
-    def do_refine(self):
-        resp = self.cl.post(self.url, content_type='application/json', data={'dsid': self.ds.pk})
+    def do_refine(self, ds):
+        resp = self.cl.post(self.url, content_type='application/json', data={'dsid': ds.pk})
         self.assertEqual(resp.status_code, 200)
         j = jm.Job.objects.last()
         self.assertEqual(j.funcname, 'refine_mzmls')
@@ -206,21 +215,34 @@ class TestRefineMzmls(MzmlTests):
             self.assertEqual(j.kwargs[k], val)
 
     def test_refine_mzml(self):
+        '''Do a refine, test its correctness, then make sure there is no dataset servershare
+        move on the current dataset, unlike the test_with_filemove (old data to new share)'''
         am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
-        self.do_refine()
-        self.do_refine()
+        self.do_refine(self.ds)
         self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
             kwargs__dset_id=self.ds.pk).count(), 0)
 
     def test_with_filemove(self):
         # Create new dataset on old storage proj that can be mock-"moved"
-        # Delete afterwards so the count job tests dont go bad between tests
-        moverun = dm.RunName.objects.create(name=self.id(), experiment=self.oldexp)
-        self.ds.storageshare = self.ssoldstorage
-        self.ds.runname = moverun
-        self.ds.save()
-        am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
-        self.do_refine()
+        moverun = dm.RunName.objects.create(name='test_with_filemove_loc', experiment=self.oldexp)
+        ds = self.ds
+        ds.storage_loc = moverun.name
+        ds.pk = None
+        ds.storageshare = self.ssoldstorage
+        ds.runname = moverun
+        ds.save()
+        dm.QuantDataset.objects.get_or_create(dataset=ds, quanttype=self.qt)
+        # Add raw files
+        qeraw = self.qeraw
+        qeraw.pk, qeraw.source_md5 = None, 'refine_test_with_filemove'
+        qeraw.save()
+        dm.DatasetRawFile.objects.update_or_create(rawfile=qeraw, defaults={'dataset': ds})
+        qesf = self.qesf
+        qesf.pk, qesf.md5, qesf.path = None, qeraw.source_md5, ds.storage_loc
+        qesf.rawfile, qesf.filename = qeraw, qeraw.name
+        qesf.save()
+        am.MzmlFile.objects.create(sfile=qesf, pwiz=self.pw)
+        self.do_refine(ds)
         self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
-            kwargs__dset_id=self.ds.pk).count(), 1)
-        moverun.delete()
+            kwargs__dset_id=ds.pk).count(), 1)
+        # moverun.delete()

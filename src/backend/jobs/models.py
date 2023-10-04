@@ -2,6 +2,8 @@ from django.db import models
 
 
 class Job(models.Model):
+    # FIXME maybe have pen/proc/error/done defined here in Integerchoice instead?
+    # FIXME timestamp - auto add?
     funcname = models.TextField()
     kwargs = models.JSONField()
     timestamp = models.DateTimeField()

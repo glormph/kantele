@@ -22,7 +22,6 @@ class BaseFilesTest(BaseTest):
         super().setUp()
         self.nottoken = 'blablabla'
         self.token= 'fghihj'
-        self.uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst', is_rawdata=False)
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft)
@@ -58,46 +57,67 @@ class TransferStateTest(BaseFilesTest):
         multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, 
                 servershare=self.sstmp, path='', md5='', filetype=self.ft)
 
-    def test_transferstate_done(self, token=False):
-        if not token:
-            token = self.token
+    def test_transferstate_done(self):
+        sf = self.doneraw.storedfile_set.get()
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': token, 'fnid': self.doneraw.id})
+                data={'token': self.token, 'fnid': self.doneraw.id})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
-        sf = self.doneraw.storedfile_set.get()
         pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
             'sf_id': sf.pk, 'isdir': sf.filetype.is_folder})
         self.assertEqual(pdcjobs.count(), 1)
 
-    def test_trfstate_done_lib_usrfile(self):
-        self.doneraw = rm.RawFile.objects.create(name='libfiledone', producer=self.prod, source_md5='libfilemd5',
-                size=100, date=timezone.now(), claimed=False)
-
-        sflib = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name,
-                servershare=self.sstmp, path='', md5=self.doneraw.source_md5, checked=True,
-                filetype=self.ft)
-        lf = am.LibraryFile.objects.create(sfile=sflib, description='This is a libfile')
-        self.test_transferstate_done()
+    def test_trfstate_done_libfile(self):
+        '''Test if state done is correctly reported for uploaded library file,
+        and that archiving and move jobs exist for it'''
+        # Create lib file which is not claimed yet
+        libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone',
+                producer=self.prod, source_md5='test_trfstate_libfile',
+                size=100, defaults={'claimed': False, 'date': timezone.now()})
+        sflib, _ = rm.StoredFile.objects.update_or_create(rawfile=libraw, md5=libraw.source_md5,
+                filetype=self.ft, defaults={'checked': True, 'filename': libraw.name,
+                    'servershare': self.sstmp, 'path': ''})
+        lf, _ = am.LibraryFile.objects.get_or_create(sfile=sflib, description='This is a libfile')
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': self.token, 'fnid': libraw.id})
+        rj = resp.json()
+        self.assertEqual(rj['transferstate'], 'done')
+        pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
+            'sf_id': sflib.pk, 'isdir': sflib.filetype.is_folder})
+        self.assertEqual(pdcjobs.count(), 1)
         jobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={'sf_id': sflib.pk,
             'dst_path': settings.LIBRARY_FILE_PATH,
             'newname': f'libfile_{lf.pk}_{sflib.filename}'})
         self.assertEqual(jobs.count(), 1)
 
-        self.doneraw = rm.RawFile.objects.create(name='usrfiledone', producer=self.prod, source_md5='usrfmd5',
-                size=100, date=timezone.now(), claimed=False)
-
-        sfusr = rm.StoredFile.objects.create(rawfile=self.doneraw, filename=self.doneraw.name,
-                servershare=self.sstmp, path='', md5=self.doneraw.source_md5, checked=True,
-                filetype=self.uft)
-        uf = rm.UserFile.objects.create(sfile=sfusr,
-                description='This is a userfile', upload=self.uploadtoken)
-        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token='usrffailtoken',
-                expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.uft)
-        self.test_transferstate_done(self.uploadtoken.token)
+    def test_trfstate_done_usrfile(self):
+        '''Test if state done is correctly reported for uploaded userfile,
+        and that archiving and move jobs exist for it'''
+        # Create userfile during upload
+        usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone',
+                producer=self.prod, source_md5='usrfmd5', size=100, 
+                defaults={'claimed': True, 'date': timezone.now()})
+        uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
+                is_rawdata=False)
+        sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=usrfraw,
+                md5=usrfraw.source_md5, filetype=uft,
+                defaults={'filename': usrfraw.name, 'servershare': self.sstmp,
+                    'path': '', 'checked': True})
+        usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
+                expired=False, producer=self.prod, filetype=uft, defaults={
+                    'expires': timezone.now() + timedelta(1)})
+        userfile, _ = rm.UserFile.objects.get_or_create(sfile=sfusr,
+                description='This is a userfile', upload=usedtoken)
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': usedtoken.token, 'fnid': usrfraw.pk})
+        rj = resp.json()
+        self.assertEqual(rj['transferstate'], 'done')
+        pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
+            'sf_id': sfusr.pk, 'isdir': sfusr.filetype.is_folder})
+        self.assertEqual(pdcjobs.count(), 1)
         jobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={'sf_id': sfusr.pk,
-            'dst_path': settings.USERFILEDIR, 'newname': f'userfile_{self.doneraw.pk}_{sfusr.filename}'})
+            'dst_path': settings.USERFILEDIR,
+            'newname': f'userfile_{usrfraw.pk}_{sfusr.filename}'})
         self.assertEqual(jobs.count(), 1)
 
     def test_transferstate_transfer(self):
@@ -109,7 +129,7 @@ class TransferStateTest(BaseFilesTest):
     def test_transferstate_wait(self):
         upload_file = os.path.join(settings.TMP_UPLOADPATH,
                 f'{self.trfraw.pk}.{self.trfsf.filetype.filetype}')
-        jm.Job.objects.create(funcname='rsync_transfer', kwargs={
+        jm.Job.objects.get_or_create(funcname='rsync_transfer', kwargs={
             'sf_id': self.trfsf.pk, 'src_path': upload_file,
             'dst_sharename': settings.TMPSHARENAME}, timestamp=timezone.now())
         resp = self.cl.post(self.url, content_type='application/json',
@@ -354,11 +374,8 @@ class TestArchiveFile(BaseFilesTest):
         self.assertEqual(resp.json()['error'], 'File does not exist')
 
     def test_claimed_file(self):
-        dset_raw = rm.RawFile.objects.create(name='dset_file', producer=self.prod, source_md5='kjlmnop1234',
-                size=100, date=timezone.now(), claimed=True)
-        sfile = rm.StoredFile.objects.create(rawfile=dset_raw, filename=dset_raw.name, servershare_id=self.sstmp.id,
-                path='', md5=dset_raw.source_md5, filetype_id=self.ft.id)
-        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'item_id': self.oldsf.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('File is in a dataset', resp.json()['error'])
 
@@ -385,23 +402,13 @@ class TestArchiveFile(BaseFilesTest):
         self.assertEqual(resp.json()['error'], 'File is currently marked as deleted, can not archive')
 
     def test_mzmlfile(self):
-        pset = am.ParameterSet.objects.create(name='')
-        nfw = am.NextflowWorkflow.objects.create(description='', repo='')
-        wfv = am.NextflowWfVersion.objects.create(update='', commit='', filename='', nfworkflow=nfw,
-                paramset=pset, kanteleanalysis_version=1, nfversion='')
-        pwiz = am.Proteowizard.objects.create(version_description='', container_version='', nf_version=wfv)
-        am.MzmlFile.objects.create(sfile=self.sfile, pwiz=pwiz)
+        am.MzmlFile.objects.create(sfile=self.sfile, pwiz=self.pwiz)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.sfile.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('Derived mzML files are not archived', resp.json()['error'])
 
     def test_analysisfile(self):
-        prod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
-        ana_raw = rm.RawFile.objects.create(name='ana_file', producer=prod, source_md5='kjlmnop1234',
-                size=100, date=timezone.now(), claimed=True)
-        sfile = rm.StoredFile.objects.create(rawfile=ana_raw, filename=ana_raw.name, servershare_id=self.sstmp.id,
-                path='', md5=ana_raw.source_md5, filetype_id=self.ft.id)
-        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile.pk})
+        resp = self.cl.post(self.url, content_type='application/json', data={'item_id': self.anasfile.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('Analysis result files are not archived', resp.json()['error'])
 

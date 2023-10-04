@@ -30,7 +30,7 @@ services:
         environment:
             POSTGRES_PASSWORD: "${PG_SUPERUSER_PASSWORD}"
         volumes:
-            - "${PG_DATA_PATH}:/var/lib/postgresql/data"
+            - "${PG_DATA_PATH:-./false_pg_data}:/var/lib/postgresql/data"
 
     mq:
         image: rabbitmq:3.10
@@ -38,17 +38,15 @@ services:
             RABBITMQ_DEFAULT_USER: "${RABBITUSER:-guest}"
             RABBITMQ_DEFAULT_PASS: "${RABBITPASS:-guest}"
             RABBITMQ_DEFAULT_VHOST: "${RABBIT_VHOST}"
-            #volumes:
-            #- "./src/docker/rabbitmq-timeout.conf:/etc/rabbitmq/conf.d/30-timeout.conf"
 
     jobrunner:
         image: kantele_web
         command: python manage.py runjobs
         environment:
             DB_PASS: "${PG_KANTELE_PASSWORD}"
-            DB_USER: kanteleuser
+            DB_USER: "${PG_KANTELE_USER}"
+            DB_HOST: db
             DB_NAME: "${KANTELE_DB_NAME}"
-            HOST_DOMAIN: "${HOST_FQDN}"
             RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
