@@ -105,6 +105,7 @@ class NextflowWfVersion(models.Model):
 class PsetComponent(models.Model):
     pset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
     component = models.ForeignKey(WFInputComponent, on_delete=models.CASCADE)
+    value = models.JSONField(default=1) 
 
     def __str__(self):
         return '{} - {}'.format(self.pset.name, self.component.name)
