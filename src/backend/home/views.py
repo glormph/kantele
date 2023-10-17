@@ -450,7 +450,7 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
     return projs, order
 
 
-def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
+def populate_dset(dbdsets, user):
     dsets = OrderedDict()
     for dataset in dbdsets.select_related('runname__experiment__project__projtype__ptype',
             'prefractionationdataset'):
@@ -490,18 +490,16 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
                 state = mzmlgroups[ftype]
                 text = f'({ftype})' if state == 'deleted' else ftype
                 dsets[dataset.id]['smallstatus'].append({'text': text, 'state': state})
+
         # Add job states
-        if showjobs:
-            jobmap = get_ds_jobs(dbdsets)
-            dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
-            dsets[dataset.id]['jobids'] = ','.join(list(jobmap[dataset.id].keys())) if dataset.id in jobmap else []
+        jobmap = get_ds_jobs(dbdsets)
+        dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
+        dsets[dataset.id]['jobids'] = ','.join(list(jobmap[dataset.id].keys())) if dataset.id in jobmap else []
         if hasattr(dataset, 'prefractionationdataset'):
             pf = dataset.prefractionationdataset
             dsets[dataset.id]['prefrac'] = str(pf.prefractionation.name)
             if 'hirief' in pf.prefractionation.name.lower():
                 dsets[dataset.id]['hr'] = '{} {}'.format('HiRIEF', str(pf.hiriefdataset.hirief))
-        if include_db_entry:
-            dsets[dataset.id]['dbentry'] = dataset
     return dsets
 
 

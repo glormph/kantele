@@ -245,11 +245,14 @@ class TestGetAnalysis(AnalysisIsobaric):
         resphtml = resp.content.decode('utf-8')
         html_dsids = f'''<script>
         let dsids = [
-                      
-                      "{self.ds.pk}",
-                            
-                            ];
+
+        "{self.ds.pk}",
+
+        ];
         let existing_analysis = JSON.parse(document.getElementById('analysis_data').textContent);
+        const dbwfs = JSON.parse(document.getElementById('allwfs').textContent);
+        const allwfs = dbwfs.wfs;
+        const wforder = dbwfs.order;
         </script>
         '''
         self.assertInHTML(html_dsids, resphtml)
@@ -277,59 +280,29 @@ class TestGetDatasets(AnalysisTest):
         self.assertEqual(resp.status_code, 200)
         checkjson = {
                 'dsets': {f'{self.ds.pk}': {
-                    'ana_ids': [self.ana.pk],
                     'channels': {}, # FIXME no ch?
-                    'deleted': self.ds.deleted,
-                    'details': {
-                        'allowners': {f'{self.user.id}': ' '},
-                        'compstates': {'files': 'OK'},
-                        'convert_dataset_mzml': [],
                         'instrument_types': [self.prod.shortname],
                         'instruments': [self.prod.name],
                         'nrstoredfiles': {'raw': self.ds.datasetrawfile_set.count()},
-                        'nrbackupfiles': 0,
-                        'owners': {f'{self.user.id}': self.user.username},
-                        'pwiz_sets': [{'active': True,
-                            'created': self.f3sfmz.regdate.date().strftime('%Y-%m-%d'),
-                            'notcreated': 0,
-                            'deleted': 0,
-                            'existing': 1,
-                            'pws_id': f'{self.pwiz.pk}_{self.f3sfmz.mzmlfile.refined}',
-                            'state': 'Ready',
-                            'refined': self.f3sfmz.mzmlfile.refined,
-                            'refineready': True,
-                            'id': self.pwiz.pk,
-                            'version': self.pwiz.version_description,
-                            }],
-                        # Versions are only the available OTHER versions (not used for this ds)
-                        'pwiz_versions': {},
                         'qtype': {'name': self.ds.quantdataset.quanttype.name,
                             'short': self.ds.quantdataset.quanttype.shortname},
-                        'refine_mzmls': [],
-                        'refine_versions': [{'id': 15, 'name': 'v1.0'}],
-                        'storage_loc': f'{self.ds.storageshare.server.uri} - {self.ds.storage_loc}',
-                        },
                     'dtype': self.ds.datatype.name,
                     'exp': self.ds.runname.experiment.name,
                     'files': [{'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename,
                         'fr': '', 'setname': ''}],
-                    'fn_ids': [self.f3sf.pk, self.f3sfmz.pk],
+                    #'fn_ids': [self.f3sf.pk, self.f3sfmz.pk],
                     'frregex': '.*fr([0-9]+).*mzML$',
                     'id': self.ds.pk,
-                    'own': True,
                     'prefrac': False,
+                    'hr': False,
+                    'filesaresets': False,
                     'proj': self.ds.runname.experiment.project.name,
-                    'ptype': self.ds.runname.experiment.project.projtype.ptype.name,
                     'run': self.ds.runname.name,
                     'setname': '', # not set yet, no analysis passed
-                    # only for home reporting mzML
-                    'smallstatus': [{'text': 'mzML', 'state': 'active'}],
-                    'storestate': 'active-only', # no backups
-                    'usr': self.user.username,
                     }},
                 'error': True,
-                'errmsg': ['File(s) in the dataset do not have a sample annotation, '
-                        'please edit the dataset first'],
+                'errmsg': [f'File(s) in dataset {self.ds.runname.name} do not have a sample '
+                    'annotation, please edit the dataset first'],
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
@@ -338,9 +311,8 @@ class TestGetDatasets(AnalysisTest):
         # Non-existing dataset
         maxds = dm.Dataset.objects.aggregate(Max('pk'))['pk__max']
         resp = self.cl.get(self.url, data={'dsids': f'{maxds + 10}', 'anid': 0})
-        self.assertEqual(resp.status_code, 404)
-        self.assertEqual(resp.json()['errmsg'],
-                ['Could not find those datasets, either it has been removed or there is a problem'])
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['errmsg'], ['Some datasets could not be found, they may not exist'])
         # No quant details
         newrun, _ = dm.RunName.objects.get_or_create(experiment=self.ds.runname.experiment,
                 name='noqt_ds')

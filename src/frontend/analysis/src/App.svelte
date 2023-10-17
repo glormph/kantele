@@ -18,9 +18,7 @@ let runButtonActive = true;
 let postingAnalysis = false;
 
 let analysis_id = existing_analysis ? existing_analysis.analysis_id : false;
-let allwfs = {};
 let wf = false;
-let wforder = [];
 let dsets = {};
 
 let libfiles = {};
@@ -276,19 +274,6 @@ async function fetchWorkflow() {
   }
 }
 
-async function fetchAllWorkflows() {
-  let url = new URL('/analysis/workflows', document.location)
-  const result = await getJSON(url);
-  loadingItems = true;
-  if ('error' in result) {
-    const msg = `While fetching workflows, encountered: ${result.error}`;
-    notif.errors[msg] = 1;
-    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
-  } else {
-    allwfs = result.allwfs;
-    wforder = result.order;
-  }
-}
 
 async function fetchDatasetDetails(fetchdsids) {
   let url = new URL('/analysis/dsets/', document.location)
@@ -298,10 +283,13 @@ async function fetchDatasetDetails(fetchdsids) {
   };
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
+  // Only function where we have a list of errors, so not using {error: err1}
+  // as in other places here! Instead, {errmsg: [err1, err2, ..]}
   if (result.error) {
-    const msg = result.errmsg.join('<br>');
-    notif.errors[msg] = 1;
-    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+    result.errmsg.forEach(msg => {
+      notif.errors[msg] = 1;
+      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+    });
   } else {
     Object.keys(result.dsets).forEach(x => {
       dsets[x] = result.dsets[x];
@@ -314,13 +302,14 @@ async function fetchDatasetDetails(fetchdsids) {
     // API v1 stuff
     const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
     config.version_dep.v1.dtype = dtypes.size > 1 ? 'mixed' : dtypes.keys().next().value;
-    const qtypes = new Set(Object.values(dsets).map(ds => ds.details.qtype.short));
+    const qtypes = new Set(Object.values(dsets).map(ds => ds.qtype.short));
     if (config.v1 && qtypes.size > 1) {
       notif.errors['Mixed quant types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
     } else {
       config.version_dep.v1.qtype = qtypes.keys().next().value;
     }
-    const instypes = new Set(Object.values(dsets).flatMap(ds => ds.details.instrument_types).map(x => x.toLowerCase()));
+    // FIXME deprecate, remove old pipelines with v1 kantele api
+    const instypes = new Set(Object.values(dsets).flatMap(ds => ds.instrument_types).map(x => x.toLowerCase()));
     if (config.v1 && instypes.size> 1) {
       notif.errors['Mixed instrument types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
     } else {
@@ -459,22 +448,22 @@ function sortChannels(channels) {
 }
 
 function updateIsoquant() {
-  // Add new set things if necessary
+  // Add new set, called when isobaric dataset gets new set name
   if ('isobaric_quant' in wf.components || 'sampletable' in wf.components) {
     Object.values(dsets).forEach(ds => {
       const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
       notif.errors[errmsg] = 0;
       if (ds.setname && !(ds.setname in config.isoquants)) {
         config.isoquants[ds.setname] = {
-          chemistry: ds.details.qtype.short,
-          channels: ds.details.channels,
-          samplegroups: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, ''])),
-          denoms: Object.fromEntries(Object.keys(ds.details.channels).map(x => [x, false])),
+          chemistry: ds.qtype.short,
+          channels: ds.channels,
+          samplegroups: Object.fromEntries(Object.keys(ds.channels).map(x => [x, ''])),
+          denoms: Object.fromEntries(Object.keys(ds.channels).map(x => [x, false])),
           report_intensity: false,
           sweep: false,
         };
       } else if (ds.setname && ds.setname in config.isoquants) {
-        const dskeys = new Set(Object.keys(ds.details.channels))
+        const dskeys = new Set(Object.keys(ds.channels))
         const isokeys = Object.keys(config.isoquants[ds.setname].channels);
         if (isokeys.length !== dskeys.size) {
             notif.errors[errmsg] = 1;
@@ -484,7 +473,7 @@ function updateIsoquant() {
               notif.errors[errmsg] = 1;
               break;
             }
-            ds.details.channels[ch].map((val, ix) => {
+            ds.channels[ch].map((val, ix) => {
               if (val !== config.isoquants[ds.setname].channels[ch][ix]) {
                 notif.errors[errmsg] = 1;
               }
@@ -517,7 +506,6 @@ async function populate_analysis() {
 
 
 onMount(async() => {
-  await fetchAllWorkflows();
   if (existing_analysis) {
     await populate_analysis();
   }
@@ -652,7 +640,7 @@ onMount(async() => {
   {#each Object.values(dsets) as ds}
   <div class="box">
     {#if ds.dtype.toLowerCase() === 'labelcheck'}
-    <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.details.qtype.name} // {ds.details.instruments.join(',')}</span>
+    <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.qtype.name} // {ds.instruments.join(',')}</span>
     {:else}
 		<div class="columns">
 		  <div class="column">
@@ -681,13 +669,13 @@ onMount(async() => {
         </div>
         {/if}
 			  <div class="subtitle is-6">
-				  <span>{ds.details.qtype.name}</span>
-          {#each Object.entries(ds.details.nrstoredfiles) as sf}
+				  <span>{ds.qtype.name}</span>
+          {#each Object.entries(ds.nrstoredfiles) as sf}
 		      <span> // {sf[1]} {sf[0]} files </span>
           {/each}
-				  <span>// {ds.details.instruments.join(', ')} </span>
+				  <span>// {ds.instruments.join(', ')} </span>
 			  </div>
-        {#if ds.details.nrstoredfiles.refined_mzML}
+        {#if ds.nrstoredfiles.refined_mzML}
 			  <div class="subtitle is-6"><strong>Enforcing use of refined mzML(s)</strong></div>
         {/if}
 			</div>
