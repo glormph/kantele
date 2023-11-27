@@ -29,8 +29,10 @@ class AnalysisTest(BaseTest):
                 md5=self.txtraw.source_md5, defaults={'filename': self.txtraw.name,
                     'servershare': self.sstmp, 'path': '', 'checked': True, 'filetype': self.ft2})
 
-        wfc, _ = am.WFInputComponent.objects.get_or_create(name='mzmldef', value={'a': ['plate',2,3]})
-        am.PsetComponent.objects.get_or_create(pset=self.pset, component=wfc)
+        c_ch = am.PsetComponent.ComponentChoices
+        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.INPUTDEF, value=['plate', 2, 3])
+        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.ISOQUANT_SWEEP_INTENSITY_SAMPLETABLE)
+        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.PREFRAC)
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param1)
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param2)
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param3)
@@ -63,7 +65,7 @@ class AnalysisTest(BaseTest):
                 param=self.pfn2, sfile=self.txtsf)
         self.resultfn, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.ana,
                 sfile=self.anasfile)
-        self.mzmldef, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.ana, mzmldef='testmzd')
+        #self.mzmldef, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.ana, mzmldef='testmzd')
 
         # Create analysis for LF
         self.analf, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_lf', storage_dir='testdirlf')
@@ -84,7 +86,7 @@ class AnalysisTest(BaseTest):
                 param=self.pfn2, sfile=self.txtsf)
         self.resultfnlf, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.analf,
                 sfile=self.anasfile2)
-        self.mzmldeflf, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.analf, mzmldef='lfmz')
+        #self.mzmldeflf, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.analf, mzmldef='lfmz')
 
 
 class AnalysisIsobaric(AnalysisTest):
@@ -137,7 +139,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
-                'mzmldef': self.mzmldef.mzmldef,
+                #'mzmldef': self.mzmldef.mzmldef,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
@@ -167,7 +169,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': True,
-                'mzmldef': self.mzmldef.mzmldef,
+                #'mzmldef': self.mzmldef.mzmldef,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
@@ -206,7 +208,7 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.analf.pk, 'dsets_identical': False,
-                'mzmldef': self.mzmldeflf.mzmldef,
+                #'mzmldef': self.mzmldeflf.mzmldef,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
@@ -258,7 +260,7 @@ class TestGetAnalysis(AnalysisIsobaric):
         self.assertInHTML(html_dsids, resphtml)
         self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
         html_ana = f'''<script id="analysis_data" type="application/json">
-        {{"analysis_id": {self.ana.pk}, "editable": false, "wfversion_id": {self.nfwf.pk}, "wfid": {self.wf.pk}, "mzmldef": "{self.mzmldef.mzmldef}", "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": [{self.qch.pk}], "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
+        {{"analysis_id": {self.ana.pk}, "editable": false, "wfversion_id": {self.nfwf.pk}, "wfid": {self.wf.pk}, "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": [{self.qch.pk}], "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
         </script>
         '''
         self.assertInHTML(html_ana, resphtml)
@@ -280,11 +282,12 @@ class TestGetDatasets(AnalysisTest):
         self.assertEqual(resp.status_code, 200)
         checkjson = {
                 'dsets': {f'{self.ds.pk}': {
-                    'channels': {}, # FIXME no ch?
+                    'channels': False,
                         'instrument_types': [self.prod.shortname],
                         'instruments': [self.prod.name],
                         'nrstoredfiles': {'raw': self.ds.datasetrawfile_set.count()},
                         'qtype': {'name': self.ds.quantdataset.quanttype.name,
+                            'is_isobaric': False, 
                             'short': self.ds.quantdataset.quanttype.shortname},
                     'dtype': self.ds.datatype.name,
                     'exp': self.ds.runname.experiment.name,
@@ -356,8 +359,9 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
                 description='This is a userfile', upload=utoken_ft)
         resp = self.cl.get(self.url, data={'wfvid': self.nfwf.pk, 'dsids': f'{self.ds.pk}'})
         self.assertEqual(resp.status_code, 200)
+        allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
         checkjson = {'wf': {'analysisapi': self.nfwf.kanteleanalysis_version,
-            'components': {x.component.name: x.component.value 
+            'components': {allcomponents[x.component].name: x.value 
                 for x in  self.nfwf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'help': x.param.help or False}
@@ -421,7 +425,8 @@ class TestStoreAnalysis(AnalysisTest):
                 'sweep': False,
                 }},
             'dssetnames': {self.ds.pk: 'setA'},
-            'components': {'mzmldef': 'a', 'sampletable': {'hello': 'yes'}},
+            'components': {'SAMPLETABLE': {'hello': 'yes'},
+                'INPUTDEF': 'a'},
             'analysisname': 'Test new analysis',
             'frregex': {f'{self.ds.pk}': 'fr_find'},
             'fnsetnames': {},
@@ -441,7 +446,7 @@ class TestStoreAnalysis(AnalysisTest):
         resp = self.cl.post(self.url, content_type='application/json', data=postdata)
         self.assertEqual(resp.status_code, 200)
         ana = am.Analysis.objects.last()
-        self.assertEqual(ana.analysismzmldef.mzmldef, postdata['components']['mzmldef'])
+        #self.assertEqual(ana.analysismzmldef.mzmldef, postdata['components']['mzmldef'])
         self.assertEqual(ana.analysissampletable.samples, {'hello': 'yes'})
         for adsif in ana.analysisdsinputfile_set.all():
             self.assertEqual(adsif.analysisdset.dataset_id, self.ds.pk)

@@ -31,16 +31,6 @@ class FileParam(models.Model):
         return self.name
 
 
-class WFInputComponent(models.Model):
-    name = models.TextField()
-    value = models.JSONField() 
-    # JSON in value if any, eg mzmldef: {'lc': [path,ch,sample], 'lcp': [path,set,ch,sam], hirief: [path,inst,set,pl,fr]}
-    # FIXME future also setnames, sampletables, fractions, etc which is not a param
-    # to be included in parameterset
-    def __str__(self):
-        return self.name
-
-
 class Param(models.Model):
     name = models.TextField()
     nfparam = models.TextField()
@@ -103,12 +93,26 @@ class NextflowWfVersion(models.Model):
 
 
 class PsetComponent(models.Model):
+    '''Special components for a parameter set. Components are such elements for a workflow
+    that require special, non generalized code written for it. They can be in multiple workflows
+    but are not as generalized as e.g. parameters'''
+
+    class ComponentChoices(models.IntegerChoices):
+        ISOQUANT = 1, 'Isobaric quant summarizing with denominators, median sweep, or intensity'
+        INPUTDEF = 2, 'Input file definition of specific type, value eg [path, instrument, sample]'
+        ISOQUANT_SAMPLETABLE = 3, 'Sampletable for isobaric quant'
+        LABELCHECK_ISO = 4, 'MS search complementing earlier run or rerun from PSMs'
+        COMPLEMENT_ANALYSIS = 5, 'MS search complementing earlier run or rerun from PSMs'
+        PREFRAC = 6, 'Prefractionated MS data'
+        HIRIEF_STRIP_TOLERANCE = 7, 'HiRIEF strip tolerance'
+        # DSET_NAMES ?
+
     pset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
-    component = models.ForeignKey(WFInputComponent, on_delete=models.CASCADE)
+    component = models.IntegerField(choices=ComponentChoices.choices)
     value = models.JSONField(default=1) 
 
     def __str__(self):
-        return '{} - {}'.format(self.pset.name, self.component.name)
+        return '{} - {}'.format(self.pset.name, PsetComponent.ComponentChoices(self.component).label)
 
 
 class PsetFileParam(models.Model):
@@ -240,12 +244,15 @@ class AnalysisSampletable(models.Model):
     # Added benefit: clearer DB representation, stricter
 
 
-class AnalysisMzmldef(models.Model):
-    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
-    mzmldef = models.TextField()
+# FIXME deprecate this, save as psetcomponent
+#class AnalysisMzmldef(models.Model):
+#    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+#    mzmldef = models.TextField()
 
 
 class AnalysisSetname(models.Model):
+    '''All set or sample names in an analysis that are per dataset,
+    which means prefractionated proteomics data'''
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     setname = models.TextField()
 
@@ -254,6 +261,7 @@ class AnalysisSetname(models.Model):
 
 
 class AnalysisDatasetSetname(models.Model):
+    '''Dataset mapping to setnames (multiple dataset can have the same setname)'''
     # Note that datasets can be deleted, or have their file contents changed
     # That means this is not to be trusted for future bookkeeping of what was in the analysis
     # For that, you should combine it with using the below AnalysisDSInputFile model

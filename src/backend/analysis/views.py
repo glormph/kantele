@@ -40,6 +40,11 @@ def get_analysis_init(request):
 @login_required
 def load_analysis_resultfiles(request, anid):
     # FIXME need test
+    '''Load the "resultfiles" that are output from previous analyses, if user asks for 
+    specific previous analysis.
+    Exclude here the files from analyses which have identical datasets (dsids)
+    and files from base_analyses loaded for this analysis. These files will
+    already be loaded in the UI.'''
     try:
         ana = am.Analysis.objects.get(pk=anid)
     except am.Analysis.DoesNotExist:
@@ -87,7 +92,6 @@ def load_base_analysis(request, wfversion_id, baseanid):
     analysis = {
             'analysis_id': ana.pk,
             'dsets_identical': set(dss.dataset_id for dss in ana.datasetsearch_set.all()) == set(new_ana_dsids),
-            'mzmldef': False,
             'flags': [],
             'multicheck': [],
             'inputparams': {},
@@ -114,9 +118,6 @@ def load_base_analysis(request, wfversion_id, baseanid):
         analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
     for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
             analysis['fileparams'][afp.param_id] = afp.sfile_id
-    if hasattr(ana, 'analysismzmldef') and am.PsetComponent.objects.filter(
-            pset_id=new_pset_id, component__name='mzmldef'):
-        analysis['mzmldef'] = ana.analysismzmldef.mzmldef
 
     # Get datasets from base analysis for their setnames/filesamples etc
     # Only overlapping datasets are fetched here
@@ -175,7 +176,6 @@ def get_analysis(request, anid):
             'editable': ana.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR],
             'wfversion_id': ana.nextflowsearch.nfworkflow_id,
             'wfid': ana.nextflowsearch.workflow_id,
-            'mzmldef': False,
             'analysisname': ana.name,
             'flags': [],
             'multicheck': [],
@@ -248,11 +248,10 @@ def get_analysis(request, anid):
         # Looping input files, put in normal params
         else:
             analysis['fileparams'][afp.param_id] = afp.sfile_id
-    if hasattr(ana, 'analysismzmldef'):
-        analysis['mzmldef'] = ana.analysismzmldef.mzmldef
-    try:
-        sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
-    except am.AnalysisSampletable.DoesNotExist:
+
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    wf_components = {allcomponents[x.component].name: x.value for x in pset.psetcomponent_set.all()}
+
         sampletables = {}
     analysis['isoquants'] = get_isoquants(ana, sampletables)
     context = {
@@ -500,9 +499,11 @@ def get_workflow_versioned(request):
     userfiles = [x for x in rm.UserFile.objects.select_related('sfile__filetype').filter(
         sfile__filetype__in=ftypes).order_by('-sfile__regdate')]
     selectable_files.extend(userfiles)
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    #wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
     resp = {
             'analysisapi': wf.kanteleanalysis_version,
-            'components': {psc.component.name: psc.component.value for psc in 
+            'components': {allcomponents[psc.component].name: psc.value for psc in 
                 wf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': f.param.nfparam, 'id': f.param.pk, 'name': f.param.name,
                 'help': f.param.help or False}
@@ -621,6 +622,10 @@ def store_analysis(request):
     if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
         return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
             'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
+    # Components
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    nfwf_ver = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
+    wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
 
     # Check if labelcheck 
     is_lcheck = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid'], paramset__psetcomponent__component__name='labelcheck').exists()
@@ -676,21 +681,18 @@ def store_analysis(request):
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
         am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
 
-    components = {k: v for k, v in req['components'].items() if v}
-    all_mzmldefs = am.WFInputComponent.objects.get(name='mzmldef').value
+    in_components = {k: v for k, v in req['components'].items() if v}
     jobinputs = {'components': {}, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
     data_args = {'setnames': {}, 'platenames': {}}
 
     # Input files are passed as "fractions" currently, maybe make this cleaner in future
     data_args['fractions'] = req['fractions']
 
-    # Mzml definition
-    if 'mzmldef' in components:
-        am.AnalysisMzmldef.objects.update_or_create(defaults={'mzmldef': components['mzmldef']}, analysis=analysis)
-        jobinputs['components']['mzmldef'] = components['mzmldef']
+    # Input file definition
+    if 'INPUTDEF' in wf_components:
+        jobinputs['components']['INPUTDEF'] = wf_components['INPUTDEF']
     else:
-        am.AnalysisMzmldef.objects.filter(analysis=analysis).delete()
-        jobinputs['components']['mzmldef'] = False
+        jobinputs['components']['INPUTDEF'] = False
 
     # Store setnames
     setname_ids = {}

@@ -113,14 +113,11 @@ function validate() {
   if (!Object.keys(dsets).length) {
     notif.errors['No datasets are in this analysis, maybe they need some editing'] = 1;
   }
-  if ('mzmldef' in wf.components && !config.mzmldef) {
-		notif.errors['You must select a mzml definition file'] = 1;
-  }
   Object.values(dsets).forEach(ds => {
     if (config.version_dep.v1.dtype.toLowerCase() !== 'labelcheck' && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
     } else if (ds.filesaresets) {
-      if (ds.files.filter(fn => !fn.setname).length) {
+      if (ds.files.some(fn => !fn.setname)) {
 			  notif.errors[`File ${fn.name} needs to have a setname`] = 1;
 			}
     } else if (ds.setname && !charRe.test(ds.setname)) {
@@ -392,7 +389,7 @@ async function loadBaseAnalysis() {
         config.isoquants[sname] = result.base_analysis.isoquants[sname];
       }
     }
-    for (const key of ['mzmldef', 'flags', 'inputparams', 'multicheck', 'fileparams']) {
+    for (const key of ['flags', 'inputparams', 'multicheck', 'fileparams']) {
       config[key] = result.base_analysis[key];
     }
     Object.assign(config.multifileparams, result.base_analysis.multifileparams);
@@ -447,29 +444,34 @@ function sortChannels(channels) {
   }).map(x => {return {ch: x[0], sample: x[1][0], chid: x[1][1]}});
 }
 
-function updateIsoquant() {
+
+function updateIsoquant(dsid_changed) {
   // Add new set, called when isobaric dataset gets new set name
-  if ('isobaric_quant' in wf.components || 'sampletable' in wf.components) {
-    Object.values(dsets).forEach(ds => {
-      const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
-      notif.errors[errmsg] = 0;
+  // FIXME Ideally handle if isobaric in wf in the dataset setname thing
+  if ('ISOQUANT' in wf.components || 'ISOQUANT_SAMPLETABLE' in wf.components) {
+    let ds = dsets[dsid_changed];
+    const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
+      console.log(ds);
+      console.log(config.isoquants);
+    if (ds.qtype.is_isobaric) {
       if (ds.setname && !(ds.setname in config.isoquants)) {
         config.isoquants[ds.setname] = {
           chemistry: ds.qtype.short,
           channels: ds.channels,
           samplegroups: Object.fromEntries(Object.keys(ds.channels).map(x => [x, ''])),
-          denoms: Object.fromEntries(Object.keys(ds.channels).map(x => [x, false])),
           report_intensity: false,
           sweep: false,
         };
       } else if (ds.setname && ds.setname in config.isoquants) {
-        const dskeys = new Set(Object.keys(ds.channels))
-        const isokeys = Object.keys(config.isoquants[ds.setname].channels);
-        if (isokeys.length !== dskeys.size) {
+        // Compare dataset channels with existing config.isoquant channels, to see
+        // if not e.g TMT16 and TMT10 are mixed
+        const dsch = new Set(Object.keys(ds.channels))
+        const isoch = Object.keys(config.isoquants[ds.setname].channels);
+        if (isoch.length !== dsch.size) {
             notif.errors[errmsg] = 1;
         } else {
-          for (const ch of isokeys) {
-            if (!dskeys.has(ch)) {
+          for (const ch of isoch) {
+            if (!dsch.has(ch)) {
               notif.errors[errmsg] = 1;
               break;
             }
@@ -491,11 +493,12 @@ function updateIsoquant() {
   }
 }
 
+
 async function populate_analysis() {
   config.wfid = existing_analysis.wfid;
   config.wfversion_id = existing_analysis.wfversion_id;
   config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
-  for (const key of ['analysisname', 'mzmldef', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
+  for (const key of ['analysisname', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
     config[key] = existing_analysis[key];
   }
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
