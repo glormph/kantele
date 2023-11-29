@@ -185,7 +185,7 @@ class RunNextflowWorkflow(BaseJob):
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
     or shoudl inputs be DB things fields flag,sf_id (how for mzmls though?)
-{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--hirief', 'SAMPLETABLE', "126::set1::treat1::treat::::127::set1::treat2::treat..."
+{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--hirief', '"126::set1::treat1::treat::::127::set1::treat2::treat..."
 ], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
     """
 
@@ -261,31 +261,49 @@ class RunNextflowWorkflow(BaseJob):
                'mzmls': [],
                'old_mzmls': False,
                'dstsharename': kwargs['dstsharename'],
+               'components': kwargs['inputs']['components'],
                }
         
-        # Gather mzML input
-        mzmls = []
-        if kwargs['inputs']['components']['mzmldef']:
-            mzmldef_fields = models.WFInputComponent.objects.get(name='mzmldef').value[kwargs['inputs']['components']['mzmldef']]
-            mzmls = [{
-                'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
-                'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
-                'plate': kwargs['platenames'].get(str(x.rawfile.datasetrawfile.dataset_id), False) 
-                if 'plate' in mzmldef_fields else False,
-                'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
-                if 'channel' in mzmldef_fields else False,
-                'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
-                if 'sample' in mzmldef_fields else False,
-                'fraction': kwargs['fractions'].get(str(x.id), False) 
-                if 'fractions' in kwargs else False,
-                'instrument': x.rawfile.producer.msinstrument.instrumenttype.name 
-                if 'instrument' in mzmldef_fields else False,
-                } for x in sfiles_passed]
-            mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields if x[key]]), **{k: x[k] 
-                for k in ['servershare', 'path', 'fn']}} for x in mzmls]
-        bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(mzmls) > 500
+        # Gather input files
+        infiles = []
+        # INPUTDEF is either False or [fn, set, fraction, etc]
+        if inputdef_fields := run['components']['INPUTDEF']:
+            for fn in sfiles_passed:
+                infile = {'servershare': fn.servershare.name, 'path': fn.path, 'fn': fn.filename}
+                if 'setname' in inputdef_fields:
+                    infile['setname'] = kwargs['setnames'].get(str(fn.id), False)
+                if 'plate' in inputdef_fields:
+                    infile['plate'] = kwargs['platenames'].get(str(fn.rawfile.datasetrawfile.dataset_id), False)
+                if 'sample' in inputdef_fields:
+                    infile['sample'] = infile.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
+                if 'fractions' in inputdef_fields:
+                    infile['fraction'] = kwargs['fractions'].get(str(infile.id), False) 
+                if 'instrument' in inputdef_fields:
+                    infile['instrument'] = infile.rawfile.producer.msinstrument.instrumenttype.name 
+                if 'channel' in inputdef_fields:
+                    # For pooled labelcheck
+                    infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
+                infiles.append(infile)
+            # FIXME this in tasks and need to write header
+
+#                'setname': kwargs['setnames'][str(x.id)] if 'setname' in inputdef_fields else False,
+#                'plate': kwargs['platenames'].get(str(x.rawfile.datasetrawfile.dataset_id), False) 
+#                if 'plate' in inputdef_fields else False,
+#                'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
+#                if 'channel' in inputdef_fields else False,
+#                'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
+#                if 'sample' in inputdef_fields else False,
+#                'fraction': kwargs['fractions'].get(str(x.id), False) 
+#                if 'fractions' in kwargs else False,
+#                'instrument': x.rawfile.producer.msinstrument.instrumenttype.name 
+#                if 'instrument' in inputdef_fields else False,
+#                } for x in sfiles_passed]
+            #mzmls = [{'inputdef': '\t'.join([x[key] for key in inputdef_fields if x[key]]), **{k: x[k] 
+            #    for k in ['servershare', 'path', 'fn']}} for x in mzmls]
+        bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(infiles) > 500
         run['nfrundirname'] = 'larger' if bigrun else 'small'
 
+        # COMPLEMENT/RERUN component:
         # Add base analysis stuff if it is complement and fractionated (if not it has only been used
         # for fetching parameter values and can be ignored in the job)
         ana_baserec = models.AnalysisBaseanalysis.objects.select_related('base_analysis').filter(analysis_id=analysis.id)
@@ -293,17 +311,17 @@ class RunNextflowWorkflow(BaseJob):
             ana_baserec = ana_baserec.get(Q(is_complement=True) | Q(rerun_from_psms=True))
         except models.AnalysisBaseanalysis.DoesNotExist:
             # Run with normal mzmldef input
-            run['mzmls'] = mzmls
+            run['infiles'] = infiles
         else:
-            if hasattr(ana_baserec.base_analysis, 'analysismzmldef') and ana_baserec.base_analysis.analysismzmldef.mzmldef == 'fractionated':
+            # SELECT prefrac with fraction regex to get fractionated datasets in old analysis
+            if ana_baserec.base_analysis.exclude(analysisdatasetsetname__regex='').count():
                 # rerun/complement runs with fractionated base analysis need --oldmzmldef parameter
-                old_mzmls, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
-                oldmz_fields = models.WFInputComponent.objects.get(name='mzmldef').value['fractionated']
-                run['old_mzmls'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in oldmz_fields]))
-                        for setmzmls in old_mzmls.values() for x in setmzmls]
+                old_infiles, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
+                run['old_infiles'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in run['components']['INPUTDEF']]))
+                        for setmzmls in old_infiles.values() for x in setmzmls]
             if not ana_baserec.rerun_from_psms:
                 # Only mzmldef input if not doing a rerun
-                run['mzmls'] = mzmls
+                run['infiles'] = infiles
 
         if not len(nfwf.profiles):
             profiles = ['standard', 'docker', 'lehtio']
@@ -312,8 +330,6 @@ class RunNextflowWorkflow(BaseJob):
         params = [str(x) for x in kwargs['inputs']['params']]
         # Runname defined when run executed (FIXME can be removed, no reason to not do that here)
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        if kwargs['inputs']['components']['sampletable']:
-            params.extend(['SAMPLETABLE', kwargs['inputs']['components']['sampletable']])
         self.run_tasks.append(((run, params, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()

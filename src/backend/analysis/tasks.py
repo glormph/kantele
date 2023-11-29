@@ -171,43 +171,38 @@ def log_analysis(analysis_id, message):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     print('Got message to run nextflow workflow, preparing')
+    # Init
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'name': run['name'], 'user': run['outdir']}
     rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
-    # write sampletable if it is present
-    sampletable = False
-    try:
-        st_ix = params.index('SAMPLETABLE')
-    except ValueError:
-        pass
-    else:
-        sampletable = params[st_ix + 1]
-        params = params[0:st_ix] + params[st_ix + 2:]
-        print('Sampletable found')
+
     # stage files, create dirs etc
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles,
             run['mzmls'], params)
-    if sampletable:
+
+    if sampletable := run['components']['ISOQUANT_SAMPLETABLE']:
         sampletable_fn = os.path.join(rundir, 'sampletable.txt')
         with open(sampletable_fn, 'w') as fp:
             for sample in sampletable:
-                # FIXME remove the replace after dda pipeline is updated to 2.7 (added FS to awk in commit Nov.15 2021)
-                fp.write('\t'.join(sample).replace(' ', '_'))
+                fp.write('\t'.join(sample))
                 fp.write('\n')
         params.extend(['--sampletable', sampletable_fn])
+
     # create input file of filenames
-    # depends on mzmldef component, which is always in our dda but maybe not in other pipelines
-    if len(run['mzmls']):
-        with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
-            for fn in run['mzmls']:
-                fnpath = os.path.join(stagedir, 'mzmls', fn['fn'])
-                mzstr = '{}\t{}\n'.format(fnpath, fn['mzmldef'])
-                fp.write(mzstr)
-        params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
-    if run['old_mzmls']:
-        with open(os.path.join(rundir, 'oldmzmldef.txt'), 'w') as fp:
-            for fn in run['old_mzmls']:
+    # depends on inputdef component, which is always in ours but maybe not in other pipelines
+    if run['components']['INPUTDEF'] and len(run['infiles']):
+        with open(os.path.join(rundir, 'inputdef.txt'), 'w') as fp:
+            fp.write('\t'.join(run['components']['INPUTDEF']))
+            for fn in run['infiles']:
+                fnpath = os.path.join(stagedir, 'infiles', fn['fn'])
+                fn_metadata = '\t'.join(fn[x] for x in run['components']['INPUTDEF'][1:]) 
+                fp.write(f'\n{fnpath}\t{fn_metadata}')
+        params.extend(['--input', os.path.join(rundir, 'inputdef.txt')])
+
+    if 'COMPLEMENT_ANALYSIS' in run['components'] and run['old_mzmls']:
+        with open(os.path.join(rundir, 'oldinputdef.txt'), 'w') as fp:
+            for fn in run['old_infiles']:
                 mzstr = '{}\n'.format(fn)
                 fp.write(mzstr)
         params.extend(['--oldmzmldef', os.path.join(rundir, 'oldmzmldef.txt')])
@@ -243,10 +238,12 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     print('Got message to run mzRefine workflow, preparing')
     rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
+    # FIXME Should we use components here? -- internal pipe so maybe not?
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
             # FIXME not have set, etc, pass rawfnid here!
-            mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, 'mzmls', fn['fn']), refined_sfid=fn['sfid'])
+            fpath = os.path.join(stagedir, 'mzmls', fn['fn']) 
+            mzstr = 'f{fpath}\t{fn["sfid"]}\n'
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)

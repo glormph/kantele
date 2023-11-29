@@ -51,7 +51,8 @@ if (existing_analysis && existing_analysis.added_results) {
   added_analyses_order = Object.keys(existing_analysis.added_results);
 }
 
-$: {
+
+function updateResultfiles() {
   fetched_resultfiles = added_analyses_order.flatMap(x => added_results[x].fns);
   resfn_arr = fetched_resultfiles.concat(base_analysis.resultfiles).concat(prev_resultfiles);
   resultfiles = Object.fromEntries(resfn_arr.map(x=> [x.id, {id: x.id,
@@ -59,14 +60,26 @@ $: {
   resultfnorder = resfn_arr.map(x => x.id);
 }
 
+//$: {
+//  // update result files when added_analyses changes, or base_analysis.resultfiles
+//  // FIXME this fires when typing in base analysis field, even though the resultfiles get set to [] at each keystroke.
+//  // maybe create dedicated method instead 
+//  fetched_resultfiles = added_analyses_order.flatMap(x => added_results[x].fns);
+//  resfn_arr = fetched_resultfiles.concat(base_analysis.resultfiles).concat(prev_resultfiles);
+//  resultfiles = Object.fromEntries(resfn_arr.map(x=> [x.id, x]));
+//  resultfnorder = resfn_arr.map(x => x.id);
+//}
+
 /*
+Removing:
 NF workflow API v1:
 - no mixed isobaric
 - no mixed instruments
 - mixed dtype is ok i guess, but stupid
-- predefined files exist
+- predefined files exist, e.g. vardb
 - isobaric spec as --isobaric tmt10plex --denoms set1:126 set2:127N
  
+
 NF workflow API v2:
 - mods / locptms via multi-checkbox
 - DBs via multi-file interface
@@ -80,11 +93,10 @@ let config = {
   analysisname: '',
   flags: [],
   multicheck: [],
-  isoquants: {},
+  isoquants: {}, // contain both isoquant and sampletable
   fileparams: {},
   inputparams: {},
   multifileparams: {},
-  mzmldef: false,
   v1: false,
   v2: false,
   version_dep: {
@@ -114,7 +126,7 @@ function validate() {
     notif.errors['No datasets are in this analysis, maybe they need some editing'] = 1;
   }
   Object.values(dsets).forEach(ds => {
-    if (config.version_dep.v1.dtype.toLowerCase() !== 'labelcheck' && !ds.filesaresets && !ds.setname) {
+    if (!('LABELCHECK_ISO' in wf.components) && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
     } else if (ds.filesaresets) {
       if (ds.files.some(fn => !fn.setname)) {
@@ -125,7 +137,7 @@ function validate() {
 		}
 	});
   Object.entries(config.isoquants).forEach(([sname, isoq]) => {
-    if (!('labelcheck' in wf.components) && !isoq.report_intensity && !isoq.sweep && !Object.values(isoq.denoms).filter(x => x).length) {
+    if (('ISOQUANT' in wf.components) && !isoq.report_intensity && !isoq.sweep && !Object.values(isoq.denoms).some(x=>x)) {
       notif.errors[`No denominator, sweep or intensity values are filled in for set ${sname}`] = 1;
     }
     Object.entries(isoq.samplegroups).forEach(([ch, sgroup]) => {
@@ -165,16 +177,18 @@ async function storeAnalysis() {
     singlefiles: fns,
     multifiles: multifns,
     components: {
-      mzmldef: config.mzmldef,
-      sampletable: false,
+      ISOQUANT: {},
+      ISOQUANT_SAMPLETABLE: false,
     },
     wfid: config.wfid,
     nfwfvid: config.wfversion.id,
     analysisname: config.analysisname,
-    isoquant: {},
+    // Most params are {param.id: value, param2.id: value}, but multicheck
+    // is checkboxes and is thus {param.id: [value1.id, value2.id]}
     params: {
       flags: Object.fromEntries(config.flags.map(x => [x, true])),
       inputparams: config.inputparams,
+      // Multicheck 
       multicheck: config.multicheck.reduce((acc, x) => {
         const xspl = x.split('___');
         acc[xspl[0]].push(xspl[1]);
@@ -185,22 +199,22 @@ async function storeAnalysis() {
         }))),
     },
   };
+  // FIXME this is for LC pipelien, which we need to fix the input format for
   if (config.v1) {
     post.params.inst = ['--instrument', config.version_dep.v1.instype];
   }
-  if ('isobaric_quant' in wf.components) {
-    post.isoquant = config.isoquants;
+  if ('ISOQUANT' in wf.components) {
+    post.components.ISOQUANT = config.isoquants;
   }
 
-  if ('isobaric_quant' in wf.components || 'sampletable' in wf.components) {
-    // sampletable [[ch, sname, groupname], [ch2, sname, samplename, groupname], ...]
-    // we can push sampletables on ANY workflow as nextflow will ignore non-params
+  if ('ISOQUANT_SAMPLETABLE' in wf.components) {
+    // If data is purely labelfree this will be empty []
     const sampletable = Object.entries(config.isoquants).flatMap(([sname, isoq]) => 
       Object.entries(isoq.channels).map(([ch, sample]) => [ch, sname, sample[0], isoq.samplegroups[ch]]).sort((a, b) => {
       return a[0].replace('N', 'A') > b[0].replace('N', 'A')
       })
     );
-    post.components.sampletable = sampletable;
+    post.components.ISOQUANT_SAMPLETABLE = sampletable;
   }
    
   // Post the payload
@@ -269,11 +283,12 @@ async function fetchWorkflow() {
   if (wf.multifileparams.length) {
     config.multifileparams = Object.assign(config.multifileparams, Object.fromEntries(wf.multifileparams.filter(x => !(x.id in config.multifileparams)).map(x => [x.id, {0: ''}])));
   }
+  await fetchDatasetDetails(false);
 }
 
 
 async function fetchDatasetDetails(fetchdsids) {
-  let url = new URL('/analysis/dsets/', document.location)
+  let url = new URL(`/analysis/dsets/${config.wfversion.id}`/, document.location)
   const params = {
     dsids: fetchdsids ? fetchdsids.join(',') : dsids.join(','),
     anid: existing_analysis ? existing_analysis.analysis_id : 0,
@@ -297,6 +312,7 @@ async function fetchDatasetDetails(fetchdsids) {
     })
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
     // API v1 stuff
+    // 
     const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
     config.version_dep.v1.dtype = dtypes.size > 1 ? 'mixed' : dtypes.keys().next().value;
     const qtypes = new Set(Object.values(dsets).map(ds => ds.qtype.short));
@@ -334,6 +350,7 @@ async function loadAnalysisResults() {
   } else {
     added_analyses_order.push(adding_analysis.selected);
     added_results[adding_analysis.selected] = result;
+    updateResultfiles();
   }
 }
 
@@ -345,6 +362,7 @@ function removeAnalysisResults(anaid) {
   added_analyses_order = added_analyses_order.filter(x => x !== anaid);
   delete(added_results[anaid]);
   added_results = added_results;
+  updateResultfiles();
 }
 
 
@@ -483,9 +501,11 @@ function updateIsoquant(dsid_changed) {
           }
         }
       }
-    });
+    }
+      console.log(config.isoquants);
+
     // Remove old sets from config.isoquants if necessary
-    const dset_sets = new Set(Object.values(dsets).map(ds => ds.setname).filter(x => x));
+    const dset_sets = new Set(Object.values(dsets).filter(ds => ds.setname).map(ds => ds.setname));
     Object.keys(config.isoquants).filter(x => !(dset_sets.has(x))).forEach(x => {
       delete(config.isoquants[x])
     });
@@ -509,10 +529,16 @@ async function populate_analysis() {
 
 
 onMount(async() => {
-  if (existing_analysis) {
-    await populate_analysis();
+  if (ds_errors) {
+    ds_errors.forEach(x => {
+      notif.errors[x] = 1;
+    });
+  } else {
+    if (existing_analysis) {
+      await populate_analysis();
+    }
+    await fetchDatasetDetails(false);
   }
-  await fetchDatasetDetails(false);
 })
 </script>
 
@@ -603,7 +629,7 @@ onMount(async() => {
 
   <div class="box">
     <div class="title is-5">Fetch settings/files from a previous analysis</div>
-    {#if wf && 'complement_analysis' in wf.components && base_analysis.selected}
+    {#if wf && 'COMPLEMENT_ANALYSIS' in wf.components && base_analysis.selected}
     <div class="checkbox">
       {#if base_analysis.dsets_identical}
       <input type="checkbox" bind:checked={base_analysis.runFromPSM}>
@@ -623,6 +649,8 @@ onMount(async() => {
     <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={base_analysis.fetched} />
 	</div>
 
+  <!--
+    FIXME deprecate
   {#if 'mzmldef' in wf.components}
   <div class="title is-5">Mzml input type</div>
   <div class="field">
@@ -636,6 +664,8 @@ onMount(async() => {
     </div>
   </div>
   {/if}
+  -->
+
   {/if}
 
   <!-------------------------- ############### API v1? -->
@@ -647,13 +677,13 @@ onMount(async() => {
     {:else}
 		<div class="columns">
 		  <div class="column">
-        {#if !ds.prefrac}
+        {#if !ds.prefrac && !ds.qtype.is_isobaric}
         <input type="checkbox" bind:checked={ds.filesaresets}>
 				<label class="checkbox">One sample - one file (non-fractionated, non-isobaric)</label>
         {/if}
         {#if !ds.filesaresets}
 			  <div class="field">
-          <input type="text" class="input" placeholder="Name of set" bind:value={ds.setname} on:change={updateIsoquant}>
+          <input type="text" class="input" placeholder="Name of set" bind:value={ds.setname} on:change={e => updateIsoquant(ds.id)}>
 			  </div>
         {/if}
         <div class="subtitle is-6 has-text-primary">
@@ -684,7 +714,8 @@ onMount(async() => {
 			</div>
 			<div class="column">
       {#if wf}
-        {#if ds.prefrac && 'mzmldef' in wf.components && config.mzmldef in wf.components.mzmldef && wf.components.mzmldef[config.mzmldef].indexOf('plate') > -1}
+      
+      {#if ds.prefrac && 'PREFRAC' in wf.components}
         <div class="field">
 					<label class="label">Regex for fraction detection</label>
           <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.frregex}>
@@ -709,82 +740,87 @@ onMount(async() => {
   {/each}
 
   {#if wf}
-  {#if 'isobaric_quant' in wf.components && Object.keys(config.isoquants).length}
+  {#if 'ISOQUANT' in wf.components}
   <div class="box">
 		<div class="title is-5">Isobaric quantification</div>
-    {#each Object.entries(config.isoquants) as isoq}
-    <div class="has-text-primary title is-6">Set: {isoq[0]}</div>
+    {#if 'LABELCHECK_ISO' in wf.components}
+    <span>Labelcheck pipeline does not require individual channel information</span>
+    {:else if !(Object.entries(config.isoquants).length)}
+    <span>No isobaric sets have been specified</span>
+    {:else}
+      {#each Object.entries(config.isoquants) as isoq}
+      <div class="has-text-primary title is-6">Set: {isoq[0]}</div>
 
-    {#if !('labelcheck' in wf.components)}
-    {#if Object.keys(config.isoquants).length === 1 && !Object.values(isoq[1].denoms).filter(x=>x).length}
-      <div class="field">
-        <input type="checkbox" bind:checked={isoq[1].sweep}>
-        <label class="checkbox">Use median sweeping (no predefined denominators)
-          <span class="icon is-small">
-            <a title="Pick median denominator per PSM, only for single-set analyses"><i class="fa fa-question-circle"></i></a>
-          </span>
-        </label>
-      </div>
+      {#if 'ISOQUANT_SAMPLETABLE' in wf.components}
+        {#if !Object.values(isoq[1].denoms).some(x=>x)}
+        <div class="field">
+          <input type="checkbox" bind:checked={isoq[1].sweep}>
+          <label class="checkbox">Use median sweeping (no predefined denominators)
+            <span class="icon is-small">
+              <a title="Pick median denominator per PSM, only for single-set analyses"><i class="fa fa-question-circle"></i></a>
+            </span>
+          </label>
+        </div>
+        {/if}
+
+        {#if !isoq[1].sweep && !Object.values(isoq[1].denoms).some(x=>x)}
+        <div class="field">
+          <input type="checkbox" bind:checked={isoq[1].report_intensity}>
+          <label class="checkbox">Report isobaric ion intensities instead of ratios
+            <span class="icon is-small">
+              <a title="Reports median intensity rather than fold changes, not for use with DEqMS"><i class="fa fa-question-circle"></i></a>
+            </span>
+          </label>
+        </div>
+        {/if}
+
       {/if}
 
-      {#if !isoq[1].sweep && !Object.values(isoq[1].denoms).filter(x => x).length}
-      <div class="field">
-        <input type="checkbox" bind:checked={isoq[1].report_intensity}>
-        <label class="checkbox">Report isobaric ion intensities instead of ratios
-          <span class="icon is-small">
-            <a title="Reports median intensity rather than fold changes, not for use with DEqMS"><i class="fa fa-question-circle"></i></a>
-          </span>
-        </label>
-      </div>
-      {/if}
-    {/if}
-
-    <div class="columns">
-      <div class="column is-three-quarters">
-        <table class="table is-striped is-narrow">
-          <thead>
-            <tr>
-            {#if !('labelcheck' in wf.components)}
-              {#if !isoq[1].sweep && !isoq[1].report_intensity}
-              <th>Denominator</th>
-              {:else}
-              <th><del>Denominator</del></th>
-              {/if}
-              <th>Channel</th>
-              <th>Sample name</th>
-              <th>Sample group 
-                <span class="icon is-small">
-                  <a title="For DEqMS and PCA plots"><i class="fa fa-question-circle"></i></a>
-                </span>
-                LEAVE EMPTY FOR INTERNAL STANDARDS!
-              </th>
-            {/if}
-      		  </tr>
-          </thead>
-          <tbody>
-            {#each sortChannels(isoq[1].channels) as {ch, sample}}
-            <tr>
-              {#if !('labelcheck' in wf.components)}
-              <td>
-                {#if !isoq[1].sweep && !isoq[1].report_intensity}
-                <input type="checkbox" bind:checked={isoq[1].denoms[ch]} />
+      <div class="columns">
+        <div class="column is-three-quarters">
+          <table class="table is-striped is-narrow">
+            <thead>
+              <tr>
+                {#if !('ISOQUANT' in wf.components) || (!isoq[1].sweep && !isoq[1].report_intensity)}
+                <th>Denominator</th>
+                {:else}
+                <th><del>Denominator</del></th>
                 {/if}
-              </td>
-              {/if}
-              <td>{ch}</td>
-              <td>{sample}</td>
-              {#if !('labelcheck' in wf.components)}
-              <td>
-                <input type="text" class="input" bind:value={isoq[1].samplegroups[ch]} placeholder="Sample group or empty (e.g. CTRL, TREAT)">
-              </td>
-              {/if}
-      		  </tr>
-            {/each}
-          </tbody>
-        </table>
+                <th>Channel</th>
+                <th>Sample name</th>
+                {#if 'ISOQUANT_SAMPLETABLE' in wf.components}
+                  <th>Sample group 
+                    <span class="icon is-small">
+                      <a title="For DEqMS and PCA plots"><i class="fa fa-question-circle"></i></a>
+                    </span>
+                    LEAVE EMPTY FOR INTERNAL STANDARDS!
+                  </th>
+                {/if}
+        		  </tr>
+            </thead>
+            <tbody>
+              {#each sortChannels(isoq[1].channels) as {ch, sample}}
+              <tr>
+                <td>
+                  {#if !('ISOQUANT' in wf.components) || (!isoq[1].sweep && !isoq[1].report_intensity)}
+                  <input type="checkbox" bind:checked={isoq[1].denoms[ch]} />
+                  {/if}
+                </td>
+                <td>{ch}</td>
+                <td>{sample}</td>
+                {#if 'ISOQUANT_SAMPLETABLE' in wf.components}
+                <td>
+                  <input type="text" class="input" bind:value={isoq[1].samplegroups[ch]} placeholder="Sample group or empty (e.g. CTRL, TREAT)">
+                </td>
+                {/if}
+        		  </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-    {/each}
+      {/each}
+    {/if}
   </div>
   {/if}
 

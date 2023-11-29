@@ -31,8 +31,9 @@ class AnalysisTest(BaseTest):
 
         c_ch = am.PsetComponent.ComponentChoices
         am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.INPUTDEF, value=['plate', 2, 3])
-        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.ISOQUANT_SWEEP_INTENSITY_SAMPLETABLE)
-        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.PREFRAC)
+        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.ISOQUANT)
+        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.ISOQUANT_SAMPLETABLE)
+        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.PREFRAC, value='.*fr([0-9]+).*mzML$')
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param1)
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param2)
         am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param3)
@@ -255,6 +256,10 @@ class TestGetAnalysis(AnalysisIsobaric):
         const dbwfs = JSON.parse(document.getElementById('allwfs').textContent);
         const allwfs = dbwfs.wfs;
         const wforder = dbwfs.order;
+        const ds_errors = [
+
+
+        ];
         </script>
         '''
         self.assertInHTML(html_dsids, resphtml)
@@ -270,15 +275,15 @@ class TestGetDatasets(AnalysisTest):
     url = '/analysis/dsets/'
 
     def test_bad_req(self):
-        resp = self.cl.post(self.url)
+        resp = self.cl.post(f'{self.url}{self.nfwf.pk}/')
         self.assertEqual(resp.status_code, 405)
-        resp = self.cl.get(self.url)
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/')
         self.assertEqual(resp.status_code, 400)
 
     def test_without_analysis_no_sampledata(self):
         '''Gets datasets for an analysis with self.nfwf workflow. But these being from
         a dataset without sample info, it will also give an error message'''
-        resp = self.cl.get(self.url, data={'dsids': f'{self.ds.pk}', 'anid': 0})
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.ds.pk}', 'anid': 0})
         self.assertEqual(resp.status_code, 200)
         checkjson = {
                 'dsets': {f'{self.ds.pk}': {
@@ -311,19 +316,23 @@ class TestGetDatasets(AnalysisTest):
 
     def test_error(self):
         '''This test is on single dataset which will fail, in various ways'''
-        # Non-existing dataset
-        maxds = dm.Dataset.objects.aggregate(Max('pk'))['pk__max']
-        resp = self.cl.get(self.url, data={'dsids': f'{maxds + 10}', 'anid': 0})
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()['errmsg'], ['Some datasets could not be found, they may not exist'])
         # No quant details
+        fn = 'noqt_fn'
+        path = 'noqt_stor'
+        raw = rm.RawFile.objects.create(name=fn, producer=self.prod,
+                source_md5='noqt_fakemd5',
+                size=100, date=timezone.now(), claimed=True)
+        sf, _ = rm.StoredFile.objects.update_or_create(rawfile=raw, filename=fn,
+                    md5=raw.source_md5, filetype=self.ft,
+                    defaults={'servershare': self.ssnewstore, 'path': path, 'checked': True})
         newrun, _ = dm.RunName.objects.get_or_create(experiment=self.ds.runname.experiment,
                 name='noqt_ds')
         newds, _ = dm.Dataset.objects.get_or_create(runname=newrun, datatype=self.ds.datatype, 
-                storage_loc='noqt_stor', storageshare=self.ds.storageshare,
+                storage_loc=path, storageshare=self.ds.storageshare,
                 defaults={'date': timezone.now()})
+        dsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=newds, rawfile=raw)
         dm.DatasetOwner.objects.get_or_create(dataset=newds, user=self.user)
-        resp = self.cl.get(self.url, data={'dsids': f'{newds.pk}', 'anid': 0})
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{newds.pk}', 'anid': 0})
         self.assertEqual(resp.status_code, 200)
         self.assertIn(f'Dataset with runname {newrun.name} has no quant details, please fill in '
                 'sample prep fields', resp.json()['errmsg'])
@@ -419,14 +428,15 @@ class TestStoreAnalysis(AnalysisTest):
             'analysis_id': False,
             'fractions': {self.f3sfmz.pk: 1},
             'nfwfvid': self.nfwf.pk,
-            'isoquant': {'setA': {'chemistry': quant.shortname,
-                'denoms': {x.channel.name: [f'{x}_sample', x.channel.id] for x in quant.quanttypechannel_set.all()},
-                'report_intensity': False,
-                'sweep': False,
-                }},
             'dssetnames': {self.ds.pk: 'setA'},
-            'components': {'SAMPLETABLE': {'hello': 'yes'},
-                'INPUTDEF': 'a'},
+            'components': {'ISOQUANT_SAMPLETABLE': {'hello': 'yes'},
+                'INPUTDEF': 'a',
+                'ISOQUANT': {'setA': {'chemistry': quant.shortname,
+                    'denoms': {x.channel.name: [f'{x}_sample', x.channel.id] for x in quant.quanttypechannel_set.all()},
+                    'report_intensity': False,
+                    'sweep': False,
+                    }},
+                },
             'analysisname': 'Test new analysis',
             'frregex': {f'{self.ds.pk}': 'fr_find'},
             'fnsetnames': {},

@@ -29,11 +29,18 @@ from jobs import models as jm
 @require_GET
 def get_analysis_init(request):
     '''New page, empty analysis, only gets datasets'''
-    dsids = request.GET['dsids'].split(',')
+    dserrors = []
     try:
-        context = {'dsids': dsids, 'analysis': False, 'wfs': get_allwfs()}
-    except:
-        return HttpResponseForbidden()
+        dsids = request.GET['dsids'].split(',')
+    except (KeyError, ValueError):
+        dserrors.append('Something wrong when asking datasets, contact admin')
+    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
+    deleted = dbdsets.filter(deleted=True).count()
+    if deleted:
+        dserrors.append('Deleted datasets can not be analysed')
+    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
+        dserrors.append('Some datasets could not be found, they may not exist')
+    context = {'dsids': dsids, 'ds_errors': dserrors, 'analysis': False, 'wfs': get_allwfs()}
     return render(request, 'analysis/analysis.html', context)
 
 
@@ -145,6 +152,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
     except am.AnalysisSampletable.DoesNotExist:
         sampletables = {}
     analysis['isoquants'] = get_isoquants(ana, sampletables)
+
+    # Dont need checking complement component since base ana is included everywhere
     try:
         baseana_dbrec = am.AnalysisBaseanalysis.objects.get(analysis=ana)
     except am.AnalysisBaseanalysis.DoesNotExist:
@@ -152,6 +161,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
     else:
         dsets.update(baseana_dbrec.shadow_dssetnames)
         analysis['isoquants'].update(baseana_dbrec.shadow_isoquants)
+
     analysis_prev_resfiles_ids = get_prev_resultfiles(new_ana_dsids, only_ids=True)
     added_files_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
         analysis_id__in=added_ana_ids).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
@@ -165,6 +175,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
 @require_GET
 @login_required
 def get_analysis(request, anid):
+    '''Renders analysis HTML page, complete with analysis, values are loaded as JSON in rendered
+    page where the JS can pick it up'''
     try:
         ana = am.Analysis.objects.get(nextflowsearch__pk=anid)
     except am.Analysis.DoesNotExist:
@@ -252,8 +264,17 @@ def get_analysis(request, anid):
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     wf_components = {allcomponents[x.component].name: x.value for x in pset.psetcomponent_set.all()}
 
+    if 'ISOQUANT_SAMPLETABLE' in wf_components:
+        try:
+            sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
+        except am.AnalysisSampletable.DoesNotExist:
+            sampletables = {}
+    else:
         sampletables = {}
-    analysis['isoquants'] = get_isoquants(ana, sampletables)
+
+    if 'ISOQUANT' in wf_components:
+        analysis['isoquants'] = get_isoquants(ana, sampletables)
+
     context = {
             'dsids': dsids,
             'analysis': analysis,
@@ -335,8 +356,13 @@ def get_base_analyses(request):
 
 @login_required
 @require_GET
-def get_datasets(request):
-    """Fetches datasets to analysis, populates dataset/analysis-specific fields"""
+def get_datasets(request, wfversion_id):
+    """Fetches datasets to analysis, populates dataset/analysis-specific fields,
+    field relevance is guided by which workflow is used (wfversion_id)
+    """
+    # FIXME this can get into page render? It is loaded at start
+    # Only "update" cannot be used then, but is that a problem?
+    # Maybe keep here so user can in future dyn select dsets to add
     try:
         dsids = request.GET['dsids'].split(',')
         anid = int(request.GET['anid'])
@@ -344,44 +370,57 @@ def get_datasets(request):
         return JsonResponse({'error': True, 'errmsg': ['Something wrong when asking datasets, contact admin']}, status=400)
     response = {'error': False, 'errmsg': []}
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
-    deleted = dbdsets.filter(deleted=True).count()
-    if deleted:
-        response['error'] = True
-        response['errmsg'].append('Deleted datasets can not be analysed')
-    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
-        response['error'] = True
-        response['errmsg'].append('Some datasets could not be found, they may not exist')
+#    deleted = dbdsets.filter(deleted=True).count()
+#    if deleted:
+#        response['error'] = True
+#        response['errmsg'].append('Deleted datasets can not be analysed')
+#    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
+#        response['error'] = True
+#        response['errmsg'].append('Some datasets could not be found, they may not exist')
 
     dsetinfo = {}
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    wfcomponents = {allcomponents[x.component].name: x.value
+            for x in am.PsetComponent.objects.filter(pset__nextflowwfversion=wfversion_id)}
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
             'quantdataset'):
         prefrac, hr = False, False
-        if hasattr(dset, 'prefractionationdataset'):
-            pf = dset.prefractionationdataset
-            prefrac = str(pf.prefractionation.name)
-            if 'hirief' in pf.prefractionation.name.lower():
-                hr = f'HiRIEF {str(pf.hiriefdataset.hirief)}'
+        if 'PREFRAC' in wfcomponents:
+            if hasattr(dset, 'prefractionationdataset'):
+                pf = dset.prefractionationdataset
+                prefrac = str(pf.prefractionation.name)
+                if 'hirief' in pf.prefractionation.name.lower():
+                    hr = f'HiRIEF {str(pf.hiriefdataset.hirief)}'
+            frregex = wfcomponents['PREFRAC']
 
-        setname, frregex = '', '.*fr([0-9]+).*mzML$'
+        setname = ''
         if anid and am.AnalysisDatasetSetname.objects.filter(analysis_id=anid):
             adsn = dset.analysisdatasetsetname_set.get(analysis_id=anid)
             setname = adsn.setname.setname
+            # PREFRAC component:
             frregex = adsn.regex
 
-        dssffiles = rm.StoredFile.objects.select_related('rawfile__producer', 'servershare',
+        dssfiles = rm.StoredFile.objects.select_related('rawfile__producer', 'servershare',
                 'filetype').filter(rawfile__datasetrawfile__dataset_id=dset.id)
-        dsrawfiles = dssffiles.filter(mzmlfile__isnull=True)
+        dsrawfiles = dssfiles.filter(mzmlfile__isnull=True)
         nrrawfiles = dsrawfiles.count()
-        producers = dssffiles.distinct('rawfile__producer')
+        producers = dssfiles.distinct('rawfile__producer')
 
-        # FIXME This needs to depend on mzML input component more explicit than quantdataset?
-        # Could put this in own function in that case, each component gets function?
-        if hasattr(dset, 'quantdataset'):
+        # Is this a quant MS dataset (or seq, etc?), then do MS things
+        dset_ftype = dssfiles.distinct('filetype')
+        dset_instr = dssfiles.distinct('rawfile__producer__msinstrument')
+        if dset_ftype.count() > 1 or dset_instr.count() > 1:
+            return JsonResponse({'error': True, 'errmsg': ['Multiple different file types in dataset, not allowed']}, status=400)
+        is_msdata = dset_instr.filter(rawfile__producer__msinstrument__isnull=False).count()
+
+        if is_msdata and hasattr(dset, 'quantdataset'):
+            is_isobaric = any(x in dset.quantdataset.quanttype.shortname for x in ['plex', 'pro'])
             qtype = {'name': dset.quantdataset.quanttype.name,
-                    'short': dset.quantdataset.quanttype.shortname}
+                    'short': dset.quantdataset.quanttype.shortname,
+                    'is_isobaric': is_isobaric}
 
             # FIXME enforcing refined mzML
-            non_deleted_mzmlfiles = dssffiles.filter(mzmlfile__isnull=False, deleted=False,
+            non_deleted_mzmlfiles = dssfiles.filter(mzmlfile__isnull=False, deleted=False,
                     purged=False)
             refineddsfiles = non_deleted_mzmlfiles.filter(mzmlfile__refined=True)
             if refineddsfiles.count():
@@ -392,18 +431,19 @@ def get_datasets(request):
                 usefiles = non_deleted_mzmlfiles
 
             # FIXME tease out isoquant / LF / mzML from eachother
+            # Check if files to use are mapping to rawfiles in dataset
             sample_error = False
             if usefiles.filter(checked=True).count() != nrrawfiles:
                 sample_error = True
                 response['error'] = True
-                response['errmsg'].append('Need to create or finish refining mzML files first '
-                        f'in dataset {dset.runname.name}')
-            channels = {}
+                response['errmsg'].append('Files selected for analysis are not same number as that '
+                        'of registered files in dataset. Maybe you need to finish creating mzMLs '
+                        f'or refining them, in dataset {dset.runname.name}')
             resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''}
                     for x in usefiles}
             qsf_error = False
-            if 'plex' in dset.quantdataset.quanttype.name.lower():
-                # isobaric multiplex
+            if is_isobaric:
+                # multiplex so add channel/samples 
                 for fn in usefiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
                     try:
                         qfcs = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample
@@ -415,7 +455,8 @@ def get_datasets(request):
                     dm.QuantChannelSample.objects.select_related(
                         'projsample', 'channel__channel').filter(dataset_id=dset.pk)}
             else:
-                # Labelfree
+                # Labelfree, add file/sample mapping
+                channels = False
                 for fn in usefiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
                     try:
                         qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
@@ -445,7 +486,15 @@ def get_datasets(request):
                         for x in resp_files.values()]
             # to list for frontend
             resp_files = [resp_files[x.id] for x in usefiles]
+        elif not is_msdata:
+            # FIXME sequencing data etcetera
+            qtype = False
+            channels = {}
+            resp_files = []
+            filesaresets = False
+            print(dset.pk, dssfiles)
         else:
+            # This is an quant MS dataset, but there is quant information lacking
             qtype = False
             channels = {}
             resp_files = []
@@ -456,6 +505,7 @@ def get_datasets(request):
 
         # Fill response object
         dsetinfo[dset.pk] = {
+                # FIXME add relevant stuff for other dataset types seq etc
                 'id': dset.pk,
                 'proj': dset.runname.experiment.project.name,
                 'exp': dset.runname.experiment.name,
@@ -500,7 +550,6 @@ def get_workflow_versioned(request):
         sfile__filetype__in=ftypes).order_by('-sfile__regdate')]
     selectable_files.extend(userfiles)
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
-    #wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
     resp = {
             'analysisapi': wf.kanteleanalysis_version,
             'components': {allcomponents[psc.component].name: psc.value for psc in 
@@ -586,7 +635,7 @@ def store_analysis(request):
         req['analysis_id']
         req['fractions']
         req['nfwfvid']
-        req['isoquant']
+        req['components']
         req['dssetnames']
         req['analysisname']
         req['frregex']
@@ -628,8 +677,7 @@ def store_analysis(request):
     wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
 
     # Check if labelcheck 
-    is_lcheck = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid'], paramset__psetcomponent__component__name='labelcheck').exists()
-    if is_lcheck:
+    if 'LABELCHECK_ISO' in wf_components:
         try:
             qtype = dsetquery.values('quantdataset__quanttype__shortname').distinct().get()
         except dm.Dataset.MultipleObjectsReturned:
@@ -655,8 +703,8 @@ def store_analysis(request):
 
     # FIXME isobaric quant is API v1/v2 diff, fix it
     # need passed: setname, any denom, or sweep or intensity
-    if req['isoquant'] and not is_lcheck:
-        for setname, quants in req['isoquant'].items():
+    if 'ISOQUANT' in wf_components:
+        for setname, quants in req['components']['ISOQUANT'].items():
             if setname not in set(req['dssetnames'].values()):
                 return JsonResponse({'error': f'Isobaric setname {setname} '
                 'could not be matched to dataset setnames, something went wrong'})
@@ -682,10 +730,11 @@ def store_analysis(request):
         am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
 
     in_components = {k: v for k, v in req['components'].items() if v}
-    jobinputs = {'components': {}, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
+    jobinputs = {'components': wf_components, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
     data_args = {'setnames': {}, 'platenames': {}}
 
     # Input files are passed as "fractions" currently, maybe make this cleaner in future
+    # FIXME when there is not fractions, how?
     data_args['fractions'] = req['fractions']
 
     # Input file definition
@@ -705,7 +754,7 @@ def store_analysis(request):
     dsets = {str(dset.id): dset for dset in dsetquery}
     am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fractions']).delete()
     for dsid, setname in req['dssetnames'].items():
-        if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
+        if 'PREFRAC' in wf_components:
             regex = req['frregex'][dsid] 
         else:
             regex = ''
@@ -717,7 +766,8 @@ def store_analysis(request):
             am.AnalysisDSInputFile.objects.update_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
             data_args['setnames'][sf.pk] = setname
         dset = dsets[dsid]
-        if hasattr(dset, 'prefractionationdataset'):
+        if 'PREFRAC' in wf_components and hasattr(dset, 'prefractionationdataset'):
+            # get platenames
             pfd = dset.prefractionationdataset
             if hasattr(pfd, 'hiriefdataset'):
                 strip = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(pfd.hiriefdataset.hirief).split('-')])
@@ -798,15 +848,23 @@ def store_analysis(request):
             ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
                     defaults={'setname_id': setname_ids[setname], 'regex': regex},
                     analysis=analysis, dataset_id=dsid) 
+        if 'COMPLEMENT_ANALYSIS' in wf_components:
+            is_complement = req['base_analysis']['isComplement']
+            rerun = req['base_analysis']['runFromPSM']
+            if rerun:
+                # Defensive, make sure it is overridden
+                is_complement = False
+        else:
+            is_complement, rerun = False, False
         base_def = {'base_analysis': base_ana,
-                'is_complement': req['base_analysis']['isComplement'],
-                'rerun_from_psms': req['base_analysis']['runFromPSM'],
+                'is_complement': is_complement,
+                'rerun_from_psms': rerun,
                 'shadow_isoquants': shadow_isoquants,
                 'shadow_dssetnames': shadow_dss,
                 }
         ana_base, cr = am.AnalysisBaseanalysis.objects.update_or_create(defaults=base_def, analysis_id=analysis.id)
         # Add base analysis isoquant to the job params if it is complement analysis
-        if base_def['is_complement']:
+        if is_complement:
             for setname, quants in shadow_isoquants.items():
                 vals, calc_psm = parse_isoquant(quants)
                 isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
@@ -818,15 +876,17 @@ def store_analysis(request):
         # - store mzmldef in results, pass it automatically - easiest?
             
     # Already did parsing isoquants in checking part, now (re)create DB objects
-    if req['isoquant'] and not is_lcheck:
+    # FIXME should this be below the parsing step instead? Why it wait? Base ana?
+    if 'ISOQUANT' in wf_components:
         am.AnalysisIsoquant.objects.filter(analysis=analysis).exclude(setname_id__in=setname_ids.values()).delete()
         for setname, quantvals in db_isoquant.items():
             am.AnalysisIsoquant.objects.update_or_create(defaults={'value': quantvals},
                     analysis=analysis, setname_id=setname_ids[setname])
 
-    # If any, store sampletable
-    if 'sampletable' in components:
-        sampletable = components['sampletable']
+    # If any, store sampletable TODO make possible to run without sampletable (so users can skip sample names)
+    # Need to go through job components as well
+    if (sampletable := in_components.get('ISOQUANT_SAMPLETABLE', False)) and \
+            'ISOQUANT_SAMPLETABLE' in wf_components:
         am.AnalysisSampletable.objects.update_or_create(defaults={'samples': sampletable}, analysis=analysis)
         # check if we need to concat shadow isoquants to sampletable that gets passed to job
         if req['base_analysis']['isComplement']:
@@ -835,9 +895,9 @@ def store_analysis(request):
                     sampletable.append([ch, sname, sample, isoq['samplegroups'][ch]])
         # strip empty last-fields (for no-group analysis)
         sampletable = [[f for f in row if f] for row in sampletable]
-        jobinputs['components']['sampletable'] = sampletable
+        jobinputs['components']['ISOQUANT_SAMPLETABLE'] = sampletable
     else:
-        jobinputs['components']['sampletable'] = False
+        jobinputs['components']['ISOQUANT_SAMPLETABLE'] = False
         am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
 
     # All data collected, now create a job in WAITING state
