@@ -121,48 +121,6 @@ def get_dir_content_size(fpath):
     return sum([os.path.getsize(f) for f in os.listdir(fpath) if os.path.isfile(f)])
 
 
-def stage_files(stagedir, stagefiles, params=False):
-    for flag, files in stagefiles.items():
-        stagefiledir = os.path.join(stagedir, flag.replace('--', ''))
-        os.makedirs(stagefiledir, exist_ok=True)
-        not_needed_files = set(os.listdir(stagefiledir))
-        if len(files) > 1:
-            dst = os.path.join(stagefiledir, '*')
-        else:
-            dst = os.path.join(stagefiledir, files[0][2])
-        if params:
-            params.extend([flag, dst])
-        # now actually copy
-        for fdata in files:
-            fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
-            fdst = os.path.join(stagefiledir, fdata[2])
-            try:
-                not_needed_files.remove(fdata[2])
-            except KeyError:
-                pass
-            if os.path.exists(fdst) and not os.path.isdir(fpath) and os.path.getsize(fdst) == os.path.getsize(fpath):
-                # file already there
-                continue
-            elif os.path.exists(fdst) and os.path.isdir(fpath) and get_dir_content_size(fpath) == get_dir_content_size(fdst):
-                # file is a dir but also ready
-                continue
-            elif os.path.exists(fdst):
-                # file/dir exists but is not correct, delete first
-                os.remove(fdst)
-            if os.path.isdir(fpath):
-                shutil.copytree(fpath, fdst)
-            else:
-                shutil.copy(fpath, fdst)
-        # Remove obsolete files from stage-file-dir
-        for fn in not_needed_files:
-            fpath = os.path.join(stagefiledir, fn)
-            if os.path.isdir(fpath):
-                shutil.rmtree(fpath)
-            else:
-                os.remove(fpath)
-    return params
-
-
 def log_analysis(analysis_id, message):
     logurl = urljoin(settings.KANTELEHOST, reverse('analysis:appendlog'))
     update_db(logurl, json={'analysis_id': analysis_id, 'message': message})
@@ -280,7 +238,7 @@ def create_runname_dir(run, run_id, in_name, timestamp):
     return os.path.join(rundir, runname).replace(' ', '_')
 
 
-def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
+def prepare_nextflow_run(run, taskid, rundir, stagefiles, infiles, params):
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
     # runname is set in task so timestamp corresponds to execution start and not job queue
@@ -293,15 +251,70 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
     stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, run['runname'])
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
-    print('Staging files to {}'.format(stagedir))
-    try:
-        params = stage_files(stagedir, stagefiles, params)
-        if len(mzmls):
-            stage_files(stagedir, {'mzmls': [(x['servershare'], x['path'], x['fn']) for x in mzmls]})
-    except Exception:
-        taskfail_update_db(taskid, 'Could not stage files for analysis')
-        raise
+    print(f'Staging files to {stagedir}')
+    for flag, files in stagefiles.items():
+        stagefiledir = os.path.join(stagedir, flag.replace('--', ''))
+        if len(files) > 1:
+            dst = os.path.join(stagefiledir, '*')
+        else:
+            dst = os.path.join(stagefiledir, files[0][2])
+        params.extend([flag, dst])
+        try:
+            os.makedirs(stagefiledir, exist_ok=True)
+        except Exception:
+            taskfail_update_db(taskid, f'Could not create dir to stage files for {flag}')
+            raise
+        try:
+            copy_stage_files(stagefiledir, files)
+        except Exception:
+            taskfail_update_db(taskid, f'Could not stage files for {flag} for analysis')
+            raise
+    if len(infiles):
+        # Files which will be defined in some kind of input.txt file (no --param filename)
+        infiledir = os.path.join(stagedir, 'infiles')
+        try:
+            os.makedirs(infiledir, exist_ok=True)
+        except Exception:
+            taskfail_update_db(taskid, f'Could not create dir to stage files for input')
+            raise
+        try:
+            copy_stage_files(infiledir, [(x['servershare'], x['path'], x['fn']) for x in infiles])
+        except Exception:
+            taskfail_update_db(taskid, f'Could not stage files for {flag} for analysis')
+            raise
     return params, gitwfdir, stagedir
+
+
+def copy_stage_files(stagefiledir, files):
+    not_needed_files = set(os.listdir(stagefiledir))
+    # now actually copy
+    for fdata in files:
+        fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
+        fdst = os.path.join(stagefiledir, fdata[2])
+        try:
+            not_needed_files.remove(fdata[2])
+        except KeyError:
+            pass
+        if os.path.exists(fdst) and not os.path.isdir(fpath) and os.path.getsize(fdst) == os.path.getsize(fpath):
+            # file already there
+            continue
+        elif os.path.exists(fdst) and os.path.isdir(fpath) and get_dir_content_size(fpath) == get_dir_content_size(fdst):
+            # file is a dir but also ready
+            continue
+        elif os.path.exists(fdst):
+            # file/dir exists but is not correct, delete first
+            os.remove(fdst)
+        if os.path.isdir(fpath):
+            shutil.copytree(fpath, fdst)
+        else:
+            shutil.copy(fpath, fdst)
+    # Remove obsolete files from stage-file-dir
+    for fn in not_needed_files:
+        fpath = os.path.join(stagefiledir, fn)
+        if os.path.isdir(fpath):
+            shutil.rmtree(fpath)
+        else:
+            os.remove(fpath)
 
 
 def process_error_from_nf_log(logfile):

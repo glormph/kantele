@@ -271,15 +271,16 @@ class RunNextflowWorkflow(BaseJob):
             for fn in sfiles_passed:
                 infile = {'servershare': fn.servershare.name, 'path': fn.path, 'fn': fn.filename}
                 if 'setname' in inputdef_fields:
-                    infile['setname'] = kwargs['setnames'].get(str(fn.id), False)
+                    infile['setname'] = kwargs['setnames'].get(str(fn.id), '')
                 if 'plate' in inputdef_fields:
-                    infile['plate'] = kwargs['platenames'].get(str(fn.rawfile.datasetrawfile.dataset_id), False)
+                    infile['plate'] = kwargs['platenames'].get(str(fn.rawfile.datasetrawfile.dataset_id), '')
                 if 'sample' in inputdef_fields:
-                    infile['sample'] = infile.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
-                if 'fractions' in inputdef_fields:
-                    infile['fraction'] = kwargs['fractions'].get(str(infile.id), False) 
+                    # FIXME there is no sample in inputdefs?
+                    infile['sample'] = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
+                if 'fraction' in inputdef_fields:
+                    infile['fraction'] = kwargs['fractions'].get(str(fn.id), '') 
                 if 'instrument' in inputdef_fields:
-                    infile['instrument'] = infile.rawfile.producer.msinstrument.instrumenttype.name 
+                    infile['instrument'] = fn.rawfile.producer.msinstrument.instrumenttype.name 
                 if 'channel' in inputdef_fields:
                     # For pooled labelcheck
                     infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
