@@ -390,7 +390,11 @@ async function loadBaseAnalysis() {
     // svelte reactivity, this updates object
     base_analysis = base_analysis;
     let overlapping_setnames = new Set();
+    let old_setnames = {};
     for (const dsid in dsets) {
+      if (!(dsets[dsid].setname in old_setnames)) {
+        old_setnames[dsets[dsid].setname] = new Set();
+      }
       if (dsid in result.datasets) {
         const resds = result.datasets[dsid];
         dsets[dsid].setname = resds.setname;
@@ -400,6 +404,11 @@ async function loadBaseAnalysis() {
         dsets[dsid].files.filter(x => x.id in resds.files).forEach(x => {
           x.setname = resds.files[x.id].setname;
         });
+        if (dsets[dsid].prefrac) {
+          matchFractions(dsets[dsid]);
+        }
+      } else {
+        old_setnames[dsets[dsid].setname].add(dsid);
       }
     }
     for (const sname in result.base_analysis.isoquants) {
@@ -407,6 +416,11 @@ async function loadBaseAnalysis() {
         config.isoquants[sname] = result.base_analysis.isoquants[sname];
       }
     }
+    Object.entries(old_setnames).forEach(([setname, dsids]) => {
+      if (!dsids.size) {
+        delete(config.isoquants[setname]);
+      }
+    });
     for (const key of ['flags', 'inputparams', 'multicheck', 'fileparams']) {
       config[key] = result.base_analysis[key];
     }
