@@ -91,12 +91,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
         wf = models.Workflow.objects.filter(shortname__name='QC').last()
-        # FIXME hardcoded mods location
         params = kwargs.get('params', [])
-        params.extend(['--mods', 'data/labelfreemods.txt',
-            '--instrument', mzml.rawfile.producer.msinstrument.instrumenttype.name])
-        if mzml.rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
-            params.extend(['--prectol', '20ppm'])
         stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),

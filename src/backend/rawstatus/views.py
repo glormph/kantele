@@ -556,8 +556,10 @@ def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
     add_to_qc(rawfile, storedfile)
     filters = ['"peakPicking true 2"', '"precursorRefine"']
-    params, options = [], []
+    params = ['--instrument', rawfile.producer.msinstrument.instrumenttype.name]
+    options = []
     if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
+        params.extend(['--prectol', '20ppm'])
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('--combineIonMobilitySpectra')
         # FIXME until dinosaur can do MS1 on TIMS spectra we have to specify noquant, remove later I hope
