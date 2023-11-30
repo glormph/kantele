@@ -137,7 +137,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
 
     # stage files, create dirs etc
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles,
-            run['mzmls'], params)
+            run['infiles'], params)
 
     if sampletable := run['components']['ISOQUANT_SAMPLETABLE']:
         sampletable_fn = os.path.join(rundir, 'sampletable.txt')

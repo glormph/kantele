@@ -384,7 +384,7 @@ def get_datasets(request, wfversion_id):
             for x in am.PsetComponent.objects.filter(pset__nextflowwfversion=wfversion_id)}
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
             'quantdataset'):
-        prefrac, hr = False, False
+        prefrac, hr, frregex = False, False, ''
         if 'PREFRAC' in wfcomponents:
             if hasattr(dset, 'prefractionationdataset'):
                 pf = dset.prefractionationdataset
@@ -839,15 +839,16 @@ def store_analysis(request):
             shadow_isoquants.update(baseana_dbrec.shadow_isoquants)
         # Remove current from previous (shadow) data if this is rerun 
         # and current isoquants are defined
-        for setname in req['isoquant'].keys():
+        for setname in req['components']['ISOQUANT']:
             if setname in shadow_isoquants:
                 del(shadow_isoquants[setname])
         for dsid, setname in req['dssetnames'].items():
             if int(dsid) in shadow_dss:
                 del(shadow_dss[int(dsid)])
-            ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
-                    defaults={'setname_id': setname_ids[setname], 'regex': regex},
-                    analysis=analysis, dataset_id=dsid) 
+# This doesnt work: resets ads to wrong regex, why did we have it?
+#            ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
+#                    defaults={'setname_id': setname_ids[setname], 'regex': regex},
+#                    analysis=analysis, dataset_id=dsid) 
         if 'COMPLEMENT_ANALYSIS' in wf_components:
             is_complement = req['base_analysis']['isComplement']
             rerun = req['base_analysis']['runFromPSM']

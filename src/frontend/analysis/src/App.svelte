@@ -288,7 +288,7 @@ async function fetchWorkflow() {
 
 
 async function fetchDatasetDetails(fetchdsids) {
-  let url = new URL(`/analysis/dsets/${config.wfversion.id}`/, document.location)
+  let url = new URL(`/analysis/dsets/${config.wfversion.id}/`, document.location)
   const params = {
     dsids: fetchdsids ? fetchdsids.join(',') : dsids.join(','),
     anid: existing_analysis ? existing_analysis.analysis_id : 0,
@@ -477,6 +477,7 @@ function updateIsoquant(dsid_changed) {
           chemistry: ds.qtype.short,
           channels: ds.channels,
           samplegroups: Object.fromEntries(Object.keys(ds.channels).map(x => [x, ''])),
+          denoms: Object.fromEntries(Object.keys(ds.channels).map(x => [x, false])),
           report_intensity: false,
           sweep: false,
         };
@@ -529,7 +530,7 @@ async function populate_analysis() {
 
 
 onMount(async() => {
-  if (ds_errors) {
+  if (ds_errors.length) {
     ds_errors.forEach(x => {
       notif.errors[x] = 1;
     });
