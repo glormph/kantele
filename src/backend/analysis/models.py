@@ -109,7 +109,12 @@ class PsetComponent(models.Model):
 
     pset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
     component = models.IntegerField(choices=ComponentChoices.choices)
-    value = models.JSONField(default=1) 
+    value = models.JSONField(default=dict) 
+    # JSON in value: if needed eg mzmldef: [path, instrument, set, plate, fr]
+    # else {}
+    # FIXME future also setnames, sampletables, fractions, etc which is not a param
+    # to be included in parameterset
+    # prefrac '.*fr([0-9]+).*mzML$'
 
     def __str__(self):
         return '{} - {}'.format(self.pset.name, PsetComponent.ComponentChoices(self.component).label)
@@ -273,6 +278,8 @@ class AnalysisDatasetSetname(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_anadsets')]
 
+# FIXME how should we do with pgt DBGEN input? Are those sets, or are they something else?
+# they def have sample names, and can be multiple per sample (BAMs merged, VCFs indel/snv etc)
 
 class AnalysisDSInputFile(models.Model):
     '''Input files for set-based analysis (isobaric and prefraction-datasets)'''

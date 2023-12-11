@@ -14,6 +14,10 @@ from datasets import models as dsmodels
 from datasets.jobs import get_or_create_mzmlentry
 from jobs.jobs import DatasetJob, MultiDatasetJob, SingleFileJob, BaseJob
 
+# FIXME
+# Need to work with analysis components!
+
+
 # TODO
 # rerun qc data and displaying qcdata for a given qc file, how? 
 def get_ana_fullname(analysis):
@@ -214,6 +218,9 @@ class RunNextflowWorkflow(BaseJob):
         # if they are somehow strange
         # newfns also has to take into account there can be refined mzMLs and they
         # exist next to normal mzMLs
+
+        # FIXME this is specifically mzml files, and fractions!
+        # But would still like to check if new files have been added!
         files_not_in_frs = rm.StoredFile.objects.filter(mzmlfile__isnull=False, deleted=False,
             rawfile__datasetrawfile__dataset__datasetsearch__in=dss).select_related(
                     'rawfile').exclude(pk__in=kwargs['fractions'].keys())
@@ -236,6 +243,7 @@ class RunNextflowWorkflow(BaseJob):
         analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
         for del_sf in obsolete:
+            # FIXME setnames/frac is specific
             kwargs['setnames'].pop(str(del_sf.pk))
             kwargs['fractions'].pop(str(del_sf.pk))
         if obsolete:
@@ -253,8 +261,8 @@ class RunNextflowWorkflow(BaseJob):
                'repo': nfwf.nfworkflow.repo,
                'name': get_ana_fullname(analysis),
                'outdir': analysis.user.username,
-               'mzmls': [],
-               'old_mzmls': False,
+               'infiles': [],
+               'old_infiles': False,
                'dstsharename': kwargs['dstsharename'],
                'components': kwargs['inputs']['components'],
                }
@@ -279,6 +287,7 @@ class RunNextflowWorkflow(BaseJob):
                 if 'channel' in inputdef_fields:
                     # For pooled labelcheck
                     infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
+                # FIXME add the pgt DB/other fields here
                 infiles.append(infile)
             # FIXME this in tasks and need to write header
 
@@ -296,6 +305,7 @@ class RunNextflowWorkflow(BaseJob):
 #                } for x in sfiles_passed]
             #mzmls = [{'inputdef': '\t'.join([x[key] for key in inputdef_fields if x[key]]), **{k: x[k] 
             #    for k in ['servershare', 'path', 'fn']}} for x in mzmls]
+        # FIXME bigrun not hardcode
         bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(infiles) > 500
         run['nfrundirname'] = 'larger' if bigrun else 'small'
 

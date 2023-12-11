@@ -618,10 +618,13 @@ def show_analysis_log(request, nfs_id):
         return HttpResponseNotFound()
     return HttpResponse('\n'.join(nfs.analysis.log), content_type="text/plain")
 
-
+ 
 @login_required
 @require_POST
 def store_analysis(request):
+    # FIXME need to block analysis editing when stored, so it cannot be re-stored. Check if:
+    # job for analysis is in states pending, error, etc to see if storeable (like in home when is edit button, basically that can always be on if this is implemented)
+    # 
     """Edits or stores a new analysis"""
     # Init
     jobparams = defaultdict(list)
@@ -701,7 +704,7 @@ def store_analysis(request):
             return False, False
         return vals, calc_psm
 
-    # FIXME isobaric quant is API v1/v2 diff, fix it
+    # FIXME isobaric quant is API v1/v2 diff, fix it by using diff components!
     # need passed: setname, any denom, or sweep or intensity
     if 'ISOQUANT' in wf_components:
         for setname, quants in req['components']['ISOQUANT'].items():
@@ -744,6 +747,7 @@ def store_analysis(request):
         jobinputs['components']['INPUTDEF'] = False
 
     # Store setnames
+    # FIXME component?
     setname_ids = {}
     am.AnalysisSetname.objects.filter(analysis=analysis).exclude(setname__in=req['dssetnames'].values()).delete()
     for setname in set(req['dssetnames'].values()):
