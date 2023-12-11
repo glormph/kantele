@@ -98,7 +98,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis = {
             'analysis_id': ana.pk,
-            'dsets_identical': set(dss.dataset_id for dss in ana.datasetsearch_set.all()) == set(new_ana_dsids),
+            'dsets_identical': set(dss.dataset_id for dss in ana.datasetanalysis_set.all()) == set(new_ana_dsids),
             'flags': [],
             'multicheck': [],
             'inputparams': {},
@@ -209,13 +209,13 @@ def get_analysis(request, anid):
     pset = ana.nextflowsearch.nfworkflow.paramset
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
 
-    dsids = [x.dataset_id for x in ana.datasetsearch_set.all()]
+    dsids = [x.dataset_id for x in ana.datasetanalysis_set.all()]
     prev_resultfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
     # Parse base analysis if any
     ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch').filter(analysis_id=ana.id)
     if ana_base.exists():
         ana_base = ana_base.get()
-        base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetsearch_set.all()]
+        base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetanalysis_set.all()]
         baname = aj.get_ana_fullname(ana_base.base_analysis)
         badate = datetime.strftime(ana_base.base_analysis.date, '%Y-%m-%d')
         analysis['base_analysis'] = {
@@ -592,13 +592,13 @@ def get_prev_resultfiles(dsids, only_ids=False):
        - with analysis that also have MORE datasets
        - analysis that have a subset of datasets
     '''
-    superset_analysis = am.DatasetSearch.objects.filter(
-            analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values(
+    superset_analysis = am.DatasetAnalysis.objects.filter(
+            analysis__datasetanalysis__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values(
                     'analysis')
-    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids,
+    qset_analysis = am.Analysis.objects.filter(datasetanalysis__dataset__in=dsids,
             deleted=False).exclude(pk__in=superset_analysis)
     for dsid in dsids:
-        qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
+        qset_analysis = qset_analysis.filter(datasetanalysis__dataset_id=dsid)
     qset_arf = am.AnalysisResultFile.objects.filter(analysis__in=qset_analysis.distinct())
     if only_ids:
         prev_resultfiles = [x['sfile_id'] for x in qset_arf.values('sfile_id')]
@@ -636,7 +636,7 @@ def store_analysis(request):
         req = json.loads(request.body.decode('utf-8'))
         req['dsids']
         req['analysis_id']
-        req['fractions']
+        req['infiles']
         req['nfwfvid']
         req['components']
         req['dssetnames']
@@ -663,7 +663,7 @@ def store_analysis(request):
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'})
 
     # Check if files have not changed while editing an analysis (e.g. long open window)
-    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['fractions']}, set()
+    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['infiles']}, set()
     dsfiles = {dsid: get_dataset_files(dsid, use_refined=True) for dsid in req['dsids']}
     for dsid in req['dsids']:
         for sf in dsfiles[dsid]:
@@ -723,22 +723,19 @@ def store_analysis(request):
     if req['analysis_id']:
         analysis.name = req['analysisname']
         analysis.save()
-        dss = am.DatasetSearch.objects.filter(analysis=analysis)
+        dss = am.DatasetAnalysis.objects.filter(analysis=analysis)
         excess_dss = {x.dataset_id for x in dss}.difference(req['dsids'])
         dss.filter(dataset_id__in=excess_dss).delete()
-        am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) 
+        am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
     else:
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
-        am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
+        am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
 
     in_components = {k: v for k, v in req['components'].items() if v}
     jobinputs = {'components': wf_components, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
     data_args = {'setnames': {}, 'platenames': {}}
-
-    # Input files are passed as "fractions" currently, maybe make this cleaner in future
-    # FIXME when there is not fractions, how?
-    data_args['fractions'] = req['fractions']
+    data_args['infiles'] = req['infiles']
 
     # Input file definition
     if 'INPUTDEF' in wf_components:
@@ -756,7 +753,7 @@ def store_analysis(request):
     # setnames for datasets, optionally fractions and strips
     new_ads = {}
     dsets = {str(dset.id): dset for dset in dsetquery}
-    am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fractions']).delete()
+    am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['infiles']).delete()
     for dsid, setname in req['dssetnames'].items():
         if 'PREFRAC' in wf_components:
             regex = req['frregex'][dsid] 

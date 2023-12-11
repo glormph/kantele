@@ -738,17 +738,17 @@ def cleanup_old_files(request):
     # old normal mzmls from searches
     old_searched_mzmls = mzmls.exclude(
             rawfile__datasetrawfile__dataset__datatype_id__in=[settings.QC_DATATYPE, *settings.LC_DTYPE_IDS]).exclude(
-            rawfile__datasetrawfile__dataset__datasetsearch__isnull=True).exclude(
-            rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=maxtime_nonint)
+            rawfile__datasetrawfile__dataset__datasetanalysis__isnull=True).exclude(
+            rawfile__datasetrawfile__dataset__datasetanalysis__analysis__date__gt=maxtime_nonint)
     # old LC mzmls
     lcmzmls = mzmls.filter(
             rawfile__datasetrawfile__dataset__datatype_id__in=settings.LC_DTYPE_IDS,
-            rawfile__datasetrawfile__dataset__datasetsearch__isnull=False).exclude(
-            rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_LC_STORAGE_TIME))
+            rawfile__datasetrawfile__dataset__datasetanalysis__isnull=False).exclude(
+            rawfile__datasetrawfile__dataset__datasetanalysis__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_LC_STORAGE_TIME))
     # old non-QC mzmls without searches
     old_nonsearched_mzml = mzmls.exclude(
             rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE).filter(
-            rawfile__datasetrawfile__dataset__datasetsearch__isnull=True,
+            rawfile__datasetrawfile__dataset__datasetanalysis__isnull=True,
             regdate__lt=maxtime_nonint)
     all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml)
     # TODO auto remove QC raw files of certain age? make sure you can get them back when needed though.

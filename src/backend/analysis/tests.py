@@ -50,7 +50,7 @@ class AnalysisTest(BaseTest):
                 nfversion='22')
         # Create analysis for isoquant:
         self.ana, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_iso', storage_dir='testdir_iso')
-        am.DatasetSearch.objects.get_or_create(analysis=self.ana, dataset=self.ds)
+        am.DatasetAnalysis.objects.get_or_create(analysis=self.ana, dataset=self.ds)
         anajob, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
                 timestamp=timezone.now())
         self.nfs, _ = am.NextflowSearch.objects.get_or_create(analysis=self.ana, nfworkflow=self.nfwf,
@@ -70,7 +70,7 @@ class AnalysisTest(BaseTest):
 
         # Create analysis for LF
         self.analf, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_lf', storage_dir='testdirlf')
-        am.DatasetSearch.objects.get_or_create(analysis=self.analf, dataset=self.oldds)
+        am.DatasetAnalysis.objects.get_or_create(analysis=self.analf, dataset=self.oldds)
         anajoblf, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
                 timestamp=timezone.now())
         self.nfslf, _ = am.NextflowSearch.objects.get_or_create(analysis=self.analf, nfworkflow=self.nfwf,
@@ -426,7 +426,7 @@ class TestStoreAnalysis(AnalysisTest):
                 'multicheck': {self.param2.pk: [self.popt1.pk]}}
         postdata = {'dsids': [f'{self.ds.pk}'],
             'analysis_id': False,
-            'fractions': {self.f3sfmz.pk: 1},
+            'infiles': {self.f3sfmz.pk: 1},
             'nfwfvid': self.nfwf.pk,
             'dssetnames': {self.ds.pk: 'setA'},
             'components': {'ISOQUANT_SAMPLETABLE': {'hello': 'yes'},

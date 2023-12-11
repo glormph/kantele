@@ -301,7 +301,7 @@ class AnalysisFileSample(models.Model):
         constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anassamplefile')]
 
 
-class DatasetSearch(models.Model):
+class DatasetAnalysis(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     # cannot put setname here because of searches without dset/setname

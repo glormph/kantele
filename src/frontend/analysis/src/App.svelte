@@ -170,7 +170,7 @@ async function storeAnalysis() {
     base_analysis: base_analysis,
     dsids: Object.keys(dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => !ds.filesaresets).map(([dsid, ds]) => [dsid, ds.setname])),
-    fractions: Object.fromEntries(Object.values(dsets).flatMap(ds => ds.files.map(fn => [fn.id, fn.fr]))),
+    infiles: Object.fromEntries(Object.values(dsets).flatMap(ds => ds.files.map(fn => [fn.id, {fr: fn.fr}]))),
     fnsetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => ds.filesaresets).map(
       ([dsid, ds]) => ds.files.map(fn => [fn.id, fn.setname])).flat()),
     frregex: Object.fromEntries(Object.entries(dsets).map(([dsid, ds]) => [dsid, ds.frregex])),

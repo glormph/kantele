@@ -189,7 +189,7 @@ class RunNextflowWorkflow(BaseJob):
     """
 
     def getfiles_query(self, **kwargs):
-        return rm.StoredFile.objects.filter(pk__in=kwargs['fractions'].keys()).select_related(
+        return rm.StoredFile.objects.filter(pk__in=kwargs['infiles'].keys()).select_related(
                 'servershare', 'rawfile__producer__msinstrument__instrumenttype',
                 'rawfile__datasetrawfile__quantfilechannelsample__channel__channel',
                 'rawfile__datasetrawfile__quantfilechannelsample__projsample',
@@ -212,23 +212,23 @@ class RunNextflowWorkflow(BaseJob):
         # between a stop/error and rerun of job
         sfiles_passed = self.getfiles_query(**kwargs)
         job = analysis.nextflowsearch.job
-        dss = analysis.datasetsearch_set.all()
+        dsa = analysis.datasetanalysis.all()
         # First new files included:
         # NB including new files leads to problems with e.g. fraction regex
         # if they are somehow strange
         # newfns also has to take into account there can be refined mzMLs and they
         # exist next to normal mzMLs
 
-        # FIXME this is specifically mzml files, and fractions!
+        # FIXME this is specifically mzml files
         # But would still like to check if new files have been added!
         files_not_in_frs = rm.StoredFile.objects.filter(mzmlfile__isnull=False, deleted=False,
-            rawfile__datasetrawfile__dataset__datasetsearch__in=dss).select_related(
-                    'rawfile').exclude(pk__in=kwargs['fractions'].keys())
+            rawfile__datasetrawfile__dataset__datasetanalysis=dsa).select_related(
+                    'rawfile').exclude(pk__in=kwargs['infiles'].keys())
         stop_analysis = False
         for fn_notfr in files_not_in_frs:
             is_oldfn = fn_notfr.rawfile.storedfile_set.filter(mzmlfile__isnull=False, deleted=False,
-                    pk__in=kwargs['fractions'].keys(), regdate__gt=fn_notfr.regdate).count()
-            # if fn_notfr is older but has same rawfile as an mzml passed in fractions, it will
+                    pk__in=kwargs['infiles'].keys(), regdate__gt=fn_notfr.regdate).count()
+            # if fn_notfr is older but has same rawfile as an mzml passed in infiles, it will
             # probably be a refined file or otherwise older file
             if not is_oldfn:
                 stop_analysis = True
@@ -238,14 +238,14 @@ class RunNextflowWorkflow(BaseJob):
                 'save, and re-queue the job')
 
         # Now remove obsolete deleted files from job (e.g. corrupt, empty, etc)
-        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetsearch__in=dss)
+        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis=dsa)
         analysis.analysisdsinputfile_set.filter(sfile__in=obsolete).delete()
         analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
         for del_sf in obsolete:
             # FIXME setnames/frac is specific
             kwargs['setnames'].pop(str(del_sf.pk))
-            kwargs['fractions'].pop(str(del_sf.pk))
+            kwargs['infiles'].pop(str(del_sf.pk))
         if obsolete:
             job.kwargs = kwargs
             job = job.save()
@@ -281,7 +281,7 @@ class RunNextflowWorkflow(BaseJob):
                     # FIXME there is no sample in inputdefs?
                     infile['sample'] = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
                 if 'fraction' in inputdef_fields:
-                    infile['fraction'] = kwargs['fractions'].get(str(fn.id), '') 
+                    infile['fraction'] = kwargs['infiles'].get(str(fn.id), {}).get('fr') 
                 if 'instrument' in inputdef_fields:
                     infile['instrument'] = fn.rawfile.producer.msinstrument.instrumenttype.name 
                 if 'channel' in inputdef_fields:
@@ -290,21 +290,6 @@ class RunNextflowWorkflow(BaseJob):
                 # FIXME add the pgt DB/other fields here
                 infiles.append(infile)
             # FIXME this in tasks and need to write header
-
-#                'setname': kwargs['setnames'][str(x.id)] if 'setname' in inputdef_fields else False,
-#                'plate': kwargs['platenames'].get(str(x.rawfile.datasetrawfile.dataset_id), False) 
-#                if 'plate' in inputdef_fields else False,
-#                'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
-#                if 'channel' in inputdef_fields else False,
-#                'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
-#                if 'sample' in inputdef_fields else False,
-#                'fraction': kwargs['fractions'].get(str(x.id), False) 
-#                if 'fractions' in kwargs else False,
-#                'instrument': x.rawfile.producer.msinstrument.instrumenttype.name 
-#                if 'instrument' in inputdef_fields else False,
-#                } for x in sfiles_passed]
-            #mzmls = [{'inputdef': '\t'.join([x[key] for key in inputdef_fields if x[key]]), **{k: x[k] 
-            #    for k in ['servershare', 'path', 'fn']}} for x in mzmls]
         # FIXME bigrun not hardcode
         bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(infiles) > 500
         run['nfrundirname'] = 'larger' if bigrun else 'small'
