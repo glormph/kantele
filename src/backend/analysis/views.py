@@ -372,10 +372,8 @@ def get_datasets(request, wfversion_id):
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
 #    deleted = dbdsets.filter(deleted=True).count()
 #    if deleted:
-#        response['error'] = True
 #        response['errmsg'].append('Deleted datasets can not be analysed')
 #    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
-#        response['error'] = True
 #        response['errmsg'].append('Some datasets could not be found, they may not exist')
 
     dsetinfo = {}
@@ -384,7 +382,12 @@ def get_datasets(request, wfversion_id):
             for x in am.PsetComponent.objects.filter(pset__nextflowwfversion=wfversion_id)}
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
             'quantdataset'):
+        # For error reporting per dset:
+        dsname = f'{dset.runname.experiment.project.name} / {dset.runname.experiment.name} / {dset.runname.name}'
+        # Initialize
         prefrac, hr, frregex = False, False, ''
+        qtype = False
+        channels = {}
         if 'PREFRAC' in wfcomponents:
             if hasattr(dset, 'prefractionationdataset'):
                 pf = dset.prefractionationdataset
@@ -410,9 +413,11 @@ def get_datasets(request, wfversion_id):
         dset_ftype = dssfiles.distinct('filetype')
         dset_instr = dssfiles.distinct('rawfile__producer__msinstrument')
         if dset_ftype.count() > 1 or dset_instr.count() > 1:
+            # This is the kind of error that can just not return datasets, only an error
             return JsonResponse({'error': True, 'errmsg': ['Multiple different file types in dataset, not allowed']}, status=400)
         is_msdata = dset_instr.filter(rawfile__producer__msinstrument__isnull=False).count()
 
+        # FIXME quantdataset not here when refine!
         if is_msdata and hasattr(dset, 'quantdataset'):
             is_isobaric = any(x in dset.quantdataset.quanttype.shortname for x in ['plex', 'pro'])
             qtype = {'name': dset.quantdataset.quanttype.name,
@@ -428,103 +433,110 @@ def get_datasets(request, wfversion_id):
             elif non_deleted_mzmlfiles.count():
                 usefiles = non_deleted_mzmlfiles
             else:
-                usefiles = non_deleted_mzmlfiles
-
-            # FIXME tease out isoquant / LF / mzML from eachother
-            # Check if files to use are mapping to rawfiles in dataset
-            sample_error = False
-            if usefiles.filter(checked=True).count() != nrrawfiles:
-                sample_error = True
-                response['error'] = True
-                response['errmsg'].append('Files selected for analysis are not same number as that '
-                        'of registered files in dataset. Maybe you need to finish creating mzMLs '
-                        f'or refining them, in dataset {dset.runname.name}')
-            resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''}
-                    for x in usefiles}
-            qsf_error = False
-            if is_isobaric:
-                # multiplex so add channel/samples 
-                for fn in usefiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
-                    try:
-                        qfcs = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample
-                    except dm.QuantFileChannelSample.DoesNotExist:
-                        qfcs = ''
-                    resp_files[fn.id]['sample'] = qfcs
-                channels = {
-                    ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
-                    dm.QuantChannelSample.objects.select_related(
-                        'projsample', 'channel__channel').filter(dataset_id=dset.pk)}
-            else:
-                # Labelfree, add file/sample mapping
-                channels = False
-                for fn in usefiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
-                    try:
-                        qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
-                    except dm.QuantSampleFile.DoesNotExist:
-                        qsf_error = True
-                    else:
-                        resp_files[fn.id]['sample'] = qsf_sample
-                if qsf_error:
-                    # FIXME is this possible, that you pass the "no sample prep" check,
-                    # but not the sample annotation?
-                    response['error'] = True
-                    response['errmsg'].append(f'File(s) in dataset {dset.runname.name} do '
-                        'not have a sample annotation, please edit the dataset first')
-
-            filesaresets = False
-            if anid:
-                # Add possible already stored analysis file-setnames
-                # FIXME files need match dset!
-                for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
-                    resp_files[afs.sfile_id]['setname'] = afs.sample
-                filesaresets = any((x['setname'] != '' for x in resp_files.values()))
-            elif not qsf_error and not sample_error:
-                # Sample is the fallback, set in dataset creation, 
-                # FIXME no need to check if setname == '', is always that bc not set
-                # except in other if branch above
-                [x.update({'setname': x['sample'] if x['setname'] == '' else x['setname']})
-                        for x in resp_files.values()]
-            # to list for frontend
-            resp_files = [resp_files[x.id] for x in usefiles]
-        elif not is_msdata:
-            # FIXME sequencing data etcetera
-            qtype = False
-            channels = {}
-            resp_files = []
-            filesaresets = False
-            print(dset.pk, dssfiles)
+                # When no mzml files exist, error when it is MS data
+                # This check should probably be done on the analysis load level,
+                # so encode it in the <script>, unless you want to be able to dynamically
+                # select more datasets in the analysis view.
+                # FIXME -- so this is wrong, when we will also run refine as analysis:
+                # need to explicitly check if a pipeline demands mzMLs with a component!
+                response['errmsg'].append(f'MS dataset {dsname} does not contain mzML files, cannot run analysis')
         else:
-            # This is an quant MS dataset, but there is quant information lacking
-            qtype = False
-            channels = {}
-            resp_files = []
-            filesaresets = False
-            response['error'] = True
-            response['errmsg'].append(f'Dataset with runname {dset.runname.name} has no quant '
-                    'details, please fill in sample prep fields')
+            # Not an MS run with mzML input, just use the e.g. sequencing files
+            usefiles = dssfiles.filter(deleted=False)
 
-        # Fill response object
-        dsetinfo[dset.pk] = {
-                # FIXME add relevant stuff for other dataset types seq etc
-                'id': dset.pk,
-                'proj': dset.runname.experiment.project.name,
-                'exp': dset.runname.experiment.name,
-                'run': dset.runname.name,
-                'dtype': dset.datatype.name,
-                'prefrac': prefrac,
-                'hr': hr,
-                'setname': setname,
-                'frregex': frregex,
-                'instruments': [x.rawfile.producer.name for x in producers],
-                'instrument_types': [x.rawfile.producer.shortname for x in producers],
-                'qtype': qtype,
-                'nrstoredfiles': {'raw': nrrawfiles},
-                'channels': channels,
-                'files': resp_files,
-                'filesaresets': filesaresets,
-                }
-    response['dsets'] = dsetinfo
-    return JsonResponse(response)
+        # Check if files to use are mapping to rawfiles in dataset
+        files_not_same_error = False
+        if usefiles.filter(checked=True).count() != nrrawfiles:
+            files_not_same_error = True
+            response['errmsg'].append('Files selected for analysis are not same number as that '
+                    f'of registered files in dataset {dsname}. Maybe you need to finish creating mzMLs '
+                    'or refining them')
+        resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''}
+                for x in usefiles}
+
+        qsf_error = False
+        if is_msdata and is_isobaric:
+            # multiplex so add channel/samples 
+            for fn in usefiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
+                try:
+                    qfcs = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample
+                except dm.QuantFileChannelSample.DoesNotExist:
+                    qfcs = ''
+                resp_files[fn.id]['sample'] = qfcs
+            channels = {
+                ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
+                dm.QuantChannelSample.objects.select_related(
+                    'projsample', 'channel__channel').filter(dataset_id=dset.pk)}
+        else:
+            # Labelfree or other data type, add file/sample mapping
+            channels = False
+            for fn in usefiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
+                try:
+                    qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
+                except dm.QuantSampleFile.DoesNotExist:
+                    qsf_error = True
+                else:
+                    resp_files[fn.id]['sample'] = qsf_sample
+            if qsf_error:
+                # FIXME is this possible, that you pass the "no sample prep" check,
+                # but not the sample annotation?
+                response['errmsg'].append(f'File(s) in dataset {dsname} do '
+                    'not have a sample annotation, please edit the dataset first')
+
+        # Files with samples (non-MS, IP, non-isobaric, etc)
+        # FIXME rename this key to samplename instead of setname!
+        filesaresets = False
+        if anid and is_msdata:
+            # Add possible already stored analysis file-setnames
+            # FIXME files need match dset!
+            for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
+                resp_files[afs.sfile_id]['setname'] = afs.sample
+            filesaresets = any((x['setname'] != '' for x in resp_files.values()))
+
+        elif is_msdata and not qsf_error and not files_not_same_error:
+            # New analysis, no errors in dset: is the fallback, from dataset creation 
+            [x.update({'setname': x['sample']}) for x in resp_files.values()]
+
+        elif anid and not is_msdata:
+            # sequencing data etcetera, always have sample-per-file since we dont
+            # expect multiplexing or fractionation here
+            # Add possible already stored analysis file samplenames
+            # FIXME files need match dset!
+            for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
+                resp_files[afs.sfile_id]['setname'] = afs.sample
+
+        elif not is_msdata and not files_not_same_error:
+            [x.update({'setname': x['sample']}) for x in resp_files.values()]
+
+        # Finalize response
+        if response['error'] := len(response['errmsg']) > 0
+            # Errors found, dont output proper info:
+            status = 400
+        else:
+            status = 200
+            # to list for frontend
+            # Fill response object
+            dsetinfo[dset.pk] = {
+                    # FIXME add relevant stuff for other dataset types seq etc
+                    'id': dset.pk,
+                    'proj': dset.runname.experiment.project.name,
+                    'exp': dset.runname.experiment.name,
+                    'run': dset.runname.name,
+                    'dtype': dset.datatype.name,
+                    'prefrac': prefrac,
+                    'hr': hr,
+                    'setname': setname,
+                    'frregex': frregex,
+                    'instruments': [x.rawfile.producer.name for x in producers],
+                    'instrument_types': [x.rawfile.producer.shortname for x in producers],
+                    'qtype': qtype,
+                    'nrstoredfiles': {'raw': nrrawfiles},
+                    'channels': channels,
+                    'files': [resp_files[x.id] for x in usefiles],
+                    'filesaresets': filesaresets,
+                    }
+        response['dsets'] = dsetinfo
+    return JsonResponse(response, status=status)
 
 
 @login_required
