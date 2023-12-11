@@ -552,7 +552,6 @@ onMount(async() => {
     if (existing_analysis) {
       await populate_analysis();
     }
-    await fetchDatasetDetails(false);
   }
 })
 </script>
