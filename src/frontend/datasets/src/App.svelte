@@ -87,7 +87,7 @@ $: isLabelcheck = datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x
 async function getcomponents() {
   // FIXME can get these in single shot? Need not network trip.
   const result = await getJSON(`/datasets/show/components/${dsinfo.datatype_id}`);
-  components = result.components;
+  components = result.components.map(x => x.toLowerCase());
 }
 
 function switchDatatype() {

@@ -62,19 +62,22 @@ class Datatype(models.Model):
         return self.name
 
 
-class DatasetComponent(models.Model):
-    name = models.TextField(max_length=50, unique=True)
+class DatasetUIComponent(models.IntegerChoices):
+    FILES = 1, 'Files'
+    SAMPLEPREP = 2, 'Sample prep'
+    ACQUISITION = 3, 'MS Acquisition'
+    DEFINITION = 4, 'Definition'
+    LCSAMPLES = 6, 'LC samples'
+    SEQSAMPLES = 5, 'Sequencing samples'
+    POOLEDLCSAMPLES = 7, 'Pooled LC samples'
 
-    def __str__(self):
-        return self.name
 
 class DatatypeComponent(models.Model):
     datatype = models.ForeignKey(Datatype, on_delete=models.CASCADE)
-    component = models.ForeignKey(DatasetComponent, on_delete=models.CASCADE)
+    component = models.IntegerField(choices=DatasetUIComponent.choices)
 
     def __str__(self):
-        return '{} has component {}'.format(self.datatype.name,
-                                            self.component.name)
+        return f'{self.datatype.name} has component {DatasetUIComponent(self.component).label}'
 
 
 class Dataset(models.Model):

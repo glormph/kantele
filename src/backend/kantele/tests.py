@@ -55,9 +55,8 @@ class BaseTest(TestCase):
                 server=self.oldfserver, share='/home/storage')
 
         # Datasets/projects prep
-        dscomp, _ = dm.DatasetComponent.objects.get_or_create(name='files')
         self.dtype, _ = dm.Datatype.objects.get_or_create(name='dtype1')
-        self.dtcomp, _ = dm.DatatypeComponent.objects.get_or_create(datatype=self.dtype, component=dscomp)
+        self.dtcomp, _ = dm.DatatypeComponent.objects.get_or_create(datatype=self.dtype, component=dm.DatasetUIComponent.FILES)
         qdt, _ = dm.Datatype.objects.get_or_create(name='Quantitative proteomics')
         self.ptype, _ = dm.ProjectTypeName.objects.get_or_create(name='testpt')
         self.pi, _ = dm.PrincipalInvestigator.objects.get_or_create(name='testpi')

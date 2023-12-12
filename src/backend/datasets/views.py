@@ -318,8 +318,9 @@ def save_projsample(request):
 
 @login_required
 def get_datatype_components(request, datatype_id):
-    dtcomps = models.DatatypeComponent.objects.filter(datatype_id=datatype_id).select_related('component')
-    return JsonResponse({'dt_id': datatype_id, 'components': [x.component.name for x in dtcomps]})
+    dtcomps = models.DatatypeComponent.objects.filter(datatype_id=datatype_id)
+    return JsonResponse({'dt_id': datatype_id,
+        'components': [models.DatasetUIComponent(x.component).name for x in dtcomps]})
 
 
 def get_admin_params_for_dset(response, dset_id, category):
@@ -645,7 +646,7 @@ def save_new_dataset(data, project, experiment, runname, user_id):
         dset_mail.save()
     if dset.datatype_id != settings.QC_DATATYPE:
         dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
-                                                      component__name='definition')
+                component=models.DatasetUIComponent.DEFINITION)
         models.DatasetComponentState.objects.create(dtcomp=dtcomp,
                                                     dataset_id=dset.id,
                                                     state=COMPSTATE_OK)
@@ -654,7 +655,7 @@ def save_new_dataset(data, project, experiment, runname, user_id):
                 dtcomp=x, dataset_id=dset.id, state=COMPSTATE_NEW) for x in
             models.DatatypeComponent.objects.filter(
                 datatype_id=dset.datatype_id).exclude(
-                component__name='definition')])
+                component=models.DatasetUIComponent.DEFINITION)])
     return dset
 
 
@@ -1317,9 +1318,10 @@ def save_or_update_files(data):
         pass
     else:
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
-            set_component_state(dset_id, 'sampleprep', COMPSTATE_INCOMPLETE)
+            set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP,
+                    COMPSTATE_INCOMPLETE)
     if dset.datatype_id != settings.QC_DATATYPE:
-        set_component_state(dset_id, 'files', COMPSTATE_OK)
+        set_component_state(dset_id, models.DatasetUIComponent.FILES, COMPSTATE_OK)
 
 
 @login_required
@@ -1369,7 +1371,7 @@ def save_acquisition(request):
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
-    set_component_state(dset_id, 'acquisition', COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.ACQUISITION, COMPSTATE_OK)
     return JsonResponse({})
 
 
@@ -1485,7 +1487,7 @@ def update_sampleprep(data, qtype):
         for spid in newspec.difference(savedspecies)])
     models.DatasetSpecies.objects.filter(
         species_id__in=savedspecies.difference(newspec)).delete()
-    set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, COMPSTATE_OK)
     return JsonResponse({})
 
 
@@ -1506,7 +1508,7 @@ def save_pooled_lc(request):
         if data['quanttype'] != qtype.quanttype_id:
             qtype.quanttype_id = data['quanttype']
             qtype.save()
-    set_component_state(dset_id, 'pooledlabelchecksamples', COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.POOLEDLCSAMPLES, COMPSTATE_OK)
     return JsonResponse({})
 
 
@@ -1528,7 +1530,7 @@ def save_labelcheck(request):
                 channel_id=sam['channel']) for fid, sam in data['samples'].items()])
     else:
         update_labelcheck(data, qtype)
-    set_component_state(dset_id, 'labelchecksamples', COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.LCSAMPLES, COMPSTATE_OK)
     return JsonResponse({})
 
 
@@ -1562,7 +1564,7 @@ def save_sampleprep(request):
     # TODO species to sample specific
     models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
         dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
-    set_component_state(dset_id, 'sampleprep', COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, COMPSTATE_OK)
     return JsonResponse({})
 
 
@@ -1586,7 +1588,7 @@ def save_sequencing_samples(request):
     save_admin_defined_params(data, dset_id)
     models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
         dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
-    set_component_state(dset_id, 'seqsamples', COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, COMPSTATE_OK)
     return JsonResponse({})
 
 
@@ -1621,13 +1623,12 @@ def update_sequencing_samples(data):
         for spid in newspec.difference(savedspecies)])
     models.DatasetSpecies.objects.filter(
         species_id__in=savedspecies.difference(newspec)).delete()
-    set_component_state(dset_id, 'seqsamples', COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, COMPSTATE_OK)
     return JsonResponse({})
 
 
-def set_component_state(dset_id, compname, state):
-    comp = models.DatasetComponentState.objects.get(
-        dataset_id=dset_id, dtcomp__component__name=compname)
+def set_component_state(dset_id, comp, state):
+    comp = models.DatasetComponentState.objects.get(dataset_id=dset_id, dtcomp__component=comp)
     comp.state = state
     comp.save()
 
