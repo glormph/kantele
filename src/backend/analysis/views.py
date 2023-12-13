@@ -386,7 +386,7 @@ def get_datasets(request, wfversion_id):
         dsname = f'{dset.runname.experiment.project.name} / {dset.runname.experiment.name} / {dset.runname.name}'
         # Initialize
         prefrac, hr, frregex = False, False, ''
-        qtype = False
+        is_isobaric, qtype = False, False
         channels = {}
         if 'PREFRAC' in wfcomponents:
             if hasattr(dset, 'prefractionationdataset'):
@@ -509,7 +509,7 @@ def get_datasets(request, wfversion_id):
             [x.update({'setname': x['sample']}) for x in resp_files.values()]
 
         # Finalize response
-        if response['error'] := len(response['errmsg']) > 0
+        if resp_error := len(response['errmsg']) > 0:
             # Errors found, dont output proper info:
             status = 400
         else:
@@ -535,6 +535,7 @@ def get_datasets(request, wfversion_id):
                     'files': [resp_files[x.id] for x in usefiles],
                     'filesaresets': filesaresets,
                     }
+        response['error'] = resp_error
         response['dsets'] = dsetinfo
     return JsonResponse(response, status=status)
 

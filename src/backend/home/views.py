@@ -823,7 +823,8 @@ def fetch_dset_details(dset):
     info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.PDCBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
-    info['compstates'] = {x.dtcomp.component.name: x.state for x in
+    info['compstates'] = {
+dsmodels.DatasetUIComponent(x.dtcomp.component).name: x.state for x in
                           dsmodels.DatasetComponentState.objects.filter(
                               dataset_id=dset.id).select_related(
                                   'dtcomp__component')}
