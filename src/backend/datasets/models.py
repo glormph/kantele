@@ -68,7 +68,7 @@ class DatasetUIComponent(models.IntegerChoices):
     ACQUISITION = 3, 'MS Acquisition'
     DEFINITION = 4, 'Definition'
     LCSAMPLES = 6, 'LC samples'
-    SEQSAMPLES = 5, 'Sequencing samples'
+    SAMPLES = 5, 'Samples'
     POOLEDLCSAMPLES = 7, 'Pooled LC samples'
 
 
@@ -232,17 +232,41 @@ class QuantDataset(models.Model):
     quanttype = models.ForeignKey(QuantType, on_delete=models.CASCADE)
 
 
+class SampleMaterialType(models.Model):
+    '''Different kind of samples, e.g. tissue, cell culture, plasma'''
+    name = models.TextField()
+
+
 class ProjectSample(models.Model):
     sample = models.TextField()
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = [['sample', 'project']]
+        constraints = [models.UniqueConstraint(fields=['sample', 'project'], name='uni_sampleproj')]
 
 
-class SeqSampleFile(models.Model):
-    rawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
+class SampleMaterial(models.Model):
+    sample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+    sampletype = models.ForeignKey(SampleMaterialType, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['sample', 'sampletype'], name='uni_sampletype')]
+
+
+class SampleSpecies(models.Model):
+    sample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+    species = models.ForeignKey(Species, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['sample', 'species'], name='uni_samplespecies')]
+
+
+class DatasetSample(models.Model):
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['projsample', 'dataset'], name='uni_samds')]
 
 
 class QuantSampleFile(models.Model):

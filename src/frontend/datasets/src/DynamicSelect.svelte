@@ -6,7 +6,7 @@ import { createEventDispatcher } from 'svelte';
 const dispatch = createEventDispatcher();
 
 // intext only exported for initial value if no options (e.g. base analysis needs options fetched)
-export let intext;
+export let intext = '';
 
 export let selectval = '';
 export let fixedoptions = {};
@@ -15,14 +15,16 @@ export let fetchUrl = false;
 export let fetchedData;
 export let niceName = function(text) { return text; }
 export let unknowninput = '__ILLEGAL_PLACEHOLDER__';
+export let placeholder = 'Filter by typing';
 
-let options;
+let options = {};
 $: {
   // When options change (e.g. loaded from base analysis during first page load),
   // also call inputdone to populate the thing
   options = Object.fromEntries(Object.entries(fixedoptions));
   inputdone();
 }
+
 let optorder = [];
 let optorderindex;
 $: optorderindex = Object.fromEntries(optorder.map((x, ix) => [x, ix]));
@@ -36,12 +38,17 @@ let typing = false;
 // only when mouseSelect==false we can be done with input
 let mouseSelect = false;
 
-let placeholder = 'Filter by typing';
+// Fall back initval in case user backs out from selection
 const initval = selectval;
 
 // options change -> Input done -> newvalue -> setNewProj -> ptype_id='' fuckat
 
 function inputdone() {
+  /* This only does something if mouseSelect is false, but 
+  then it is called when the input is received (e.g. esc, enter, mouse selectvalue).
+  The intext is then set if there is a slected value, 
+  
+  */
   if (!mouseSelect) {
     typing = false;
     if (selectval && selectval in options) {

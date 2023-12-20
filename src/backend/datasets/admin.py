@@ -3,7 +3,7 @@ from django.contrib import admin
 from datasets.models import (Datatype, PrincipalInvestigator, DatatypeComponent,
                              SelectParameter, SelectParameterOption,
                              CheckboxParameter, CheckboxParameterOption,
-                             FieldParameter,
+                             FieldParameter, SampleMaterialType,
                              Enzyme, QuantType, QuantChannel, QuantTypeChannel,
                              Operator, Prefractionation, HiriefRange,
                              )
@@ -19,6 +19,7 @@ admin.site.register(HiriefRange)
 admin.site.register(Datatype)
 admin.site.register(PrincipalInvestigator)
 admin.site.register(Enzyme)
+admin.site.register(SampleMaterialType)
 admin.site.register(QuantType)
 admin.site.register(QuantChannel)
 admin.site.register(QuantTypeChannel)

@@ -410,9 +410,7 @@ function showFiles() {
       <PooledLCheck bind:this={pooledlc} bind:errors={errors.lc} />
       {/if}
 
-      {#if (components.indexOf('seqsamples') > -1)}
       <SeqSamples bind:this={seqsamples} bind:errors={errors.seqsam} />
-      {/if}
     </div>
 </div>
 

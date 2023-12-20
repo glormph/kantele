@@ -27,7 +27,7 @@ urlpatterns = [
     path('save/files/', views.save_files, name="savefiles"),
     path('save/acquisition/', views.save_acquisition, name="saveacqui"),
     path('save/sampleprep/', views.save_sampleprep, name="saveprep"),
-    path('save/seqsamples/', views.save_sequencing_samples),
+    path('save/samples/', views.save_samples),
     path('save/labelcheck/', views.save_labelcheck),
     path('save/pooledlc/', views.save_pooled_lc),
     path('save/owner/', views.change_owners, name="changeowner"),

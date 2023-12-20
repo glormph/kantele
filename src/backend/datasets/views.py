@@ -215,18 +215,43 @@ def dataset_seqsamples(request, dataset_id):
     response_json = empty_seqsamples_json()
     if dataset_id:
         dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
-        response_json['samples'] = {fn.id: {'model': '', 'newprojsample': ''} 
-                for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
         if not dset:
             return HttpResponseNotFound()
-        ssfiles = models.SeqSampleFile.objects.filter(
-            rawfile__dataset_id=dataset_id)
-        response_json['samples'].update(
-                {fn.rawfile_id: {'model': str(fn.projsample_id), 'newprojsample': ''}
-                    for fn in ssfiles})
-        # species for dset and mostused ones TODO make sample specific
-        response_json['species'] = [{'id': x.species.id, 'linnean': x.species.linnean, 'name': x.species.popname} 
-                for x in models.DatasetSpecies.objects.select_related('species').filter(dataset_id=dataset_id)]
+        response_json['samples'] = {fn.id: {'model': '', 'newprojsample': '', 'species': [],
+            'sampletypes': []} for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
+        for qsf in models.QuantSampleFile.objects.select_related('projsample', 'rawfile').filter(
+                rawfile__dataset_id=dataset_id):
+            sample = {'model': str(qsf.projsample_id), 'samplename': qsf.projsample.sample,
+                    'selectedspecies': '', 'species': [], 'selectedsampletype': '',
+                    'sampletypes': [], 'projsam_dup': False, 'sampletypes_error': [],
+                    'species_error': [], 'projsam_dup_use': False}
+            for samspec in qsf.projsample.samplespecies_set.all():
+                sample['species'].append({'id': samspec.species_id, 'name': samspec.species.popname,
+                    'linnean': samspec.species.linnean})
+            for sammat in qsf.projsample.samplematerial_set.all():
+                sample['sampletypes'].append({'id': sammat.sampletype.pk, 'name': sammat.sampletype.name})
+            response_json['samples'][qsf.rawfile_id] = sample
+
+        multiplexchans = models.QuantChannelSample.objects.filter(dataset_id=dataset_id)
+        chan_samples = []
+        for qsc in multiplexchans.select_related('channel__channel'):
+            sample = {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
+                'model': str(qsc.projsample_id), 'samplename': qsc.projsample.sample, 'qcsid': qsc.id,
+                'species': [], 'sampletypes': [], 'selectedspecies': '', 'selectedsampletype': '',
+                'projsam_dup': False, 'projsam_dup_use': False, 'sampletypes_error': [],
+                'species_error': []}
+            for samspec in qsc.projsample.samplespecies_set.all():
+                sample['species'].append({'id': samspec.species_id, 'name': samspec.species.popname,
+                    'linnean': samspec.species.linnean})
+            for sammat in qsc.projsample.samplematerial_set.all():
+                sample['sampletypes'].append({'id': sammat.sampletype.pk, 'name': sammat.sampletype.name})
+            chan_samples.append(sample)
+        if len(chan_samples):
+            qtid = models.QuantDataset.objects.get(dataset_id=dataset_id).quanttype_id
+            # Trick to sort N before C:
+            chan_samples.sort(key=lambda x: x['name'].replace('N', 'A'))
+            response_json['quants'][qtid]['chans'] = chan_samples
+            response_json['labeled'] = qtid
         #########
         get_admin_params_for_dset(response_json, dataset_id, 'seqsamples')
     return JsonResponse(response_json)
@@ -1133,7 +1158,9 @@ def get_empty_isoquant():
                                          'name': chan.quanttype.name}
         quants[chan.quanttype.id]['chans'].append({'id': chan.id,
                                                    'name': chan.channel.name,
-                                                   'newprojsample': '',
+                                                   'samplename': '',
+                                                   'species': [],
+                                                   'sampletypes': [],
                                                    'model': ''})
         # Trick to sort N before C:
         quants[chan.quanttype.id]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
@@ -1159,7 +1186,8 @@ def empty_sampleprep_json():
 
 def empty_seqsamples_json():
     params = get_dynamic_emptyparams('seqsamples')
-    return {'params': params, 'species': [],
+    return {'params': params, 'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
+            'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
             'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
                 'name': x['species__popname'], 'total': x['total']} 
                 for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
@@ -1569,21 +1597,72 @@ def save_sampleprep(request):
 
 
 @login_required
-def save_sequencing_samples(request):
-    '''This endpoint is for saving samples that are not MS, so only file+sample,
-    typically for sequencing datasets with files like BAM, etc'''
+def save_samples(request):
     data = json.loads(request.body.decode('utf-8'))
     user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
     dset_id = data['dataset_id']
-    dsr_ids = [fid for fid in [x['associd'] for x in data['filenames']]]
-    if models.SeqSampleFile.objects.filter(rawfile_id__in=dsr_ids).count():
-        return update_sequencing_samples(data)
+    #if models.DatasetComponentState.objects.filter(dataset_id=dset_id,
+    #        dtcomp=models.DatasetUIComponent.SAMPLES, state=COMPSTATE_OK).count():
+    #    return update_samples(data)
+    dset = models.Dataset.objects.select_related('runname__experiment__project').get(pk=dset_id)
+    projsamples = {}
+    if data['multiplex']:
+        fid_or_ix_samples = [(chix, ch) for chix, ch in enumerate(data['multiplex']['chans'])]
+    else:
+        fid_or_ix_samples = data['samples'].items()
+    stype_ids = {fidix: {x['id']: x['name'] for x in sample['sampletypes']} for fidix, sample in fid_or_ix_samples}
+    spec_ids = {fidix: {x['id']: (x['name'], x['linnean']) for x in sample['species']} for fidix, sample in fid_or_ix_samples}
+    # FIXME labelcheck single can remove the sample names from datatype so we dont have to store those?
+    # kind of nice to store but not sure yet
+    if data['multiplex']:
+        pass # FIXME must check if all channels have values!
+    else:
+        dsr = {str(x['pk']) for x in models.DatasetRawFile.objects.filter(dataset=dset).values('pk')}
+        samples_complete = all(stype_ids[fid] and spec_ids[fid] for fid in dsr)
+        if dsr.symmetric_difference(stype_ids) or dsr.symmetric_difference(spec_ids):
+            return JsonResponse({'error': 'Samples and species need to be specified for all files'}, status=400)
+    for fidix, sample in fid_or_ix_samples:
+        if sample['model']:
+            continue
+        st_error, sp_error = [], []
+        if psam := models.ProjectSample.objects.filter(project=dset.runname.experiment.project,
+                sample=sample['samplename']):
+            psam = psam.get()
+            lastrun = psam.datasetsample_set.select_related('dataset__runname__experiment').last().dataset.runname
+            for psam_st in psam.samplematerial_set.all():
+                if psam_st.sampletype_id not in stype_ids[fidix]:
+                    st_error.append({'id': psam_st.sampletype_id, 'name': psam_st.sampletype.name, 'add': True, 'remove': False})
+                else:
+                    stype_ids[fidix].pop(psam_st.sampletype_id)
+            for psam_sp in psam.samplespecies_set.all():
+                if psam_sp.species_id not in spec_ids[fidix]:
+                    sp_error.append({'id': psam_sp.species_id, 'name': psam_sp.species.popname, 'linnean': psam_sp.species.linnean, 'add': True, 'remove': False})
+                else:
+                    spec_ids[fidix].pop(psam_sp.species_id)
+        for rm_id, rm_name in stype_ids[fidix].items():
+            st_error.append({'id': rm_id, 'name': rm_name, 'add': False, 'remove': True})
+        for rm_id, rm_name in spec_ids[fidix].items():
+            sp_error.append({'id': rm_id, 'name': rm_name[0], 'linnean': rm_name[1], 'add': False, 'remove': True})
+        projsamples[fidix] = {'id': psam.pk, 'duprun_example': f'{lastrun.experiment.name} - {lastrun.name}',
+                'sampletypes_error': st_error, 'species_error': sp_error}
 
-    models.SeqSampleFile.objects.bulk_create([
-            models.SeqSampleFile(rawfile_id=fid, projsample_id=data['samples'][str(fid)]['model'])
-            for fid in dsr_ids])
+    if projsamples:
+        return JsonResponse({'error': f'Project samples exist in database, please validate the '
+            'sample IDs', 'sample_dups': projsamples}, status=400)
+        # FIXME Need to pass the sampletypes / organisms for that projsam!
+    elif data['labeled']:
+        pass
+    else:
+        for fid, psampk, sname in [(fid, sample['model'], sample['samplename'])
+                for fid, sample in data['samples'].items()]:
+            if not psampk:
+                psampk = models.ProjectSample.objects.create(project=dset.runname.experiment.project,
+                        sample=sname).pk
+                projsamples[fid] = psampk
+            qsf = models.QuantSampleFile.objects.create(rawfile_id=fid, projsample_id=psampk)
+
     # TODO sample type, species to sample specific
     save_admin_defined_params(data, dset_id)
     models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
@@ -1594,7 +1673,7 @@ def save_sequencing_samples(request):
 
 def update_sequencing_samples(data):
     dset_id = data['dataset_id']
-    oldssf = models.SeqSampleFile.objects.filter(
+    oldssf = models.QuantSampleFile.objects.filter(
         rawfile__dataset_id=dset_id)
     oldssf = {x.rawfile_id: x for x in oldssf}
     # iterate filenames because that is correct object, 'samples'
@@ -1603,7 +1682,7 @@ def update_sequencing_samples(data):
         try:
             samplefile = oldssf.pop(fn['associd'])
         except KeyError:
-            models.SeqSampleFile.objects.create(
+            models.QuantSampleFile.objects.create(
                 rawfile_id=fn['associd'],
                 projsample_id=data['samples'][str(fn['associd'])]['model'])
         else:
