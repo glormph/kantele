@@ -18,9 +18,6 @@ from jobs.jobs import create_job
 
 
 INTERNAL_PI_PK = 1
-COMPSTATE_OK = 'ok'
-COMPSTATE_NEW = 'new'
-COMPSTATE_INCOMPLETE = 'incomplete'
 
 
 @login_required
@@ -463,7 +460,7 @@ def update_dataset(data):
             try:
                 old_dtcs = existing_dtcstates.get(dtcomp__component_id=dtc.component_id)
             except models.DatasetComponentState.DoesNotExist:
-                state = COMPSTATE_NEW
+                state = models.DCStates.NEW
             else:
                 state = old_dtcs.state
             dtcs = models.DatasetComponentState(dataset=dset, dtcomp=dtc, state=state)
@@ -674,10 +671,10 @@ def save_new_dataset(data, project, experiment, runname, user_id):
                 component=models.DatasetUIComponent.DEFINITION)
         models.DatasetComponentState.objects.create(dtcomp=dtcomp,
                                                     dataset_id=dset.id,
-                                                    state=COMPSTATE_OK)
+                                                    state=models.DCStates.OK)
         models.DatasetComponentState.objects.bulk_create([
             models.DatasetComponentState(
-                dtcomp=x, dataset_id=dset.id, state=COMPSTATE_NEW) for x in
+                dtcomp=x, dataset_id=dset.id, state=models.DCStates.NEW) for x in
             models.DatatypeComponent.objects.filter(
                 datatype_id=dset.datatype_id).exclude(
                 component=models.DatasetUIComponent.DEFINITION)])
@@ -1347,9 +1344,9 @@ def save_or_update_files(data):
     else:
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
             set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP,
-                    COMPSTATE_INCOMPLETE)
+                    models.DCStates.INCOMPLETE)
     if dset.datatype_id != settings.QC_DATATYPE:
-        set_component_state(dset_id, models.DatasetUIComponent.FILES, COMPSTATE_OK)
+        set_component_state(dset_id, models.DatasetUIComponent.FILES, models.DCStates.OK)
 
 
 @login_required
@@ -1399,7 +1396,7 @@ def save_acquisition(request):
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
-    set_component_state(dset_id, models.DatasetUIComponent.ACQUISITION, COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.ACQUISITION, models.DCStates.OK)
     return JsonResponse({})
 
 
@@ -1515,7 +1512,7 @@ def update_sampleprep(data, qtype):
         for spid in newspec.difference(savedspecies)])
     models.DatasetSpecies.objects.filter(
         species_id__in=savedspecies.difference(newspec)).delete()
-    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
     return JsonResponse({})
 
 
@@ -1536,7 +1533,7 @@ def save_pooled_lc(request):
         if data['quanttype'] != qtype.quanttype_id:
             qtype.quanttype_id = data['quanttype']
             qtype.save()
-    set_component_state(dset_id, models.DatasetUIComponent.POOLEDLCSAMPLES, COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.POOLEDLCSAMPLES, models.DCStates.OK)
     return JsonResponse({})
 
 
@@ -1558,7 +1555,7 @@ def save_labelcheck(request):
                 channel_id=sam['channel']) for fid, sam in data['samples'].items()])
     else:
         update_labelcheck(data, qtype)
-    set_component_state(dset_id, models.DatasetUIComponent.LCSAMPLES, COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.LCSAMPLES, models.DCStates.OK)
     return JsonResponse({})
 
 
@@ -1667,7 +1664,7 @@ def save_samples(request):
     save_admin_defined_params(data, dset_id)
     models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
         dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
-    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, models.DCStates.OK)
     return JsonResponse({})
 
 
@@ -1702,7 +1699,7 @@ def update_sequencing_samples(data):
         for spid in newspec.difference(savedspecies)])
     models.DatasetSpecies.objects.filter(
         species_id__in=savedspecies.difference(newspec)).delete()
-    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, COMPSTATE_OK)
+    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, models.DCStates.OK)
     return JsonResponse({})
 
 

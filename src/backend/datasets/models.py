@@ -97,11 +97,18 @@ class DatasetOwner(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
 
 
+class DCStates(models.IntegerChoices):
+    OK = 1, 'OK'
+    NEW = 2, 'New' # what is this for?
+    INCOMPLETE = 3, 'Incomplete'
+    ERROR = 4, 'Error'
+
+
 class DatasetComponentState(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     dtcomp = models.ForeignKey(DatatypeComponent, on_delete=models.CASCADE)
-    state = models.TextField(max_length=20)
-    # state can be new, OK
+    state = models.IntegerField(choices=DCStates.choices)
+    # timestamp (when is saved/updated)
 
 
 class DatasetRawFile(models.Model):
