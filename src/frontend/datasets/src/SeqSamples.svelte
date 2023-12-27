@@ -24,7 +24,7 @@ let allspecies = false;
 let allsampletypes = false;
 
 let prepdata = {
-  params: [],
+  //params: [],
   species: [],
   samples: {},
   quants: {},
@@ -257,21 +257,24 @@ export function validate() {
 			}
 		}
 	}
-  for (let param of Object.values(prepdata.params).filter(p => p.inputtype !== 'checkbox')) {
-    if (param.model === undefined || param.model === '') {
-			comperrors.push(param.title + ' is required');
-		}
-	}
-  for (let param of Object.values(prepdata.params).filter(p => p.inputtype === 'checkbox')) {
-    if (!param.fields.some(f => f.checked)) {
-			comperrors.push(param.title + ' is required');
-		}
-	}
+//  for (let param of Object.values(prepdata.params).filter(p => p.inputtype !== 'checkbox')) {
+//    if (param.model === undefined || param.model === '') {
+//			comperrors.push(param.title + ' is required');
+//		}
+//	}
+//  for (let param of Object.values(prepdata.params).filter(p => p.inputtype === 'checkbox')) {
+//    if (!param.fields.some(f => f.checked)) {
+//			comperrors.push(param.title + ' is required');
+//		}
+//	}
   return comperrors;
 }
 
+// FIXME - when changing sample name, it needs to remove the errors also!
+
 export async function save() {
   errors = validate();
+  preperrors = [];
   if (!Object.keys($datasetFiles).length) {
     preperrors = [...preperrors, 'Add files before saving data'];
   }
@@ -282,7 +285,7 @@ export async function save() {
   if (errors.length === 0 && preperrors.length === 0) { 
     let postdata = {
       dataset_id: $dataset_id,
-      params: prepdata.params,
+      //params: prepdata.params,
       samples: prepdata.samples,
       multiplex: false,
     // postdata.filenames = Object.values($datasetFiles);
@@ -315,7 +318,7 @@ export async function save() {
 }
 
 async function fetchData() {
-  let url = '/datasets/show/seqsamples/';
+  let url = '/datasets/show/samples/';
   url = $dataset_id ? url + $dataset_id : url;
 	const response = await getJSON(url);
   for (let [key, val] of Object.entries(response)) {
@@ -348,10 +351,6 @@ onMount(async() => {
 
 <ErrorNotif errors={preperrors} />
 
-
-{#each Object.entries(prepdata.params) as [param_id, param]}
-<Param bind:param={param} on:edited={editMade} />
-{/each}
 
 <div class="field">
   <label class="label">Are samples labeled multiplex?</label>

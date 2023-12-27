@@ -64,11 +64,11 @@ class Datatype(models.Model):
 
 class DatasetUIComponent(models.IntegerChoices):
     FILES = 1, 'Files'
-    SAMPLEPREP = 2, 'Sample prep'
+    #SAMPLEPREP = 2, 'Sample prep'
+    SAMPLES = 2, 'Samples'
     ACQUISITION = 3, 'MS Acquisition'
     DEFINITION = 4, 'Definition'
     LCSAMPLES = 6, 'LC samples'
-    SAMPLES = 5, 'Samples'
     POOLEDLCSAMPLES = 7, 'Pooled LC samples'
 
 
@@ -128,17 +128,14 @@ class ParamType(models.Model):
         return self.typename
 
 
-class ParamLabcategory(models.Model):
-    labcategory = models.TextField()
-
-    def __str__(self):
-        return self.labcategory
+class Labcategories(models.IntegerChoices):
+    MSSAMPLES = 1, 'MS Samples'
 
 
 class SelectParameter(models.Model):
     # adminable
     title = models.TextField()
-    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
+    category = models.IntegerField(choices=Labcategories.choices)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -150,7 +147,7 @@ class FieldParameter(models.Model):
     title = models.TextField()
     placeholder = models.TextField()
     paramtype = models.ForeignKey(ParamType, on_delete=models.CASCADE)
-    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
+    category = models.IntegerField(choices=Labcategories.choices)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -179,7 +176,7 @@ class FieldParameterValue(models.Model):
 class CheckboxParameter(models.Model):
     # adminable
     title = models.TextField()
-    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
+    category = models.IntegerField(choices=Labcategories.choices)
     active = models.BooleanField(default=True)
 
     def __str__(self):

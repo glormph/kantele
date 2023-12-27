@@ -124,13 +124,13 @@ def dataset_files(request, dataset_id):
 
 
 @login_required
-def dataset_acquisition_nods(request):
-    return dataset_acquisition(request, False)
+def dataset_mssamples_nods(request):
+    return dataset_mssamples(request, False)
 
 
 @login_required
-def dataset_acquisition(request, dataset_id):
-    response_json = empty_acquisition_json()
+def dataset_mssamples(request, dataset_id):
+    response_json = empty_mssamples_json()
     if dataset_id:
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
@@ -145,71 +145,95 @@ def dataset_acquisition(request, dataset_id):
         except models.ReversePhaseDataset.DoesNotExist:
             response_json['dsinfo']['dynamic_rp'] = True
             response_json['dsinfo']['rp_length'] = ''
-        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, 'acquisition')
-    return JsonResponse(response_json)
 
-
-@login_required
-def dataset_sampleprep_nods(request):
-    return dataset_sampleprep(request, False)
-
-
-@login_required
-def dataset_sampleprep(request, dataset_id):
-    response_json = empty_sampleprep_json()
-    if dataset_id:
-        dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
-        response_json['samples'] = {fn.id: {'model': '', 'newprojsample': ''} 
-                for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
-        if not dset:
-            return HttpResponseNotFound()
-#        response_json['projsamples'] = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=dset.get().runname.experiment.project_id)}
-        try:
-            qtype = models.QuantDataset.objects.filter(
-                dataset_id=dataset_id).select_related('quanttype').get()
-        except models.QuantDataset.DoesNotExist:
-            return JsonResponse(response_json)
         enzymes_used = {x.enzyme_id for x in 
                 models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
         response_json['no_enzyme'] = True
-        for enzyme in response_json['enzymes']:
+        for enzyme in response_json['dsinfo']['enzymes']:
             if enzyme['id'] in enzymes_used:
                 enzyme['checked'] = True
                 response_json['no_enzyme'] = False
-        qtid = qtype.quanttype_id
-        response_json['quanttype'] = qtid
-        if qtype.quanttype.name == 'labelfree':
-            qfiles = models.QuantSampleFile.objects.filter(
-                rawfile__dataset_id=dataset_id)
-            if len(set([x.projsample_id for x in qfiles])) == 1:
-                response_json['labelfree_singlesample']['model'] = str(qfiles[0].projsample_id)
-            else:
-                response_json['labelfree_multisample'] = True
-            response_json['samples'].update(
-                    {fn.rawfile_id: {'model': str(fn.projsample_id), 'newprojsample': ''}
-                        for fn in qfiles})
-        else:
-            response_json['quants'][qtid]['chans'] = [] # resetting from empty sampleprep to re-populate
-            for qsc in models.QuantChannelSample.objects.filter(
-                    dataset_id=dataset_id).select_related('channel__channel'):
-                response_json['quants'][qtid]['chans'].append(
-                    {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
-                     'model': str(qsc.projsample_id), 'newprojsample': '', 'qcsid': qsc.id})
-            # Trick to sort N before C:
 
-            response_json['quants'][qtid]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
-        # species for dset and mostused ones TODO make sample specific
-        response_json['species'] = [{'id': x.species.id, 'linnean': x.species.linnean, 'name': x.species.popname} 
-                for x in models.DatasetSpecies.objects.select_related('species').filter(dataset_id=dataset_id)]
-        #########
-
-        get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
+        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.MSSAMPLES)
     return JsonResponse(response_json)
 
 
 @login_required
-def dataset_seqsamples(request, dataset_id):
-    response_json = empty_seqsamples_json()
+def dataset_samples_nods(request):
+    '''FIXME what is this for?'''
+    return dataset_samples(request, False)
+
+
+#@login_required
+#def dataset_sampleprep(request, dataset_id):
+#    response_json = empty_sampleprep_json()
+#    if dataset_id:
+#        dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
+#        response_json['samples'] = {fn.id: {'model': '', 'newprojsample': ''} 
+#                for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
+#        if not dset:
+#            return HttpResponseNotFound()
+##        response_json['projsamples'] = {x.id: x.sample for x in models.ProjectSample.objects.filter(project_id=dset.get().runname.experiment.project_id)}
+#        try:
+#            qtype = models.QuantDataset.objects.filter(
+#                dataset_id=dataset_id).select_related('quanttype').get()
+#        except models.QuantDataset.DoesNotExist:
+#            return JsonResponse(response_json)
+#        enzymes_used = {x.enzyme_id for x in 
+#                models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
+#        response_json['no_enzyme'] = True
+#        for enzyme in response_json['enzymes']:
+#            if enzyme['id'] in enzymes_used:
+#                enzyme['checked'] = True
+#                response_json['no_enzyme'] = False
+#        qtid = qtype.quanttype_id
+#        response_json['quanttype'] = qtid
+#        if qtype.quanttype.name == 'labelfree':
+#            qfiles = models.QuantSampleFile.objects.filter(
+#                rawfile__dataset_id=dataset_id)
+#            if len(set([x.projsample_id for x in qfiles])) == 1:
+#                response_json['labelfree_singlesample']['model'] = str(qfiles[0].projsample_id)
+#            else:
+#                response_json['labelfree_multisample'] = True
+#            response_json['samples'].update(
+#                    {fn.rawfile_id: {'model': str(fn.projsample_id), 'newprojsample': ''}
+#                        for fn in qfiles})
+#        else:
+#            response_json['quants'][qtid]['chans'] = [] # resetting from empty sampleprep to re-populate
+#            for qsc in models.QuantChannelSample.objects.filter(
+#                    dataset_id=dataset_id).select_related('channel__channel'):
+#                response_json['quants'][qtid]['chans'].append(
+#                    {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
+#                     'model': str(qsc.projsample_id), 'newprojsample': '', 'qcsid': qsc.id})
+#            # Trick to sort N before C:
+#
+#            response_json['quants'][qtid]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
+#        # species for dset and mostused ones TODO make sample specific
+#        response_json['species'] = [{'id': x.species.id, 'linnean': x.species.linnean, 'name': x.species.popname} 
+#                for x in models.DatasetSpecies.objects.select_related('species').filter(dataset_id=dataset_id)]
+#        #########
+#
+#        get_admin_params_for_dset(response_json, dataset_id, 'sampleprep')
+#    return JsonResponse(response_json)
+
+
+@login_required
+def dataset_samples(request, dataset_id):
+    response_json = empty_samples_json()
+
+    #params = get_dynamic_emptyparams('seqsamples')
+    #return {'params': params, 'species': [], 'quants': get_empty_isoquant(),
+    #        'sampletypes': [{'id': x.pk, 'name': x.name} for x in models.SampleType.objects.all()],
+    #        'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
+    #            'name': x['species__popname'], 'total': x['total']} 
+    #            for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+    #                ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
+    #        }
+
+
+    # FIXME sample names show/save
+    # FIXME quant ch everything
+
     if dataset_id:
         dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
         if not dset:
@@ -250,7 +274,7 @@ def dataset_seqsamples(request, dataset_id):
             response_json['quants'][qtid]['chans'] = chan_samples
             response_json['labeled'] = qtid
         #########
-        get_admin_params_for_dset(response_json, dataset_id, 'seqsamples')
+        #get_admin_params_for_dset(response_json, dataset_id, 'seqsamples')
     return JsonResponse(response_json)
 
 
@@ -351,27 +375,21 @@ def get_admin_params_for_dset(response, dset_id, category):
     params = response['params']
     params_saved = False
     for p in models.SelectParameterValue.objects.filter(
-            dataset_id=dset_id,
-            value__param__category__labcategory=category).select_related(
-            'value__param__category'):
+            dataset_id=dset_id, value__param__category=category):
         params_saved = True
         if p.value.param.active:
             fill_admin_selectparam(params, p.value, p.value.id)
         else:
             fill_admin_selectparam(oldparams, p.value, p.value.id)
     for p in models.CheckboxParameterValue.objects.filter(
-            dataset_id=dset_id,
-            value__param__category__labcategory=category).select_related(
-            'value__param__category'):
+            dataset_id=dset_id, value__param__category=category):
         params_saved = True
         if p.value.param.active:
             fill_admin_checkboxparam(params, p.value, p.value.id)
         else:
             fill_admin_checkboxparam(oldparams, p.value, p.value.id)
     for p in models.FieldParameterValue.objects.filter(
-            dataset_id=dset_id,
-            param__category__labcategory=category).select_related(
-            'param__category'):
+            dataset_id=dset_id, param__category=category):
         params_saved = True
         if p.param.active:
             fill_admin_fieldparam(params, p.param, p.value)
@@ -1181,9 +1199,9 @@ def empty_sampleprep_json():
             }
 
 
-def empty_seqsamples_json():
-    params = get_dynamic_emptyparams('seqsamples')
-    return {'params': params, 'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
+def empty_samples_json():
+    #params = get_dynamic_emptyparams('seqsamples')
+    return {'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
             'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
             'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
                 'name': x['species__popname'], 'total': x['total']} 
@@ -1237,23 +1255,25 @@ def fill_admin_fieldparam(params, p, value=False):
 def get_dynamic_emptyparams(category):
     params = {}
     for p in models.SelectParameterOption.objects.select_related(
-            'param').filter(param__category__labcategory=category):
+            'param').filter(param__category=category):
         if p.param.active:
             fill_admin_selectparam(params, p)
     for p in models.FieldParameter.objects.select_related(
-            'paramtype').filter(category__labcategory=category):
+            'paramtype').filter(category=category):
         if p.active:
             fill_admin_fieldparam(params, p)
     for p in models.CheckboxParameterOption.objects.select_related(
-            'param').filter(param__category__labcategory=category):
+            'param').filter(param__category=category):
         if p.param.active:
             fill_admin_checkboxparam(params, p)
     return params
 
 
-def empty_acquisition_json():
-    return {'dsinfo': {'params': get_dynamic_emptyparams('acquisition')},
-            'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
+def empty_mssamples_json():
+    return {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.MSSAMPLES),
+        'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
+            for x in models.Enzyme.objects.all()]},
+        'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
                 x.user.first_name, x.user.last_name)}
                 for x in models.Operator.objects.select_related('user').all()]},
             }
@@ -1360,7 +1380,7 @@ def save_files(request):
     return JsonResponse({})
 
 
-def update_acquisition(dset, data):
+def update_mssamples(dset, data):
     if data['operator_id'] != dset.operatordataset.operator_id:
         dset.operatordataset.operator_id = data['operator_id']
         dset.operatordataset.save()
@@ -1375,12 +1395,12 @@ def update_acquisition(dset, data):
     elif data['rp_length'] != dset.reversephasedataset.length:
         dset.reversephasedataset.length = data['rp_length']
         dset.reversephasedataset.save()
-    update_admin_defined_params(dset, data, 'acquisition')
+    update_admin_defined_params(dset, data, models.Labcategories.MSSAMPLES)
     return JsonResponse({})
 
 
 @login_required
-def save_acquisition(request):
+def save_mssamples(request):
     data = json.loads(request.body.decode('utf-8'))
     user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
@@ -1389,7 +1409,7 @@ def save_acquisition(request):
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related(
         'operatordataset', 'reversephasedataset').get()
     if hasattr(dset, 'operatordataset'):
-        return update_acquisition(dset, data)
+        return update_mssamples(dset, data)
     if data['rp_length']:
         models.ReversePhaseDataset.objects.create(dataset_id=dset_id,
                                                   length=data['rp_length'])
@@ -1464,56 +1484,56 @@ def update_labelcheck(data, qtype):
     [qcfs.delete() for qcfs in oldqfcs.values()]
 
 
-def update_sampleprep(data, qtype):
-    dset_id = data['dataset_id']
-    new_enzymes = set([x['id'] for x in data['enzymes'] if x['checked']])
-    for enzyme in models.EnzymeDataset.objects.filter(dataset_id=dset_id):
-        if enzyme.enzyme_id in new_enzymes:
-            new_enzymes.remove(enzyme.enzyme_id)
-        else:
-            enzyme.delete()
-    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
-        dataset_id=dset_id, enzyme_id=x) for x in new_enzymes])
-    oldqtype = qtype.quanttype.name
-    updated_qtype = False
-    if data['quanttype'] != qtype.quanttype_id:
-        qtype.quanttype_id = data['quanttype']
-        qtype.save()
-        print('Updated quanttype')
-        updated_qtype = True
-    quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id)
-    if data['labelfree']:
-        oldqsf = models.QuantSampleFile.objects.filter(
-            rawfile__dataset_id=dset_id)
-        oldqsf = {x.rawfile_id: x for x in oldqsf}
-        # iterate filenames because that is correct object, 'samples'
-        # can contain models that are not active
-        for fn in data['filenames']:
-            try:
-                samplefile = oldqsf.pop(fn['associd'])
-            except KeyError:
-                models.QuantSampleFile.objects.create(
-                    rawfile_id=fn['associd'],
-                    projsample_id=data['samples'][str(fn['associd'])]['model'])
-            else:
-                if data['samples'][str(fn['associd'])]['model'] != samplefile.projsample_id:
-                    samplefile.projsample_id = data['samples'][str(fn['associd'])]['model']
-                    samplefile.save()
-        # delete non-existing qsf (files have been popped)
-        [qsf.delete() for qsf in oldqsf.values()]
-    dset = models.Dataset.objects.get(pk=dset_id)
-    update_admin_defined_params(dset, data, 'sampleprep')
-    # update species, TODO sample specific!
-    savedspecies = {x.species_id for x in
-                    models.DatasetSpecies.objects.filter(dataset_id=dset_id)}
-    newspec = {int(x['id']) for x in data['species']}
-    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
-        dataset_id=dset_id, species_id=spid)
-        for spid in newspec.difference(savedspecies)])
-    models.DatasetSpecies.objects.filter(
-        species_id__in=savedspecies.difference(newspec)).delete()
-    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
-    return JsonResponse({})
+#def update_sampleprep(data, qtype):
+#    dset_id = data['dataset_id']
+#    new_enzymes = set([x['id'] for x in data['enzymes'] if x['checked']])
+#    for enzyme in models.EnzymeDataset.objects.filter(dataset_id=dset_id):
+#        if enzyme.enzyme_id in new_enzymes:
+#            new_enzymes.remove(enzyme.enzyme_id)
+#        else:
+#            enzyme.delete()
+#    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
+#        dataset_id=dset_id, enzyme_id=x) for x in new_enzymes])
+#    oldqtype = qtype.quanttype.name
+#    updated_qtype = False
+#    if data['quanttype'] != qtype.quanttype_id:
+#        qtype.quanttype_id = data['quanttype']
+#        qtype.save()
+#        print('Updated quanttype')
+#        updated_qtype = True
+#    quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id)
+#    if data['labelfree']:
+#        oldqsf = models.QuantSampleFile.objects.filter(
+#            rawfile__dataset_id=dset_id)
+#        oldqsf = {x.rawfile_id: x for x in oldqsf}
+#        # iterate filenames because that is correct object, 'samples'
+#        # can contain models that are not active
+#        for fn in data['filenames']:
+#            try:
+#                samplefile = oldqsf.pop(fn['associd'])
+#            except KeyError:
+#                models.QuantSampleFile.objects.create(
+#                    rawfile_id=fn['associd'],
+#                    projsample_id=data['samples'][str(fn['associd'])]['model'])
+#            else:
+#                if data['samples'][str(fn['associd'])]['model'] != samplefile.projsample_id:
+#                    samplefile.projsample_id = data['samples'][str(fn['associd'])]['model']
+#                    samplefile.save()
+#        # delete non-existing qsf (files have been popped)
+#        [qsf.delete() for qsf in oldqsf.values()]
+#    dset = models.Dataset.objects.get(pk=dset_id)
+#    update_admin_defined_params(dset, data, 'sampleprep')
+#    # update species, TODO sample specific!
+#    savedspecies = {x.species_id for x in
+#                    models.DatasetSpecies.objects.filter(dataset_id=dset_id)}
+#    newspec = {int(x['id']) for x in data['species']}
+#    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
+#        dataset_id=dset_id, species_id=spid)
+#        for spid in newspec.difference(savedspecies)])
+#    models.DatasetSpecies.objects.filter(
+#        species_id__in=savedspecies.difference(newspec)).delete()
+#    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
+#    return JsonResponse({})
 
 
 @login_required
@@ -1559,39 +1579,47 @@ def save_labelcheck(request):
     return JsonResponse({})
 
 
-@login_required
-def save_sampleprep(request):
-    data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
-    if user_denied:
-        return user_denied
-    dset_id = data['dataset_id']
-    try:
-        qtype = models.QuantDataset.objects.select_related(
-            'quanttype').get(dataset_id=dset_id)
-    except models.QuantDataset.DoesNotExist:
-        pass  # new data, insert, not updating
-    else:
-        return update_sampleprep(data, qtype)
-    if data['enzymes']:
-        models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
-            dataset_id=dset_id, enzyme_id=x['id']) for x in data['enzymes'] if x['checked']])
-    models.QuantDataset.objects.create(dataset_id=dset_id,
-                                       quanttype_id=data['quanttype'])
-    if not data['labelfree']:
-        store_new_channelsamples(data)
-    else:
-        print('Saving labelfree')
-        models.QuantSampleFile.objects.bulk_create([
-            models.QuantSampleFile(rawfile_id=fid, projsample_id=data['samples'][str(fid)]['model'])
-            for fid in [x['associd'] for x in data['filenames']]])
-    save_admin_defined_params(data, dset_id)
-    # TODO species to sample specific
-    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
-        dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
-    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, COMPSTATE_OK)
-    return JsonResponse({})
+#@login_required
+#def save_sampleprep(request):
+#    data = json.loads(request.body.decode('utf-8'))
+#    user_denied = check_save_permission(data['dataset_id'], request.user)
+#    if user_denied:
+#        return user_denied
+#    dset_id = data['dataset_id']
+#    try:
+#        qtype = models.QuantDataset.objects.select_related(
+#            'quanttype').get(dataset_id=dset_id)
+#    except models.QuantDataset.DoesNotExist:
+#        pass  # new data, insert, not updating
+#    else:
+#        return update_sampleprep(data, qtype)
+#    if data['enzymes']:
+#        models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
+#            dataset_id=dset_id, enzyme_id=x['id']) for x in data['enzymes'] if x['checked']])
+#    models.QuantDataset.objects.create(dataset_id=dset_id,
+#                                       quanttype_id=data['quanttype'])
+#    if not data['labelfree']:
+#        store_new_channelsamples(data)
+#    else:
+#        print('Saving labelfree')
+#        models.QuantSampleFile.objects.bulk_create([
+#            models.QuantSampleFile(rawfile_id=fid, projsample_id=data['samples'][str(fid)]['model'])
+#            for fid in [x['associd'] for x in data['filenames']]])
+#    save_admin_defined_params(data, dset_id)
+#    # TODO species to sample specific
+#    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
+#        dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
+#    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
+#    return JsonResponse({})
+#
 
+def validate_samples_input():
+    pass
+
+
+@login_required
+def update_samples(data):
+    pass
 
 @login_required
 def save_samples(request):
@@ -1668,7 +1696,7 @@ def save_samples(request):
     return JsonResponse({})
 
 
-def update_sequencing_samples(data):
+def update_samples(data):
     dset_id = data['dataset_id']
     oldssf = models.QuantSampleFile.objects.filter(
         rawfile__dataset_id=dset_id)
@@ -1689,7 +1717,7 @@ def update_sequencing_samples(data):
     # delete non-existing ssf (files have been popped)
     [ssf.delete() for ssf in oldssf.values()]
     dset = models.Dataset.objects.get(pk=dset_id)
-    update_admin_defined_params(dset, data, 'seqsamples')
+    #update_admin_defined_params(dset, data, 'seqsamples')
     # update species, TODO sample specific!
     savedspecies = {x.species_id for x in
                     models.DatasetSpecies.objects.filter(dataset_id=dset_id)}
@@ -1710,12 +1738,11 @@ def set_component_state(dset_id, comp, state):
 
 
 def update_admin_defined_params(dset, data, category):
-    fieldparams = dset.fieldparametervalue_set.filter(
-        param__category__labcategory=category)
+    fieldparams = dset.fieldparametervalue_set.filter(param__category=category)
     selectparams = dset.selectparametervalue_set.filter(
-        value__param__category__labcategory=category).select_related('value')
+        value__param__category=category).select_related('value')
     checkboxparamvals = dset.checkboxparametervalue_set.filter(
-        value__param__category__labcategory=category).select_related('value')
+        value__param__category=category).select_related('value')
     selectparams = {p.value.param_id: p for p in selectparams}
     fieldparams = {p.param_id: p for p in fieldparams}
     checkboxparams = {}
