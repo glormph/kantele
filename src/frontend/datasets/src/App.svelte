@@ -80,14 +80,14 @@ let tabcolor = 'has-text-grey-lighter';
   // files is given, and possibly samples as well, check it out but samples is needed for:
   // - QMS, LCheck, IP, TPP, microscopy QC?, genomics
 
-$: showMsdata = components.indexOf('acquisition') > -1;
+$: showMsdata = components.indexOf('ACQUISITION') > -1;
 $: isExternal = Boolean(dsinfo.ptype_id && dsinfo.ptype_id !== local_ptype_id);
 $: isLabelcheck = datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x => x.name.indexOf('abelcheck') > -1).length;
 
 async function getcomponents() {
   // FIXME can get these in single shot? Need not network trip.
   const result = await getJSON(`/datasets/show/components/${dsinfo.datatype_id}`);
-  components = result.components.map(x => x.toLowerCase());
+  components = result.components;
 }
 
 function switchDatatype() {
@@ -401,16 +401,14 @@ function showFiles() {
         </div>
       </div>
       {/if}
-      {#if (components.indexOf('sampleprep')> -1)}
-      <Prepcomp bind:this={prepcomp} bind:errors={errors.sprep} />
-      {/if}
-      {#if (Object.keys($datasetFiles).length && components.indexOf('labelchecksamples')>-1)}
-      <LCheck bind:this={lccomp} bind:errors={errors.lc} />
-      {:else if (Object.keys($datasetFiles).length && components.indexOf('pooledlabelchecksamples')>-1)}
-      <PooledLCheck bind:this={pooledlc} bind:errors={errors.lc} />
-      {/if}
 
+      {#if (Object.keys($datasetFiles).length && components.indexOf('LCSAMPLES')>-1)}
+      <LCheck bind:this={lccomp} bind:errors={errors.lc} />
+      {:else if (Object.keys($datasetFiles).length && components.indexOf('POOLEDLCSAMPLES')>-1)}
+      <PooledLCheck bind:this={pooledlc} bind:errors={errors.lc} />
+      {:else}
       <SeqSamples bind:this={seqsamples} bind:errors={errors.seqsam} />
+      {/if}
     </div>
 </div>
 

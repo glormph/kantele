@@ -239,7 +239,8 @@ def dataset_samples(request, dataset_id):
         if not dset:
             return HttpResponseNotFound()
         response_json['samples'] = {fn.id: {'model': '', 'newprojsample': '', 'species': [],
-            'sampletypes': []} for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
+            'sampletypes': [], 'species_error': [], 'sampletypes_error': []}
+            for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
         for qsf in models.QuantSampleFile.objects.select_related('projsample', 'rawfile').filter(
                 rawfile__dataset_id=dataset_id):
             sample = {'model': str(qsf.projsample_id), 'samplename': qsf.projsample.sample,
@@ -1175,7 +1176,9 @@ def get_empty_isoquant():
                                                    'name': chan.channel.name,
                                                    'samplename': '',
                                                    'species': [],
+                                                   'species_error': [],
                                                    'sampletypes': [],
+                                                   'sampletypes_error': [],
                                                    'model': ''})
         # Trick to sort N before C:
         quants[chan.quanttype.id]['chans'].sort(key=lambda x: x['name'].replace('N', 'A'))
