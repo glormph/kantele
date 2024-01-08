@@ -155,6 +155,24 @@ function copySampletypesMultiplexDown(chix) {
 }
 
 
+function changeSampleNameChannel(chix) {
+  prepdata.quants[prepdata.labeled].chans[chix].model = '';
+  prepdata.quants[prepdata.labeled].chans[chix].projsam_dup_use = false;
+  prepdata.quants[prepdata.labeled].chans[chix].projsam_dup = false;
+  prepdata.quants[prepdata.labeled].chans[chix].species_error = [];
+  prepdata.quants[prepdata.labeled].chans[chix].sampletypes_error = [];
+}
+
+
+function changeSampleNameFile(fn_id) {
+  prepdata.samples[fn_id].model = '';
+  prepdata.samples[fn_id].projsam_dup = false;
+  prepdata.samples[fn_id].projsam_dup_use = false;
+  prepdata.samples[fn_id].species_error = [];
+  prepdata.samples[fn_id].sampletypes_error = [];
+}
+
+
 function useDuplicateFileSam(fn_id) {
   prepdata.samples[fn_id].model = prepdata.samples[fn_id].projsam_dup;
   prepdata.samples[fn_id].projsam_dup_use = prepdata.samples[fn_id].projsam_dup;
@@ -393,7 +411,7 @@ onMount(async() => {
       <!-- FIXME empty channel -->
       <td>{channel.name}</td>
       <td>
-        <input bind:value={channel.samplename} on:change={e => channel.model = false} class={channel.projsam_dup ? "input is-danger": "input is-normal"}>
+        <input bind:value={channel.samplename} on:change={e => changeSampleNameChannel(chix)} class={channel.projsam_dup ? "input is-danger": "input is-normal"}>
         {#if channel.projsam_dup}
         <p class="help is-danger">This sample ID exists in the database for this project:<br>
         use a different sample ID or confirm it is the same sample as used in:</p>
@@ -475,7 +493,7 @@ onMount(async() => {
     <tr>
       <td>{file.name}</td>
       <td>
-        <input bind:value={prepdata.samples[file.associd].samplename} on:change={e => prepdata.samples[file.associd].model = false} class={prepdata.samples[file.associd].projsam_dup ? "input is-danger" : "input is-normal"}>
+        <input bind:value={prepdata.samples[file.associd].samplename} on:change={e => changeSampleNameFile(file.associd)} class={prepdata.samples[file.associd].projsam_dup ? "input is-danger" : "input is-normal"}>
         {#if prepdata.samples[file.associd].projsam_dup}
         <p class="help is-danger">This sample ID exists in the database for this project:<br>
         use a different sample ID or confirm it is the same sample as used in:</p>
