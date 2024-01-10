@@ -25,6 +25,7 @@ let allsampletypes = false;
 
 let prepdata = {
   //params: [],
+  lf_qtid: false,
   species: [],
   samples: {},
   quants: {},
@@ -306,7 +307,7 @@ export async function save() {
       //params: prepdata.params,
       samples: prepdata.samples,
       multiplex: false,
-    // postdata.filenames = Object.values($datasetFiles);
+      qtype: prepdata.labeled ? prepdata.labeled : prepdata.lf_qtid,
     };
     if (prepdata.labeled) {
       postdata.multiplex = prepdata.quants[prepdata.labeled];

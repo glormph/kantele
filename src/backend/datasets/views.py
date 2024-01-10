@@ -1205,10 +1205,11 @@ def empty_sampleprep_json():
 def empty_samples_json():
     #params = get_dynamic_emptyparams('seqsamples')
     return {'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
+            'lf_qtid': models.QuantType.objects.get(name='labelfree').pk,
             'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
             'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
                 'name': x['species__popname'], 'total': x['total']} 
-                for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+                for x in models.SampleSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
                     ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
             }
 
