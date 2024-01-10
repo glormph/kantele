@@ -1627,39 +1627,62 @@ def update_samples(data):
 
 @login_required
 def save_samples(request):
+    '''Saving sample sheet. Start with validating the input:
+    Each file/channel should have a sample and organism, and there needs to be feedback
+    in case there is an alternative projectsample already in use
+    Then either save or update
+    '''
     data = json.loads(request.body.decode('utf-8'))
     user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
     dset_id = data['dataset_id']
-    #if models.DatasetComponentState.objects.filter(dataset_id=dset_id,
-    #        dtcomp=models.DatasetUIComponent.SAMPLES, state=COMPSTATE_OK).count():
-    #    return update_samples(data)
-    dset = models.Dataset.objects.select_related('runname__experiment__project').get(pk=dset_id)
-    projsamples = {}
+
+    # Gather all data from the input about samples/channels and map with ch/file keys
     if data['multiplex']:
-        fid_or_ix_samples = [(chix, ch) for chix, ch in enumerate(data['multiplex']['chans'])]
+        fid_or_chid_samples = [(ch['id'], ch) for chix, ch in enumerate(data['multiplex']['chans'])]
     else:
-        fid_or_ix_samples = data['samples'].items()
-    stype_ids = {fidix: {x['id']: x['name'] for x in sample['sampletypes']} for fidix, sample in fid_or_ix_samples}
-    spec_ids = {fidix: {x['id']: (x['name'], x['linnean']) for x in sample['species']} for fidix, sample in fid_or_ix_samples}
+        fid_or_chid_samples = data['samples'].items()
+
+    # All sampletypes and species for addressing 
+    stype_ids = {chfid: {x['id']: x['name'] for x in sample['sampletypes']} for chfid, sample in fid_or_chid_samples}
+    spec_ids = {chfid: {x['id']: (x['name'], x['linnean']) for x in sample['species']} for chfid, sample in fid_or_chid_samples}
     # FIXME labelcheck single can remove the sample names from datatype so we dont have to store those?
     # kind of nice to store but not sure yet
+
+    # Check if all channels/samples have values for sampletype and species
+    dset = models.Dataset.objects.select_related('runname__experiment__project').get(pk=dset_id)
     if data['multiplex']:
-        pass # FIXME must check if all channels have values!
+        dsr_chids = {x['pk'] for x in models.QuantTypeChannel.objects.filter(quanttype_id=data['multiplex']['id']).values('pk')}
     else:
-        dsr = {str(x['pk']) for x in models.DatasetRawFile.objects.filter(dataset=dset).values('pk')}
-        samples_complete = all(stype_ids[fid] and spec_ids[fid] for fid in dsr)
-        if dsr.symmetric_difference(stype_ids) or dsr.symmetric_difference(spec_ids):
-            return JsonResponse({'error': 'Samples and species need to be specified for all files'}, status=400)
-    for fidix, sample in fid_or_ix_samples:
+        dsr_chids = {str(x['pk']) for x in models.DatasetRawFile.objects.filter(dataset=dset).values('pk')}
+    samples_complete = all(stype_ids[x] and spec_ids[x] for x in dsr_chids)
+    if dsr_chids.symmetric_difference(stype_ids) or dsr_chids.symmetric_difference(spec_ids) or not samples_complete:
+        return JsonResponse({'error': 'Samples and species need to be specified for all files'}, status=400)
+    # Sample name check if they already exist as projectsample in system, then reply with
+    # which of them exist and which sampletype/species they have
+    projsamples = {}
+    for fidix, sample in fid_or_chid_samples:
         if sample['model']:
+            # Any sample which has a model (sample pk) is not checked, since it represent an
+            # existing sample
             continue
-        st_error, sp_error = [], []
-        if psam := models.ProjectSample.objects.filter(project=dset.runname.experiment.project,
+        elif psam := models.ProjectSample.objects.filter(project=dset.runname.experiment.project,
                 sample=sample['samplename']):
+            st_error, sp_error = [], []
             psam = psam.get()
-            lastrun = psam.datasetsample_set.select_related('dataset__runname__experiment').last().dataset.runname
+            lastrun = False
+            if check_lr := psam.datasetsample_set.exclude(dataset=dset):
+                # proj sample w same name found in another dataset
+                lastrun = check_lr.select_related('dataset__runname__experiment').last().dataset.runname
+                duprun_txt = f'{lastrun.experiment.name} - { lastrun.name}'
+            elif lastrun := psam.datasetsample_set.select_related('dataset__runname__experiment').filter(
+                    dataset=dset):
+                # proj sample w name already in this dataset (no ID passed), eg new species/sampletype
+                duprun_txt = 'This dataset contains the sample'
+            else:
+                duprun_txt = 'Something went wrong, contact admin'
+                print('Something went wrong here validating project samples')
             for psam_st in psam.samplematerial_set.all():
                 if psam_st.sampletype_id not in stype_ids[fidix]:
                     st_error.append({'id': psam_st.sampletype_id, 'name': psam_st.sampletype.name, 'add': True, 'remove': False})
@@ -1670,68 +1693,74 @@ def save_samples(request):
                     sp_error.append({'id': psam_sp.species_id, 'name': psam_sp.species.popname, 'linnean': psam_sp.species.linnean, 'add': True, 'remove': False})
                 else:
                     spec_ids[fidix].pop(psam_sp.species_id)
-        for rm_id, rm_name in stype_ids[fidix].items():
-            st_error.append({'id': rm_id, 'name': rm_name, 'add': False, 'remove': True})
-        for rm_id, rm_name in spec_ids[fidix].items():
-            sp_error.append({'id': rm_id, 'name': rm_name[0], 'linnean': rm_name[1], 'add': False, 'remove': True})
-        projsamples[fidix] = {'id': psam.pk, 'duprun_example': f'{lastrun.experiment.name} - {lastrun.name}',
+            for rm_id, rm_name in stype_ids[fidix].items():
+                st_error.append({'id': rm_id, 'name': rm_name, 'add': False, 'remove': True})
+            for rm_id, rm_name in spec_ids[fidix].items():
+                sp_error.append({'id': rm_id, 'name': rm_name[0], 'linnean': rm_name[1], 'add': False, 'remove': True})
+            projsamples[fidix] = {'id': psam.pk, 'duprun_example': duprun_txt,
                 'sampletypes_error': st_error, 'species_error': sp_error}
-
     if projsamples:
         return JsonResponse({'error': f'Project samples exist in database, please validate the '
             'sample IDs', 'sample_dups': projsamples}, status=400)
-        # FIXME Need to pass the sampletypes / organisms for that projsam!
-    elif data['labeled']:
-        pass
-    else:
-        for fid, psampk, sname in [(fid, sample['model'], sample['samplename'])
-                for fid, sample in data['samples'].items()]:
-            if not psampk:
-                psampk = models.ProjectSample.objects.create(project=dset.runname.experiment.project,
-                        sample=sname).pk
-                projsamples[fid] = psampk
-            qsf = models.QuantSampleFile.objects.create(rawfile_id=fid, projsample_id=psampk)
 
-    # TODO sample type, species to sample specific
-    save_admin_defined_params(data, dset_id)
-    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
-        dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
-    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, models.DCStates.OK)
-    return JsonResponse({})
+    # All is ready for saving or updating
+    lf_qtid = models.QuantType.objects.get(name='labelfree').pk
+    if is_update := models.DatasetComponentState.objects.filter(dataset=dset,
+            dtcomp=models.DatasetUIComponent.SAMPLES, state=models.DCStates.OK).count():
+        # existing component state OK -> update: if quanttype changes - delete the old quanttype
+        qds = models.QuantDataset.objects.select_related('quanttype').get(dataset=dset)
+        updated_qtype = False
+        old_qtype = qds.quanttype.pk
+        if data['qtype'] != old_qtype:
+            qds.quanttype_id = data['qtype']
+            qds.save()
+            updated_qtype = True
+        if old_qtype == 'labelfree' and updated_qtype:
+            # switch to multiplex from labelfree, delete LF
+            models.QuantSampleFile.objects.filter(rawfile__dataset=dset).delete()
+        elif updated_qtype and not data['multiplex']:
+            # switch from old multiplex type, delete old plex
+            models.QuantChannelSample.objects.filter(dataset=dset).delete()
 
-
-def update_samples(data):
-    dset_id = data['dataset_id']
-    oldssf = models.QuantSampleFile.objects.filter(
-        rawfile__dataset_id=dset_id)
-    oldssf = {x.rawfile_id: x for x in oldssf}
-    # iterate filenames because that is correct object, 'samples'
-    # can contain models that are not active
-    for fn in data['filenames']:
-        try:
-            samplefile = oldssf.pop(fn['associd'])
-        except KeyError:
-            models.QuantSampleFile.objects.create(
-                rawfile_id=fn['associd'],
-                projsample_id=data['samples'][str(fn['associd'])]['model'])
+    # FIXME what to do in case of same sample in multiple ch/file for one dset?
+    # FIXME -> write a test
+    _cr, qds = models.QuantDataset.objects.update_or_create(dataset=dset,
+            defaults={'quanttype_id': data['qtype']})
+    for fidix, passedsample in fid_or_chid_samples:
+        psampk, sname = passedsample['model'], passedsample['samplename']
+        if not psampk:
+            # get or create to get same sample (if dset has dup names for file or channel: 
+            # use same sample)
+            psam, _cr = models.ProjectSample.objects.get_or_create(
+                    project=dset.runname.experiment.project, sample=sname)
+            psampk = psam.pk
+            models.DatasetSample.objects.get_or_create(dataset=dset, projsample=psam)
+            if _cr:
+                # create species/material binding for sample if it is new, although this
+                # makes it so that only the first of duplicate sample will determine the
+                # actual material for the second
+                models.SampleMaterial.objects.bulk_create([models.SampleMaterial(sample=psam,
+                    sampletype_id=x['id']) for x in passedsample['sampletypes']])
+                models.SampleSpecies.objects.bulk_create([models.SampleSpecies(sample=psam,
+                    species_id=x['id']) for x in passedsample['species']])
+        # Even though we delete the QCS/QSF rows above in case of quanttype switch, we still
+        # need to update_or_create in case of not switching but using different project sample
+        if data['multiplex']:
+            models.QuantChannelSample.objects.update_or_create(channel_id=fidix, dataset=dset,
+                defaults={'projsample_id': psampk})
         else:
-            if data['samples'][str(fn['associd'])]['model'] != samplefile.projsample_id:
-                samplefile.projsample_id = data['samples'][str(fn['associd'])]['model']
-                samplefile.save()
-    # delete non-existing ssf (files have been popped)
-    [ssf.delete() for ssf in oldssf.values()]
-    dset = models.Dataset.objects.get(pk=dset_id)
-    #update_admin_defined_params(dset, data, 'seqsamples')
-    # update species, TODO sample specific!
-    savedspecies = {x.species_id for x in
-                    models.DatasetSpecies.objects.filter(dataset_id=dset_id)}
-    newspec = {int(x['id']) for x in data['species']}
-    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
-        dataset_id=dset_id, species_id=spid)
-        for spid in newspec.difference(savedspecies)])
-    models.DatasetSpecies.objects.filter(
-        species_id__in=savedspecies.difference(newspec)).delete()
-    set_component_state(dset_id, models.DatasetUIComponent.SEQSAMPLES, models.DCStates.OK)
+            models.QuantSampleFile.objects.update_or_create(rawfile_id=fidix,
+                defaults={'projsample_id': psampk})
+    if is_update:
+        # Remove any project samples that are now orphaned:
+        # TODO if we have dedicated sample sheets, we should probably NOT do this
+        # If we dont, we need to manually delete DatasetSample since that cascades here
+        models.ProjectSample.objects.filter(project__experiment__runname__dataset=dset,
+                quantchannelsample__isnull=True,
+                quantsamplefile__isnull=True,
+                quantfilechannelsample__isnull=True,
+                ).delete()
+    set_component_state(dset_id, models.DatasetUIComponent.SAMPLES, models.DCStates.OK)
     return JsonResponse({})
 
 

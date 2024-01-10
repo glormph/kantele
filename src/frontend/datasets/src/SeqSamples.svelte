@@ -76,6 +76,7 @@ function copyOrganismsMultiplexDown(chix) {
       fromch = true
     }
   }
+  editMade();
 }
 
 function removeOrganismFileSample(fn_id, org_id) {
@@ -102,6 +103,7 @@ function copyOrganismsFilesDown(fn_id) {
       fromfn = true
     }
   }
+  editMade();
 }
 
 
@@ -128,6 +130,7 @@ function copySampletypesFilesDown(fn_id) {
       fromfn = true
     }
   }
+  editMade();
 }
 
 function removeSampletypeMultiplex(chix, stype_id) {
@@ -153,6 +156,7 @@ function copySampletypesMultiplexDown(chix) {
       fromch = true;
     }
   }
+  editMade();
 }
 
 
@@ -162,6 +166,7 @@ function changeSampleNameChannel(chix) {
   prepdata.quants[prepdata.labeled].chans[chix].projsam_dup = false;
   prepdata.quants[prepdata.labeled].chans[chix].species_error = [];
   prepdata.quants[prepdata.labeled].chans[chix].sampletypes_error = [];
+  editMade();
 }
 
 
@@ -171,6 +176,7 @@ function changeSampleNameFile(fn_id) {
   prepdata.samples[fn_id].projsam_dup_use = false;
   prepdata.samples[fn_id].species_error = [];
   prepdata.samples[fn_id].sampletypes_error = [];
+  editMade();
 }
 
 
@@ -314,9 +320,14 @@ export async function save() {
     }
     let url = '/datasets/save/samples/';
     const resp = await postJSON(url, postdata);
-    if ('sample_dups' in resp) {
+
+    if (!resp.ok && 'sample_dups' in resp) {
+      preperrors = [...preperrors, resp.error];
       if (prepdata.labeled) {
-        Object.entries(resp.sample_dups).forEach(([chix, projsam]) => {
+        const id_to_ix = Object.fromEntries(prepdata.quants[prepdata.labeled].chans
+          .map((ch, ix) => [ch.id, ix]));
+        Object.entries(resp.sample_dups).forEach(([chid, projsam]) => {
+          const chix = id_to_ix[chid];
           prepdata.quants[prepdata.labeled].chans[chix].projsam_dup = projsam.id;
           prepdata.quants[prepdata.labeled].chans[chix].duprun = projsam.duprun_example;
           prepdata.quants[prepdata.labeled].chans[chix].sampletypes_error = projsam.sampletypes_error;
@@ -330,6 +341,9 @@ export async function save() {
           prepdata.samples[fid].species_error = projsam.species_error;
         });
       }
+    } else if (!resp.ok && resp.error) {
+      preperrors = [...preperrors, resp.error];
+
     } else {
     fetchData();
     }
@@ -414,8 +428,9 @@ onMount(async() => {
       <td>
         <input bind:value={channel.samplename} on:change={e => changeSampleNameChannel(chix)} class={channel.projsam_dup ? "input is-danger": "input is-normal"}>
         {#if channel.projsam_dup}
-        <p class="help is-danger">This sample ID exists in the database for this project:<br>
-        use a different sample ID or confirm it is the same sample as used in:</p>
+        <p class="help is-danger">This sample ID exists in the database for this project,<br>
+        you cannot change an existing sample's types or organisms in this sheet,<br>
+        please use a different sample ID or confirm it is the same sample as used in:</p>
         <p class="help is-info">{channel.duprun}</p>
         <p>
         <button class="button is-small" on:click={e => useDuplicateSampleChannel(chix)}>Accept</button>
@@ -496,8 +511,9 @@ onMount(async() => {
       <td>
         <input bind:value={prepdata.samples[file.associd].samplename} on:change={e => changeSampleNameFile(file.associd)} class={prepdata.samples[file.associd].projsam_dup ? "input is-danger" : "input is-normal"}>
         {#if prepdata.samples[file.associd].projsam_dup}
-        <p class="help is-danger">This sample ID exists in the database for this project:<br>
-        use a different sample ID or confirm it is the same sample as used in:</p>
+        <p class="help is-danger">This sample ID exists in the database for this project,<br>
+        you cannot change an existing sample's types or organisms in this sheet,<br>
+        please use a different sample ID or confirm it is the same sample as used in:</p>
         <p class="help is-info">{prepdata.samples[file.associd].duprun}</p>
         <p>
         <button class="button is-small" on:click={e => useDuplicateFileSam(file.associd)}>Accept</button>
