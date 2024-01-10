@@ -19,7 +19,7 @@ from rawstatus.tasks import calc_md5, delete_empty_dir
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profiles, **kwargs):
     postdata = {'client_id': settings.APIKEY, 'task': self.request.id}
-    rundir = create_runname_dir(run, run['dset_id'], 'convert_mzml', run['timestamp'])
+    rundir = create_runname_dir(run, f'{run["dset_id"]}_convert_mzml_{run["timestamp"]}')
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, {'--raws': raws}, [], params)
     try:
         run_outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)

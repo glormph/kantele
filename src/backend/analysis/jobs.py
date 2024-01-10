@@ -105,7 +105,6 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
                'name': 'longqc',
-               'outdir': 'internal_results',
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
@@ -249,8 +248,7 @@ class RunNextflowWorkflow(BaseJob):
         # token is unique per job run:
         analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
         analysis.nextflowsearch.save()
-        run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
-               'analysis_id': analysis.id,
+        run = {'analysis_id': analysis.id,
                'token': analysis.nextflowsearch.token,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,

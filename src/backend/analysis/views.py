@@ -669,7 +669,7 @@ def store_analysis(request):
     if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
     if req['analysis_id']:
-        analysis = am.Analysis.objects.get(pk=req['analysis_id'])
+        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(pk=req['analysis_id'])
         if analysis.user_id != request.user.id and not request.user.is_staff:
             return JsonResponse({'error': 'You do not have permission to edit this analysis'})
         elif analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
@@ -741,9 +741,15 @@ def store_analysis(request):
         dss.filter(dataset_id__in=excess_dss).delete()
         am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
+        wfshortname = analysis.nextflowsearch.workflow.shortname.name
     else:
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
+        wfshortname = am.Workflow.objects.select_related('shortname').get(pk=req['wfid']).shortname.name
         am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
+    ana_storpathname = (f'{analysis.pk}_{wfshortname}_{analysis.name}_'
+            f'{datetime.strftime(analysis.date, "%Y%m%d_%H.%M")}')
+    analysis.storage_dir = f'{analysis.user.username}/{ana_storpathname}'
+    analysis.save()
 
     in_components = {k: v for k, v in req['components'].items() if v}
     jobinputs = {'components': wf_components, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
@@ -920,7 +926,8 @@ def store_analysis(request):
     jobinputs['params'] = [x for nf, vals in jobparams.items() for x in [nf, ';'.join([str(v) for v in vals])]]
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': jobinputs}
     kwargs = {'analysis_id': analysis.id, 'dstsharename': settings.ANALYSISSHARENAME,
-            'wfv_id': req['nfwfvid'], 'inputs': jobinputs, **data_args}
+            'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
+            'storagepath': analysis.storage_dir, **data_args}
     if req['analysis_id']:
         job = analysis.nextflowsearch.job
         job.kwargs = kwargs

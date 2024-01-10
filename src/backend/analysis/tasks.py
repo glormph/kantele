@@ -133,7 +133,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'name': run['name'], 'user': run['outdir']}
-    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
+    rundir = create_runname_dir(run, run['fullname'])
 
     # stage files, create dirs etc
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles,
@@ -194,7 +194,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     print('Got message to run mzRefine workflow, preparing')
-    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
+    rundir = create_runname_dir(run, f'{run["analysis_id"]}_{run["name"]}_{run["timestamp"]}')
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     # FIXME Should we use components here? -- internal pipe so maybe not?
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
@@ -231,8 +231,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     return run
 
 
-def create_runname_dir(run, run_id, in_name, timestamp):
-    runname = f'{run_id}_{in_name}_{timestamp}'
+def create_runname_dir(run, runname):
     run['runname'] = runname
     rundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
     return os.path.join(rundir, runname).replace(' ', '_')
@@ -241,7 +240,6 @@ def create_runname_dir(run, run_id, in_name, timestamp):
 def prepare_nextflow_run(run, taskid, rundir, stagefiles, infiles, params):
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
-    # runname is set in task so timestamp corresponds to execution start and not job queue
     gitwfdir = os.path.join(rundir, 'gitwfs')
     try:
         os.makedirs(rundir, exist_ok=True)
@@ -384,7 +382,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_versio
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'instrument': run['instrument'], 'filename': run['filename']}
-    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
+    rundir = create_runname_dir(run, f'{run["analysis_id"]}_rawfile_{run["rf_id"]}_{run["timestamp"]}')
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
     try:
         outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
@@ -405,8 +403,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_versio
                     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
                     raise RuntimeError('QC file did not contain enough quality PSMs')
         taskfail_update_db(self.request.id, errmsg)
-        raise RuntimeError('Error occurred running QC workflow '
-                           '{}'.format(rundir))
+        raise RuntimeError('Error occurred running QC workflow {rundir}')
     with open(os.path.join(outdir, 'qc.json')) as fp:
         qcreport = json.load(fp)
     log_analysis(run['analysis_id'], 'QC Workflow finished')

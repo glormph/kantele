@@ -454,6 +454,7 @@ class TestStoreAnalysis(AnalysisTest):
             'wfid': self.wf.pk,
             }
         resp = self.cl.post(self.url, content_type='application/json', data=postdata)
+        timestamp = datetime.strftime(datetime.now(), '%Y%m%d_')
         self.assertEqual(resp.status_code, 200)
         ana = am.Analysis.objects.last()
         #self.assertEqual(ana.analysismzmldef.mzmldef, postdata['components']['mzmldef'])
@@ -467,6 +468,9 @@ class TestStoreAnalysis(AnalysisTest):
                     'flag': 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(ana.name, postdata['analysisname'])
+        fullname = f'{ana.pk}_{ana.nextflowsearch.workflow.shortname.name}_{ana.name}_{timestamp}'
+        # This test flakes if executed right at midnight due to timestamp in assert string
+        self.assertEqual(ana.storage_dir[:-5], f'{ana.user.username}/{fullname}')
         checkjson = {'error': False, 'analysis_id': ana.pk}
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
