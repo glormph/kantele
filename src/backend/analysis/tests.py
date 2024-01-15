@@ -98,8 +98,6 @@ class AnalysisIsobaric(AnalysisTest):
         self.anaset, _ = am.AnalysisSetname.objects.get_or_create(analysis=self.ana, setname='set1')
         self.ads1, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
                 dataset=self.ds, setname=self.anaset, regex='hej')
-        self.qcs, _  = dm.QuantChannelSample.objects.get_or_create(dataset=self.ds, channel=self.qtch,
-                projsample=self.projsam1)
         self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
         am.AnalysisIsoquant.objects.get_or_create(analysis=self.ana, setname=self.anaset,
                 value=self.isoqvals)
@@ -112,7 +110,6 @@ class AnalysisLabelfreeSamples(AnalysisTest):
 
     def setUp(self):
         super().setUp()
-        dm.QuantSampleFile.objects.get_or_create(rawfile=self.olddsr, projsample=self.projsam2)
         self.afs2, _ = am.AnalysisFileSample.objects.get_or_create(analysis=self.analf, sample='newname2', sfile=self.oldsf)
 
 
