@@ -1626,6 +1626,7 @@ def update_samples(data):
     pass
 
 @login_required
+@require_POST
 def save_samples(request):
     '''Saving sample sheet. Start with validating the input:
     Each file/channel should have a sample and organism, and there needs to be feedback
@@ -1645,23 +1646,36 @@ def save_samples(request):
         fid_or_chid_samples = data['samples'].items()
 
     # All sampletypes and species for addressing 
-    stype_ids = {chfid: {x['id']: x['name'] for x in sample['sampletypes']} for chfid, sample in fid_or_chid_samples}
-    spec_ids = {chfid: {x['id']: (x['name'], x['linnean']) for x in sample['species']} for chfid, sample in fid_or_chid_samples}
+    stype_ids = {chfid: {x['id'] for x in sample['sampletypes']} for chfid, sample in fid_or_chid_samples}
+    spec_ids = {chfid: {x['id'] for x in sample['species']} for chfid, sample in fid_or_chid_samples}
+    stype_dups = {}
+    for _, sample in fid_or_chid_samples:
+        stypes_passed = '_'.join(sorted([str(x['id']) for x in sample['sampletypes']]))
+        try:
+            stype_dups[sample['samplename']].add(stypes_passed)
+        except KeyError:
+            stype_dups[sample['samplename']] = set([stypes_passed])
+    stype_dups = [k for k,v in stype_dups.items() if len(v) > 1]
+    if stype_dups:
+        return JsonResponse({'error': f'Sampletypes need to be identical for identical sample IDs, check {", ".join(stype_dups)}'}, status=400)
+
     # FIXME labelcheck single can remove the sample names from datatype so we dont have to store those?
     # kind of nice to store but not sure yet
 
     # Check if all channels/samples have values for sampletype and species
     dset = models.Dataset.objects.select_related('runname__experiment__project').get(pk=dset_id)
     if data['multiplex']:
-        dsr_chids = {x['pk'] for x in models.QuantTypeChannel.objects.filter(quanttype_id=data['multiplex']['id']).values('pk')}
+        dsr_chids = {x['pk'] for x in models.QuantTypeChannel.objects.filter(quanttype_id=data['qtype']).values('pk')}
     else:
         dsr_chids = {str(x['pk']) for x in models.DatasetRawFile.objects.filter(dataset=dset).values('pk')}
-    samples_complete = all(stype_ids[x] and spec_ids[x] for x in dsr_chids)
+    samples_complete = all(stype_ids[x] and spec_ids[x] for x in dsr_chids
+            if x in stype_ids and x in spec_ids)
     if dsr_chids.symmetric_difference(stype_ids) or dsr_chids.symmetric_difference(spec_ids) or not samples_complete:
         return JsonResponse({'error': 'Samples and species need to be specified for all files'}, status=400)
     # Sample name check if they already exist as projectsample in system, then reply with
     # which of them exist and which sampletype/species they have
-    projsamples = {}
+    projsamples, allspecies = {}, {}
+    allsampletypes = {x.pk: x.name for x in models.SampleMaterialType.objects.all()}
     for fidix, sample in fid_or_chid_samples:
         if sample['model']:
             # Any sample which has a model (sample pk) is not checked, since it represent an
@@ -1669,6 +1683,8 @@ def save_samples(request):
             continue
         elif psam := models.ProjectSample.objects.filter(project=dset.runname.experiment.project,
                 sample=sample['samplename']):
+            # Sample ID is found in DB already, shall we update it or rather
+            # give user a message that it cant update since it's in multiple datasets
             st_error, sp_error = [], []
             psam = psam.get()
             lastrun = False
@@ -1678,8 +1694,12 @@ def save_samples(request):
                 duprun_txt = f'{lastrun.experiment.name} - { lastrun.name}'
             elif lastrun := psam.datasetsample_set.select_related('dataset__runname__experiment').filter(
                     dataset=dset):
-                # proj sample w name already in this dataset (no ID passed), eg new species/sampletype
-                duprun_txt = 'This dataset contains the sample'
+                # proj sample w name already in this dataset (no ID passed), but not in any other, so 
+                # eg new species/sampletype, need to update those
+
+                # FIXME make sure when input conflicting sample in dset (same name,
+                # diff types), that this doesnt override an error!
+                continue
             else:
                 duprun_txt = 'Something went wrong, contact admin'
                 print('Something went wrong here validating project samples')
@@ -1693,14 +1713,18 @@ def save_samples(request):
                     sp_error.append({'id': psam_sp.species_id, 'name': psam_sp.species.popname, 'linnean': psam_sp.species.linnean, 'add': True, 'remove': False})
                 else:
                     spec_ids[fidix].pop(psam_sp.species_id)
-            for rm_id, rm_name in stype_ids[fidix].items():
-                st_error.append({'id': rm_id, 'name': rm_name, 'add': False, 'remove': True})
-            for rm_id, rm_name in spec_ids[fidix].items():
+            for rm_id in stype_ids[fidix]:
+                st_error.append({'id': rm_id, 'name': allsampletypes[rm_id], 'add': False, 'remove': True})
+            for rm_id in spec_ids[fidix]:
+                if rm_id not in allspecies:
+                    rm_species = models.Species.objects.get(pk=rm_id)
+                    allspecies[rm_id] = (rm_species.popname, rm_species.linnean)
+                rm_name = allspecies[rm_id]
                 sp_error.append({'id': rm_id, 'name': rm_name[0], 'linnean': rm_name[1], 'add': False, 'remove': True})
             projsamples[fidix] = {'id': psam.pk, 'duprun_example': duprun_txt,
                 'sampletypes_error': st_error, 'species_error': sp_error}
     if projsamples:
-        return JsonResponse({'error': f'Project samples exist in database, please validate the '
+        return JsonResponse({'error': 'Project samples exist in database, please validate the '
             'sample IDs', 'sample_dups': projsamples}, status=400)
 
     # All is ready for saving or updating
@@ -1726,6 +1750,7 @@ def save_samples(request):
     # FIXME -> write a test
     _cr, qds = models.QuantDataset.objects.update_or_create(dataset=dset,
             defaults={'quanttype_id': data['qtype']})
+    dset_psams = set()
     for fidix, passedsample in fid_or_chid_samples:
         psampk, sname = passedsample['model'], passedsample['samplename']
         if not psampk:
@@ -1735,14 +1760,19 @@ def save_samples(request):
                     project=dset.runname.experiment.project, sample=sname)
             psampk = psam.pk
             models.DatasetSample.objects.get_or_create(dataset=dset, projsample=psam)
-            if _cr:
-                # create species/material binding for sample if it is new, although this
-                # makes it so that only the first of duplicate sample will determine the
-                # actual material for the second
+            if not _cr and not psampk in dset_psams:
+                # If projsample already exist, it may need updating the material/type,
+                # so delete existing bindings
+                models.SampleMaterial.objects.filter(sample=psam).delete()
+                models.SampleSpecies.objects.filter(sample=psam).delete()
+            if not psampk in dset_psams:
+                # only the first of duplicate sample within a dset will need to create new
+                # material/type
                 models.SampleMaterial.objects.bulk_create([models.SampleMaterial(sample=psam,
                     sampletype_id=x['id']) for x in passedsample['sampletypes']])
                 models.SampleSpecies.objects.bulk_create([models.SampleSpecies(sample=psam,
                     species_id=x['id']) for x in passedsample['species']])
+            dset_psams.add(psampk)
         # Even though we delete the QCS/QSF rows above in case of quanttype switch, we still
         # need to update_or_create in case of not switching but using different project sample
         if data['multiplex']:

@@ -84,6 +84,8 @@ class BaseTest(TestCase):
         # Project/dset on new storage
         self.p1, _ = dm.Project.objects.get_or_create(name='p1', pi=self.pi)
         self.projsam1, _ = dm.ProjectSample.objects.get_or_create(sample='sample1', project=self.p1)
+        dm.SampleMaterial.objects.create(sample=self.projsam1, sampletype=self.samtype1)
+        dm.SampleSpecies.objects.create(sample=self.projsam1, species=self.spec1)
         dm.ProjType.objects.get_or_create(project=self.p1, ptype=self.ptype)
         self.exp1, _ = dm.Experiment.objects.get_or_create(name='e1', project=self.p1)
         self.run1, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.exp1)
@@ -110,6 +112,7 @@ class BaseTest(TestCase):
         self.qcs, _  = dm.QuantChannelSample.objects.get_or_create(dataset=self.ds, channel=self.qtch,
                 projsample=self.projsam1)
         dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
+        dm.DatasetSample.objects.create(dataset=self.ds, projsample=self.projsam1)
 
         # Pwiz/mzml
         pset, _ = am.ParameterSet.objects.get_or_create(name='pwiz_pset_base')
@@ -129,6 +132,8 @@ class BaseTest(TestCase):
         oldfn = 'raw1'
         self.oldp, _ = dm.Project.objects.get_or_create(name='oldp', pi=self.pi)
         self.projsam2, _ = dm.ProjectSample.objects.get_or_create(sample='sample2', project=self.oldp)
+        dm.SampleMaterial.objects.create(sample=self.projsam2, sampletype=self.samtype2)
+        dm.SampleSpecies.objects.create(sample=self.projsam2, species=self.spec2)
         dm.ProjType.objects.get_or_create(project=self.oldp, ptype=self.ptype)
         self.oldexp, _ = dm.Experiment.objects.get_or_create(name='olde', project=self.oldp)
         self.oldrun, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.oldexp)
