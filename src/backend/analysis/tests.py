@@ -281,32 +281,12 @@ class TestGetDatasets(AnalysisTest):
         '''Gets datasets for an analysis with self.nfwf workflow. But these being from
         a dataset without sample info, it will also give an error message'''
         resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.ds.pk}', 'anid': 0})
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 400)
+        dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {self.ds.runname.name}'
         checkjson = {
-                'dsets': {f'{self.ds.pk}': {
-                    'channels': False,
-                        'instrument_types': [self.prod.shortname],
-                        'instruments': [self.prod.name],
-                        'nrstoredfiles': {'raw': self.ds.datasetrawfile_set.count()},
-                        'qtype': {'name': self.ds.quantdataset.quanttype.name,
-                            'is_isobaric': False, 
-                            'short': self.ds.quantdataset.quanttype.shortname},
-                    'dtype': self.ds.datatype.name,
-                    'exp': self.ds.runname.experiment.name,
-                    'files': [{'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename,
-                        'fr': '', 'setname': ''}],
-                    #'fn_ids': [self.f3sf.pk, self.f3sfmz.pk],
-                    'frregex': '.*fr([0-9]+).*mzML$',
-                    'id': self.ds.pk,
-                    'prefrac': False,
-                    'hr': False,
-                    'filesaresets': False,
-                    'proj': self.ds.runname.experiment.project.name,
-                    'run': self.ds.runname.name,
-                    'setname': '', # not set yet, no analysis passed
-                    }},
+                'dsets': {},
                 'error': True,
-                'errmsg': [f'File(s) in dataset {self.ds.runname.name} do not have a sample '
+                'errmsg': [f'File(s) in dataset {dsname} do not have a sample '
                     'annotation, please edit the dataset first'],
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
@@ -330,9 +310,10 @@ class TestGetDatasets(AnalysisTest):
         dsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=newds, rawfile=raw)
         dm.DatasetOwner.objects.get_or_create(dataset=newds, user=self.user)
         resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{newds.pk}', 'anid': 0})
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(f'Dataset with runname {newrun.name} has no quant details, please fill in '
-                'sample prep fields', resp.json()['errmsg'])
+        self.assertEqual(resp.status_code, 400)
+        dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {newrun.name}'
+        self.assertIn(f'File(s) in dataset {dsname} do not have a sample annotation, '
+                'please edit the dataset first', resp.json()['errmsg'])
 
 
 class TestGetWorkflowVersionDetails(AnalysisTest):
