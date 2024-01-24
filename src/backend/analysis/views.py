@@ -207,7 +207,6 @@ def get_analysis(request, anid):
         elif ap.param.ptype == 'number':
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
-    multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
 
     dsids = [x.dataset_id for x in ana.datasetanalysis_set.all()]
     prev_resultfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
@@ -238,6 +237,7 @@ def get_analysis(request, anid):
 
     ananame = aj.get_ana_fullname(ana)
     anadate = datetime.strftime(ana.date, '%Y-%m-%d')
+    multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
     for afp in ana.analysisfileparam_set.all():
         # Looping input files, to find added results analysis
         if (hasattr(afp.sfile, 'analysisresultfile') and not hasattr(afp.sfile, 'libraryfile')
@@ -283,25 +283,6 @@ def get_analysis(request, anid):
     return render(request, 'analysis/analysis.html', context)
 
 
-def set_protein_database_lib(request):
-    req = json.loads(request.body.decode('utf-8'))
-    isoforms = 'isoforms' in req and req['isoforms']
-    libfile = am.LibraryFile.objects.select_related('sfile').get(sfile__rawfile_id=req['fn_id'])
-    dbmod = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[req['type']]
-    kwargs = {'version': req['version'], 'libfile_id': libfile.id, 'organism': req['organism']}
-    if req['type'] == 'uniprot':
-        kwargs['isoforms'] = isoforms
-    try:
-        dbmod.objects.create(**kwargs)
-    except IntegrityError as e:
-        # THrown when DB complains about FK/uniqueness
-        pass # FIXME
-    else:
-        jj.send_slack_message('New automatic fasta release done: {} - {} {}, version {}'.format(
-            req['type'], req['organism'], 'with isoforms' if isoforms else '', req['version']), 'kantele')
-    return HttpResponse()
-
-
 def get_allwfs():
     allwfs = [{
         'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name, 
@@ -332,7 +313,8 @@ def get_dataset_files(dsid, use_refined):
 @login_required
 @require_GET
 def get_base_analyses(request):
-    '''Querying this returns a list of analyses that have a name matching with 
+    '''For search box of base analyses, this provides the names and IDs of those.
+    Querying this returns a list of analyses that have a name matching with 
     the input'''
     # TODO could reuse this in general analysis finding?
     # FIXME needs test

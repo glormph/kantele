@@ -18,11 +18,10 @@ from analysis import models as am
 
 # FIXME
 # This is mainly fixtures and its getting out of hand
-# We need to separate them better, because the actions in the
-# tests modify these things, and tests will become order-dependent.
-# BAD!
-# Only keep base fixutres that are not user-editable, e.g. pwiz, filetype etc
-# In tests, any thing which is modified needs its own fixture, not from base
+# We need to separate them better
+
+# Django flushes DB between tests, so we dont need get_or_create, but theres a lot non shared
+
 
 class BaseTest(TestCase):
     '''Normal django tests inherit here'''

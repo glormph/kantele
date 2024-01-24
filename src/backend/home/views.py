@@ -764,6 +764,7 @@ def fetch_dset_details(dset):
                          'short': dset.quantdataset.quanttype.shortname}
     except dsmodels.QuantDataset.DoesNotExist:
         info['qtype'] = False
+    # FIXME Hardcoded microscopy!
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'servershare', 'filetype').filter(
@@ -773,6 +774,7 @@ def fetch_dset_details(dset):
     info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
     info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))
     rawfiles = files.filter(mzmlfile__isnull=True)
+    # Show mzML/refine things for MS data:
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles = {'raw': rawfiles.count()}
         info.update({'refine_mzmls': [], 'convert_dataset_mzml': []})
@@ -826,8 +828,7 @@ def fetch_dset_details(dset):
     info['compstates'] = {
 dsmodels.DatasetUIComponent(x.dtcomp.component).name: x.state for x in
                           dsmodels.DatasetComponentState.objects.filter(
-                              dataset_id=dset.id).select_related(
-                                  'dtcomp__component')}
+                              dataset_id=dset.id).select_related('dtcomp')}
     return info
 
 

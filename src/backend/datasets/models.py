@@ -99,7 +99,7 @@ class DatasetOwner(models.Model):
 
 class DCStates(models.IntegerChoices):
     OK = 1, 'OK'
-    NEW = 2, 'New' # what is this for?
+    NEW = 2, 'New' # 
     INCOMPLETE = 3, 'Incomplete'
     ERROR = 4, 'Error'
 
@@ -112,6 +112,7 @@ class DatasetComponentState(models.Model):
 
 
 class DatasetRawFile(models.Model):
+    # FIXME Restrict to single filetype per dataset somehow
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     rawfile = models.OneToOneField(RawFile, on_delete=models.CASCADE)
 
@@ -266,6 +267,7 @@ class SampleSpecies(models.Model):
 
 
 class DatasetSample(models.Model):
+    '''Reporting model for keeping track of samples in datasets'''
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
 

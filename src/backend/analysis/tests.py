@@ -237,6 +237,12 @@ class TestGetAnalysis(AnalysisIsobaric):
         url = f'{self.url}1/'
         resp = self.cl.post(url)
         self.assertEqual(resp.status_code, 405)
+        
+#        # Non-existing dataset FIXME
+#        maxds = dm.Dataset.objects.aggregate(Max('pk'))['pk__max']
+#        resp = self.cl.get(f'{self.url}', data={'dsids': f'{maxds + 10}', 'anid': 0})
+#        self.assertEqual(resp.status_code, 200)
+#        self.assertEqual(resp.json()['errmsg'], ['Some datasets could not be found, they may not exist'])
 
     def test_ok(self):
         url = f'{self.url}{self.ana.nextflowsearch.pk}/'

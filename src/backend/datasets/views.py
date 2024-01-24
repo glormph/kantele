@@ -49,10 +49,6 @@ def get_species(request):
         query |= Q(linnean__icontains=request.GET['q'])
         return JsonResponse({x.id: {'id': x.id, 'linnean': x.linnean, 'name': x.popname} 
                 for x in models.Species.objects.filter(query)})
-    else:
-        return JsonResponse({x.species.id: {'id': x.species.id, 'linnean': x.species.linnean, 
-            'name': x.species.popname} for x in 
-            models.DatasetSpecies.objects.all().distinct('species').select_related('species')})
 
 
 @login_required
@@ -220,20 +216,6 @@ def dataset_samples_nods(request):
 @login_required
 def dataset_samples(request, dataset_id):
     response_json = empty_samples_json()
-
-    #params = get_dynamic_emptyparams('seqsamples')
-    #return {'params': params, 'species': [], 'quants': get_empty_isoquant(),
-    #        'sampletypes': [{'id': x.pk, 'name': x.name} for x in models.SampleType.objects.all()],
-    #        'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
-    #            'name': x['species__popname'], 'total': x['total']} 
-    #            for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
-    #                ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
-    #        }
-
-
-    # FIXME sample names show/save
-    # FIXME quant ch everything
-
     if dataset_id:
         dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
         if not dset:
@@ -653,6 +635,7 @@ def get_or_create_px_dset(exp, px_acc, user_id):
 
 
 def get_or_create_qc_dataset(data):
+    # FIXME maybe objects.get_or_create at least:
     qcds = models.Dataset.objects.filter(
         runname__experiment_id=data['experiment_id'],
         runname_id=data['runname_id'])
@@ -927,7 +910,14 @@ def reactivate_dataset(dset):
     # FIXME if reactivated quickly after archiving, you get an error. Because archive job is queued and it will execute, 
     # but that is not done yet, so we wont queue a reactivate job. Fine. But, if archive job is deleted, 
     # the dataset is still marked as deleted. In that case, we could set undelete on dset here, but that is not correct
-    # when the dset is archived afterwards by said job. Solution -> delete/undelete ALSO in post-job view
+    # when the dset is archived afterwards by said job.
+    # Another point is that if a dataset has a red error job in front of it, it will not be deactivated, job will wait
+    # and dset sits in deleted mode, unable to reactivate. 
+    # 
+    # Solutions:
+    #  - delete/undelete ALSO in post-job view - bad UI, dataset keeps showing in interface, should not
+    #  - reactivate cancels delete job (if it is pending
+    #  - 
     storestate = get_dset_storestate(dset)
     if storestate == 'purged':
         return {'state': 'error', 'error': 'Cannot reactivate purged dataset'}
@@ -1185,25 +1175,24 @@ def get_empty_isoquant():
     return quants
 
 
-def empty_sampleprep_json():
-    params = get_dynamic_emptyparams('sampleprep')
-    quants = get_empty_isoquant()
-    labelfree = models.QuantType.objects.get(name='labelfree')
-    quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree'}
-    return {'params': params, 'quants': quants, 'species': [],
-            'labelfree_multisample': False,
-            'labelfree_singlesample': {'model': '', 'newprojsample': ''},
-            'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
-                for x in models.Enzyme.objects.all()],
-            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
-                'name': x['species__popname'], 'total': x['total']} 
-                for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
-                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
-            }
-
+#def empty_sampleprep_json():
+#    params = get_dynamic_emptyparams('sampleprep')
+#    quants = get_empty_isoquant()
+#    labelfree = models.QuantType.objects.get(name='labelfree')
+#    quants[labelfree.id] = {'id': labelfree.id, 'name': 'labelfree'}
+#    return {'params': params, 'quants': quants, 'species': [],
+#            'labelfree_multisample': False,
+#            'labelfree_singlesample': {'model': '', 'newprojsample': ''},
+#            'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
+#                for x in models.Enzyme.objects.all()],
+#            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
+#                'name': x['species__popname'], 'total': x['total']} 
+#                for x in models.DatasetSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+#                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
+#            }
+#
 
 def empty_samples_json():
-    #params = get_dynamic_emptyparams('seqsamples')
     return {'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
             'lf_qtid': models.QuantType.objects.get(name='labelfree').pk,
             'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
@@ -1424,18 +1413,21 @@ def save_mssamples(request):
     return JsonResponse({})
 
 
-def store_new_channelsamples(data):
-    models.QuantChannelSample.objects.bulk_create([
-        models.QuantChannelSample(dataset_id=data['dataset_id'],
-            projsample_id=chan['model'], channel_id=chan['id'])
-        for chan in data['samples']])
-
-
 def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
+    '''This function is used both by LC and normal Dset'''
+    # FIXME can LC use normal dset samples?
+
+        # first delete old qcs/qsf
+        # create new ones but first do samples
+
     # switch from labelfree - tmt: remove filesample, create other channels
     if oldqtype == 'labelfree' and updated_qtype:
         print('Switching to isobaric')
-        store_new_channelsamples(data)
+        # FIXME new_channelsamples need fixing I guess
+        models.QuantChannelSample.objects.bulk_create([
+            models.QuantChannelSample(dataset_id=data['dataset_id'],
+                projsample_id=chan['model'], channel_id=chan['id'])
+            for chan in data['samples']])
         models.QuantSampleFile.objects.filter(
             rawfile__dataset_id=dset_id).delete()
     # reverse switch
@@ -1448,7 +1440,10 @@ def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
             print('new quant type found')
             models.QuantChannelSample.objects.filter(
                 dataset_id=dset_id).delete()
-            store_new_channelsamples(data)
+            models.QuantChannelSample.objects.bulk_create([
+                models.QuantChannelSample(dataset_id=data['dataset_id'],
+                    projsample_id=chan['model'], channel_id=chan['id'])
+                for chan in data['samples']])
         else:
             print('checking if new samples')
             existing_samples = {x.id: (x.projsample_id, x) for x in 
@@ -1582,48 +1577,6 @@ def save_labelcheck(request):
     set_component_state(dset_id, models.DatasetUIComponent.LCSAMPLES, models.DCStates.OK)
     return JsonResponse({})
 
-
-#@login_required
-#def save_sampleprep(request):
-#    data = json.loads(request.body.decode('utf-8'))
-#    user_denied = check_save_permission(data['dataset_id'], request.user)
-#    if user_denied:
-#        return user_denied
-#    dset_id = data['dataset_id']
-#    try:
-#        qtype = models.QuantDataset.objects.select_related(
-#            'quanttype').get(dataset_id=dset_id)
-#    except models.QuantDataset.DoesNotExist:
-#        pass  # new data, insert, not updating
-#    else:
-#        return update_sampleprep(data, qtype)
-#    if data['enzymes']:
-#        models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(
-#            dataset_id=dset_id, enzyme_id=x['id']) for x in data['enzymes'] if x['checked']])
-#    models.QuantDataset.objects.create(dataset_id=dset_id,
-#                                       quanttype_id=data['quanttype'])
-#    if not data['labelfree']:
-#        store_new_channelsamples(data)
-#    else:
-#        print('Saving labelfree')
-#        models.QuantSampleFile.objects.bulk_create([
-#            models.QuantSampleFile(rawfile_id=fid, projsample_id=data['samples'][str(fid)]['model'])
-#            for fid in [x['associd'] for x in data['filenames']]])
-#    save_admin_defined_params(data, dset_id)
-#    # TODO species to sample specific
-#    models.DatasetSpecies.objects.bulk_create([models.DatasetSpecies(
-#        dataset_id=dset_id, species_id=spid['id']) for spid in data['species']])
-#    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
-#    return JsonResponse({})
-#
-
-def validate_samples_input():
-    pass
-
-
-@login_required
-def update_samples(data):
-    pass
 
 @login_required
 @require_POST
@@ -1795,9 +1748,9 @@ def save_samples(request):
 
 
 def set_component_state(dset_id, comp, state):
-    comp = models.DatasetComponentState.objects.get(dataset_id=dset_id, dtcomp__component=comp)
-    comp.state = state
-    comp.save()
+    dcs = models.DatasetComponentState.objects.get(dataset_id=dset_id, dtcomp__component=comp)
+    dcs.state = state
+    dcs.save()
 
 
 def update_admin_defined_params(dset, data, category):

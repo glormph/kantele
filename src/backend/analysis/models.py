@@ -117,7 +117,7 @@ class PsetComponent(models.Model):
     # prefrac '.*fr([0-9]+).*mzML$'
 
     def __str__(self):
-        return '{} - {}'.format(self.pset.name, PsetComponent.ComponentChoices(self.component).label)
+        return '{} - {}'.format(self.pset.name, self.ComponentChoices(self.component).label)
 
 
 class PsetFileParam(models.Model):
@@ -292,6 +292,8 @@ class AnalysisDSInputFile(models.Model):
 
 
 class AnalysisFileSample(models.Model):
+    '''If one sample per file is used in labelfree analyses, the samples are stored
+    here'''
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     sample = models.TextField()
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)

@@ -209,6 +209,7 @@ class ConvertDatasetMzml(DatasetJob):
 
 
 class ConvertFileMzml(ConvertDatasetMzml):
+    # FIXME deprecate, no longer using this
     refname = 'convert_single_mzml'
 
     def getfiles_query(self, **kwargs):

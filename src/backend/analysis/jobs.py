@@ -273,7 +273,7 @@ class RunNextflowWorkflow(BaseJob):
                     infile['plate'] = kwargs['platenames'].get(str(fn.rawfile.datasetrawfile.dataset_id), '')
                 if 'sampleID' in inputdef_fields:
                     # sampleID is for pgt / dbgenerator
-                    infile['sample'] = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
+                    infile['sampleID'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample 
                 if 'fraction' in inputdef_fields:
                     infile['fraction'] = kwargs['infiles'].get(str(fn.id), {}).get('fr') 
                 if 'instrument' in inputdef_fields:
@@ -284,7 +284,9 @@ class RunNextflowWorkflow(BaseJob):
                 if 'file_type' in inputdef_fields:
                     infile['file_type'] = fn.filetype.filetype
                 if 'pep_prefix' in inputdef_fields:
-                    infile['pep_prefix'] = # FIXME this is like setname?
+                    # FIXME needs to be able to change to none, mutalt (VCF), fusion_squid, etc
+                    # We can probably use setname frontend code for that
+                    infile['pep_prefix'] = 'none' 
 
 
                 # FIXME add the pgt DB/other fields here

@@ -307,6 +307,7 @@ def copy_stage_files(stagefiledir, files):
         else:
             shutil.copy(fpath, fdst)
     # Remove obsolete files from stage-file-dir
+    # FIXME all shutil/os FS operations must be try/excepted!
     for fn in not_needed_files:
         fpath = os.path.join(stagefiledir, fn)
         if os.path.isdir(fpath):
@@ -362,7 +363,6 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
     # Revoked jobs do not need DB-updating, but need just to be stopped, 
     # so do not catch SoftTimeLimit exception
 
-    #TODO use nextflows -weblog functionality to do logging
     with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
         nflog = fp.read()
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'

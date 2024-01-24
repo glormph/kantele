@@ -146,8 +146,7 @@ class UpdateFilesTest(BaseIntegrationTest):
     url = '/datasets/save/files/'
 
     def test_add_files(self):
-        # Add files, check if added, also check if the job waits for another job on
-        # the dataset
+        '''Add files, check if added, also check if the job waits for another job on the dataset'''
         resp = self.post_json({'dataset_id': self.ds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
             'removed_files': {}})
         self.assertEqual(resp.status_code, 200)
@@ -179,7 +178,7 @@ class RenameProjectTest(BaseIntegrationTest):
         ds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
                 datatype=self.dtype, storage_loc='test', storageshare=self.ssnewstore)
         otheruser = User.objects.create(username='test', password='test')
-        own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
+        dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projid': self.p1.pk, 'newname': 'testnewp'})
         self.assertEqual(resp.status_code, 403)
@@ -379,7 +378,6 @@ class SaveSamples(BaseTest):
                 }
         resp = self.cl.post(self.url, content_type='application/json', data=req)
         self.assertEqual(resp.status_code, 200)
-        #psam = dm.ProjectSample.objects.filter(sample=samplename, project=newrun.experiment.project)
         self.assertEqual(psam.count(), 1)
         psam = psam.get()
         self.assertEqual(psam.samplematerial_set.count(), 1)
@@ -573,7 +571,7 @@ class MergeProjectsTest(BaseTest):
         ds = dm.Dataset.objects.create(date=self.p2.registered, runname=run,
                 datatype=self.dtype, storage_loc='test', storageshare=self.ssnewstore)
         otheruser = User.objects.create(username='test', password='test')
-        own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
+        dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
         self.assertEqual(resp.status_code, 403)

@@ -310,7 +310,6 @@ export async function save() {
   if (errors.length === 0 && preperrors.length === 0) { 
     let postdata = {
       dataset_id: $dataset_id,
-      //params: prepdata.params,
       samples: prepdata.samples,
       multiplex: false,
       qtype: prepdata.labeled ? prepdata.labeled : prepdata.lf_qtid,

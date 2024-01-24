@@ -1,7 +1,5 @@
 <script>
 /* TODO
-- loadable/edit analysis
-- button store, button store+run
 - click-removable datasets ?
 - 
 */
@@ -60,15 +58,6 @@ function updateResultfiles() {
   resultfnorder = resfn_arr.map(x => x.id);
 }
 
-//$: {
-//  // update result files when added_analyses changes, or base_analysis.resultfiles
-//  // FIXME this fires when typing in base analysis field, even though the resultfiles get set to [] at each keystroke.
-//  // maybe create dedicated method instead 
-//  fetched_resultfiles = added_analyses_order.flatMap(x => added_results[x].fns);
-//  resfn_arr = fetched_resultfiles.concat(base_analysis.resultfiles).concat(prev_resultfiles);
-//  resultfiles = Object.fromEntries(resfn_arr.map(x=> [x.id, x]));
-//  resultfnorder = resfn_arr.map(x => x.id);
-//}
 
 /*
 Removing:
@@ -223,6 +212,7 @@ async function storeAnalysis() {
     const resp = await postJSON('/analysis/store/', post);
     if (resp.error) {
       notif.errors[resp.error] = 1;
+      // FIXME think we no longer have links in responses, this can deprec.
       if ('link' in resp) {
         notif.links[resp.link] = 1;
       }
@@ -263,6 +253,10 @@ async function runAnalysis() {
 
 
 async function fetchWorkflow() {
+  /* Fetch all info about a chosen workflow. Passes dsids as param
+  to get input files that are results of any previous workflow that has
+  the same datasets as input
+  */
   let url = new URL('/analysis/workflow', document.location)
   const params = {dsids: dsids.join(','), wfvid: config.wfversion.id};
   url.search = new URLSearchParams(params).toString();
@@ -321,7 +315,7 @@ async function fetchDatasetDetails(fetchdsids) {
     } else {
       config.version_dep.v1.qtype = qtypes.keys().next().value;
     }
-    // FIXME deprecate, remove old pipelines with v1 kantele api
+    // FIXME deprecate, remove old pipelines with v1 kantele api!
     const instypes = new Set(Object.values(dsets).flatMap(ds => ds.instrument_types).map(x => x.toLowerCase()));
     if (config.v1 && instypes.size> 1) {
       notif.errors['Mixed instrument types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
@@ -483,8 +477,6 @@ function updateIsoquant(dsid_changed) {
   if ('ISOQUANT' in wf.components || 'ISOQUANT_SAMPLETABLE' in wf.components) {
     let ds = dsets[dsid_changed];
     const errmsg = `Sample set mixing error! Channels for datasets with setname ${ds.setname} are not identical!`;
-      console.log(ds);
-      console.log(config.isoquants);
     if (ds.qtype.is_isobaric) {
       if (ds.setname && !(ds.setname in config.isoquants)) {
         config.isoquants[ds.setname] = {
@@ -517,7 +509,6 @@ function updateIsoquant(dsid_changed) {
         }
       }
     }
-      console.log(config.isoquants);
 
     // Remove old sets from config.isoquants if necessary
     const dset_sets = new Set(Object.values(dsets).filter(ds => ds.setname).map(ds => ds.setname));
