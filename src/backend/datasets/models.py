@@ -110,6 +110,9 @@ class DatasetComponentState(models.Model):
     state = models.IntegerField(choices=DCStates.choices)
     # timestamp (when is saved/updated)
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['dataset', 'dtcomp'], name='uni_dscomp')]
+
 
 class DatasetRawFile(models.Model):
     # FIXME Restrict to single filetype per dataset somehow
@@ -210,7 +213,7 @@ class EnzymeDataset(models.Model):
 
 
 class QuantType(models.Model):
-    name = models.TextField()
+    name = models.TextField(unique=True)
     shortname = models.TextField()
 
     def __str__(self):
