@@ -1,5 +1,4 @@
 <script>
-import { onMount } from 'svelte';
 import { getJSON, postJSON } from './funcJSON.js'
 import { dataset_id, datasetFiles } from './stores.js';
 import ErrorNotif from './ErrorNotif.svelte';
@@ -105,9 +104,6 @@ async function fetchData() {
   edited = false;
 }
 
-//onMount(async() => {
-//  await fetchData();
-//})
 </script>
 
 

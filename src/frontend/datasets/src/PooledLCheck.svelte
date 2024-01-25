@@ -41,14 +41,14 @@ export async function save() {
       dataset_id: $dataset_id,
       quanttype: prepdata.quanttype,
     };
-    let url = '/datasets/save/pooledlc/';
+    let url = '/datasets/save/labelcheck/';
     await postJSON(url, postdata);
     fetchData();
   }
 }
 
 async function fetchData() {
-  let url = '/datasets/show/pooledlc/';
+  let url = '/datasets/show/labelcheck/';
   url = $dataset_id ? url + $dataset_id : url;
   const response = await getJSON(`${url}?lctype=pooled`);
   for (let [key, val] of Object.entries(response)) { prepdata[key] = val; }
