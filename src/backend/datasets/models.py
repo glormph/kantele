@@ -62,19 +62,22 @@ class Datatype(models.Model):
         return self.name
 
 
-class DatasetComponent(models.Model):
-    name = models.TextField(max_length=50, unique=True)
+class DatasetUIComponent(models.IntegerChoices):
+    FILES = 1, 'Files'
+    #SAMPLEPREP = 2, 'Sample prep'
+    SAMPLES = 2, 'Samples'
+    ACQUISITION = 3, 'MS Acquisition'
+    DEFINITION = 4, 'Definition'
+    LCSAMPLES = 6, 'LC samples'
+    POOLEDLCSAMPLES = 7, 'Pooled LC samples'
 
-    def __str__(self):
-        return self.name
 
 class DatatypeComponent(models.Model):
     datatype = models.ForeignKey(Datatype, on_delete=models.CASCADE)
-    component = models.ForeignKey(DatasetComponent, on_delete=models.CASCADE)
+    component = models.IntegerField(choices=DatasetUIComponent.choices)
 
     def __str__(self):
-        return '{} has component {}'.format(self.datatype.name,
-                                            self.component.name)
+        return f'{self.datatype.name} has component {DatasetUIComponent(self.component).label}'
 
 
 class Dataset(models.Model):
@@ -94,14 +97,25 @@ class DatasetOwner(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
 
 
+class DCStates(models.IntegerChoices):
+    OK = 1, 'OK'
+    NEW = 2, 'New' # 
+    INCOMPLETE = 3, 'Incomplete'
+    ERROR = 4, 'Error'
+
+
 class DatasetComponentState(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     dtcomp = models.ForeignKey(DatatypeComponent, on_delete=models.CASCADE)
-    state = models.TextField(max_length=20)
-    # state can be new, OK
+    state = models.IntegerField(choices=DCStates.choices)
+    # timestamp (when is saved/updated)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['dataset', 'dtcomp'], name='uni_dscomp')]
 
 
 class DatasetRawFile(models.Model):
+    # FIXME Restrict to single filetype per dataset somehow
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     rawfile = models.OneToOneField(RawFile, on_delete=models.CASCADE)
 
@@ -118,17 +132,14 @@ class ParamType(models.Model):
         return self.typename
 
 
-class ParamLabcategory(models.Model):
-    labcategory = models.TextField()
-
-    def __str__(self):
-        return self.labcategory
+class Labcategories(models.IntegerChoices):
+    MSSAMPLES = 1, 'MS Samples'
 
 
 class SelectParameter(models.Model):
     # adminable
     title = models.TextField()
-    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
+    category = models.IntegerField(choices=Labcategories.choices)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -140,7 +151,7 @@ class FieldParameter(models.Model):
     title = models.TextField()
     placeholder = models.TextField()
     paramtype = models.ForeignKey(ParamType, on_delete=models.CASCADE)
-    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
+    category = models.IntegerField(choices=Labcategories.choices)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -169,7 +180,7 @@ class FieldParameterValue(models.Model):
 class CheckboxParameter(models.Model):
     # adminable
     title = models.TextField()
-    category = models.ForeignKey(ParamLabcategory, on_delete=models.CASCADE)
+    category = models.IntegerField(choices=Labcategories.choices)
     active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -202,7 +213,7 @@ class EnzymeDataset(models.Model):
 
 
 class QuantType(models.Model):
-    name = models.TextField()
+    name = models.TextField(unique=True)
     shortname = models.TextField()
 
     def __str__(self):
@@ -229,17 +240,42 @@ class QuantDataset(models.Model):
     quanttype = models.ForeignKey(QuantType, on_delete=models.CASCADE)
 
 
+class SampleMaterialType(models.Model):
+    '''Different kind of samples, e.g. tissue, cell culture, plasma'''
+    name = models.TextField()
+
+
 class ProjectSample(models.Model):
     sample = models.TextField()
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = [['sample', 'project']]
+        constraints = [models.UniqueConstraint(fields=['sample', 'project'], name='uni_sampleproj')]
 
 
-class SeqSampleFile(models.Model):
-    rawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
+class SampleMaterial(models.Model):
+    sample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+    sampletype = models.ForeignKey(SampleMaterialType, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['sample', 'sampletype'], name='uni_sampletype')]
+
+
+class SampleSpecies(models.Model):
+    sample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+    species = models.ForeignKey(Species, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['sample', 'species'], name='uni_samplespecies')]
+
+
+class DatasetSample(models.Model):
+    '''Reporting model for keeping track of samples in datasets'''
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['projsample', 'dataset'], name='uni_samds')]
 
 
 class QuantSampleFile(models.Model):
@@ -253,10 +289,9 @@ class QuantChannelSample(models.Model):
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
 
 
-class QuantFileChannelSample(models.Model):
-    '''In non-pooled labelchecks there exist single-channel files'''
+class QuantFileChannel(models.Model):
+    '''In non-pooled labelchecks the mapping is single-channel files'''
     channel = models.ForeignKey(QuantTypeChannel, on_delete=models.CASCADE)
-    projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
     dsrawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
     
 

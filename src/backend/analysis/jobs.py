@@ -14,6 +14,10 @@ from datasets import models as dsmodels
 from datasets.jobs import get_or_create_mzmlentry
 from jobs.jobs import DatasetJob, MultiDatasetJob, SingleFileJob, BaseJob
 
+# FIXME
+# Need to work with analysis components!
+
+
 # TODO
 # rerun qc data and displaying qcdata for a given qc file, how? 
 def get_ana_fullname(analysis):
@@ -91,12 +95,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
         wf = models.Workflow.objects.filter(shortname__name='QC').last()
-        # FIXME hardcoded mods location
         params = kwargs.get('params', [])
-        params.extend(['--mods', 'data/labelfreemods.txt',
-            '--instrument', mzml.rawfile.producer.msinstrument.instrumenttype.name])
-        if mzml.rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
-            params.extend(['--prectol', '20ppm'])
         stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
@@ -106,7 +105,6 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
                'name': 'longqc',
-               'outdir': 'internal_results',
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
@@ -185,15 +183,14 @@ class RunNextflowWorkflow(BaseJob):
     inputs is {'params': ['--isobaric', 'tmt10plex'],
                'singlefiles': {'--tdb': tdb_sf_id, ... },}
     or shoudl inputs be DB things fields flag,sf_id (how for mzmls though?)
-{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--hirief', 'SAMPLETABLE', "126::set1::treat1::treat::::127::set1::treat2::treat..."
+{'params': ['--isobaric', 'tmt10plex', '--instrument', 'qe', '--hirief', '"126::set1::treat1::treat::::127::set1::treat2::treat..."
 ], 'mzml': ('--mzmls', '{sdir}/*.mzML'), 'singlefiles': {'--tdb': 42659, '--dbsnp': 42665, '--genome': 42666, '--snpfa': 42662, '--cosmic': 42663, '--ddb': 42664, '--blastdb': 42661, '--knownproteins': 42408, '--gtf': 42658, '--mods': 42667}}
     """
 
     def getfiles_query(self, **kwargs):
-        return rm.StoredFile.objects.filter(pk__in=kwargs['fractions'].keys()).select_related(
+        return rm.StoredFile.objects.filter(pk__in=kwargs['infiles'].keys()).select_related(
                 'servershare', 'rawfile__producer__msinstrument__instrumenttype',
-                'rawfile__datasetrawfile__quantfilechannelsample__channel__channel',
-                'rawfile__datasetrawfile__quantfilechannelsample__projsample',
+                'rawfile__datasetrawfile__quantfilechannel__channel__channel',
                 )
 
     def process(self, **kwargs):
@@ -209,40 +206,40 @@ class RunNextflowWorkflow(BaseJob):
             for sf_id in sf_ids:
                 sf = rm.StoredFile.objects.select_related('servershare').get(pk=sf_id)
                 stagefiles[flag].append((sf.servershare.name, sf.path, sf.filename)) 
-        # re-filter mzML files in case files are removed or added to dataset
+        # re-filter dset input files in case files are removed or added to dataset
         # between a stop/error and rerun of job
         sfiles_passed = self.getfiles_query(**kwargs)
+        is_msdata = sfiles_passed.distinct('rawfile__producer__msinstrument').count()
         job = analysis.nextflowsearch.job
-        dss = analysis.datasetsearch_set.all()
+        dsa = analysis.datasetanalysis.all()
         # First new files included:
-        # NB including new files leads to problems with e.g. fraction regex
-        # if they are somehow strange
-        # newfns also has to take into account there can be refined mzMLs and they
-        # exist next to normal mzMLs
-        files_not_in_frs = rm.StoredFile.objects.filter(mzmlfile__isnull=False, deleted=False,
-            rawfile__datasetrawfile__dataset__datasetsearch__in=dss).select_related(
-                    'rawfile').exclude(pk__in=kwargs['fractions'].keys())
-        stop_analysis = False
-        for fn_notfr in files_not_in_frs:
-            is_oldfn = fn_notfr.rawfile.storedfile_set.filter(mzmlfile__isnull=False, deleted=False,
-                    pk__in=kwargs['fractions'].keys(), regdate__gt=fn_notfr.regdate).count()
-            # if fn_notfr is older but has same rawfile as an mzml passed in fractions, it will
-            # probably be a refined file or otherwise older file
-            if not is_oldfn:
-                stop_analysis = True
-        if stop_analysis:
-            raise RuntimeError('Could not rerun job, there are files added to '
-                'a dataset, please edit the analysis so it is still correct, '
-                'save, and re-queue the job')
+        dsfiles_not_in_job = rm.StoredFile.objects.filter(deleted=False,
+            rawfile__datasetrawfile__dataset__datasetanalysis=dsa).select_related(
+                    'rawfile').exclude(pk__in=kwargs['infiles'].keys())
+        if is_msdata:
+            # Pick mzML files if the data is Mass Spec
+            dsfiles_not_in_job = dsfiles_not_in_job.filter(mzmlfile__isnull=False)
+        for fn_notjob in dsfiles_not_in_job:
+            # check if a newer version of this file exists (e.g. mzml/refined)
+            # which is instead specified in the job:
+            # if fn_notjob is older but has same rawfile as another file in infiles
+            if fn_notjob.rawfile.storedfile_set.filter(deleted=False, pk__in=kwargs['infiles'].keys(),
+                    regdate__gt=fn_notjob.regdate).count():
+                # Including new files leads to problems with e.g. fraction regex
+                # if they are somehow not matching 
+                raise RuntimeError('Could not rerun job, there are files added to '
+                    'a dataset, please edit the analysis so it is still correct, '
+                    'save, and re-queue the job')
 
-        # Now remove obsolete deleted files from job (e.g. corrupt, empty, etc)
-        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetsearch__in=dss)
+        # Now remove obsolete deleted-from-dataset files from job (e.g. corrupt, empty, etc)
+        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis=dsa)
         analysis.analysisdsinputfile_set.filter(sfile__in=obsolete).delete()
         analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
         for del_sf in obsolete:
+            # FIXME setnames/frac is specific
             kwargs['setnames'].pop(str(del_sf.pk))
-            kwargs['fractions'].pop(str(del_sf.pk))
+            kwargs['infiles'].pop(str(del_sf.pk))
         if obsolete:
             job.kwargs = kwargs
             job = job.save()
@@ -250,42 +247,56 @@ class RunNextflowWorkflow(BaseJob):
         # token is unique per job run:
         analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
         analysis.nextflowsearch.save()
-        run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
-               'analysis_id': analysis.id,
+        run = {'analysis_id': analysis.id,
                'token': analysis.nextflowsearch.token,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
                'name': get_ana_fullname(analysis),
                'outdir': analysis.user.username,
-               'mzmls': [],
-               'old_mzmls': False,
+               'infiles': [],
+               'old_infiles': False,
                'dstsharename': kwargs['dstsharename'],
+               'components': kwargs['inputs']['components'],
                }
         
-        # Gather mzML input
-        mzmls = []
-        if kwargs['inputs']['components']['mzmldef']:
-            mzmldef_fields = models.WFInputComponent.objects.get(name='mzmldef').value[kwargs['inputs']['components']['mzmldef']]
-            mzmls = [{
-                'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
-                'setname': kwargs['setnames'][str(x.id)] if 'setname' in mzmldef_fields else False,
-                'plate': kwargs['platenames'].get(str(x.rawfile.datasetrawfile.dataset_id), False) 
-                if 'plate' in mzmldef_fields else False,
-                'channel': x.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
-                if 'channel' in mzmldef_fields else False,
-                'sample': x.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample 
-                if 'sample' in mzmldef_fields else False,
-                'fraction': kwargs['fractions'].get(str(x.id), False) 
-                if 'fractions' in kwargs else False,
-                'instrument': x.rawfile.producer.msinstrument.instrumenttype.name 
-                if 'instrument' in mzmldef_fields else False,
-                } for x in sfiles_passed]
-            mzmls = [{'mzmldef': '\t'.join([x[key] for key in mzmldef_fields if x[key]]), **{k: x[k] 
-                for k in ['servershare', 'path', 'fn']}} for x in mzmls]
-        bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(mzmls) > 500
+        # Gather input files
+        infiles = []
+        # INPUTDEF is either False or [fn, set, fraction, etc]
+        if inputdef_fields := run['components']['INPUTDEF']:
+            for fn in sfiles_passed:
+                infile = {'servershare': fn.servershare.name, 'path': fn.path, 'fn': fn.filename}
+                if 'setname' in inputdef_fields:
+                    infile['setname'] = kwargs['setnames'].get(str(fn.id), '')
+                if 'plate' in inputdef_fields:
+                    infile['plate'] = kwargs['platenames'].get(str(fn.rawfile.datasetrawfile.dataset_id), '')
+                if 'sampleID' in inputdef_fields:
+                    # sampleID is for pgt / dbgenerator
+                    infile['sampleID'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample 
+                if 'fraction' in inputdef_fields:
+                    infile['fraction'] = kwargs['infiles'].get(str(fn.id), {}).get('fr') 
+                if 'instrument' in inputdef_fields:
+                    infile['instrument'] = fn.rawfile.producer.msinstrument.instrumenttype.name 
+                if 'channel' in inputdef_fields:
+                    # For non-pooled labelcheck
+                    infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannel.channel.channel.name 
+                if 'file_type' in inputdef_fields:
+                    infile['file_type'] = fn.filetype.filetype
+                if 'pep_prefix' in inputdef_fields:
+                    # FIXME needs to be able to change to none, mutalt (VCF), fusion_squid, etc
+                    # We can probably use setname frontend code for that
+                    infile['pep_prefix'] = 'none' 
+
+
+                # FIXME add the pgt DB/other fields here
+                #  expr_str        expr_thresh     sample_gtf_file pep_prefix
+                infiles.append(infile)
+            # FIXME this in tasks and need to write header
+        # FIXME bigrun not hardcode
+        bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(infiles) > 500
         run['nfrundirname'] = 'larger' if bigrun else 'small'
 
+        # COMPLEMENT/RERUN component:
         # Add base analysis stuff if it is complement and fractionated (if not it has only been used
         # for fetching parameter values and can be ignored in the job)
         ana_baserec = models.AnalysisBaseanalysis.objects.select_related('base_analysis').filter(analysis_id=analysis.id)
@@ -293,17 +304,17 @@ class RunNextflowWorkflow(BaseJob):
             ana_baserec = ana_baserec.get(Q(is_complement=True) | Q(rerun_from_psms=True))
         except models.AnalysisBaseanalysis.DoesNotExist:
             # Run with normal mzmldef input
-            run['mzmls'] = mzmls
+            run['infiles'] = infiles
         else:
-            if hasattr(ana_baserec.base_analysis, 'analysismzmldef') and ana_baserec.base_analysis.analysismzmldef.mzmldef == 'fractionated':
+            # SELECT prefrac with fraction regex to get fractionated datasets in old analysis
+            if ana_baserec.base_analysis.exclude(analysisdatasetsetname__regex='').count():
                 # rerun/complement runs with fractionated base analysis need --oldmzmldef parameter
-                old_mzmls, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
-                oldmz_fields = models.WFInputComponent.objects.get(name='mzmldef').value['fractionated']
-                run['old_mzmls'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in oldmz_fields]))
-                        for setmzmls in old_mzmls.values() for x in setmzmls]
+                old_infiles, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
+                run['old_infiles'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in run['components']['INPUTDEF']]))
+                        for setmzmls in old_infiles.values() for x in setmzmls]
             if not ana_baserec.rerun_from_psms:
                 # Only mzmldef input if not doing a rerun
-                run['mzmls'] = mzmls
+                run['infiles'] = infiles
 
         if not len(nfwf.profiles):
             profiles = ['standard', 'docker', 'lehtio']
@@ -312,8 +323,6 @@ class RunNextflowWorkflow(BaseJob):
         params = [str(x) for x in kwargs['inputs']['params']]
         # Runname defined when run executed (FIXME can be removed, no reason to not do that here)
         params.extend(['--name', 'RUNNAME__PLACEHOLDER'])
-        if kwargs['inputs']['components']['sampletable']:
-            params.extend(['SAMPLETABLE', kwargs['inputs']['components']['sampletable']])
         self.run_tasks.append(((run, params, stagefiles, ','.join(profiles), nfwf.nfversion), {}))
         analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()

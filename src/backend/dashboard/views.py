@@ -147,7 +147,7 @@ def get_file_production(request, daysago, maxdays):
     dbprojects = Project.objects.filter(active=True).select_related('projtype__ptype').annotate(
             rawsum=Sum('experiment__runname__dataset__datasetrawfile__rawfile__size'),
             dsmax=Max('experiment__runname__dataset__date'),
-            anamax=Max('experiment__runname__dataset__datasetsearch__analysis__date')).annotate(
+            anamax=Max('experiment__runname__dataset__datasetanalysis__analysis__date')).annotate(
             greatdate=Greatest('dsmax', 'anamax'))
     
     for proj in dbprojects:

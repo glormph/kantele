@@ -98,7 +98,9 @@ def run_job(job, jobmap):
         job.save()
         if not settings.TESTING:
             send_slack_message('Job {} failed in job runner: {}'.format(job.id, job.funcname), 'kantele')
-    job.save()
+    else:
+        # Defensive save() calls above in excepts, in case we ever want to raise or something
+        job.save()
 
 
 def process_job_file_activity(nonready_jobs):

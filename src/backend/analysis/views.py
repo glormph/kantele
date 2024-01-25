@@ -29,17 +29,29 @@ from jobs import models as jm
 @require_GET
 def get_analysis_init(request):
     '''New page, empty analysis, only gets datasets'''
-    dsids = request.GET['dsids'].split(',')
+    dserrors = []
     try:
-        context = {'dsids': dsids, 'analysis': False, 'wfs': get_allwfs()}
-    except:
-        return HttpResponseForbidden()
+        dsids = request.GET['dsids'].split(',')
+    except (KeyError, ValueError):
+        dserrors.append('Something wrong when asking datasets, contact admin')
+    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
+    deleted = dbdsets.filter(deleted=True).count()
+    if deleted:
+        dserrors.append('Deleted datasets can not be analysed')
+    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
+        dserrors.append('Some datasets could not be found, they may not exist')
+    context = {'dsids': dsids, 'ds_errors': dserrors, 'analysis': False, 'wfs': get_allwfs()}
     return render(request, 'analysis/analysis.html', context)
 
 
 @login_required
 def load_analysis_resultfiles(request, anid):
     # FIXME need test
+    '''Load the "resultfiles" that are output from previous analyses, if user asks for 
+    specific previous analysis.
+    Exclude here the files from analyses which have identical datasets (dsids)
+    and files from base_analyses loaded for this analysis. These files will
+    already be loaded in the UI.'''
     try:
         ana = am.Analysis.objects.get(pk=anid)
     except am.Analysis.DoesNotExist:
@@ -86,8 +98,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis = {
             'analysis_id': ana.pk,
-            'dsets_identical': set(dss.dataset_id for dss in ana.datasetsearch_set.all()) == set(new_ana_dsids),
-            'mzmldef': False,
+            'dsets_identical': set(dss.dataset_id for dss in ana.datasetanalysis_set.all()) == set(new_ana_dsids),
             'flags': [],
             'multicheck': [],
             'inputparams': {},
@@ -114,9 +125,6 @@ def load_base_analysis(request, wfversion_id, baseanid):
         analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
     for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
             analysis['fileparams'][afp.param_id] = afp.sfile_id
-    if hasattr(ana, 'analysismzmldef') and am.PsetComponent.objects.filter(
-            pset_id=new_pset_id, component__name='mzmldef'):
-        analysis['mzmldef'] = ana.analysismzmldef.mzmldef
 
     # Get datasets from base analysis for their setnames/filesamples etc
     # Only overlapping datasets are fetched here
@@ -144,6 +152,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
     except am.AnalysisSampletable.DoesNotExist:
         sampletables = {}
     analysis['isoquants'] = get_isoquants(ana, sampletables)
+
+    # Dont need checking complement component since base ana is included everywhere
     try:
         baseana_dbrec = am.AnalysisBaseanalysis.objects.get(analysis=ana)
     except am.AnalysisBaseanalysis.DoesNotExist:
@@ -151,6 +161,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
     else:
         dsets.update(baseana_dbrec.shadow_dssetnames)
         analysis['isoquants'].update(baseana_dbrec.shadow_isoquants)
+
     analysis_prev_resfiles_ids = get_prev_resultfiles(new_ana_dsids, only_ids=True)
     added_files_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
         analysis_id__in=added_ana_ids).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
@@ -164,6 +175,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
 @require_GET
 @login_required
 def get_analysis(request, anid):
+    '''Renders analysis HTML page, complete with analysis, values are loaded as JSON in rendered
+    page where the JS can pick it up'''
     try:
         ana = am.Analysis.objects.get(nextflowsearch__pk=anid)
     except am.Analysis.DoesNotExist:
@@ -175,7 +188,6 @@ def get_analysis(request, anid):
             'editable': ana.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR],
             'wfversion_id': ana.nextflowsearch.nfworkflow_id,
             'wfid': ana.nextflowsearch.workflow_id,
-            'mzmldef': False,
             'analysisname': ana.name,
             'flags': [],
             'multicheck': [],
@@ -195,15 +207,14 @@ def get_analysis(request, anid):
         elif ap.param.ptype == 'number':
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfworkflow.paramset
-    multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
 
-    dsids = [x.dataset_id for x in ana.datasetsearch_set.all()]
+    dsids = [x.dataset_id for x in ana.datasetanalysis_set.all()]
     prev_resultfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
     # Parse base analysis if any
     ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch').filter(analysis_id=ana.id)
     if ana_base.exists():
         ana_base = ana_base.get()
-        base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetsearch_set.all()]
+        base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetanalysis_set.all()]
         baname = aj.get_ana_fullname(ana_base.base_analysis)
         badate = datetime.strftime(ana_base.base_analysis.date, '%Y-%m-%d')
         analysis['base_analysis'] = {
@@ -226,6 +237,7 @@ def get_analysis(request, anid):
 
     ananame = aj.get_ana_fullname(ana)
     anadate = datetime.strftime(ana.date, '%Y-%m-%d')
+    multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
     for afp in ana.analysisfileparam_set.all():
         # Looping input files, to find added results analysis
         if (hasattr(afp.sfile, 'analysisresultfile') and not hasattr(afp.sfile, 'libraryfile')
@@ -248,38 +260,27 @@ def get_analysis(request, anid):
         # Looping input files, put in normal params
         else:
             analysis['fileparams'][afp.param_id] = afp.sfile_id
-    if hasattr(ana, 'analysismzmldef'):
-        analysis['mzmldef'] = ana.analysismzmldef.mzmldef
-    try:
-        sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
-    except am.AnalysisSampletable.DoesNotExist:
+
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    wf_components = {allcomponents[x.component].name: x.value for x in pset.psetcomponent_set.all()}
+
+    if 'ISOQUANT_SAMPLETABLE' in wf_components:
+        try:
+            sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
+        except am.AnalysisSampletable.DoesNotExist:
+            sampletables = {}
+    else:
         sampletables = {}
-    analysis['isoquants'] = get_isoquants(ana, sampletables)
+
+    if 'ISOQUANT' in wf_components:
+        analysis['isoquants'] = get_isoquants(ana, sampletables)
+
     context = {
             'dsids': dsids,
             'analysis': analysis,
             'wfs': get_allwfs()
             }
     return render(request, 'analysis/analysis.html', context)
-
-
-def set_protein_database_lib(request):
-    req = json.loads(request.body.decode('utf-8'))
-    isoforms = 'isoforms' in req and req['isoforms']
-    libfile = am.LibraryFile.objects.select_related('sfile').get(sfile__rawfile_id=req['fn_id'])
-    dbmod = {'uniprot': am.UniProtFasta, 'ensembl': am.EnsemblFasta}[req['type']]
-    kwargs = {'version': req['version'], 'libfile_id': libfile.id, 'organism': req['organism']}
-    if req['type'] == 'uniprot':
-        kwargs['isoforms'] = isoforms
-    try:
-        dbmod.objects.create(**kwargs)
-    except IntegrityError as e:
-        # THrown when DB complains about FK/uniqueness
-        pass # FIXME
-    else:
-        jj.send_slack_message('New automatic fasta release done: {} - {} {}, version {}'.format(
-            req['type'], req['organism'], 'with isoforms' if isoforms else '', req['version']), 'kantele')
-    return HttpResponse()
 
 
 def get_allwfs():
@@ -312,7 +313,8 @@ def get_dataset_files(dsid, use_refined):
 @login_required
 @require_GET
 def get_base_analyses(request):
-    '''Querying this returns a list of analyses that have a name matching with 
+    '''For search box of base analyses, this provides the names and IDs of those.
+    Querying this returns a list of analyses that have a name matching with 
     the input'''
     # TODO could reuse this in general analysis finding?
     # FIXME needs test
@@ -336,8 +338,13 @@ def get_base_analyses(request):
 
 @login_required
 @require_GET
-def get_datasets(request):
-    """Fetches datasets to analysis, populates dataset/analysis-specific fields"""
+def get_datasets(request, wfversion_id):
+    """Fetches datasets to analysis, populates dataset/analysis-specific fields,
+    field relevance is guided by which workflow is used (wfversion_id)
+    """
+    # FIXME this can get into page render? It is loaded at start
+    # Only "update" cannot be used then, but is that a problem?
+    # Maybe keep here so user can in future dyn select dsets to add
     try:
         dsids = request.GET['dsids'].split(',')
         anid = int(request.GET['anid'])
@@ -345,44 +352,62 @@ def get_datasets(request):
         return JsonResponse({'error': True, 'errmsg': ['Something wrong when asking datasets, contact admin']}, status=400)
     response = {'error': False, 'errmsg': []}
     dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
-    deleted = dbdsets.filter(deleted=True).count()
-    if deleted:
-        response['error'] = True
-        response['errmsg'].append('Deleted datasets can not be analysed')
-    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
-        response['error'] = True
-        response['errmsg'].append('Some datasets could not be found, they may not exist')
+#    deleted = dbdsets.filter(deleted=True).count()
+#    if deleted:
+#        response['errmsg'].append('Deleted datasets can not be analysed')
+#    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
+#        response['errmsg'].append('Some datasets could not be found, they may not exist')
 
     dsetinfo = {}
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    wfcomponents = {allcomponents[x.component].name: x.value
+            for x in am.PsetComponent.objects.filter(pset__nextflowwfversion=wfversion_id)}
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
             'quantdataset'):
-        prefrac, hr = False, False
-        if hasattr(dset, 'prefractionationdataset'):
-            pf = dset.prefractionationdataset
-            prefrac = str(pf.prefractionation.name)
-            if 'hirief' in pf.prefractionation.name.lower():
-                hr = f'HiRIEF {str(pf.hiriefdataset.hirief)}'
+        # For error reporting per dset:
+        dsname = f'{dset.runname.experiment.project.name} / {dset.runname.experiment.name} / {dset.runname.name}'
+        # Initialize
+        prefrac, hr, frregex = False, False, ''
+        is_isobaric, qtype = False, False
+        channels = {}
+        if 'PREFRAC' in wfcomponents:
+            if hasattr(dset, 'prefractionationdataset'):
+                pf = dset.prefractionationdataset
+                prefrac = str(pf.prefractionation.name)
+                if 'hirief' in pf.prefractionation.name.lower():
+                    hr = f'HiRIEF {str(pf.hiriefdataset.hirief)}'
+            frregex = wfcomponents['PREFRAC']
 
-        setname, frregex = '', '.*fr([0-9]+).*mzML$'
+        setname = ''
         if anid and am.AnalysisDatasetSetname.objects.filter(analysis_id=anid):
             adsn = dset.analysisdatasetsetname_set.get(analysis_id=anid)
             setname = adsn.setname.setname
+            # PREFRAC component:
             frregex = adsn.regex
 
-        dssffiles = rm.StoredFile.objects.select_related('rawfile__producer', 'servershare',
+        dssfiles = rm.StoredFile.objects.select_related('rawfile__producer', 'servershare',
                 'filetype').filter(rawfile__datasetrawfile__dataset_id=dset.id)
-        dsrawfiles = dssffiles.filter(mzmlfile__isnull=True)
+        dsrawfiles = dssfiles.filter(mzmlfile__isnull=True)
         nrrawfiles = dsrawfiles.count()
-        producers = dssffiles.distinct('rawfile__producer')
+        producers = dssfiles.distinct('rawfile__producer')
 
-        # FIXME This needs to depend on mzML input component more explicit than quantdataset?
-        # Could put this in own function in that case, each component gets function?
-        if hasattr(dset, 'quantdataset'):
+        # Is this a quant MS dataset (or seq, etc?), then do MS things
+        dset_ftype = dssfiles.distinct('filetype')
+        dset_instr = dssfiles.distinct('rawfile__producer__msinstrument')
+        if dset_ftype.count() > 1 or dset_instr.count() > 1:
+            # This is the kind of error that can just not return datasets, only an error
+            return JsonResponse({'error': True, 'errmsg': ['Multiple different file types in dataset, not allowed']}, status=400)
+        is_msdata = dset_instr.filter(rawfile__producer__msinstrument__isnull=False).count()
+
+        # FIXME quantdataset not here when refine!
+        if is_msdata and hasattr(dset, 'quantdataset'):
+            is_isobaric = any(x in dset.quantdataset.quanttype.shortname for x in ['plex', 'pro'])
             qtype = {'name': dset.quantdataset.quanttype.name,
-                    'short': dset.quantdataset.quanttype.shortname}
+                    'short': dset.quantdataset.quanttype.shortname,
+                    'is_isobaric': is_isobaric}
 
             # FIXME enforcing refined mzML
-            non_deleted_mzmlfiles = dssffiles.filter(mzmlfile__isnull=False, deleted=False,
+            non_deleted_mzmlfiles = dssfiles.filter(mzmlfile__isnull=False, deleted=False,
                     purged=False)
             refineddsfiles = non_deleted_mzmlfiles.filter(mzmlfile__refined=True)
             if refineddsfiles.count():
@@ -390,92 +415,106 @@ def get_datasets(request):
             elif non_deleted_mzmlfiles.count():
                 usefiles = non_deleted_mzmlfiles
             else:
+                # When no mzml files exist, error when it is MS data
+                # This check should probably be done on the analysis load level,
+                # so encode it in the <script>, unless you want to be able to dynamically
+                # select more datasets in the analysis view.
+                # FIXME -- so this is wrong, when we will also run refine as analysis:
+                # need to explicitly check if a pipeline demands mzMLs with a component!
                 usefiles = non_deleted_mzmlfiles
-
-            # FIXME tease out isoquant / LF / mzML from eachother
-            sample_error = False
-            if usefiles.filter(checked=True).count() != nrrawfiles:
-                sample_error = True
-                response['error'] = True
-                response['errmsg'].append('Need to create or finish refining mzML files first '
-                        f'in dataset {dset.runname.name}')
-            channels = {}
-            resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''}
-                    for x in usefiles}
-            qsf_error = False
-            if 'plex' in dset.quantdataset.quanttype.name.lower():
-                # isobaric multiplex
-                for fn in usefiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
-                    try:
-                        qfcs = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample
-                    except dm.QuantFileChannelSample.DoesNotExist:
-                        qfcs = ''
-                    resp_files[fn.id]['sample'] = qfcs
-                channels = {
-                    ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
-                    dm.QuantChannelSample.objects.select_related(
-                        'projsample', 'channel__channel').filter(dataset_id=dset.pk)}
-            else:
-                # Labelfree
-                for fn in usefiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
-                    try:
-                        qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
-                    except dm.QuantSampleFile.DoesNotExist:
-                        qsf_error = True
-                    else:
-                        resp_files[fn.id]['sample'] = qsf_sample
-                if qsf_error:
-                    # FIXME is this possible, that you pass the "no sample prep" check,
-                    # but not the sample annotation?
-                    response['error'] = True
-                    response['errmsg'].append(f'File(s) in dataset {dset.runname.name} do '
-                        'not have a sample annotation, please edit the dataset first')
-
-            filesaresets = False
-            if anid:
-                # Add possible already stored analysis file-setnames
-                # FIXME files need match dset!
-                for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
-                    resp_files[afs.sfile_id]['setname'] = afs.sample
-                filesaresets = any((x['setname'] != '' for x in resp_files.values()))
-            elif not qsf_error and not sample_error:
-                # Sample is the fallback, set in dataset creation, 
-                # FIXME no need to check if setname == '', is always that bc not set
-                # except in other if branch above
-                [x.update({'setname': x['sample'] if x['setname'] == '' else x['setname']})
-                        for x in resp_files.values()]
-            # to list for frontend
-            resp_files = [resp_files[x.id] for x in usefiles]
+                response['errmsg'].append(f'MS dataset {dsname} does not contain mzML files, cannot run analysis')
         else:
-            qtype = False
-            channels = {}
-            resp_files = []
-            filesaresets = False
-            response['error'] = True
-            response['errmsg'].append(f'Dataset with runname {dset.runname.name} has no quant '
-                    'details, please fill in sample prep fields')
+            # Not an MS run with mzML input, just use the e.g. sequencing files
+            usefiles = dssfiles.filter(deleted=False)
 
-        # Fill response object
-        dsetinfo[dset.pk] = {
-                'id': dset.pk,
-                'proj': dset.runname.experiment.project.name,
-                'exp': dset.runname.experiment.name,
-                'run': dset.runname.name,
-                'dtype': dset.datatype.name,
-                'prefrac': prefrac,
-                'hr': hr,
-                'setname': setname,
-                'frregex': frregex,
-                'instruments': [x.rawfile.producer.name for x in producers],
-                'instrument_types': [x.rawfile.producer.shortname for x in producers],
-                'qtype': qtype,
-                'nrstoredfiles': {'raw': nrrawfiles},
-                'channels': channels,
-                'files': resp_files,
-                'filesaresets': filesaresets,
-                }
-    response['dsets'] = dsetinfo
-    return JsonResponse(response)
+        # Check if files to use are mapping to rawfiles in dataset
+        files_not_same_error = False
+        if usefiles.filter(checked=True).count() != nrrawfiles:
+            files_not_same_error = True
+            response['errmsg'].append('Files selected for analysis are not same number as that '
+                    f'of registered files in dataset {dsname}. Maybe you need to finish creating mzMLs '
+                    'or refining them')
+        resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''}
+                for x in usefiles}
+
+        qsf_error = False
+        if is_msdata and is_isobaric:
+            # multiplex so add channel/samples if any exist (not for labelcheck)
+            channels = {
+                ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
+                dm.QuantChannelSample.objects.select_related(
+                    'projsample', 'channel__channel').filter(dataset_id=dset.pk)}
+        else:
+            # Labelfree or other data type, add file/sample mapping
+            channels = False
+            for fn in usefiles.select_related('rawfile__datasetrawfile__quantsamplefile__projsample'):
+                try:
+                    qsf_sample = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
+                except dm.QuantSampleFile.DoesNotExist:
+                    qsf_error = True
+                else:
+                    resp_files[fn.id]['sample'] = qsf_sample
+            if qsf_error:
+                # FIXME is this possible, that you pass the "no sample prep" check,
+                # but not the sample annotation?
+                response['errmsg'].append(f'File(s) in dataset {dsname} do '
+                    'not have a sample annotation, please edit the dataset first')
+
+        # Files with samples (non-MS, IP, non-isobaric, etc)
+        # FIXME rename this key to samplename instead of setname!
+        filesaresets = False
+        if anid and is_msdata:
+            # Add possible already stored analysis file-setnames
+            # FIXME files need match dset!
+            for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
+                resp_files[afs.sfile_id]['setname'] = afs.sample
+            filesaresets = any((x['setname'] != '' for x in resp_files.values()))
+
+        elif is_msdata and not qsf_error and not files_not_same_error:
+            # New analysis, no errors in dset: is the fallback, from dataset creation 
+            [x.update({'setname': x['sample']}) for x in resp_files.values()]
+
+        elif anid and not is_msdata:
+            # sequencing data etcetera, always have sample-per-file since we dont
+            # expect multiplexing or fractionation here
+            # Add possible already stored analysis file samplenames
+            # FIXME files need match dset!
+            for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
+                resp_files[afs.sfile_id]['setname'] = afs.sample
+
+        elif not is_msdata and not files_not_same_error:
+            [x.update({'setname': x['sample']}) for x in resp_files.values()]
+
+        # Finalize response
+        if resp_error := len(response['errmsg']) > 0:
+            # Errors found, dont output proper info:
+            status = 400
+        else:
+            status = 200
+            # to list for frontend
+            # Fill response object
+            dsetinfo[dset.pk] = {
+                    # FIXME add relevant stuff for other dataset types seq etc
+                    'id': dset.pk,
+                    'proj': dset.runname.experiment.project.name,
+                    'exp': dset.runname.experiment.name,
+                    'run': dset.runname.name,
+                    'dtype': dset.datatype.name,
+                    'prefrac': prefrac,
+                    'hr': hr,
+                    'setname': setname,
+                    'frregex': frregex,
+                    'instruments': [x.rawfile.producer.name for x in producers],
+                    'instrument_types': [x.rawfile.producer.shortname for x in producers],
+                    'qtype': qtype,
+                    'nrstoredfiles': {'raw': nrrawfiles},
+                    'channels': channels,
+                    'files': [resp_files[x.id] for x in usefiles],
+                    'filesaresets': filesaresets,
+                    }
+        response['error'] = resp_error
+        response['dsets'] = dsetinfo
+    return JsonResponse(response, status=status)
 
 
 @login_required
@@ -500,9 +539,10 @@ def get_workflow_versioned(request):
     userfiles = [x for x in rm.UserFile.objects.select_related('sfile__filetype').filter(
         sfile__filetype__in=ftypes).order_by('-sfile__regdate')]
     selectable_files.extend(userfiles)
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     resp = {
             'analysisapi': wf.kanteleanalysis_version,
-            'components': {psc.component.name: psc.component.value for psc in 
+            'components': {allcomponents[psc.component].name: psc.value for psc in 
                 wf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': f.param.nfparam, 'id': f.param.pk, 'name': f.param.name,
                 'help': f.param.help or False}
@@ -542,13 +582,13 @@ def get_prev_resultfiles(dsids, only_ids=False):
        - with analysis that also have MORE datasets
        - analysis that have a subset of datasets
     '''
-    superset_analysis = am.DatasetSearch.objects.filter(
-            analysis__datasetsearch__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values(
+    superset_analysis = am.DatasetAnalysis.objects.filter(
+            analysis__datasetanalysis__dataset_id__in=dsids).exclude(dataset__id__in=dsids).values(
                     'analysis')
-    qset_analysis = am.Analysis.objects.filter(datasetsearch__dataset__in=dsids,
+    qset_analysis = am.Analysis.objects.filter(datasetanalysis__dataset__in=dsids,
             deleted=False).exclude(pk__in=superset_analysis)
     for dsid in dsids:
-        qset_analysis = qset_analysis.filter(datasetsearch__dataset_id=dsid)
+        qset_analysis = qset_analysis.filter(datasetanalysis__dataset_id=dsid)
     qset_arf = am.AnalysisResultFile.objects.filter(analysis__in=qset_analysis.distinct())
     if only_ids:
         prev_resultfiles = [x['sfile_id'] for x in qset_arf.values('sfile_id')]
@@ -568,10 +608,13 @@ def show_analysis_log(request, nfs_id):
         return HttpResponseNotFound()
     return HttpResponse('\n'.join(nfs.analysis.log), content_type="text/plain")
 
-
+ 
 @login_required
 @require_POST
 def store_analysis(request):
+    # FIXME need to block analysis editing when stored, so it cannot be re-stored. Check if:
+    # job for analysis is in states pending, error, etc to see if storeable (like in home when is edit button, basically that can always be on if this is implemented)
+    # 
     """Edits or stores a new analysis"""
     # Init
     jobparams = defaultdict(list)
@@ -583,9 +626,9 @@ def store_analysis(request):
         req = json.loads(request.body.decode('utf-8'))
         req['dsids']
         req['analysis_id']
-        req['fractions']
+        req['infiles']
         req['nfwfvid']
-        req['isoquant']
+        req['components']
         req['dssetnames']
         req['analysisname']
         req['frregex']
@@ -603,14 +646,14 @@ def store_analysis(request):
     if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
     if req['analysis_id']:
-        analysis = am.Analysis.objects.get(pk=req['analysis_id'])
+        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(pk=req['analysis_id'])
         if analysis.user_id != request.user.id and not request.user.is_staff:
             return JsonResponse({'error': 'You do not have permission to edit this analysis'})
         elif analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'})
 
     # Check if files have not changed while editing an analysis (e.g. long open window)
-    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['fractions']}, set()
+    frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['infiles']}, set()
     dsfiles = {dsid: get_dataset_files(dsid, use_refined=True) for dsid in req['dsids']}
     for dsid in req['dsids']:
         for sf in dsfiles[dsid]:
@@ -621,10 +664,13 @@ def store_analysis(request):
     if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
         return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
             'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
+    # Components
+    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    nfwf_ver = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
+    wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
 
     # Check if labelcheck 
-    is_lcheck = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid'], paramset__psetcomponent__component__name='labelcheck').exists()
-    if is_lcheck:
+    if 'LABELCHECK_ISO' in wf_components:
         try:
             qtype = dsetquery.values('quantdataset__quanttype__shortname').distinct().get()
         except dm.Dataset.MultipleObjectsReturned:
@@ -648,10 +694,10 @@ def store_analysis(request):
             return False, False
         return vals, calc_psm
 
-    # FIXME isobaric quant is API v1/v2 diff, fix it
+    # FIXME isobaric quant is API v1/v2 diff, fix it by using diff components!
     # need passed: setname, any denom, or sweep or intensity
-    if req['isoquant'] and not is_lcheck:
-        for setname, quants in req['isoquant'].items():
+    if 'ISOQUANT' in wf_components:
+        for setname, quants in req['components']['ISOQUANT'].items():
             if setname not in set(req['dssetnames'].values()):
                 return JsonResponse({'error': f'Isobaric setname {setname} '
                 'could not be matched to dataset setnames, something went wrong'})
@@ -667,32 +713,34 @@ def store_analysis(request):
     if req['analysis_id']:
         analysis.name = req['analysisname']
         analysis.save()
-        dss = am.DatasetSearch.objects.filter(analysis=analysis)
+        dss = am.DatasetAnalysis.objects.filter(analysis=analysis)
         excess_dss = {x.dataset_id for x in dss}.difference(req['dsids'])
         dss.filter(dataset_id__in=excess_dss).delete()
-        am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) 
+        am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
+        wfshortname = analysis.nextflowsearch.workflow.shortname.name
     else:
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
-        am.DatasetSearch.objects.bulk_create([am.DatasetSearch(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
+        wfshortname = am.Workflow.objects.select_related('shortname').get(pk=req['wfid']).shortname.name
+        am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
+    ana_storpathname = (f'{analysis.pk}_{wfshortname}_{analysis.name}_'
+            f'{datetime.strftime(analysis.date, "%Y%m%d_%H.%M")}')
+    analysis.storage_dir = f'{analysis.user.username}/{ana_storpathname}'
+    analysis.save()
 
-    components = {k: v for k, v in req['components'].items() if v}
-    all_mzmldefs = am.WFInputComponent.objects.get(name='mzmldef').value
-    jobinputs = {'components': {}, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
+    in_components = {k: v for k, v in req['components'].items() if v}
+    jobinputs = {'components': wf_components, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
     data_args = {'setnames': {}, 'platenames': {}}
+    data_args['infiles'] = req['infiles']
 
-    # Input files are passed as "fractions" currently, maybe make this cleaner in future
-    data_args['fractions'] = req['fractions']
-
-    # Mzml definition
-    if 'mzmldef' in components:
-        am.AnalysisMzmldef.objects.update_or_create(defaults={'mzmldef': components['mzmldef']}, analysis=analysis)
-        jobinputs['components']['mzmldef'] = components['mzmldef']
+    # Input file definition
+    if 'INPUTDEF' in wf_components:
+        jobinputs['components']['INPUTDEF'] = wf_components['INPUTDEF']
     else:
-        am.AnalysisMzmldef.objects.filter(analysis=analysis).delete()
-        jobinputs['components']['mzmldef'] = False
+        jobinputs['components']['INPUTDEF'] = False
 
     # Store setnames
+    # FIXME component?
     setname_ids = {}
     am.AnalysisSetname.objects.filter(analysis=analysis).exclude(setname__in=req['dssetnames'].values()).delete()
     for setname in set(req['dssetnames'].values()):
@@ -701,9 +749,9 @@ def store_analysis(request):
     # setnames for datasets, optionally fractions and strips
     new_ads = {}
     dsets = {str(dset.id): dset for dset in dsetquery}
-    am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fractions']).delete()
+    am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['infiles']).delete()
     for dsid, setname in req['dssetnames'].items():
-        if 'mzmldef' in components and 'plate' in all_mzmldefs[components['mzmldef']]:
+        if 'PREFRAC' in wf_components:
             regex = req['frregex'][dsid] 
         else:
             regex = ''
@@ -715,7 +763,8 @@ def store_analysis(request):
             am.AnalysisDSInputFile.objects.update_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
             data_args['setnames'][sf.pk] = setname
         dset = dsets[dsid]
-        if hasattr(dset, 'prefractionationdataset'):
+        if 'PREFRAC' in wf_components and hasattr(dset, 'prefractionationdataset'):
+            # get platenames
             pfd = dset.prefractionationdataset
             if hasattr(pfd, 'hiriefdataset'):
                 strip = '-'.join([re.sub('.0$', '', str(float(x.strip()))) for x in str(pfd.hiriefdataset.hirief).split('-')])
@@ -787,24 +836,33 @@ def store_analysis(request):
             shadow_isoquants.update(baseana_dbrec.shadow_isoquants)
         # Remove current from previous (shadow) data if this is rerun 
         # and current isoquants are defined
-        for setname in req['isoquant'].keys():
+        for setname in req['components']['ISOQUANT']:
             if setname in shadow_isoquants:
                 del(shadow_isoquants[setname])
         for dsid, setname in req['dssetnames'].items():
             if int(dsid) in shadow_dss:
                 del(shadow_dss[int(dsid)])
-            ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
-                    defaults={'setname_id': setname_ids[setname], 'regex': regex},
-                    analysis=analysis, dataset_id=dsid) 
+# This doesnt work: resets ads to wrong regex, why did we have it?
+#            ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
+#                    defaults={'setname_id': setname_ids[setname], 'regex': regex},
+#                    analysis=analysis, dataset_id=dsid) 
+        if 'COMPLEMENT_ANALYSIS' in wf_components:
+            is_complement = req['base_analysis']['isComplement']
+            rerun = req['base_analysis']['runFromPSM']
+            if rerun:
+                # Defensive, make sure it is overridden
+                is_complement = False
+        else:
+            is_complement, rerun = False, False
         base_def = {'base_analysis': base_ana,
-                'is_complement': req['base_analysis']['isComplement'],
-                'rerun_from_psms': req['base_analysis']['runFromPSM'],
+                'is_complement': is_complement,
+                'rerun_from_psms': rerun,
                 'shadow_isoquants': shadow_isoquants,
                 'shadow_dssetnames': shadow_dss,
                 }
         ana_base, cr = am.AnalysisBaseanalysis.objects.update_or_create(defaults=base_def, analysis_id=analysis.id)
         # Add base analysis isoquant to the job params if it is complement analysis
-        if base_def['is_complement']:
+        if is_complement:
             for setname, quants in shadow_isoquants.items():
                 vals, calc_psm = parse_isoquant(quants)
                 isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
@@ -816,15 +874,17 @@ def store_analysis(request):
         # - store mzmldef in results, pass it automatically - easiest?
             
     # Already did parsing isoquants in checking part, now (re)create DB objects
-    if req['isoquant'] and not is_lcheck:
+    # FIXME should this be below the parsing step instead? Why it wait? Base ana?
+    if 'ISOQUANT' in wf_components:
         am.AnalysisIsoquant.objects.filter(analysis=analysis).exclude(setname_id__in=setname_ids.values()).delete()
         for setname, quantvals in db_isoquant.items():
             am.AnalysisIsoquant.objects.update_or_create(defaults={'value': quantvals},
                     analysis=analysis, setname_id=setname_ids[setname])
 
-    # If any, store sampletable
-    if 'sampletable' in components:
-        sampletable = components['sampletable']
+    # If any, store sampletable TODO make possible to run without sampletable (so users can skip sample names)
+    # Need to go through job components as well
+    if (sampletable := in_components.get('ISOQUANT_SAMPLETABLE', False)) and \
+            'ISOQUANT_SAMPLETABLE' in wf_components:
         am.AnalysisSampletable.objects.update_or_create(defaults={'samples': sampletable}, analysis=analysis)
         # check if we need to concat shadow isoquants to sampletable that gets passed to job
         if req['base_analysis']['isComplement']:
@@ -833,9 +893,9 @@ def store_analysis(request):
                     sampletable.append([ch, sname, sample, isoq['samplegroups'][ch]])
         # strip empty last-fields (for no-group analysis)
         sampletable = [[f for f in row if f] for row in sampletable]
-        jobinputs['components']['sampletable'] = sampletable
+        jobinputs['components']['ISOQUANT_SAMPLETABLE'] = sampletable
     else:
-        jobinputs['components']['sampletable'] = False
+        jobinputs['components']['ISOQUANT_SAMPLETABLE'] = False
         am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
 
     # All data collected, now create a job in WAITING state
@@ -843,7 +903,8 @@ def store_analysis(request):
     jobinputs['params'] = [x for nf, vals in jobparams.items() for x in [nf, ';'.join([str(v) for v in vals])]]
     param_args = {'wfv_id': req['nfwfvid'], 'inputs': jobinputs}
     kwargs = {'analysis_id': analysis.id, 'dstsharename': settings.ANALYSISSHARENAME,
-            'wfv_id': req['nfwfvid'], 'inputs': jobinputs, **data_args}
+            'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
+            'storagepath': analysis.storage_dir, **data_args}
     if req['analysis_id']:
         job = analysis.nextflowsearch.job
         job.kwargs = kwargs

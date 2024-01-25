@@ -18,11 +18,10 @@ from analysis import models as am
 
 # FIXME
 # This is mainly fixtures and its getting out of hand
-# We need to separate them better, because the actions in the
-# tests modify these things, and tests will become order-dependent.
-# BAD!
-# Only keep base fixutres that are not user-editable, e.g. pwiz, filetype etc
-# In tests, any thing which is modified needs its own fixture, not from base
+# We need to separate them better
+
+# Django flushes DB between tests, so we dont need get_or_create, but theres a lot non shared
+
 
 class BaseTest(TestCase):
     '''Normal django tests inherit here'''
@@ -54,10 +53,17 @@ class BaseTest(TestCase):
         self.ssoldstorage = rm.ServerShare.objects.create(name=settings.STORAGESHARENAMES[0],
                 server=self.oldfserver, share='/home/storage')
 
+        # Species / sampletype fill
+        self.spec1, _ = dm.Species.objects.get_or_create(linnean='species1', popname='Spec1')
+        self.spec2, _ = dm.Species.objects.get_or_create(linnean='species2', popname='Spec2')
+        self.samtype1, _ = dm.SampleMaterialType.objects.get_or_create(name='sampletype1')
+        self.samtype2, _ = dm.SampleMaterialType.objects.get_or_create(name='sampletype2')
+
+
         # Datasets/projects prep
-        dscomp, _ = dm.DatasetComponent.objects.get_or_create(name='files')
         self.dtype, _ = dm.Datatype.objects.get_or_create(name='dtype1')
-        self.dtcomp, _ = dm.DatatypeComponent.objects.get_or_create(datatype=self.dtype, component=dscomp)
+        self.dtcompfiles = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dm.DatasetUIComponent.FILES)
+        self.dtcompsamples = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dm.DatasetUIComponent.SAMPLES)
         qdt, _ = dm.Datatype.objects.get_or_create(name='Quantitative proteomics')
         self.ptype, _ = dm.ProjectTypeName.objects.get_or_create(name='testpt')
         self.pi, _ = dm.PrincipalInvestigator.objects.get_or_create(name='testpi')
@@ -69,10 +75,16 @@ class BaseTest(TestCase):
         msit, _ = rm.MSInstrumentType.objects.get_or_create(name='test')
         rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
                 filetype=self.ft)
+        self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
+        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
+        self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
+        self.lfqt, _ = dm.QuantType.objects.get_or_create(name='labelfree', shortname='lf')
 
         # Project/dset on new storage
         self.p1, _ = dm.Project.objects.get_or_create(name='p1', pi=self.pi)
         self.projsam1, _ = dm.ProjectSample.objects.get_or_create(sample='sample1', project=self.p1)
+        dm.SampleMaterial.objects.create(sample=self.projsam1, sampletype=self.samtype1)
+        dm.SampleSpecies.objects.create(sample=self.projsam1, species=self.spec1)
         dm.ProjType.objects.get_or_create(project=self.p1, ptype=self.ptype)
         self.exp1, _ = dm.Experiment.objects.get_or_create(name='e1', project=self.p1)
         self.run1, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.exp1)
@@ -80,8 +92,8 @@ class BaseTest(TestCase):
         self.ds, _ = dm.Dataset.objects.update_or_create(date=self.p1.registered, runname=self.run1,
                 datatype=self.dtype, defaults={'storageshare': self.ssnewstore, 
                     'storage_loc': self.storloc})
-        dm.DatasetComponentState.objects.get_or_create(dataset=self.ds,
-                defaults={'state': 'OK', 'dtcomp': self.dtcomp})
+        dm.DatasetComponentState.objects.create(dataset=self.ds, state=dm.DCStates.OK, dtcomp=self.dtcompfiles)
+        dm.DatasetComponentState.objects.create(dataset=self.ds, state=dm.DCStates.OK, dtcomp=self.dtcompsamples)
         self.contact, _ = dm.ExternalDatasetContact.objects.get_or_create(dataset=self.ds,
                 defaults={'email': 'contactname'})
         dm.DatasetOwner.objects.get_or_create(dataset=self.ds, user=self.user)
@@ -96,6 +108,11 @@ class BaseTest(TestCase):
                     md5=self.f3raw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssnewstore, 'path': self.storloc, 
                         'checked': True})
+        self.qcs, _  = dm.QuantChannelSample.objects.get_or_create(dataset=self.ds, channel=self.qtch,
+                projsample=self.projsam1)
+        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
+        dm.DatasetSample.objects.create(dataset=self.ds, projsample=self.projsam1)
+
         # Pwiz/mzml
         pset, _ = am.ParameterSet.objects.get_or_create(name='pwiz_pset_base')
         nfw, _ = am.NextflowWorkflow.objects.get_or_create(
@@ -109,15 +126,13 @@ class BaseTest(TestCase):
                 filename=f'{fn3}.mzML', md5='md5_for_f3sf_mzml', filetype=self.ft,
                 defaults={'servershare': self.ssnewstore, 'path': self.storloc, 'checked': True})
         am.MzmlFile.objects.get_or_create(sfile=self.f3sfmz, pwiz=self.pwiz)
-        self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
-        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
-        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
-        self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
 
         # Project/dataset/files on old storage
         oldfn = 'raw1'
         self.oldp, _ = dm.Project.objects.get_or_create(name='oldp', pi=self.pi)
         self.projsam2, _ = dm.ProjectSample.objects.get_or_create(sample='sample2', project=self.oldp)
+        dm.SampleMaterial.objects.create(sample=self.projsam2, sampletype=self.samtype2)
+        dm.SampleSpecies.objects.create(sample=self.projsam2, species=self.spec2)
         dm.ProjType.objects.get_or_create(project=self.oldp, ptype=self.ptype)
         self.oldexp, _ = dm.Experiment.objects.get_or_create(name='olde', project=self.oldp)
         self.oldrun, _ = dm.RunName.objects.get_or_create(name='run1', experiment=self.oldexp)
@@ -126,8 +141,8 @@ class BaseTest(TestCase):
                 runname=self.oldrun, datatype=self.dtype, defaults={
                     'storageshare': self.ssoldstorage, 'storage_loc': self.oldstorloc})
         dm.QuantDataset.objects.get_or_create(dataset=self.oldds, quanttype=self.qt)
-        dm.DatasetComponentState.objects.get_or_create(dataset=self.oldds, dtcomp=self.dtcomp,
-                state='OK')
+        dm.DatasetComponentState.objects.create(dataset=self.oldds, dtcomp=self.dtcompfiles, state=dm.DCStates.OK)
+        dm.DatasetComponentState.objects.create(dataset=self.oldds, dtcomp=self.dtcompsamples, state=dm.DCStates.OK)
         self.contact, _ = dm.ExternalDatasetContact.objects.get_or_create(dataset=self.oldds,
                 email='contactname')
         dm.DatasetOwner.objects.get_or_create(dataset=self.oldds, user=self.user)
@@ -141,6 +156,7 @@ class BaseTest(TestCase):
                     md5=self.oldraw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssoldstorage, 'path': self.oldstorloc, 
                         'checked': True})
+        dm.QuantSampleFile.objects.get_or_create(rawfile=self.olddsr, projsample=self.projsam2)
 
         # Tmp rawfile
         tmpfn = 'raw2'

@@ -556,8 +556,10 @@ def singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
     add_to_qc(rawfile, storedfile)
     filters = ['"peakPicking true 2"', '"precursorRefine"']
-    params, options = [], []
+    params = ['--instrument', rawfile.producer.msinstrument.instrumenttype.name]
+    options = []
     if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
+        params.extend(['--prectol', '20ppm'])
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('--combineIonMobilitySpectra')
         # FIXME until dinosaur can do MS1 on TIMS spectra we have to specify noquant, remove later I hope
@@ -736,17 +738,17 @@ def cleanup_old_files(request):
     # old normal mzmls from searches
     old_searched_mzmls = mzmls.exclude(
             rawfile__datasetrawfile__dataset__datatype_id__in=[settings.QC_DATATYPE, *settings.LC_DTYPE_IDS]).exclude(
-            rawfile__datasetrawfile__dataset__datasetsearch__isnull=True).exclude(
-            rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=maxtime_nonint)
+            rawfile__datasetrawfile__dataset__datasetanalysis__isnull=True).exclude(
+            rawfile__datasetrawfile__dataset__datasetanalysis__analysis__date__gt=maxtime_nonint)
     # old LC mzmls
     lcmzmls = mzmls.filter(
             rawfile__datasetrawfile__dataset__datatype_id__in=settings.LC_DTYPE_IDS,
-            rawfile__datasetrawfile__dataset__datasetsearch__isnull=False).exclude(
-            rawfile__datasetrawfile__dataset__datasetsearch__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_LC_STORAGE_TIME))
+            rawfile__datasetrawfile__dataset__datasetanalysis__isnull=False).exclude(
+            rawfile__datasetrawfile__dataset__datasetanalysis__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_LC_STORAGE_TIME))
     # old non-QC mzmls without searches
     old_nonsearched_mzml = mzmls.exclude(
             rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE).filter(
-            rawfile__datasetrawfile__dataset__datasetsearch__isnull=True,
+            rawfile__datasetrawfile__dataset__datasetanalysis__isnull=True,
             regdate__lt=maxtime_nonint)
     all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml)
     # TODO auto remove QC raw files of certain age? make sure you can get them back when needed though.

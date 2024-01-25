@@ -17,6 +17,11 @@
     const dbwfs = JSON.parse(document.getElementById('allwfs').textContent);
     const allwfs = dbwfs.wfs;
     const wforder = dbwfs.order;
+    const ds_errors = [
+      {% for dse in ds_errors %}
+      "{{dse}}",
+      {% endfor %}
+      ];
   </script>
 {% endblock head %}
 

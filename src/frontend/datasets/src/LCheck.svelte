@@ -1,7 +1,6 @@
 <script>
-import { onMount } from 'svelte';
 import { getJSON, postJSON } from './funcJSON.js'
-import { dataset_id, datasetFiles, projsamples } from './stores.js';
+import { dataset_id, datasetFiles } from './stores.js';
 import ErrorNotif from './ErrorNotif.svelte';
 import DynamicSelect from './DynamicSelect.svelte';
 
@@ -9,6 +8,7 @@ export let errors;
 
 let lcerrors = [];
 let channelError = {};
+let pastedfnch = '';
 
 let lcdata = {
   quants: {},
@@ -19,7 +19,6 @@ let edited = false;
 
 $: Object.keys($datasetFiles).length ? fetchData() : false;
 
-$: foundNewSamples = Object.values(lcdata.samples).some(x => x.newprojsample !== '');
 $: stored = $dataset_id && !edited;
 
 
@@ -33,48 +32,37 @@ function okChannel(fid) {
 }
 
 function badChannel(fid) {
-  console.log('bad ch');
-  console.log(fid);
   lcdata.samples[fid].badChannel = true;
 }
 
 
-async function doSampleSave(ch_or_samfn, ix) { 
-  /* Saves a new sample name to the project on backend */
-  let postdata = {
-    dataset_id: $dataset_id, 
-    samplename: ch_or_samfn.newprojsample
-  };
-  let url = '/datasets/save/projsample/';
-  const response = await postJSON(url, postdata);
-  // just add the latest projsample, do not just assign the whole projsamples dict, async problems!
-  projsamples[response.psid] = response.psname;
-  return [response.psid, ix];
-}
-
-async function saveNewSamples() {
-  /* Goes through each of the new sample names and */
-  let saves = [];
-  Object.entries(lcdata.samples).filter(x => x[1].newprojsample).forEach(function(samfn) {
-    saves.push(doSampleSave(samfn[1], samfn[0]));
-  });
-  for (let item of saves) {
-    let [psid, associd] = await item;
-    lcdata.samples[associd].newprojsample = '';
-    lcdata.samples[associd].sample = psid;
+function parseSampleNames() {
+  /* Parses samples/files/channel combinations pasted in textbox */
+  let fnmap = {};
+  for (let fn of Object.values($datasetFiles)) {
+    fnmap[fn.name] = fn;
   }
-}
+  const chmap = Object.fromEntries(
+    Object.entries(lcdata.quants[lcdata.quanttype].chans)
+    .map(([chid, chan]) => [chan.name, chid])
+    );
 
-function checkNewSample(file) {
-  /* Checks if entered sample is found in project or if it is a new sample */
-  let uppername = lcdata.samples[file.associd].newprojsample.trim().toUpperCase();
-  let found = Object.entries(projsamples).filter(x=>x[1].name.toUpperCase() == uppername).map(x=>x[0])[0]
-  if (found) {
-    lcdata.samples[file.associd].sample = parseInt(found);
-    lcdata.samples[file.associd].newprojsample = '';
+  for (let line of pastedfnch.trim().split('\n')) {
+    if (line.indexOf('\t') > -1) {
+      line = line.trim().split('\t').map(x => x.trim());
+    } else if (line.indexOf('    ') > -1) {
+      line = line.trim().split('    ').map(x => x.trim());
+    }
+    let chan, aid;
+    line[0] in fnmap ? (aid = fnmap[line[0]], chan = line[1]) : false;
+    line[1] in fnmap ? (aid = fnmap[line[1]], chan = line[0]) : false;
+    if (aid) {
+      lcdata.samples[aid.associd].channel = chmap[chan];
+    }
   }
   editMade();
 }
+
 
 function validate() {
   let comperrors = [];
@@ -82,9 +70,6 @@ function validate() {
 		comperrors.push('Quant type selection is required');
 	}
   for (let fn of Object.values($datasetFiles)) {
-    if (!lcdata.samples[fn.associd].sample) {
-      comperrors.push('Sample name for each file/channel is required');
-    }
     if (!lcdata.samples[fn.associd].channel) {
       comperrors.push('Channel for each file/sample is required');
     }
@@ -99,12 +84,12 @@ async function save() {
   }
   if (errors.length === 0) { 
     let postdata = {
+      pooled: false,
       dataset_id: $dataset_id,
       quanttype: lcdata.quanttype,
       samples: lcdata.samples,
       filenames: Object.values($datasetFiles),
     }
-    console.log(postdata);
     const url = '/datasets/save/labelcheck/';
     const response = await postJSON(url, postdata);
     fetchData();
@@ -114,14 +99,11 @@ async function save() {
 async function fetchData() {
   let url = '/datasets/show/labelcheck/';
   url = $dataset_id ? url + $dataset_id : url;
-	const response = await getJSON(url);
+  const response = await getJSON(`${url}?lctype=single`);
   for (let [key, val] of Object.entries(response)) { lcdata[key] = val; }
   edited = false;
 }
 
-onMount(async() => {
-  await fetchData();
-})
 </script>
 
 
@@ -152,11 +134,12 @@ onMount(async() => {
   </div>
 </div>
 
-{#if foundNewSamples}
-<a class="button is-danger is-small is-pulled-right" on:click={saveNewSamples}>Save new samples</a>
-{:else}
-<a class="button is-danger is-small is-pulled-right" disabled>Save new samples</a>
-{/if}
+
+<div class="field">
+  <label class="label">Channel/file</label>
+  <textarea class="textarea" bind:value={pastedfnch} placeholder="Paste your file names with channels here (one line per file, tab (or 4 spaces) separated file and channel)"></textarea>
+  <a class="button is-primary" on:click={parseSampleNames}>Parse sample names</a>
+</div>
 
 <table class="table is-fullwidth" >
   <thead>
@@ -170,17 +153,7 @@ onMount(async() => {
     {#each Object.values($datasetFiles) as file}
     {#if file.associd in lcdata.samples}
     <tr>
-      <td>
-        <label class="label">
-          {#if lcdata.samples[file.associd].newprojsample}
-          <span class="icon has-text-danger"><i class="fas fa-asterisk"></i></span>
-          {/if}
-          {file.name}
-        </label>
-        <div class="field">
-          <DynamicSelect bind:intext={lcdata.samples[file.associd].samplename} fixedoptions={projsamples} bind:unknowninput={lcdata.samples[file.associd].newprojsample} bind:selectval={lcdata.samples[file.associd].sample} on:selectedvalue={editMade} on:newvalue={e => checkNewSample(file)} niceName={x => x.name}/>
-        </div>
-      </td>
+      <td>{file.name}</td>
       <td>
         <div class="field">
           <div class="control">

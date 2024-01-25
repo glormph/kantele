@@ -432,7 +432,7 @@ def get_proj_info(request, proj_id):
 def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
     projs, order = {}, []
     dbprojs = dbprojs.annotate(dsmax=Max('experiment__runname__dataset__date'),
-            anamax=Max('experiment__runname__dataset__datasetsearch__analysis__date')).annotate(
+            anamax=Max('experiment__runname__dataset__datasetanalysis__analysis__date')).annotate(
             greatdate=Greatest('dsmax', 'anamax'))
     for proj in dbprojs.order_by('-greatdate'): # latest first
         order.append(proj.id)
@@ -456,7 +456,7 @@ def populate_dset(dbdsets, user):
             'prefractionationdataset'):
         dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dataset)
         storestate = get_dset_storestate(dataset, dsfiles)
-        ana_ids = [x.id for x in anmodels.NextflowSearch.objects.filter(analysis__datasetsearch__dataset_id=dataset.id)]
+        ana_ids = [x.id for x in anmodels.NextflowSearch.objects.filter(analysis__datasetanalysis__dataset_id=dataset.id)]
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': check_ownership(user, dataset),
@@ -581,7 +581,7 @@ def get_analysis_info(request, nfs_id):
     ana = nfs.analysis
     storeloc = filemodels.StoredFile.objects.select_related('servershare__server').filter(
             analysisresultfile__analysis=ana)
-    dsets = {x.dataset for x in ana.datasetsearch_set.all()}
+    dsets = {x.dataset for x in ana.datasetanalysis_set.all()}
     #projs = {x.runname.experiment.project for x in dsets}
     if not nfs.analysis.log:
         logentry = ['Analysis without logging or not yet queued']
@@ -764,6 +764,7 @@ def fetch_dset_details(dset):
                          'short': dset.quantdataset.quanttype.shortname}
     except dsmodels.QuantDataset.DoesNotExist:
         info['qtype'] = False
+    # FIXME Hardcoded microscopy!
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'servershare', 'filetype').filter(
@@ -773,6 +774,7 @@ def fetch_dset_details(dset):
     info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
     info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))
     rawfiles = files.filter(mzmlfile__isnull=True)
+    # Show mzML/refine things for MS data:
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles = {'raw': rawfiles.count()}
         info.update({'refine_mzmls': [], 'convert_dataset_mzml': []})
@@ -823,10 +825,10 @@ def fetch_dset_details(dset):
     info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.PDCBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
-    info['compstates'] = {x.dtcomp.component.name: x.state for x in
+    info['compstates'] = {
+dsmodels.DatasetUIComponent(x.dtcomp.component).name: x.state for x in
                           dsmodels.DatasetComponentState.objects.filter(
-                              dataset_id=dset.id).select_related(
-                                  'dtcomp__component')}
+                              dataset_id=dset.id).select_related('dtcomp')}
     return info
 
 

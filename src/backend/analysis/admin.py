@@ -3,14 +3,13 @@ from django.contrib import admin
 from analysis.models import (NextflowWfVersion, NextflowWorkflow, Workflow, ParameterSet,
                              Param, FileParam, PsetParam, PsetFileParam, PsetMultiFileParam,
                              ParamOption, PsetPredefFileParam, WorkflowType, Proteowizard,
-                             WFInputComponent, PsetComponent)
+                             PsetComponent)
 
 
 admin.site.register(NextflowWfVersion)
 admin.site.register(NextflowWorkflow)
 admin.site.register(WorkflowType)
 admin.site.register(Workflow)
-admin.site.register(WFInputComponent)
 admin.site.register(PsetComponent)
 admin.site.register(ParameterSet)
 admin.site.register(PsetParam)

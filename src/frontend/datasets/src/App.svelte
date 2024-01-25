@@ -2,9 +2,9 @@
 import { getJSON, postJSON } from './funcJSON.js'
 import { dataset_id, datatype_id, datasetFiles, projsamples } from './stores.js';
 import { onMount } from 'svelte';
-import Acquicomp from './Acquicomp.svelte';
-import Prepcomp from './Prepcomp.svelte';
-import SeqSamples from './SeqSamples.svelte';
+import MSDataComp from './MScomp.svelte';
+import Samplesheet from './Samplesheet.svelte';
+// FIXME msdata should be folded into the MScomponent now we dont have acquisition only anymore
 import Msdata from './Msdata.svelte';
 import LCheck from './LCheck.svelte';
 import PooledLCheck from './PooledLCheck.svelte';
@@ -12,24 +12,19 @@ import Files from './Files.svelte';
 import ErrorNotif from './ErrorNotif.svelte';
 import DynamicSelect from './DynamicSelect.svelte';
   
-// FIXME dataset_id is global on django template and not updated on save, change that!, FIXED???
-// FIXME files do not get updated
 if (init_dataset_id) { dataset_id.set(init_dataset_id) };
 
-
 let mssubcomp;
-let acquicomp;
-let prepcomp;
-let seqsamples;
+let msdatacomp;
+let samplesheet;
 let lccomp;
 let pooledlc;
 let filescomp;
 let edited = false;
 let errors = {
   basics: [],
-  sprep: [],
-  seqsam: [],
-  acqui: [],
+  samples: [],
+  msdata: [],
   lc: [],
 };
 let saveerrors = Object.assign({}, errors);
@@ -80,7 +75,7 @@ let tabcolor = 'has-text-grey-lighter';
   // files is given, and possibly samples as well, check it out but samples is needed for:
   // - QMS, LCheck, IP, TPP, microscopy QC?, genomics
 
-$: showMsdata = components.indexOf('acquisition') > -1;
+$: showMsdata = components.indexOf('ACQUISITION') > -1;
 $: isExternal = Boolean(dsinfo.ptype_id && dsinfo.ptype_id !== local_ptype_id);
 $: isLabelcheck = datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x => x.name.indexOf('abelcheck') > -1).length;
 
@@ -392,7 +387,7 @@ function showFiles() {
         </div>
       </div>
 
-      <Acquicomp bind:this={acquicomp} bind:errors={errors.acqui} />
+      <MSDataComp bind:this={msdatacomp} bind:errors={errors.msdata} />
       {:else if dsinfo.datatype_id}
       <div class="field">
         <label class="label">Run name</label>
@@ -401,17 +396,13 @@ function showFiles() {
         </div>
       </div>
       {/if}
-      {#if (components.indexOf('sampleprep')> -1)}
-      <Prepcomp bind:this={prepcomp} bind:errors={errors.sprep} />
-      {/if}
-      {#if (Object.keys($datasetFiles).length && components.indexOf('labelchecksamples')>-1)}
-      <LCheck bind:this={lccomp} bind:errors={errors.lc} />
-      {:else if (Object.keys($datasetFiles).length && components.indexOf('pooledlabelchecksamples')>-1)}
-      <PooledLCheck bind:this={pooledlc} bind:errors={errors.lc} />
-      {/if}
 
-      {#if (components.indexOf('seqsamples') > -1)}
-      <SeqSamples bind:this={seqsamples} bind:errors={errors.seqsam} />
+      {#if (Object.keys($datasetFiles).length && components.indexOf('LCSAMPLES')>-1)}
+      <LCheck bind:this={lccomp} bind:errors={errors.lc} />
+      {:else if (Object.keys($datasetFiles).length && components.indexOf('POOLEDLCSAMPLES')>-1)}
+      <PooledLCheck bind:this={pooledlc} bind:errors={errors.lc} />
+      {:else}
+      <Samplesheet bind:this={samplesheet} bind:errors={errors.samples} />
       {/if}
     </div>
 </div>
