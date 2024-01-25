@@ -10,7 +10,7 @@ def add_dset_samples(apps, s):
     DS.objects.bulk_create([DS(dataset=x.dataset, projsample=x.projsample) for x in QCS.objects.distinct('dataset', 'projsample')])
     QSF = apps.get_model('datasets', 'QuantSampleFile')
     DS.objects.bulk_create([DS(dataset=x.rawfile.dataset, projsample=x.projsample) for x in QSF.objects.distinct('rawfile__dataset', 'projsample')])
-    QFCS = apps.get_model('datasets', 'QuantFileChannelSample')
+    QFCS = apps.get_model('datasets', 'QuantFileChannel')
     DS.objects.bulk_create([DS(dataset=x.dsrawfile.dataset, projsample=x.projsample) for x in QFCS.objects.distinct('dsrawfile__dataset', 'projsample')])
 
 
@@ -86,6 +86,11 @@ class Migration(migrations.Migration):
             model_name='datatypecomponent',
             name='component',
             field=models.IntegerField(choices=[(1, 'Files'), (2, 'Samples'), (3, 'MS Acquisition'), (4, 'Definition'), (6, 'LC samples'), (7, 'Pooled LC samples')]),
+        ),
+
+        migrations.RenameModel(
+            old_name='QuantFileChannelSample',
+            new_name='QuantFileChannel',
         ),
 
         migrations.CreateModel(
@@ -179,6 +184,10 @@ class Migration(migrations.Migration):
             model_name='quanttype',
             name='name',
             field=models.TextField(unique=True),
+        ),
+        migrations.RemoveField(
+            model_name='quantfilechannel',
+            name='projsample',
         ),
 
     ]

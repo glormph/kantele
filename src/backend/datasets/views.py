@@ -270,13 +270,26 @@ def show_pooled_lc_nods(request):
 def show_pooled_lc(request, dataset_id):
     response_json = {'quants': get_empty_isoquant()}
     if dataset_id:
+        if request.GET['lctype'] == 'single':
+            response_json['samples'] = {fn.id: {'model': '', 'channel': '', 'channelname': ''}
+                        for fn in models.DatasetRawFile.objects.filter(dataset_id=dataset_id)}
         try:
             qtype = models.QuantDataset.objects.filter(
                 dataset_id=dataset_id).get()
         except models.QuantDataset.DoesNotExist:
+            # No data stored yet, except for files, so not loading
             pass
         else:
             response_json['quanttype'] = qtype.quanttype_id
+            if request.GET['lctype'] == 'single':
+                for qfcs in models.QuantFileChannel.objects.select_related(
+                        'channel__channel').filter(dsrawfile__dataset_id=dataset_id):
+                    response_json['samples'][qfcs.dsrawfile_id] = {
+                            'channel': qfcs.channel_id, 
+                            'channelname': qfcs.channel.channel.name}
+    for qt, q in response_json['quants'].items():
+        q['chanorder'] = [ch['id'] for ch in q['chans']]
+        q['chans'] = {ch['id']: ch for ch in q['chans']}
     return JsonResponse(response_json)
 
 
@@ -405,7 +418,7 @@ def update_dataset(data):
         dsraws = dset.datasetrawfile_set.all()
         dspsams = models.ProjectSample.objects.filter(quantchannelsample__dataset=dset).union(
                 models.ProjectSample.objects.filter(quantsamplefile__rawfile__in=dsraws),
-                models.ProjectSample.objects.filter(quantfilechannelsample__dsrawfile__in=dsraws)
+                models.ProjectSample.objects.filter(quantfilechannel__dsrawfile__in=dsraws)
                 ).values('pk')
         # Since unions cant be filtered/excluded on, re-query
         dspsams = models.ProjectSample.objects.filter(pk__in=dspsams)
@@ -421,11 +434,11 @@ def update_dataset(data):
             multipsams.add(qsf.projsample_id)
             newpsam = models.ProjectSample.objects.create(sample=qsf.projsample.sample, project=project)
             models.QuantSampleFile.objects.filter(rawfile__in=dsraws, projsample=qsf.projsample).update(projsample=newpsam)
-        multidsqfcs = models.QuantFileChannelSample.objects.filter(projsample__in=dspsams).exclude(dsrawfile__in=dsraws)
+        multidsqfcs = models.QuantFileChannel.objects.filter(projsample__in=dspsams).exclude(dsrawfile__in=dsraws)
         for qfcs in multidsqfcs.distinct('projsample'):
             multipsams.add(qfcs.projsample_id)
             newpsam = models.ProjectSample.objects.create(sample=qfcs.projsample.sample, project=project)
-            models.QuantFileChannelSample.objects.filter(dsrawfile__in=dsraws, projsample=qfcs.projsample).update(projsample=newpsam)
+            models.QuantFileChannel.objects.filter(dsrawfile__in=dsraws, projsample=qfcs.projsample).update(projsample=newpsam)
         # having found multi-dset-psams, now move project_id on non-shared projectsamples
         dspsams.exclude(pk__in=multipsams).update(project=project)
 
@@ -1464,18 +1477,14 @@ def update_labelcheck(data, qtype):
         qtype.quanttype_id = data['quanttype']
         qtype.save()
     # Add any possible new channels 
-    oldqfcs = {x.dsrawfile_id: x for x in models.QuantFileChannelSample.objects.filter(dsrawfile__dataset_id=dset_id)}
+    oldqfcs = {x.dsrawfile_id: x for x in models.QuantFileChannel.objects.filter(dsrawfile__dataset_id=dset_id)}
     for fn in data['filenames']:
         sam = data['samples'][str(fn['associd'])]
         try:
             exis_q = oldqfcs.pop(fn['associd'])
         except KeyError:
-            models.QuantFileChannelSample.objects.create(dsrawfile_id=fn, 
-                    projsample_id=sam['sample'], channel=sam['channel'])
+            models.QuantFileChannel.objects.create(dsrawfile_id=fn, channel=sam['channel'])
         else:
-            if sam['sample'] != exis_q.projsample_id:
-                exis_q.projsample_id = sam['sample']
-                exis_q.save()
             if sam['channel'] != exis_q.channel_id:
                 exis_q.channel_id = sam['channel']
                 exis_q.save()
@@ -1548,33 +1557,22 @@ def save_pooled_lc(request):
     except models.QuantDataset.DoesNotExist:
         # new data, insert, not updating
         models.QuantDataset.objects.create(dataset_id=dset_id, quanttype_id=data['quanttype'])
+        if not data['pooled']:
+            models.QuantFileChannel.objects.bulk_create([
+                models.QuantFileChannel(dsrawfile_id=fid,
+                    channel_id=sam['channel']) for fid, sam in data['samples'].items()])
     else:
-        if data['quanttype'] != qtype.quanttype_id:
+        if data['pooled'] and data['quanttype'] != qtype.quanttype_id:
             qtype.quanttype_id = data['quanttype']
             qtype.save()
-    set_component_state(dset_id, models.DatasetUIComponent.POOLEDLCSAMPLES, models.DCStates.OK)
-    return JsonResponse({})
-
-
-@login_required
-def save_labelcheck(request):
-    data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
-    if user_denied:
-        return user_denied
-    dset_id = data['dataset_id']
-    try:
-        qtype = models.QuantDataset.objects.select_related(
-            'quanttype').get(dataset_id=dset_id)
-    except models.QuantDataset.DoesNotExist:
-        # new data, insert, not updating
-        models.QuantDataset.objects.create(dataset_id=dset_id, quanttype_id=data['quanttype'])
-        models.QuantFileChannelSample.objects.bulk_create([
-            models.QuantFileChannelSample(dsrawfile_id=fid, projsample_id=sam['sample'],
-                channel_id=sam['channel']) for fid, sam in data['samples'].items()])
+        elif not data['pooled']:
+            update_labelcheck(data, qtype)
+    if data['pooled']:
+        # TODO maybe merge these two UI components in frontend
+        uicomp = models.DatasetUIComponent.POOLEDLCSAMPLES 
     else:
-        update_labelcheck(data, qtype)
-    set_component_state(dset_id, models.DatasetUIComponent.LCSAMPLES, models.DCStates.OK)
+        uicomp = models.DatasetUIComponent.LCSAMPLES
+    set_component_state(dset_id, uicomp, models.DCStates.OK)
     return JsonResponse({})
 
 
@@ -1741,7 +1739,7 @@ def save_samples(request):
         models.ProjectSample.objects.filter(project__experiment__runname__dataset=dset,
                 quantchannelsample__isnull=True,
                 quantsamplefile__isnull=True,
-                quantfilechannelsample__isnull=True,
+                quantfilechannel__isnull=True,
                 ).delete()
     set_component_state(dset_id, models.DatasetUIComponent.SAMPLES, models.DCStates.OK)
     return JsonResponse({})

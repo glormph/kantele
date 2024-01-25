@@ -289,10 +289,9 @@ class QuantChannelSample(models.Model):
     projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
 
 
-class QuantFileChannelSample(models.Model):
-    '''In non-pooled labelchecks there exist single-channel files'''
+class QuantFileChannel(models.Model):
+    '''In non-pooled labelchecks the mapping is single-channel files'''
     channel = models.ForeignKey(QuantTypeChannel, on_delete=models.CASCADE)
-    projsample = models.ForeignKey(ProjectSample, on_delete=models.CASCADE)
     dsrawfile = models.OneToOneField(DatasetRawFile, on_delete=models.CASCADE)
     
 

@@ -421,6 +421,7 @@ def get_datasets(request, wfversion_id):
                 # select more datasets in the analysis view.
                 # FIXME -- so this is wrong, when we will also run refine as analysis:
                 # need to explicitly check if a pipeline demands mzMLs with a component!
+                usefiles = non_deleted_mzmlfiles
                 response['errmsg'].append(f'MS dataset {dsname} does not contain mzML files, cannot run analysis')
         else:
             # Not an MS run with mzML input, just use the e.g. sequencing files
@@ -433,18 +434,12 @@ def get_datasets(request, wfversion_id):
             response['errmsg'].append('Files selected for analysis are not same number as that '
                     f'of registered files in dataset {dsname}. Maybe you need to finish creating mzMLs '
                     'or refining them')
-        resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': ''}
+        resp_files = {x.id: {'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''}
                 for x in usefiles}
 
         qsf_error = False
         if is_msdata and is_isobaric:
-            # multiplex so add channel/samples 
-            for fn in usefiles.select_related('rawfile__datasetrawfile__quantfilechannelsample__projsample'):
-                try:
-                    qfcs = fn.rawfile.datasetrawfile.quantfilechannelsample.projsample.sample
-                except dm.QuantFileChannelSample.DoesNotExist:
-                    qfcs = ''
-                resp_files[fn.id]['sample'] = qfcs
+            # multiplex so add channel/samples if any exist (not for labelcheck)
             channels = {
                 ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
                 dm.QuantChannelSample.objects.select_related(

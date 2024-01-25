@@ -101,7 +101,7 @@ class PsetComponent(models.Model):
         ISOQUANT = 1, 'Isobaric quant summarizing with denominators, median sweep, or intensity'
         INPUTDEF = 2, 'Input file definition of specific type, value eg [path, instrument, sample]'
         ISOQUANT_SAMPLETABLE = 3, 'Sampletable for isobaric quant'
-        LABELCHECK_ISO = 4, 'MS search complementing earlier run or rerun from PSMs'
+        LABELCHECK_ISO = 4, 'Labelcheck isoquant'
         COMPLEMENT_ANALYSIS = 5, 'MS search complementing earlier run or rerun from PSMs'
         PREFRAC = 6, 'Prefractionated MS data'
         HIRIEF_STRIP_TOLERANCE = 7, 'HiRIEF strip tolerance'

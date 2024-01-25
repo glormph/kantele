@@ -37,6 +37,7 @@ export async function save() {
   }
   if (errors.length === 0 && preperrors.length === 0) { 
     let postdata = {
+      pooled: true,
       dataset_id: $dataset_id,
       quanttype: prepdata.quanttype,
     };
@@ -49,7 +50,7 @@ export async function save() {
 async function fetchData() {
   let url = '/datasets/show/pooledlc/';
   url = $dataset_id ? url + $dataset_id : url;
-	const response = await getJSON(url);
+  const response = await getJSON(`${url}?lctype=pooled`);
   for (let [key, val] of Object.entries(response)) { prepdata[key] = val; }
   edited = false;
 }

@@ -190,8 +190,7 @@ class RunNextflowWorkflow(BaseJob):
     def getfiles_query(self, **kwargs):
         return rm.StoredFile.objects.filter(pk__in=kwargs['infiles'].keys()).select_related(
                 'servershare', 'rawfile__producer__msinstrument__instrumenttype',
-                'rawfile__datasetrawfile__quantfilechannelsample__channel__channel',
-                'rawfile__datasetrawfile__quantfilechannelsample__projsample',
+                'rawfile__datasetrawfile__quantfilechannel__channel__channel',
                 )
 
     def process(self, **kwargs):
@@ -279,8 +278,8 @@ class RunNextflowWorkflow(BaseJob):
                 if 'instrument' in inputdef_fields:
                     infile['instrument'] = fn.rawfile.producer.msinstrument.instrumenttype.name 
                 if 'channel' in inputdef_fields:
-                    # For pooled labelcheck
-                    infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannelsample.channel.channel.name 
+                    # For non-pooled labelcheck
+                    infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannel.channel.channel.name 
                 if 'file_type' in inputdef_fields:
                     infile['file_type'] = fn.filetype.filetype
                 if 'pep_prefix' in inputdef_fields:
