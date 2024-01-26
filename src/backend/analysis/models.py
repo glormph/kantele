@@ -249,12 +249,6 @@ class AnalysisSampletable(models.Model):
     # Added benefit: clearer DB representation, stricter
 
 
-# FIXME deprecate this, save as psetcomponent
-#class AnalysisMzmldef(models.Model):
-#    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
-#    mzmldef = models.TextField()
-
-
 class AnalysisSetname(models.Model):
     '''All set or sample names in an analysis that are per dataset,
     which means prefractionated proteomics data'''

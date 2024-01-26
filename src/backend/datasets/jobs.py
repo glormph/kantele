@@ -198,6 +198,7 @@ class ConvertDatasetMzml(DatasetJob):
                'repo': nfwf.nfworkflow.repo,
                'nfrundirname': 'small' if len(nf_raws) < 500 else 'larger',
                'dstsharename': res_share.name,
+               'runname': f'{dset.id}_convert_mzml_{kwargs["timestamp"]}',
                }
         params = ['--container', pwiz.container_version]
         for pname in ['options', 'filters']:

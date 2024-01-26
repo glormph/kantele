@@ -65,12 +65,13 @@ class RefineMzmls(DatasetJob):
         params = ['--instrument', mzml_ins.rawfile.producer.msinstrument.instrumenttype.name]
         if kwargs['qtype'] != 'labelfree':
             params.extend(['--isobaric', kwargs['qtype']])
-        run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
+        run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'name': analysis.name,
+               'runname':  f'{analysis.id}_{analysis.name}_{timestamp}',
                'outdir': analysis.user.username,
                'dstsharename': dstshare.name,
                }
@@ -98,13 +99,14 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         params = kwargs.get('params', [])
         stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
-        run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
+        run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
                'rf_id': mzml.rawfile_id,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'name': 'longqc',
+               'runname': f'{analysis.id}_longqc_{mzml.rawfile.producer.name}_rawfile{mzml.rawfile_id}_{timestamp}',
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
@@ -211,10 +213,10 @@ class RunNextflowWorkflow(BaseJob):
         sfiles_passed = self.getfiles_query(**kwargs)
         is_msdata = sfiles_passed.distinct('rawfile__producer__msinstrument').count()
         job = analysis.nextflowsearch.job
-        dsa = analysis.datasetanalysis.all()
+        dsa = analysis.datasetanalysis_set.all()
         # First new files included:
         dsfiles_not_in_job = rm.StoredFile.objects.filter(deleted=False,
-            rawfile__datasetrawfile__dataset__datasetanalysis=dsa).select_related(
+            rawfile__datasetrawfile__dataset__datasetanalysis__in=dsa).select_related(
                     'rawfile').exclude(pk__in=kwargs['infiles'].keys())
         if is_msdata:
             # Pick mzML files if the data is Mass Spec
@@ -232,7 +234,7 @@ class RunNextflowWorkflow(BaseJob):
                     'save, and re-queue the job')
 
         # Now remove obsolete deleted-from-dataset files from job (e.g. corrupt, empty, etc)
-        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis=dsa)
+        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis__in=dsa)
         analysis.analysisdsinputfile_set.filter(sfile__in=obsolete).delete()
         analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
@@ -247,12 +249,13 @@ class RunNextflowWorkflow(BaseJob):
         # token is unique per job run:
         analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
         analysis.nextflowsearch.save()
+        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         run = {'analysis_id': analysis.id,
                'token': analysis.nextflowsearch.token,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'name': get_ana_fullname(analysis),
+               'runname': f'{analysis.id}_{get_ana_fullname(analysis)}_{timestamp}',
                'outdir': analysis.user.username,
                'infiles': [],
                'old_infiles': False,
