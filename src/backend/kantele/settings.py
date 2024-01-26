@@ -133,7 +133,7 @@ INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
 # nextflow
 NXF_COMMAND = os.environ.get('NXF_COMMAND', 'nextflow')
 LIBRARY_FILE_PATH = 'databases'
-ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE')
+ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE', False)
 SMALL_NFRUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 LARGER_NFRUNDIR = os.environ.get('LARGER_NFRUNDIR')
 NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
