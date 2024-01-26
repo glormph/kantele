@@ -64,7 +64,6 @@ class Datatype(models.Model):
 
 class DatasetUIComponent(models.IntegerChoices):
     FILES = 1, 'Files'
-    #SAMPLEPREP = 2, 'Sample prep'
     SAMPLES = 2, 'Samples'
     ACQUISITION = 3, 'MS Acquisition'
     DEFINITION = 4, 'Definition'

@@ -66,7 +66,6 @@ class AnalysisTest(BaseTest):
                 param=self.pfn2, sfile=self.txtsf)
         self.resultfn, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.ana,
                 sfile=self.anasfile)
-        #self.mzmldef, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.ana, mzmldef='testmzd')
 
         # Create analysis for LF
         self.analf, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_lf', storage_dir='testdirlf')
@@ -87,7 +86,6 @@ class AnalysisTest(BaseTest):
                 param=self.pfn2, sfile=self.txtsf)
         self.resultfnlf, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.analf,
                 sfile=self.anasfile2)
-        #self.mzmldeflf, _ = am.AnalysisMzmldef.objects.get_or_create(analysis=self.analf, mzmldef='lfmz')
 
 
 class AnalysisIsobaric(AnalysisTest):

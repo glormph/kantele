@@ -68,7 +68,7 @@ onMount(async() => {
   {:else if edited}
   <i class="icon fas fa-edit"></i>
   {/if}
-  Sample prep
+  Label check
   <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
   <button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>
 </h5>
