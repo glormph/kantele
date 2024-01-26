@@ -154,11 +154,11 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
             fp.write('\t'.join(run['components']['INPUTDEF']))
             for fn in run['infiles']:
                 fnpath = os.path.join(stagedir, 'infiles', fn['fn'])
-                fn_metadata = '\t'.join(fn[x] for x in run['components']['INPUTDEF'][1:]) 
+                fn_metadata = '\t'.join(fn[x] for x in run['components']['INPUTDEF'][1:] if fn[x])
                 fp.write(f'\n{fnpath}\t{fn_metadata}')
         params.extend(['--input', os.path.join(rundir, 'inputdef.txt')])
 
-    if 'COMPLEMENT_ANALYSIS' in run['components'] and run['old_mzmls']:
+    if 'COMPLEMENT_ANALYSIS' in run['components'] and run['old_infiles']:
         with open(os.path.join(rundir, 'oldinputdef.txt'), 'w') as fp:
             for fn in run['old_infiles']:
                 mzstr = '{}\n'.format(fn)

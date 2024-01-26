@@ -707,7 +707,8 @@ def store_analysis(request):
                     f'sweep/intensity/denominator for set {setname}'})
             db_isoquant[setname] = vals
             isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
-        jobparams['--isobaric'] = [' '.join(isoq_cli)]
+        if isoq_cli:
+            jobparams['--isobaric'] = [' '.join(isoq_cli)]
 
     # Checks passed, now start database actions
     if req['analysis_id']:

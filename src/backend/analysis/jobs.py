@@ -211,10 +211,10 @@ class RunNextflowWorkflow(BaseJob):
         sfiles_passed = self.getfiles_query(**kwargs)
         is_msdata = sfiles_passed.distinct('rawfile__producer__msinstrument').count()
         job = analysis.nextflowsearch.job
-        dsa = analysis.datasetanalysis.all()
+        dsa = analysis.datasetanalysis_set.all()
         # First new files included:
         dsfiles_not_in_job = rm.StoredFile.objects.filter(deleted=False,
-            rawfile__datasetrawfile__dataset__datasetanalysis=dsa).select_related(
+            rawfile__datasetrawfile__dataset__datasetanalysis__in=dsa).select_related(
                     'rawfile').exclude(pk__in=kwargs['infiles'].keys())
         if is_msdata:
             # Pick mzML files if the data is Mass Spec
@@ -232,7 +232,7 @@ class RunNextflowWorkflow(BaseJob):
                     'save, and re-queue the job')
 
         # Now remove obsolete deleted-from-dataset files from job (e.g. corrupt, empty, etc)
-        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis=dsa)
+        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis__in=dsa)
         analysis.analysisdsinputfile_set.filter(sfile__in=obsolete).delete()
         analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
