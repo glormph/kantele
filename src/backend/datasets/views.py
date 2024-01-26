@@ -1060,15 +1060,16 @@ def fill_admin_selectparam(params, p, value=False):
     """Fills params dict with select parameters passed, in proper JSON format
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
-    if p.param.id not in params:
-        params[p.param.id] = {'param_id': p.param.id, 'fields': [],
+    p_id = f'select_{p.param.id}'
+    if p_id not in params:
+        params[p_id] = {'param_id': p.param.id, 'fields': [],
                               'inputtype': 'select', 'title': p.param.title}
     if value:
         # fields is already populated by call to empty params
-        params[p.param.id]['model'] = value
+        params[p_id]['model'] = value
     else:
-        params[p.param.id]['model'] = ''
-        params[p.param.id]['fields'].append({'value': p.id, 'text': p.value})
+        params[p_id]['model'] = ''
+        params[p_id]['fields'].append({'value': p.id, 'text': p.value})
 
 
 def fill_admin_checkboxparam(params, p, value=False):
@@ -1077,25 +1078,27 @@ def fill_admin_checkboxparam(params, p, value=False):
     and old parameters"""
     # param must have a model for ability of checking if it is new param
     # which dataset does not have
-    if p.param.id not in params:
-        params[p.param.id] = {'param_id': p.param.id, 'fields': [], 'model': True,
+    p_id = f'cb_{p.param.id}'
+    if p_id not in params:
+        params[p_id] = {'param_id': p.param.id, 'fields': [], 'model': True,
                               'inputtype': 'checkbox', 'title': p.param.title}
     if value:
         # fields key is already populated by call to empty params
-        for box in params[p.param_id]['fields']:
+        for box in params[p_id]['fields']:
             if box['value'] == value:
                 box['checked'] = True 
     else:
-        params[p.param.id]['fields'].append({'checked': False, 'value': p.id, 'text': p.value})
+        params[p_id]['fields'].append({'checked': False, 'value': p.id, 'text': p.value})
 
 
 def fill_admin_fieldparam(params, p, value=False):
     """Fills params dict with field parameters passed, in proper JSON format
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
-    params[p.id] = {'param_id': p.id, 'placeholder': p.placeholder,
+    p_id = f'field_{p.id}'
+    params[p_id] = {'param_id': p.id, 'placeholder': p.placeholder,
                     'inputtype': p.paramtype.typename, 'title': p.title}
-    params[p.id]['model'] = value if value else ''
+    params[p_id]['model'] = value if value else ''
 
 
 def get_dynamic_emptyparams(category):
