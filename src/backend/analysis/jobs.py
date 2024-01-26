@@ -65,12 +65,13 @@ class RefineMzmls(DatasetJob):
         params = ['--instrument', mzml_ins.rawfile.producer.msinstrument.instrumenttype.name]
         if kwargs['qtype'] != 'labelfree':
             params.extend(['--isobaric', kwargs['qtype']])
-        run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
+        run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'name': analysis.name,
+               'runname':  f'{analysis.id}_{analysis.name}_{timestamp}',
                'outdir': analysis.user.username,
                'dstsharename': dstshare.name,
                }
@@ -98,13 +99,14 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         params = kwargs.get('params', [])
         stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
-        run = {'timestamp': datetime.strftime(analysis.date, '%Y%m%d_%H.%M'),
+        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
+        run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
                'rf_id': mzml.rawfile_id,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'name': 'longqc',
+               'runname': f'{analysis.id}_longqc_{mzml.rawfile.producer.name}_rawfile{mzml.rawfile_id}_{timestamp}',
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
@@ -247,12 +249,13 @@ class RunNextflowWorkflow(BaseJob):
         # token is unique per job run:
         analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
         analysis.nextflowsearch.save()
+        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         run = {'analysis_id': analysis.id,
                'token': analysis.nextflowsearch.token,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'name': get_ana_fullname(analysis),
+               'runname': f'{analysis.id}_{get_ana_fullname(analysis)}_{timestamp}',
                'outdir': analysis.user.username,
                'infiles': [],
                'old_infiles': False,

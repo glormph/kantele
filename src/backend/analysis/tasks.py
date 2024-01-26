@@ -132,8 +132,8 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     # Init
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
-                'name': run['name'], 'user': run['outdir']}
-    rundir = create_runname_dir(run, run['fullname'])
+                'name': run['runname'], 'user': run['outdir']}
+    rundir = create_runname_dir(run)
 
     # stage files, create dirs etc
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles,
@@ -194,7 +194,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     print('Got message to run mzRefine workflow, preparing')
-    rundir = create_runname_dir(run, f'{run["analysis_id"]}_{run["name"]}_{run["timestamp"]}')
+    rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     # FIXME Should we use components here? -- internal pipe so maybe not?
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
@@ -226,15 +226,14 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
                 self.request.id)
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY, 'analysis_id': run['analysis_id'],
-            'task': self.request.id, 'name': run['name'], 'user': run['outdir'], 'state': 'ok'}
+            'task': self.request.id, 'name': run['runname'], 'user': run['outdir'], 'state': 'ok'}
     report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
     return run
 
 
-def create_runname_dir(run, runname):
-    run['runname'] = runname
+def create_runname_dir(run):
     rundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
-    return os.path.join(rundir, runname).replace(' ', '_')
+    return os.path.join(rundir, run['runname']).replace(' ', '_')
 
 
 def prepare_nextflow_run(run, taskid, rundir, stagefiles, infiles, params):
@@ -382,7 +381,7 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_versio
     postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'instrument': run['instrument'], 'filename': run['filename']}
-    rundir = create_runname_dir(run, f'{run["analysis_id"]}_rawfile_{run["rf_id"]}_{run["timestamp"]}')
+    rundir = create_runname_dir(run)
     params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
     try:
         outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
