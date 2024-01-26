@@ -393,11 +393,10 @@ def get_datasets(request, wfversion_id):
 
         # Is this a quant MS dataset (or seq, etc?), then do MS things
         dset_ftype = dssfiles.distinct('filetype')
-        dset_instr = dssfiles.distinct('rawfile__producer__msinstrument')
-        if dset_ftype.count() > 1 or dset_instr.count() > 1:
+        if dset_ftype.count() > 1:
             # This is the kind of error that can just not return datasets, only an error
             return JsonResponse({'error': True, 'errmsg': ['Multiple different file types in dataset, not allowed']}, status=400)
-        is_msdata = dset_instr.filter(rawfile__producer__msinstrument__isnull=False).count()
+        is_msdata = dssfiles.filter(rawfile__producer__msinstrument__isnull=False).count()
 
         # FIXME quantdataset not here when refine!
         if is_msdata and hasattr(dset, 'quantdataset'):
