@@ -8,8 +8,9 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 
 from kantele import settings
-from kantele.tests import BaseTest, BaseIntegrationTest
+from kantele.tests import BaseTest, BaseIntegrationTest, ProcessJobTest
 from datasets import models as dm
+from datasets import jobs as dj
 from jobs import models as jm
 from jobs.jobs import Jobstates
 from rawstatus import models as rm
@@ -642,3 +643,25 @@ class MergeProjectsTest(BaseTest):
         self.assertEqual(ds3jobs.count(), 1)
         self.assertEqual(renamejobs.count(), 1)
         self.assertEqual(dm.Project.objects.filter(pk=self.p2.pk).count(), 0)
+
+
+class TestDeleteDataset(ProcessJobTest):
+    jobclass = dj.DeleteActiveDataset
+
+    def setUp(self):
+        super().setUp()
+        self.job = self.jobclass(1)
+
+    def check(self, expected_tasks):
+        self.assertEqual(self.job.run_tasks, expected_tasks)
+
+    def test(self):
+        kwargs = {'dset_id': self.ds.pk}
+        self.job.process(**kwargs)
+        exp_t = [
+                ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
+                    self.f3sf.pk, self.f3sf.filetype.is_folder), {}),
+                ((self.f3sfmz.servershare.name, os.path.join(self.f3sfmz.path, self.f3sfmz.filename),
+                    self.f3sfmz.pk, self.f3sfmz.filetype.is_folder), {})
+                ]
+        self.check(exp_t)

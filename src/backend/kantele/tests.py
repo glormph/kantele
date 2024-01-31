@@ -210,6 +210,10 @@ class BaseTest(TestCase):
                     'servershare_id': self.sstmp.id, 'path': '', 'md5': self.ana_raw2.source_md5})
 
 
+class ProcessJobTest(BaseTest):
+    pass
+
+
 class BaseIntegrationTest(LiveServerTestCase):
     # use a live server so that jobrunner can interface with it (otherwise only dummy
     # test client can do that)
