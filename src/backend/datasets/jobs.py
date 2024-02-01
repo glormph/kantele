@@ -251,13 +251,14 @@ class DeleteDatasetMzml(DatasetJob):
 class DeleteActiveDataset(DatasetJob):
     """Removes dataset from active storage"""
     refname = 'delete_active_dataset'
+    # FIXME need to be able to delete directories
     task = filetasks.delete_file
 
     def process(self, **kwargs):
-        for fn in self.getfiles_query(**kwargs).filter(purged=False):
+        for fn in self.getfiles_query(**kwargs).select_related('filetype').filter(purged=False):
             fullpath = os.path.join(fn.path, fn.filename)
             print('Purging {} from dataset {}'.format(fullpath, kwargs['dset_id']))
-            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
+            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id, fn.filetype.is_folder), {}))
 
 
 class BackupPDCDataset(DatasetJob):
