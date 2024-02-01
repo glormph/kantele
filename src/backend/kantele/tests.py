@@ -211,7 +211,13 @@ class BaseTest(TestCase):
 
 
 class ProcessJobTest(BaseTest):
-    pass
+
+    def setUp(self):
+        super().setUp()
+        self.job = self.jobclass(1)
+
+    def check(self, expected_tasks):
+        self.assertEqual(self.job.run_tasks, expected_tasks)
 
 
 class BaseIntegrationTest(LiveServerTestCase):

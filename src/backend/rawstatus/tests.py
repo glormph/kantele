@@ -10,8 +10,9 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 
 from kantele import settings
-from kantele.tests import BaseTest
+from kantele.tests import BaseTest, ProcessJobTest
 from rawstatus import models as rm
+from rawstatus import jobs as rj
 from analysis import models as am
 from analysis import models as am
 from jobs import models as jm
@@ -508,3 +509,17 @@ class TestDownloadUploadScripts(BaseFilesTest):
             self.assertEqual(contents[fn], self.zipsizes[fn])
 
 # FIXME case for upload with archiving only
+
+class TestPurgeFiles(ProcessJobTest):
+    jobclass = rj.PurgeFiles
+
+    def test(self):
+        kwargs = {'sf_ids': [self.f3sf.pk, self.oldsf.pk]}
+        self.job.process(**kwargs)
+        exp_t = [
+                ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
+                    self.f3sf.pk, self.f3sf.filetype.is_folder), {}),
+                ((self.oldsf.servershare.name, os.path.join(self.oldsf.path, self.oldsf.filename),
+                    self.oldsf.pk, self.oldsf.filetype.is_folder), {})
+                ]
+        self.check(exp_t)

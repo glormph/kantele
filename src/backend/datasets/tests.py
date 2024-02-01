@@ -648,13 +648,6 @@ class MergeProjectsTest(BaseTest):
 class TestDeleteDataset(ProcessJobTest):
     jobclass = dj.DeleteActiveDataset
 
-    def setUp(self):
-        super().setUp()
-        self.job = self.jobclass(1)
-
-    def check(self, expected_tasks):
-        self.assertEqual(self.job.run_tasks, expected_tasks)
-
     def test(self):
         kwargs = {'dset_id': self.ds.pk}
         self.job.process(**kwargs)
