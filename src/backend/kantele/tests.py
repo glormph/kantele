@@ -253,8 +253,7 @@ class TestMultiStorageServers(BaseIntegrationTest):
         self.tmpraw.refresh_from_db()
         self.assertTrue(self.tmpraw.claimed)
         # call job runner to run rsync
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.oldfpath))
         newdspath = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.oldstorloc)
         self.assertTrue(os.path.exists(os.path.join(newdspath, self.oldsf.filename)))
@@ -267,10 +266,10 @@ class TestMultiStorageServers(BaseIntegrationTest):
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.path, '')
         self.assertEqual(self.tmpsf.servershare_id, self.sstmp.pk)
+        # first mark prev job as DONE
+        self.run_job()
         # Now execute move file job
-        call_command('runjobs') # first mark prev job as DONE
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertTrue(os.path.exists(os.path.join(newdspath, self.tmpsf.filename)))
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.servershare_id, self.ssnewstore.pk)
