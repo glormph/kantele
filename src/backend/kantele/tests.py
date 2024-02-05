@@ -225,12 +225,18 @@ class BaseIntegrationTest(LiveServerTestCase):
     # test client can do that)
     port = 80
     host = '0.0.0.0'
+    jobrun_timeout = 2
 
     def setUp(self):
         BaseTest.setUp(self)
 
     def post_json(self, data):
         return self.cl.post(self.url, content_type='application/json', data=data)
+
+    def run_job(self):
+        '''Call run jobs, then sleep to make tasks do their work'''
+        call_command('runjobs')
+        sleep(self.jobrun_timeout)
 
 
 class TestMultiStorageServers(BaseIntegrationTest):
