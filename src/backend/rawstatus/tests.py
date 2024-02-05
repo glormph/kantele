@@ -6,15 +6,18 @@ from io import BytesIO
 from datetime import timedelta, datetime
 from tempfile import mkdtemp
 
+from celery import states
 from django.utils import timezone
 from django.contrib.auth.models import User
 
 from kantele import settings
-from kantele.tests import BaseTest
+from kantele.tests import BaseTest, ProcessJobTest, BaseIntegrationTest
 from rawstatus import models as rm
+from rawstatus import jobs as rjobs
 from analysis import models as am
 from analysis import models as am
 from jobs import models as jm
+from jobs import jobs as jj
 
 
 class BaseFilesTest(BaseTest):
@@ -508,3 +511,129 @@ class TestDownloadUploadScripts(BaseFilesTest):
             self.assertEqual(contents[fn], self.zipsizes[fn])
 
 # FIXME case for upload with archiving only
+
+class TestPurgeFilesJob(ProcessJobTest):
+    jobclass = rjobs.PurgeFiles
+
+    def test(self):
+        kwargs = {'sf_ids': [self.f3sf.pk, self.oldsf.pk]}
+        self.job.process(**kwargs)
+        exp_t = [
+                ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
+                    self.f3sf.pk, self.f3sf.filetype.is_folder), {}),
+                ((self.oldsf.servershare.name, os.path.join(self.oldsf.path, self.oldsf.filename),
+                    self.oldsf.pk, self.oldsf.filetype.is_folder), {})
+                ]
+        self.check(exp_t)
+
+
+class TestDeleteFile(BaseIntegrationTest):
+    jobname = 'purge_files'
+
+    def test_file(self):
+        kwargs = {'sf_ids': [self.f3sf.pk]}
+        file_path = os.path.join(self.f3path, self.f3sf.filename)
+        self.assertTrue(os.path.exists(file_path))
+        self.assertFalse(os.path.isdir(file_path))
+
+        job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
+                state=jj.Jobstates.PENDING)
+        self.run_job()
+        task = job.task_set.get()
+        self.assertEqual(task.state, states.SUCCESS)
+        self.assertFalse(os.path.exists(file_path))
+        self.f3sf.refresh_from_db()
+        self.assertTrue(self.f3sf.deleted)
+        self.assertTrue(self.f3sf.purged)
+
+    def test_dir(self):
+        self.f3sf.filename = self.run1.name
+        self.f3sf.path = os.path.split(self.storloc)[0]
+        self.f3sf.save()
+        self.ft.is_folder = True
+        self.ft.save()
+        # storloc, a dir, is now the file
+        file_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
+        self.assertTrue(os.path.exists(file_path))
+        self.assertTrue(os.path.isdir(file_path))
+
+        kwargs = {'sf_ids': [self.f3sf.pk]}
+        job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
+                state=jj.Jobstates.PENDING)
+        self.run_job()
+        task = job.task_set.get()
+        self.assertEqual(task.state, states.SUCCESS)
+        self.assertFalse(os.path.exists(file_path))
+        self.f3sf.refresh_from_db()
+        self.assertTrue(self.f3sf.deleted)
+        self.assertTrue(self.f3sf.purged)
+
+
+    def test_no_file(self):
+        '''Test without an actual file in a dir will not error, as it will register
+        that it has already deleted this file.
+        TODO Maybe we SHOULD error, as the file will be not there, so who knows where
+        it is now?
+        '''
+        badfn = 'badraw'
+        badraw = rm.RawFile.objects.create(name=badfn, producer=self.prod,
+                source_md5='badraw_fakemd5', size=10, date=timezone.now(), claimed=True)
+        badsf = rm.StoredFile.objects.create(rawfile=badraw, filename=badfn,
+                    md5=badraw.source_md5, filetype=self.ft, servershare=self.ssnewstore,
+                    path=self.storloc, checked=True)
+        file_path = os.path.join(badsf.path, badsf.filename)
+        self.assertFalse(os.path.exists(file_path))
+
+        kwargs = {'sf_ids': [badsf.pk]}
+        job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
+                state=jj.Jobstates.PENDING)
+        self.run_job()
+        self.assertEqual(job.task_set.get().state, states.SUCCESS)
+        badsf.refresh_from_db()
+        self.assertTrue(badsf.deleted)
+        self.assertTrue(badsf.purged)
+
+    def test_fail_expect_dir(self):
+        self.ft.is_folder = True
+        self.ft.save()
+        kwargs = {'sf_ids': [self.f3sf.pk]}
+        job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
+                state=jj.Jobstates.PENDING)
+        self.run_job()
+        task = job.task_set.get()
+        self.assertEqual(task.state, states.FAILURE)
+        path_noshare = os.path.join(self.f3sf.path, self.f3sf.filename)
+        full_path = os.path.join(self.f3path, self.f3sf.filename)
+        msg = (f'When trying to delete file {path_noshare}, expected a directory, but encountered '
+                'a file')
+        self.assertEqual(task.taskerror.message, msg)
+        self.assertTrue(os.path.exists(full_path))
+        self.f3sf.refresh_from_db()
+        self.assertFalse(self.f3sf.deleted)
+        self.assertFalse(self.f3sf.purged)
+
+    def test_fail_expect_file(self):
+        self.f3sf.filename = self.run1.name
+        self.f3sf.path = os.path.split(self.storloc)[0]
+        self.f3sf.save()
+        file_path = os.path.join(self.f3path)
+        self.assertTrue(os.path.exists(file_path))
+        self.assertTrue(os.path.isdir(file_path))          
+
+        kwargs = {'sf_ids': [self.f3sf.pk]}
+        job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
+                state=jj.Jobstates.PENDING)
+        self.run_job()
+        task = job.task_set.get()
+        self.assertEqual(task.state, states.FAILURE)
+        path_noshare = os.path.join(self.f3sf.path, self.f3sf.filename)
+        msg = (f'When trying to delete file {path_noshare}, expected a file, but encountered '
+                'a directory')
+        self.assertEqual(task.taskerror.message, msg)
+        self.assertTrue(os.path.exists(file_path))
+        self.f3sf.refresh_from_db()
+        self.assertFalse(self.f3sf.deleted)
+        self.assertFalse(self.f3sf.purged)
+
+
+#class TestDeleteDataset(BaseIntegrationTest):

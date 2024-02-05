@@ -210,17 +210,33 @@ class BaseTest(TestCase):
                     'servershare_id': self.sstmp.id, 'path': '', 'md5': self.ana_raw2.source_md5})
 
 
+class ProcessJobTest(BaseTest):
+
+    def setUp(self):
+        super().setUp()
+        self.job = self.jobclass(1)
+
+    def check(self, expected_tasks):
+        self.assertEqual(self.job.run_tasks, expected_tasks)
+
+
 class BaseIntegrationTest(LiveServerTestCase):
     # use a live server so that jobrunner can interface with it (otherwise only dummy
     # test client can do that)
     port = 80
     host = '0.0.0.0'
+    jobrun_timeout = 2
 
     def setUp(self):
         BaseTest.setUp(self)
 
     def post_json(self, data):
         return self.cl.post(self.url, content_type='application/json', data=data)
+
+    def run_job(self):
+        '''Call run jobs, then sleep to make tasks do their work'''
+        call_command('runjobs')
+        sleep(self.jobrun_timeout)
 
 
 class TestMultiStorageServers(BaseIntegrationTest):
@@ -237,8 +253,7 @@ class TestMultiStorageServers(BaseIntegrationTest):
         self.tmpraw.refresh_from_db()
         self.assertTrue(self.tmpraw.claimed)
         # call job runner to run rsync
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.oldfpath))
         newdspath = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.oldstorloc)
         self.assertTrue(os.path.exists(os.path.join(newdspath, self.oldsf.filename)))
@@ -251,10 +266,10 @@ class TestMultiStorageServers(BaseIntegrationTest):
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.path, '')
         self.assertEqual(self.tmpsf.servershare_id, self.sstmp.pk)
+        # first mark prev job as DONE
+        self.run_job()
         # Now execute move file job
-        call_command('runjobs') # first mark prev job as DONE
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertTrue(os.path.exists(os.path.join(newdspath, self.tmpsf.filename)))
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.servershare_id, self.ssnewstore.pk)

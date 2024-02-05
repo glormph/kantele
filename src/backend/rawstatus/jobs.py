@@ -106,12 +106,13 @@ class PurgeFiles(BaseJob):
     task = tasks.delete_file
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related('servershare')
+        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related(
+                'servershare', 'filetype')
 
     def process(self, **kwargs):
         for fn in self.getfiles_query(**kwargs):
             fullpath = os.path.join(fn.path, fn.filename)
-            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
+            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id, fn.filetype.is_folder), {}))
 
 
 class DeleteEmptyDirectory(BaseJob):

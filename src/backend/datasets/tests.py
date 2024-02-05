@@ -1,15 +1,14 @@
 import os
 import json
-from time import sleep
 from datetime import datetime
 from django.utils import timezone
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
-from django.core.management import call_command
 
 from kantele import settings
-from kantele.tests import BaseTest, BaseIntegrationTest
+from kantele.tests import BaseTest, BaseIntegrationTest, ProcessJobTest
 from datasets import models as dm
+from datasets import jobs as dj
 from jobs import models as jm
 from jobs.jobs import Jobstates
 from rawstatus import models as rm
@@ -30,8 +29,7 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertTrue(os.path.exists(self.f3path))
         rename_job = jm.Job.objects.filter(funcname='rename_dset_storage_loc').last()
         self.assertEqual(rename_job.state, Jobstates.PENDING)
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.f3path))
         new_ds_loc = os.path.join(self.p1.name, newexpname, self.dtype.name, self.run1.name)
         self.assertNotEqual(self.ds.storage_loc, new_ds_loc)
@@ -65,8 +63,7 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertFalse(self.f3raw.claimed)
         # execute dataset move on disk, should also move the removed files and update their DB
         # the move job should be in waiting state still
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         mvjob = jm.Job.objects.filter(funcname='move_stored_files_tmp').last()
         self.assertEqual(mvjob.state, Jobstates.PENDING)
         self.ds.refresh_from_db()
@@ -76,11 +73,10 @@ class UpdateDatasetTest(BaseIntegrationTest):
         newf3sf_path = os.path.join(settings.SHAREMAP[self.sstmp.name], self.f3sf.filename)
         self.assertFalse(os.path.exists(newf3sf_path))
         # call twice to execute tmp-move files on disk, first call only resolves rename dset job
-        call_command('runjobs')
+        self.run_job()
         rename_job.refresh_from_db()
         self.assertEqual(rename_job.state, Jobstates.DONE)
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
         # f3 file should now exist in tmp
@@ -115,8 +111,7 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.tmpraw.refresh_from_db()
         self.assertTrue(self.tmpraw.claimed)
         # execute dataset move on disk, should not move the added files on tmp (nor update their DB)
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         mvjob = jm.Job.objects.filter(funcname='move_files_storage').last()
         self.assertEqual(mvjob.state, Jobstates.PENDING)
         self.ds.refresh_from_db()
@@ -127,9 +122,8 @@ class UpdateDatasetTest(BaseIntegrationTest):
                 self.tmpsf.filename)
         self.assertFalse(os.path.exists(newtmpsf_path))
         # call twice to execute add files on disk, first call only resolves rename dset job
-        call_command('runjobs')
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
+        self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
         # tmp file should now exist in dset folder
@@ -157,8 +151,7 @@ class UpdateFilesTest(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, '')
         self.tmpraw.refresh_from_db()
         self.assertTrue(self.tmpraw.claimed)
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
@@ -210,8 +203,7 @@ class RenameProjectTest(BaseIntegrationTest):
         self.assertEqual(self.p1.name, newname)
         self.assertTrue(os.path.exists(self.f3path))
         old_loc = self.ds.storage_loc
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.f3path))
         new_loc = os.path.join(newname, self.exp1.name, self.dtype.name, self.run1.name)
         self.assertEqual(self.ds.storage_loc, old_loc)
@@ -244,8 +236,7 @@ class RenameProjectTest(BaseIntegrationTest):
         # Now test rename project job
         self.assertTrue(os.path.exists(self.f3path))
         old_loc = self.ds.storage_loc
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.f3path))
         new_loc = os.path.join(newname, self.exp1.name, self.dtype.name, self.run1.name)
         self.assertEqual(self.ds.storage_loc, old_loc)
@@ -266,9 +257,8 @@ class RenameProjectTest(BaseIntegrationTest):
                 self.tmpsf.filename)
         self.assertFalse(os.path.exists(newtmpsf_path))
         # call twice to execute add files on disk, first call only resolves rename dset job
-        call_command('runjobs')
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
+        self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
         # tmp file should now exist in dset folder
@@ -642,3 +632,18 @@ class MergeProjectsTest(BaseTest):
         self.assertEqual(ds3jobs.count(), 1)
         self.assertEqual(renamejobs.count(), 1)
         self.assertEqual(dm.Project.objects.filter(pk=self.p2.pk).count(), 0)
+
+
+class TestDeleteDataset(ProcessJobTest):
+    jobclass = dj.DeleteActiveDataset
+
+    def test(self):
+        kwargs = {'dset_id': self.ds.pk}
+        self.job.process(**kwargs)
+        exp_t = [
+                ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
+                    self.f3sf.pk, self.f3sf.filetype.is_folder), {}),
+                ((self.f3sfmz.servershare.name, os.path.join(self.f3sfmz.path, self.f3sfmz.filename),
+                    self.f3sfmz.pk, self.f3sfmz.filetype.is_folder), {})
+                ]
+        self.check(exp_t)
