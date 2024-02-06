@@ -382,7 +382,7 @@ def get_files_transferstate(request):
         sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').get()
         up_dst = rsjobs.create_upload_dst_web(rfn.pk, sfn.filetype.filetype)
         rsync_jobs = jm.Job.objects.filter(funcname='rsync_transfer',
-                kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst).order_by('-timestamp')
+                kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst).order_by('timestamp')
         # fetching from DB here to avoid race condition in if/else block
         try:
             last_rsjob = rsync_jobs.last()
