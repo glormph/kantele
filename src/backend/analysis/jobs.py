@@ -224,9 +224,9 @@ class RunNextflowWorkflow(BaseJob):
         for fn_notjob in dsfiles_not_in_job:
             # check if a newer version of this file exists (e.g. mzml/refined)
             # which is instead specified in the job:
-            # if fn_notjob is older but has same rawfile as another file in infiles
+            # if fn_notjob is newer than its corresponding other file in infiles
             if fn_notjob.rawfile.storedfile_set.filter(deleted=False, pk__in=kwargs['infiles'].keys(),
-                    regdate__gt=fn_notjob.regdate).count():
+                    regdate__lt=fn_notjob.regdate).count():
                 # Including new files leads to problems with e.g. fraction regex
                 # if they are somehow not matching 
                 raise RuntimeError('Could not rerun job, there are files added to '
