@@ -1212,7 +1212,7 @@ def save_or_update_files(data):
         pass
     else:
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
-            set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP,
+            set_component_state(dset_id, models.DatasetUIComponent.SAMPLES,
                     models.DCStates.INCOMPLETE)
     if dset.datatype_id != settings.QC_DATATYPE:
         set_component_state(dset_id, models.DatasetUIComponent.FILES, models.DCStates.OK)
