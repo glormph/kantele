@@ -285,11 +285,10 @@ def get_analysis(request, anid):
 
 def get_allwfs():
     allwfs = [{
-        'id': x.id, 'nfid': x.nfworkflow_id, 'name': x.name, 
-        'wftype': x.shortname.name,
+        'id': x.id, 'name': x.name, 'wftype': x.shortname.name,
         'versions': [{'name': wfv.update, 'id': wfv.id, 'latest': False,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d'), }
-                 for wfv in am.NextflowWfVersion.objects.filter(nfworkflow_id=x.nfworkflow_id).order_by('pk')][::-1]
+                 for wfv in x.nfworkflows.order_by('pk')][::-1]
     }
             for x in am.Workflow.objects.filter(public=True).order_by('pk')[::-1]]
     order = [x['id'] for x in allwfs]

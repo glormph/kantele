@@ -66,17 +66,6 @@ class NextflowWorkflow(models.Model):
         return self.description
 
 
-class Workflow(models.Model):
-    name = models.TextField()
-    # FIXME shortname is bad name for field, sounds like a string
-    shortname = models.ForeignKey(WorkflowType, on_delete=models.CASCADE)
-    nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
-    public = models.BooleanField()
-
-    def __str__(self):
-        return self.name
-
-
 class NextflowWfVersion(models.Model):
     update = models.TextField(help_text='Description of workflow update')
     commit = models.CharField(max_length=50)
@@ -90,6 +79,17 @@ class NextflowWfVersion(models.Model):
     
     def __str__(self):
         return '{} - {}'.format(self.nfworkflow.description, self.update)
+
+
+class Workflow(models.Model):
+    name = models.TextField()
+    # FIXME shortname is bad name for field, sounds like a string
+    shortname = models.ForeignKey(WorkflowType, on_delete=models.CASCADE)
+    nfworkflows = models.ManyToManyField(NextflowWfVersion)
+    public = models.BooleanField()
+
+    def __str__(self):
+        return self.name
 
 
 class PsetComponent(models.Model):
