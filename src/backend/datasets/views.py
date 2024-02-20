@@ -1230,6 +1230,9 @@ def save_files(request):
 
 
 def update_mssamples(dset, data):
+    models.EnzymeDataset.objects.filter(dataset=dset).delete()
+    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
+        for enz in data['enzymes'] if enz['checked']])
     if data['operator_id'] != dset.operatordataset.operator_id:
         dset.operatordataset.operator_id = data['operator_id']
         dset.operatordataset.save()
@@ -1264,6 +1267,9 @@ def save_mssamples(request):
                                                   length=data['rp_length'])
     models.OperatorDataset.objects.create(dataset_id=dset_id,
                                           operator_id=data['operator_id'])
+    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset_id=dset_id, enzyme_id=enz['id'])
+        for enz in data['enzymes'] if enz['checked']])
+
     save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, models.DatasetUIComponent.ACQUISITION, models.DCStates.OK)
     return JsonResponse({})
