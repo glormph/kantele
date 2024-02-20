@@ -81,8 +81,8 @@ class UserWorkflow(models.Model):
     class WFTypeChoices(models.IntegerChoices):
         STD = 1, 'Quantitative proteomics'
         QC = 2, 'Instrument quality control'
-        DBGEN = 3, 'Proteogenomics DB generation'
-        # space for 4!
+        VARDB = 3, 'Other proteomics, special DB'
+        DBGEN = 4, 'Proteogenomics DB generation'
         PISEP = 5, 'pI-separated identification'
         SPEC = 6, 'Special internal'
         LC = 7, 'Labelcheck'
