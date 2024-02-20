@@ -21,7 +21,8 @@ from jobs.jobs import DatasetJob, MultiDatasetJob, SingleFileJob, BaseJob
 # TODO
 # rerun qc data and displaying qcdata for a given qc file, how? 
 def get_ana_fullname(analysis):
-    return f'{analysis.nextflowsearch.workflow.shortname.name}_{analysis.name}'
+    shortname = models.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
+    return f'{shortname}_{analysis.name}'
 
 
 class DownloadFastaFromRepos(BaseJob):
@@ -43,7 +44,7 @@ class RefineMzmls(DatasetJob):
     def process(self, **kwargs):
         """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
-        nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
+        nfwf = models.NextflowWfVersionParamset.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         stagefiles = {'--tdb': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         mzmlfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False,
@@ -92,10 +93,10 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
     def process(self, **kwargs):
         """Assumes one file, one analysis"""
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
-        nfwf = models.NextflowWfVersion.objects.get(pk=kwargs['wfv_id'])
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
-        wf = models.Workflow.objects.filter(shortname__name='QC').last()
+        wf = models.UserWorkflow.objects.filter(wftype=models.Workflow.WFTypeChoices.QC).last()
+        nfwf = wf.nfwfversionparamsets_set.last()
         params = kwargs.get('params', [])
         stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
@@ -110,7 +111,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
-        models.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': nfwf.id, 
+        models.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': nfwf.id, 
             'job_id': self.job_id, 'workflow_id': wf.id, 'token': 'nf-{}'.format(uuid4)},
             analysis=analysis)
         self.run_tasks.append(((run, params, stagefiles, ','.join(nfwf.profiles), nfwf.nfversion), {}))
@@ -196,8 +197,8 @@ class RunNextflowWorkflow(BaseJob):
                 )
 
     def process(self, **kwargs):
-        analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow__shortname').get(pk=kwargs['analysis_id'])
-        nfwf = models.NextflowWfVersion.objects.select_related('nfworkflow').get(
+        analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow').get(pk=kwargs['analysis_id'])
+        nfwf = models.NextflowWfVersionParamset.objects.select_related('nfworkflow').get(
             pk=kwargs['wfv_id'])
         stagefiles = {}
         for flag, sf_id in kwargs['inputs']['singlefiles'].items():
@@ -295,8 +296,9 @@ class RunNextflowWorkflow(BaseJob):
                 #  expr_str        expr_thresh     sample_gtf_file pep_prefix
                 infiles.append(infile)
             # FIXME this in tasks and need to write header
-        # FIXME bigrun not hardcode
-        bigrun = analysis.nextflowsearch.workflow.shortname.name == '6FT' or len(infiles) > 500
+        # FIXME bigrun not hardcode, probably need to remove when new infra
+        shortname = models.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
+        bigrun = shortname == 'PISEP' or len(infiles) > 500
         run['nfrundirname'] = 'larger' if bigrun else 'small'
 
         # COMPLEMENT/RERUN component:

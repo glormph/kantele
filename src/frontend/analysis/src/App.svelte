@@ -610,12 +610,7 @@ onMount(async() => {
             <option disabled value={false}>Select workflow version</option>
             {#if config.wfid}
             {#each allwfs[config.wfid].versions as wfv}
-            <option value={wfv}>
-              {#if wfv.latest}
-              <span>LATEST: </span>
-              {/if}
-              {wfv.date} -- {wfv.name}
-            </option>
+            <option value={wfv}>{wfv.date} -- {wfv.name}</option>
             {/each}
             {/if}
           </select>

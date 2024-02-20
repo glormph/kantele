@@ -7,7 +7,7 @@ from math import isnan
 
 from datetime import datetime, timedelta
 
-from analysis.models import AnalysisError, NextflowWfVersion
+from analysis.models import AnalysisError
 from rawstatus.models import Producer, RawFile
 from datasets.models import Project
 from dashboard import models
