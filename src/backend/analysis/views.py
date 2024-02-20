@@ -287,7 +287,7 @@ def get_analysis(request, anid):
 def get_allwfs():
     allwfs = [{
         'id': x.id, 'name': x.name, 'wftype': am.UserWorkflow.WFTypeChoices(x.wftype).name,
-        'versions': [{'name': wfv.update, 'id': wfv.id, 'latest': False,
+        'versions': [{'name': wfv.update, 'id': wfv.id,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d'), }
                  for wfv in x.nfwfversionparamsets.order_by('pk')][::-1]
     }
