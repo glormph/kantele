@@ -15,8 +15,8 @@ class MzmlTests(BaseTest):
         super().setUp()
         # workflow stuff
         ps, _ = am.ParameterSet.objects.get_or_create(name='')
-        nfw, _ = am.NextflowWorkflow.objects.get_or_create(description='', repo='')
-        self.nfwv, _ = am.NextflowWfVersion.objects.get_or_create(update='', commit='', filename='',
+        nfw, _ = am.NextflowWorkflowRepo.objects.get_or_create(description='', repo='')
+        self.nfwv, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='', commit='', filename='',
                 nfworkflow=nfw, paramset=ps, kanteleanalysis_version=1, nfversion='')
         self.pw, _ = am.Proteowizard.objects.get_or_create(version_description='',
                 container_version='', nf_version=self.nfwv, is_docker=True)

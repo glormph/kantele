@@ -1,15 +1,14 @@
 from django.contrib import admin
 
-from analysis.models import (NextflowWfVersion, NextflowWorkflow, Workflow, ParameterSet,
+from analysis.models import (NextflowWfVersionParamset, NextflowWorkflowRepo, UserWorkflow, ParameterSet,
                              Param, FileParam, PsetParam, PsetFileParam, PsetMultiFileParam,
-                             ParamOption, PsetPredefFileParam, WorkflowType, Proteowizard,
+                             ParamOption, PsetPredefFileParam, Proteowizard,
                              PsetComponent)
 
 
-admin.site.register(NextflowWfVersion)
-admin.site.register(NextflowWorkflow)
-admin.site.register(WorkflowType)
-admin.site.register(Workflow)
+admin.site.register(NextflowWfVersionParamset)
+admin.site.register(NextflowWorkflowRepo)
+admin.site.register(UserWorkflow)
 admin.site.register(PsetComponent)
 admin.site.register(ParameterSet)
 admin.site.register(PsetParam)

@@ -6,13 +6,6 @@ from datasets import models as dsmodels
 from jobs import models as jmodels
 
 
-class WorkflowType(models.Model):
-    name = models.TextField()
-
-    def __str__(self):
-        return self.name
-
-
 class LibraryFile(models.Model):
     description = models.TextField()
     sfile = models.OneToOneField(filemodels.StoredFile, on_delete=models.CASCADE)
@@ -58,7 +51,7 @@ class ParameterSet(models.Model):
         return self.name
 
 
-class NextflowWorkflow(models.Model):
+class NextflowWorkflowRepo(models.Model):
     description = models.TextField(help_text='Description of workflow')
     repo = models.TextField()
     
@@ -66,26 +59,37 @@ class NextflowWorkflow(models.Model):
         return self.description
 
 
-class NextflowWfVersion(models.Model):
+class NextflowWfVersionParamset(models.Model):
     update = models.TextField(help_text='Description of workflow update')
+    # NB commit cannot be unique, in case of multiple paramsets
     commit = models.CharField(max_length=50)
     filename = models.TextField()
     profiles = models.JSONField(default=list)
-    nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
+    nfworkflow = models.ForeignKey(NextflowWorkflowRepo, on_delete=models.CASCADE)
     paramset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
     date = models.DateTimeField(auto_now=True)
     kanteleanalysis_version = models.IntegerField() # TODO remove this when noone uses v1 anymore
     nfversion = models.TextField()
+    #active = models.BooleanField(default=True)
     
     def __str__(self):
         return '{} - {}'.format(self.nfworkflow.description, self.update)
 
 
-class Workflow(models.Model):
+class UserWorkflow(models.Model):
+
+    class WFTypeChoices(models.IntegerChoices):
+        STD = 1, 'Quantitative proteomics'
+        QC = 2, 'Instrument quality control'
+        DBGEN = 3, 'Proteogenomics DB generation'
+        # space for 4!
+        PISEP = 5, 'pI-separated identification'
+        SPEC = 6, 'Special internal'
+        LC = 7, 'Labelcheck'
+
     name = models.TextField()
-    # FIXME shortname is bad name for field, sounds like a string
-    shortname = models.ForeignKey(WorkflowType, on_delete=models.CASCADE)
-    nfworkflows = models.ManyToManyField(NextflowWfVersion)
+    wftype = models.IntegerField(choices=WFTypeChoices.choices)
+    nfwfversionparamsets = models.ManyToManyField(NextflowWfVersionParamset)
     public = models.BooleanField()
 
     def __str__(self):
@@ -177,8 +181,8 @@ class AnalysisError(models.Model):
 
 
 class NextflowSearch(models.Model):
-    nfworkflow = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
-    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE)
+    nfwfversionparamset = models.ForeignKey(NextflowWfVersionParamset, on_delete=models.CASCADE)
+    workflow = models.ForeignKey(UserWorkflow, on_delete=models.CASCADE)
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
     # token is for authentication of NF with-weblog
     token = models.TextField()
@@ -195,7 +199,7 @@ class Proteowizard(models.Model):
     container_version = models.TextField() # chambm/i-agree-blabla:3.0.1234
     date_added = models.DateTimeField(auto_now_add=True)
     is_docker = models.BooleanField(default=False)
-    nf_version = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
+    nf_version = models.ForeignKey(NextflowWfVersionParamset, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
 

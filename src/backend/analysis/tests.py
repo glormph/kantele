@@ -40,20 +40,20 @@ class AnalysisTest(BaseTest):
         am.PsetMultiFileParam.objects.get_or_create(pset=self.pset, param=self.pfn1)
         am.PsetFileParam.objects.get_or_create(pset=self.pset, param=self.pfn2, allow_resultfiles=True)
 
-        wft, _ = am.WorkflowType.objects.get_or_create(name='wftype1')
-        self.nfw, _ = am.NextflowWorkflow.objects.get_or_create(description='a wf', repo='gh/wf')
-        self.wf, _ = am.Workflow.objects.get_or_create(name='testwf', shortname=wft,
-                nfworkflow=self.nfw, public=True)
-        self.nfwf, _ = am.NextflowWfVersion.objects.get_or_create(update='an update', commit='abc123',
+        self.nfw, _ = am.NextflowWorkflowRepo.objects.get_or_create(description='a wf', repo='gh/wf')
+        self.nfwf, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='an update', commit='abc123',
                 filename='main.nf', profiles=[], nfworkflow=self.nfw, paramset=self.pset,
                 kanteleanalysis_version=1, # FIXME remove
                 nfversion='22')
+        self.wftype = am.UserWorkflow.WFTypeChoices.STD
+        self.wf, _ = am.UserWorkflow.objects.get_or_create(name='testwf', wftype=self.wftype, public=True)
+        self.wf.nfwfversionparamsets.add(self.nfwf)
         # Create analysis for isoquant:
         self.ana, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_iso', storage_dir='testdir_iso')
         am.DatasetAnalysis.objects.get_or_create(analysis=self.ana, dataset=self.ds)
         anajob, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
                 timestamp=timezone.now())
-        self.nfs, _ = am.NextflowSearch.objects.get_or_create(analysis=self.ana, nfworkflow=self.nfwf,
+        self.nfs, _ = am.NextflowSearch.objects.get_or_create(analysis=self.ana, nfwfversionparamset=self.nfwf,
                 workflow=self.wf, token='tok123', job=anajob)
         am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param1, value=True)
         self.anamcparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param2,
@@ -72,7 +72,7 @@ class AnalysisTest(BaseTest):
         am.DatasetAnalysis.objects.get_or_create(analysis=self.analf, dataset=self.oldds)
         anajoblf, _ = jm.Job.objects.get_or_create(funcname='testjob', kwargs={}, state='done',
                 timestamp=timezone.now())
-        self.nfslf, _ = am.NextflowSearch.objects.get_or_create(analysis=self.analf, nfworkflow=self.nfwf,
+        self.nfslf, _ = am.NextflowSearch.objects.get_or_create(analysis=self.analf, nfwfversionparamset=self.nfwf,
                 workflow=self.wf, token='tok12344', job=anajoblf)
 
         am.AnalysisParam.objects.get_or_create(analysis=self.analf, param=self.param1, value=True)
@@ -147,7 +147,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
                     'samplegroups': {self.samples.samples[0][0]: self.samples.samples[0][3]}}},
                 },
                 'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfnlf.sfile.filename,
-                    'ana': f'{self.nfs.workflow.shortname}_{self.ana.name}',
+                    'ana': f'{self.wftype.name}_{self.ana.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
                 'datasets': {f'{self.ds.pk}': {'frregex': f'{self.ads1.regex}',
                     'setname': f'{self.ads1.setname.setname}', 'filesaresets': False,
@@ -213,7 +213,7 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
                 'isoquants': {},
                 },
                 'resultfiles': [{'id': self.resultfnlf.sfile.pk, 'fn': self.resultfnlf.sfile.filename,
-                    'ana': f'{self.nfs.workflow.shortname}_{self.analf.name}',
+                    'ana': f'{self.wftype.name}_{self.analf.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
                 'datasets': {f'{self.oldds.pk}': {'filesaresets': True,
                     'files': {f'{self.afs2.sfile_id}': {'id': self.afs2.sfile_id,
@@ -329,7 +329,7 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json()['error'], 'Something is wrong, contact admin')
-        maxpk = am.NextflowWorkflow.objects.aggregate(Max('pk'))['pk__max']
+        maxpk = am.NextflowWorkflowRepo.objects.aggregate(Max('pk'))['pk__max']
         resp = self.cl.get(self.url, data={'wfvid': maxpk + 10, 'dsids': f'{self.ds.pk}'})
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.json()['error'], 'Could not find workflow')
@@ -384,7 +384,7 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
                 'name': x.sfile.filename} for x in [self.lf, userfile_ft]
                 if x.sfile.filetype_id == ft]
                 for ft in [self.lf.sfile.filetype_id, sfusr_ft.filetype_id]},
-            'prev_resultfiles': [{'ana': f'{self.nfs.workflow.shortname}_{self.ana.name}',
+            'prev_resultfiles': [{'ana': f'{self.wftype.name}_{self.ana.name}',
                 'date': datetime.strftime(self.ana.date, '%Y-%m-%d'), 'id': self.resultfn.sfile_id,
                 'fn': self.resultfn.sfile.filename}],
             }}
@@ -450,7 +450,7 @@ class TestStoreAnalysis(AnalysisTest):
                     'flag': 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(ana.name, postdata['analysisname'])
-        fullname = f'{ana.pk}_{ana.nextflowsearch.workflow.shortname.name}_{ana.name}_{timestamp}'
+        fullname = f'{ana.pk}_{self.wftype.name}_{ana.name}_{timestamp}'
         # This test flakes if executed right at midnight due to timestamp in assert string
         self.assertEqual(ana.storage_dir[:-5], f'{ana.user.username}/{fullname}')
         checkjson = {'error': False, 'analysis_id': ana.pk}

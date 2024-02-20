@@ -29,7 +29,7 @@ from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               PDCBackedupFile, UploadToken)
 from rawstatus import jobs as rsjobs
 from rawstatus.tasks import search_raws_downloaded
-from analysis.models import (Analysis, LibraryFile, AnalysisResultFile, NextflowWfVersion)
+from analysis.models import (Analysis, LibraryFile, AnalysisResultFile, NextflowWfVersionParamset, UserWorkflow)
 from datasets import views as dsviews
 from datasets import models as dsmodels
 from dashboard import models as dashmodels
@@ -568,7 +568,7 @@ def singlefile_qc(rawfile, storedfile):
         params.extend(['--filters', ';'.join(filters)])
     if len(options):
         params.extend(['--options', ';'.join([x[2:] for x in options])])
-    wf_id = NextflowWfVersion.objects.filter(nfworkflow__workflow__shortname__name='QC').latest('pk').id
+    wf_id = NextflowWfVersionParamset.objects.filter(userworkflow__wftype=UserWorkflow.WFTypeChoices.QC).latest('pk').id
     analysis = Analysis.objects.create(user_id=settings.QC_USER_ID,
                         name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
     jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,

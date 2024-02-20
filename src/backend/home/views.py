@@ -107,13 +107,15 @@ def find_analysis(request):
     """Loop through comma-separated q-param in GET, do a lot of OR queries on
     analysis to find matches. String GET-derived q-params by AND."""
     searchterms = [x for x in request.GET['q'].split(',') if x != '']
-    query = Q(analysis__name__icontains=searchterms[0])
-    query |= Q(workflow__name__icontains=searchterms[0])
-    query |= Q(analysis__user__username__icontains=searchterms[0])
-    for term in searchterms[1:]:
+    query = Q()
+    wftypes = zip(anmodels.UserWorkflow.WFTypeChoices.choices, anmodels.UserWorkflow.WFTypeChoices.names)
+    for term in searchterms:
         subquery = Q(analysis__name__icontains=term)
         subquery |= Q(workflow__name__icontains=term)
         subquery |= Q(analysis__user__username__icontains=term)
+        # WF types is integerchoice, search as such
+        match_wftypes = [x[0][0] for x in wftypes if term in x[0][1] or term in x[1]]
+        subquery |= Q(workflow__wftype__in=match_wftypes)
         query &= subquery
     dbanalyses = anmodels.NextflowSearch.objects.filter(query)
     if request.GET['deleted'] == 'false':
@@ -369,7 +371,7 @@ def get_ana_actions(nfs, user):
 
 def populate_analysis(nfsearches, user):
     ana_out, order = {}, []
-    nfsearches = nfsearches.select_related('analysis', 'job', 'workflow', 'nfworkflow')
+    nfsearches = nfsearches.select_related('analysis', 'job', 'workflow', 'nfwfversionparamset')
     for nfs in nfsearches:
         fjobs = nfs.job.filejob_set.all().select_related(
             'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
@@ -383,8 +385,8 @@ def populate_analysis(nfsearches, user):
                 'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
                 'jobstate': nfs.job.state,
                 'jobid': nfs.job_id,
-                'wf': f'{nfs.workflow.name} - {nfs.nfworkflow.update}',
-                'wflink': nfs.nfworkflow.nfworkflow.repo,
+                'wf': f'{nfs.workflow.name} - {nfs.nfwfversionparamset.update}',
+                'wflink': nfs.nfwfversionparamset.nfworkflow.repo,
                 'deleted': nfs.analysis.deleted,
                 'purged': nfs.analysis.purged,
                 'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets
@@ -577,7 +579,7 @@ def get_analysis_invocation(ana):
 @login_required
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
-        'analysis', 'workflow', 'nfworkflow').get()
+        'analysis', 'workflow', 'nfwfversionparamset').get()
     ana = nfs.analysis
     storeloc = filemodels.StoredFile.objects.select_related('servershare__server').filter(
             analysisresultfile__analysis=ana)
@@ -600,10 +602,10 @@ def get_analysis_info(request, nfs_id):
         if task.taskerror.message:
             errors.append(task.taskerror.message)
     resp = {'name': aj.get_ana_fullname(ana),
-            'wf': {'fn': nfs.nfworkflow.filename, 
-                   'name': nfs.nfworkflow.nfworkflow.description,
-                   'update': nfs.nfworkflow.update,
-                   'repo': nfs.nfworkflow.nfworkflow.repo},
+            'wf': {'fn': nfs.nfwfversionparamset.filename, 
+                   'name': nfs.nfwfversionparamset.nfworkflow.description,
+                   'update': nfs.nfwfversionparamset.update,
+                   'repo': nfs.nfwfversionparamset.nfworkflow.repo},
 ##             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
             'nrfiles': ana.analysisdsinputfile_set.count(),
@@ -649,8 +651,8 @@ def refresh_analysis(request, nfs_id):
     fjobs = nfs.job.filejob_set.all().select_related(
             'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     return JsonResponse({
-        'wf': f'{nfs.workflow.name} - {nfs.nfworkflow.update}',
-        'wflink': nfs.nfworkflow.nfworkflow.repo,
+        'wf': f'{nfs.workflow.name} - {nfs.nfwfversionparamset.update}',
+        'wflink': nfs.nfwfversionparamset.nfworkflow.repo,
         'jobstate': nfs.job.state,
         'name': aj.get_ana_fullname(nfs.analysis),
         'jobid': nfs.job_id,

@@ -115,9 +115,9 @@ class BaseTest(TestCase):
 
         # Pwiz/mzml
         pset, _ = am.ParameterSet.objects.get_or_create(name='pwiz_pset_base')
-        nfw, _ = am.NextflowWorkflow.objects.get_or_create(
+        nfw, _ = am.NextflowWorkflowRepo.objects.get_or_create(
                 description='pwiz_repo_base desc', repo='pwiz_repo_base')
-        wfv, _ = am.NextflowWfVersion.objects.get_or_create(update='pwiz wfv base',
+        wfv, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='pwiz wfv base',
                 commit='pwiz ci base', filename='pwiz.nf', nfworkflow=nfw,
                 paramset=pset, kanteleanalysis_version=1, nfversion='')
         self.pwiz = am.Proteowizard.objects.create(version_description='',

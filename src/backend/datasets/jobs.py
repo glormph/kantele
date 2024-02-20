@@ -6,7 +6,7 @@ from django.urls import reverse
 from kantele import settings
 from rawstatus.models import StoredFile, ServerShare, StoredFileType
 from datasets.models import Dataset, DatasetRawFile, Project
-from analysis.models import Proteowizard, MzmlFile, NextflowWfVersion
+from analysis.models import Proteowizard, MzmlFile, NextflowWfVersionParamset
 from datasets import tasks
 from rawstatus import tasks as filetasks
 from jobs.jobs import BaseJob, DatasetJob, create_job
@@ -189,7 +189,7 @@ class ConvertDatasetMzml(DatasetJob):
         # same filetype files in a dataset if possible
         ftype = mzsf.filetype.name
         print('Queuing {} raw files for conversion'.format(len(nf_raws)))
-        nfwf = NextflowWfVersion.objects.select_related('nfworkflow').get(
+        nfwf = NextflowWfVersionParamset.objects.select_related('nfworkflow').get(
                 pk=pwiz.nf_version_id)
         run = {'timestamp': kwargs['timestamp'],
                'dset_id': dset.id,

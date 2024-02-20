@@ -89,8 +89,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
     except KeyError:
         return JsonResponse({'error': 'Something wrong when asking for base analysis, contact admin'}, status=400)
     try:
-        new_pset_id = am.NextflowWfVersion.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
-    except am.NextflowWfVersion.DoesNotExist:
+        new_pset_id = am.NextflowWfVersionParamset.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
+    except am.NextflowWfVersionParamset.DoesNotExist:
         return JsonResponse({'error': 'Workflow for applying base analysis not found'}, status=403)
     try:
         ana = am.Analysis.objects.select_related('nextflowsearch').get(pk=baseanid)
@@ -115,7 +115,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
             analysis['inputparams'][ap.param_id] = ap.value
         elif ap.param.ptype == 'text':
             analysis['inputparams'][ap.param_id] = ap.value
-    pset = ana.nextflowsearch.nfworkflow.paramset
+    pset = ana.nextflowsearch.nfwfversionparamset.paramset
     for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
         try:
             fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
@@ -178,7 +178,7 @@ def get_analysis(request, anid):
     '''Renders analysis HTML page, complete with analysis, values are loaded as JSON in rendered
     page where the JS can pick it up'''
     try:
-        ana = am.Analysis.objects.get(nextflowsearch__pk=anid)
+        ana = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__paramset').get(nextflowsearch__pk=anid)
     except am.Analysis.DoesNotExist:
         return HttpResponseNotFound()
     if ana.user != request.user and not request.user.is_staff:
@@ -186,7 +186,7 @@ def get_analysis(request, anid):
     analysis = {
             'analysis_id': ana.pk,
             'editable': ana.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR],
-            'wfversion_id': ana.nextflowsearch.nfworkflow_id,
+            'wfversion_id': ana.nextflowsearch.nfwfversionparamset_id,
             'wfid': ana.nextflowsearch.workflow_id,
             'analysisname': ana.name,
             'flags': [],
@@ -206,7 +206,7 @@ def get_analysis(request, anid):
             analysis['inputparams'][ap.param_id] = ap.value
         elif ap.param.ptype == 'number':
             analysis['inputparams'][ap.param_id] = ap.value
-    pset = ana.nextflowsearch.nfworkflow.paramset
+    pset = ana.nextflowsearch.nfwfversionparamset.paramset
 
     dsids = [x.dataset_id for x in ana.datasetanalysis_set.all()]
     prev_resultfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
@@ -224,7 +224,8 @@ def get_analysis(request, anid):
                     for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
                 'selected': ana_base.base_analysis_id,
                 'typedname': '{} - {} - {} - {} - {}'.format(baname,
-                ana_base.base_analysis.nextflowsearch.workflow.name, ana_base.base_analysis.nextflowsearch.nfworkflow.update,
+                ana_base.base_analysis.nextflowsearch.workflow.name,
+                ana_base.base_analysis.nextflowsearch.nfwfversionparamset.update,
                 ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
                 'isComplement': ana_base.is_complement,
                 'runFromPSM': ana_base.rerun_from_psms,
@@ -285,12 +286,12 @@ def get_analysis(request, anid):
 
 def get_allwfs():
     allwfs = [{
-        'id': x.id, 'name': x.name, 'wftype': x.shortname.name,
+        'id': x.id, 'name': x.name, 'wftype': am.UserWorkflow.WFTypeChoices(x.wftype).name,
         'versions': [{'name': wfv.update, 'id': wfv.id, 'latest': False,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d'), }
-                 for wfv in x.nfworkflows.order_by('pk')][::-1]
+                 for wfv in x.nfwfversionparamsets.order_by('pk')][::-1]
     }
-            for x in am.Workflow.objects.filter(public=True).order_by('pk')[::-1]]
+            for x in am.UserWorkflow.objects.filter(public=True).order_by('pk')[::-1]]
     order = [x['id'] for x in allwfs]
     allwfs = {x['id']: x for x in allwfs}
     return {'wfs': allwfs, 'order': order}
@@ -320,15 +321,17 @@ def get_base_analyses(request):
     if 'q' in request.GET:
         query = Q()
         searchterms = request.GET['q'].split()
+        wftypes = zip(am.UserWorkflow.WFTypeChoices.choices, am.UserWorkflow.WFTypeChoices.names)
         for st in searchterms:
             subquery = Q(name__icontains=st)
-            subquery |= Q(nextflowsearch__workflow__shortname__name__icontains=st)
+            match_wftypes = [x[0][0] for x in wftypes if st in x[0][1] or st in x[1]]
+            subquery |= Q(nextflowsearch__workflow__wftype__in=match_wftypes)
             query &= subquery
         resp = {}
         for x in am.Analysis.objects.select_related('nextflowsearch').filter(query,
                 nextflowsearch__isnull=False, deleted=False):
             resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(x),
-                x.nextflowsearch.workflow.name, x.nextflowsearch.nfworkflow.update,
+                x.nextflowsearch.workflow.name, x.nextflowsearch.nfwfversionparamset.update,
                 x.user.username, datetime.strftime(x.date, '%Y%m%d'))}
         return JsonResponse(resp)
     else:
@@ -360,7 +363,7 @@ def get_datasets(request, wfversion_id):
     dsetinfo = {}
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     wfcomponents = {allcomponents[x.component].name: x.value
-            for x in am.PsetComponent.objects.filter(pset__nextflowwfversion=wfversion_id)}
+            for x in am.PsetComponent.objects.filter(pset__nextflowwfversionparamset=wfversion_id)}
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
             'quantdataset'):
         # For error reporting per dset:
@@ -519,11 +522,11 @@ def get_datasets(request, wfversion_id):
 @require_GET
 def get_workflow_versioned(request):
     try:
-        wf = am.NextflowWfVersion.objects.get(pk=request.GET['wfvid'])
+        wf = am.NextflowWfVersionParamset.objects.get(pk=request.GET['wfvid'])
         dsids = request.GET['dsids'].split(',')
     except KeyError:
         return JsonResponse({'error': 'Something is wrong, contact admin'}, status=400)
-    except am.NextflowWfVersion.DoesNotExist:
+    except am.NextflowWfVersionParamset.DoesNotExist:
         return JsonResponse({'error': 'Could not find workflow'}, status=404)
     params = wf.paramset.psetparam_set.select_related('param')
     files = wf.paramset.psetfileparam_set.select_related('param')
@@ -664,7 +667,7 @@ def store_analysis(request):
             'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
     # Components
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
-    nfwf_ver = am.NextflowWfVersion.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
+    nfwf_ver = am.NextflowWfVersionParamset.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
     wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
 
     # Check if labelcheck 
@@ -717,10 +720,10 @@ def store_analysis(request):
         dss.filter(dataset_id__in=excess_dss).delete()
         am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
-        wfshortname = analysis.nextflowsearch.workflow.shortname.name
+        wfshortname = am.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
     else:
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
-        wfshortname = am.Workflow.objects.select_related('shortname').get(pk=req['wfid']).shortname.name
+        wfshortname = am.UserWorkflow.WFTypeChoices(am.UserWorkflow.objects.get(pk=req['wfid']).wftype).name
         am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
     ana_storpathname = (f'{analysis.pk}_{wfshortname}_{analysis.name}_'
             f'{datetime.strftime(analysis.date, "%Y%m%d_%H.%M")}')
@@ -911,7 +914,7 @@ def store_analysis(request):
         job.save()
     else:
         job = jj.create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-    am.NextflowSearch.objects.update_or_create(defaults={'nfworkflow_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
+    am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id})
 
 
