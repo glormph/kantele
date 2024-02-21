@@ -515,7 +515,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
 class TestPurgeFilesJob(ProcessJobTest):
     jobclass = rjobs.PurgeFiles
 
-    def test(self):
+    def test_fns(self):
         kwargs = {'sf_ids': [self.f3sf.pk, self.oldsf.pk]}
         self.job.process(**kwargs)
         exp_t = [
@@ -525,6 +525,20 @@ class TestPurgeFilesJob(ProcessJobTest):
                     self.oldsf.pk, self.oldsf.filetype.is_folder), {})
                 ]
         self.check(exp_t)
+
+    def test_is_dir(self):
+        self.ft.is_folder = True
+        self.ft.save()
+        kwargs = {'sf_ids': [self.f3sf.pk, self.f3sfmz.pk]}
+        self.job.process(**kwargs)
+        exp_t = [
+                ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
+                    self.f3sf.pk, True), {}),
+                ((self.f3sfmz.servershare.name, os.path.join(self.f3sfmz.path, self.f3sfmz.filename),
+                    self.f3sfmz.pk, False), {})
+                ]
+        self.check(exp_t)
+
 
 
 class TestDeleteFile(BaseIntegrationTest):
