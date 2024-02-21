@@ -258,7 +258,11 @@ class DeleteActiveDataset(DatasetJob):
         for fn in self.getfiles_query(**kwargs).select_related('filetype').filter(purged=False):
             fullpath = os.path.join(fn.path, fn.filename)
             print('Purging {} from dataset {}'.format(fullpath, kwargs['dset_id']))
-            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id, fn.filetype.is_folder), {}))
+            if hasattr(fn, 'mzmlfile'):
+                is_folder = False
+            else:
+                is_folder = fn.filetype.is_folder
+            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id, is_folder), {}))
 
 
 class BackupPDCDataset(DatasetJob):
