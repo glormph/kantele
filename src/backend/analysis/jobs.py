@@ -96,7 +96,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
         mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
         wf = models.UserWorkflow.objects.filter(wftype=models.UserWorkflow.WFTypeChoices.QC).last()
-        nfwf = wf.nfwfversionparamsets_set.last()
+        nfwf = wf.nfwfversionparamsets.last()
         params = kwargs.get('params', [])
         stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
