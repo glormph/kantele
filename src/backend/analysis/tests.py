@@ -42,9 +42,7 @@ class AnalysisTest(BaseTest):
 
         self.nfw, _ = am.NextflowWorkflowRepo.objects.get_or_create(description='a wf', repo='gh/wf')
         self.nfwf, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='an update', commit='abc123',
-                filename='main.nf', profiles=[], nfworkflow=self.nfw, paramset=self.pset,
-                kanteleanalysis_version=1, # FIXME remove
-                nfversion='22')
+                filename='main.nf', profiles=[], nfworkflow=self.nfw, paramset=self.pset, nfversion='22', active=True)
         self.wftype = am.UserWorkflow.WFTypeChoices.STD
         self.wf, _ = am.UserWorkflow.objects.get_or_create(name='testwf', wftype=self.wftype, public=True)
         self.wf.nfwfversionparamsets.add(self.nfwf)
@@ -351,7 +349,7 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
         resp = self.cl.get(self.url, data={'wfvid': self.nfwf.pk, 'dsids': f'{self.ds.pk}'})
         self.assertEqual(resp.status_code, 200)
         allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
-        checkjson = {'wf': {'analysisapi': self.nfwf.kanteleanalysis_version,
+        checkjson = {'wf': {
             'components': {allcomponents[x.component].name: x.value 
                 for x in  self.nfwf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
@@ -375,11 +373,6 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
                 'ftype': x.param.filetype_id, 'allow_resultfile': x.allow_resultfiles,
                 'help': x.param.help or False}
                 for x in self.nfwf.paramset.psetmultifileparam_set.all()],
-            # FIXME going to remove fixed files anyway
-            'fixedfileparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
-                'ftype': x.param.filetype_id, 'allow_resultfile': x.allow_resultfiles,
-                'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetpredeffileparam_set.all()],
             'libfiles': {f'{ft}': [{'id': x.sfile.id, 'desc': x.description,
                 'name': x.sfile.filename} for x in [self.lf, userfile_ft]
                 if x.sfile.filetype_id == ft]

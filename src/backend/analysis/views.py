@@ -289,7 +289,7 @@ def get_allwfs():
         'id': x.id, 'name': x.name, 'wftype': am.UserWorkflow.WFTypeChoices(x.wftype).name,
         'versions': [{'name': wfv.update, 'id': wfv.id,
                  'date': datetime.strftime(wfv.date, '%Y-%m-%d'), }
-                 for wfv in x.nfwfversionparamsets.order_by('pk')][::-1]
+                 for wfv in x.nfwfversionparamsets.filter(active=True).order_by('pk')][::-1]
     }
             for x in am.UserWorkflow.objects.filter(public=True).order_by('pk')[::-1]]
     order = [x['id'] for x in allwfs]
@@ -531,7 +531,6 @@ def get_workflow_versioned(request):
     params = wf.paramset.psetparam_set.select_related('param')
     files = wf.paramset.psetfileparam_set.select_related('param')
     multifiles = wf.paramset.psetmultifileparam_set.select_related('param')
-    fixedfiles = wf.paramset.psetpredeffileparam_set.select_related('libfile__sfile')
     ftypes = [x['param__filetype_id'] for x in files.values('param__filetype_id').distinct()]
     ftypes.extend([x['param__filetype_id'] for x in multifiles.values('param__filetype_id').distinct()])
     ftypes = set(ftypes)
@@ -542,7 +541,6 @@ def get_workflow_versioned(request):
     selectable_files.extend(userfiles)
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     resp = {
-            'analysisapi': wf.kanteleanalysis_version,
             'components': {allcomponents[psc.component].name: psc.value for psc in 
                 wf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': f.param.nfparam, 'id': f.param.pk, 'name': f.param.name,
@@ -562,11 +560,6 @@ def get_workflow_versioned(request):
             'multifileparams': [{'name': f.param.name, 'id': f.param.pk, 'nf': f.param.nfparam,
                 'ftype': f.param.filetype_id, 'allow_resultfile': f.allow_resultfiles,
                 'help': f.param.help or False} for f in multifiles],
-            'fixedfileparams': [{'name': f.param.name, 'id': f.param.pk, 'nf': f.param.nfparam,
-                'fn': f.libfile.sfile.filename,
-                'sfid': f.libfile.sfile.id,
-                'desc': f.libfile.description}
-                for f in fixedfiles],
             'libfiles': {ft: [{'id': x.sfile.id, 'desc': x.description,
                 'name': x.sfile.filename}
                 for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}

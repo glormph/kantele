@@ -59,23 +59,6 @@ function updateResultfiles() {
 }
 
 
-/*
-Removing:
-NF workflow API v1:
-- no mixed isobaric
-- no mixed instruments
-- mixed dtype is ok i guess, but stupid
-- predefined files exist, e.g. vardb
-- isobaric spec as --isobaric tmt10plex --denoms set1:126 set2:127N
- 
-
-NF workflow API v2:
-- mods / locptms via multi-checkbox
-- DBs via multi-file interface
-- isobaric spec as --isobaric set1:tmt10plex:126 set2:6plex:sweep
-*/
-
-
 let config = {
   wfid: false,
   wfversion: false,
@@ -86,14 +69,6 @@ let config = {
   fileparams: {},
   inputparams: {},
   multifileparams: {},
-  v1: false,
-  v2: false,
-  version_dep: {
-    v1: {
-      instype: false,
-      dtype: false,
-    }
-  },
 }
 let matchedFr = {};
 
@@ -147,9 +122,6 @@ async function storeAnalysis() {
   postingAnalysis = true;
   notif.messages['Validated data'] = 1;
   let fns = Object.fromEntries(Object.entries(config.fileparams).filter(([k,v]) => v))
-  wf.fixedfileparams.forEach(fn => {
-    fns[fn.id] = fn.sfid
-  })
   let multifns = Object.fromEntries(Object.entries(config.multifileparams).map(([k, v]) => [k, Object.values(v).filter(x => x)]).filter(([k, v]) => v.length));
 
   notif.messages[`Using ${Object.keys(dsets).length} dataset(s)`] = 1;
@@ -188,10 +160,6 @@ async function storeAnalysis() {
         }))),
     },
   };
-  // FIXME this is for LC pipelien, which we need to fix the input format for
-  if (config.v1) {
-    post.params.inst = ['--instrument', config.version_dep.v1.instype];
-  }
   if ('ISOQUANT' in wf.components) {
     post.components.ISOQUANT = config.isoquants;
   }
@@ -271,8 +239,6 @@ async function fetchWorkflow() {
     libfnorder = Object.fromEntries(Object.entries(result.wf.libfiles).map(([ft, lf]) => [ft, lf.map(x => x.id)]));
     prev_resultfiles = result.wf.prev_resultfiles;
     wf = result.wf;
-    config.v1 = wf.analysisapi === 1;
-    config.v2 = wf.analysisapi === 2;
   }
   if (wf.multifileparams.length) {
     config.multifileparams = Object.assign(config.multifileparams, Object.fromEntries(wf.multifileparams.filter(x => !(x.id in config.multifileparams)).map(x => [x.id, {0: ''}])));
@@ -305,23 +271,6 @@ async function fetchDatasetDetails(fetchdsids) {
       dsets[x].changed = false;
     })
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
-    // API v1 stuff
-    // 
-    const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
-    config.version_dep.v1.dtype = dtypes.size > 1 ? 'mixed' : dtypes.keys().next().value;
-    const qtypes = new Set(Object.values(dsets).map(ds => ds.qtype.short));
-    if (config.v1 && qtypes.size > 1) {
-      notif.errors['Mixed quant types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
-    } else {
-      config.version_dep.v1.qtype = qtypes.keys().next().value;
-    }
-    // FIXME deprecate, remove old pipelines with v1 kantele api!
-    const instypes = new Set(Object.values(dsets).flatMap(ds => ds.instrument_types).map(x => x.toLowerCase()));
-    if (config.v1 && instypes.size> 1) {
-      notif.errors['Mixed instrument types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
-    } else {
-      config.version_dep.v1.instype = instypes.keys().next().value;
-    }
   }
 }
 
@@ -668,7 +617,6 @@ onMount(async() => {
 
   {/if}
 
-  <!-------------------------- ############### API v1? -->
 	<div class="title is-5">Datasets</div>
   {#each Object.values(dsets) as ds}
   <div class="box">
@@ -935,24 +883,6 @@ onMount(async() => {
     </div>
     {/each}
 	</div>
-  {/if}
-
-
-  {#if wf.fixedfileparams.length}
-	<div class="box">
-    <div class="title is-5">Predefined files</div>
-    {#each wf.fixedfileparams as ffilep}
-    <div class="field">
-      <label class="label">{ffilep.name}</label>
-      <div class="select" >
-        <select>
-          <option disabled value="">Fixed selection</option>
-          <option>{ffilep.fn} -- {ffilep.desc}</option>
-        </select>
-      </div>
-    </div>
-    {/each}
-  </div>
   {/if}
 
   {#if runButtonActive && (!existing_analysis || existing_analysis.editable)}

@@ -119,7 +119,7 @@ class BaseTest(TestCase):
                 description='pwiz_repo_base desc', repo='pwiz_repo_base')
         wfv, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='pwiz wfv base',
                 commit='pwiz ci base', filename='pwiz.nf', nfworkflow=nfw,
-                paramset=pset, kanteleanalysis_version=1, nfversion='')
+                paramset=pset, nfversion='', active=True)
         self.pwiz = am.Proteowizard.objects.create(version_description='',
                 container_version='', nf_version=wfv)
         self.f3sfmz, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw,
