@@ -182,8 +182,6 @@ def dataset_samples(request, dataset_id=False):
             chan_samples.sort(key=lambda x: x['name'].replace('N', 'A'))
             response_json['quants'][qtid]['chans'] = chan_samples
             response_json['labeled'] = qtid
-        #########
-        #get_admin_params_for_dset(response_json, dataset_id, 'seqsamples')
     return JsonResponse(response_json)
 
 
@@ -1278,14 +1276,15 @@ def save_mssamples(request):
 def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
     '''This function is used both by LC and normal Dset'''
     # FIXME can LC use normal dset samples?
-
         # first delete old qcs/qsf
         # create new ones but first do samples
+    # LC does not use samples, what is this?
 
     # switch from labelfree - tmt: remove filesample, create other channels
     if oldqtype == 'labelfree' and updated_qtype:
         print('Switching to isobaric')
         # FIXME new_channelsamples need fixing I guess
+        # what does this mean, fixed?
         models.QuantChannelSample.objects.bulk_create([
             models.QuantChannelSample(dataset_id=data['dataset_id'],
                 projsample_id=chan['model'], channel_id=chan['id'])
@@ -1449,9 +1448,7 @@ def save_samples(request):
                 # diff types), that this doesnt override an error!
                 continue
             elif not psam.datasetsample_set.count():
-                # Sample is up for grabs
-                # FIXME this case for psam is orphan, aka has been created
-                # but not assigned a dataset yet - is this ok?
+                # Sample is up for grabs, already registered but not in dataset
                 duprun_txt = 'not used in dataset, only registered'
             else:
                 duprun_txt = 'Something went wrong, contact admin'
