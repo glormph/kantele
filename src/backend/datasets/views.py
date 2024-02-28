@@ -1541,7 +1541,6 @@ def save_samples(request):
         models.ProjectSample.objects.filter(project__experiment__runname__dataset=dset,
                 quantchannelsample__isnull=True,
                 quantsamplefile__isnull=True,
-                quantfilechannel__isnull=True,
                 ).delete()
     set_component_state(dset_id, models.DatasetUIComponent.SAMPLES, models.DCStates.OK)
     return JsonResponse({})
