@@ -182,8 +182,6 @@ def dataset_samples(request, dataset_id=False):
             chan_samples.sort(key=lambda x: x['name'].replace('N', 'A'))
             response_json['quants'][qtid]['chans'] = chan_samples
             response_json['labeled'] = qtid
-        #########
-        #get_admin_params_for_dset(response_json, dataset_id, 'seqsamples')
     return JsonResponse(response_json)
 
 
@@ -1278,14 +1276,15 @@ def save_mssamples(request):
 def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
     '''This function is used both by LC and normal Dset'''
     # FIXME can LC use normal dset samples?
-
         # first delete old qcs/qsf
         # create new ones but first do samples
+    # LC does not use samples, what is this?
 
     # switch from labelfree - tmt: remove filesample, create other channels
     if oldqtype == 'labelfree' and updated_qtype:
         print('Switching to isobaric')
         # FIXME new_channelsamples need fixing I guess
+        # what does this mean, fixed?
         models.QuantChannelSample.objects.bulk_create([
             models.QuantChannelSample(dataset_id=data['dataset_id'],
                 projsample_id=chan['model'], channel_id=chan['id'])
@@ -1419,7 +1418,7 @@ def save_samples(request):
     samples_complete = all(stype_ids[x] and spec_ids[x] for x in dsr_chids
             if x in stype_ids and x in spec_ids)
     if dsr_chids.symmetric_difference(stype_ids) or dsr_chids.symmetric_difference(spec_ids) or not samples_complete:
-        return JsonResponse({'error': 'Samples and species need to be specified for all files'}, status=400)
+        return JsonResponse({'error': 'Samples and species need to be specified for all files or channels'}, status=400)
     # Sample name check if they already exist as projectsample in system, then reply with
     # which of them exist and which sampletype/species they have
     projsamples, allspecies = {}, {}
@@ -1448,6 +1447,9 @@ def save_samples(request):
                 # FIXME make sure when input conflicting sample in dset (same name,
                 # diff types), that this doesnt override an error!
                 continue
+            elif not psam.datasetsample_set.count():
+                # Sample is up for grabs, already registered but not in dataset
+                duprun_txt = 'not used in dataset, only registered'
             else:
                 duprun_txt = 'Something went wrong, contact admin'
                 print('Something went wrong here validating project samples')
@@ -1455,12 +1457,12 @@ def save_samples(request):
                 if psam_st.sampletype_id not in stype_ids[fidix]:
                     st_error.append({'id': psam_st.sampletype_id, 'name': psam_st.sampletype.name, 'add': True, 'remove': False})
                 else:
-                    stype_ids[fidix].pop(psam_st.sampletype_id)
+                    stype_ids[fidix].remove(psam_st.sampletype_id)
             for psam_sp in psam.samplespecies_set.all():
                 if psam_sp.species_id not in spec_ids[fidix]:
                     sp_error.append({'id': psam_sp.species_id, 'name': psam_sp.species.popname, 'linnean': psam_sp.species.linnean, 'add': True, 'remove': False})
                 else:
-                    spec_ids[fidix].pop(psam_sp.species_id)
+                    spec_ids[fidix].remove(psam_sp.species_id)
             for rm_id in stype_ids[fidix]:
                 st_error.append({'id': rm_id, 'name': allsampletypes[rm_id], 'add': False, 'remove': True})
             for rm_id in spec_ids[fidix]:
@@ -1494,8 +1496,6 @@ def save_samples(request):
             # switch from old multiplex type, delete old plex
             models.QuantChannelSample.objects.filter(dataset=dset).delete()
 
-    # FIXME what to do in case of same sample in multiple ch/file for one dset?
-    # FIXME -> write a test
     _cr, qds = models.QuantDataset.objects.update_or_create(dataset=dset,
             defaults={'quanttype_id': data['qtype']})
     dset_psams = set()
@@ -1536,7 +1536,6 @@ def save_samples(request):
         models.ProjectSample.objects.filter(project__experiment__runname__dataset=dset,
                 quantchannelsample__isnull=True,
                 quantsamplefile__isnull=True,
-                quantfilechannel__isnull=True,
                 ).delete()
     set_component_state(dset_id, models.DatasetUIComponent.SAMPLES, models.DCStates.OK)
     return JsonResponse({})

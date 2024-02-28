@@ -301,7 +301,7 @@ class SaveSamples(BaseTest):
         resp = self.cl.post(self.url, content_type='application/json', data=req)
         self.assertEqual(resp.status_code, 400)
         self.assertJSONEqual(resp.content.decode('utf-8'),
-                {'error': 'Samples and species need to be specified for all files'})
+                {'error': 'Samples and species need to be specified for all files or channels'})
 
     def test_save_new_samples_multiplex(self):
         newrun = dm.RunName.objects.create(name='newds_nosamples_plex', experiment=self.exp1)
@@ -338,6 +338,7 @@ class SaveSamples(BaseTest):
         self.assertFalse(hasattr(psam, 'quantsamplefile'))
 
     def test_save_new_samples_files(self):
+        # Create dset
         newrun = dm.RunName.objects.create(name='newds_nosamples_fns', experiment=self.exp1)
         newds = dm.Dataset.objects.create(date=self.p1.registered, runname=newrun,
                 datatype=self.dtype, storage_loc=newrun.name, storageshare=self.ssnewstore)
@@ -350,7 +351,7 @@ class SaveSamples(BaseTest):
         raw = rm.RawFile.objects.create(name=fn, producer=self.prod,
                 source_md5='rawlf_ds_fakemd5', size=2024, date=timezone.now(),
                 claimed=True)
-        dsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=newds, rawfile=raw)
+        dsr = dm.DatasetRawFile.objects.create(dataset=newds, rawfile=raw)
 
         samplename = 'new proj sample B'
         psam = dm.ProjectSample.objects.filter(sample=samplename, project=newrun.experiment.project)
@@ -394,7 +395,6 @@ class SaveSamples(BaseTest):
                         }],
                     },
                 }
-
         resp = self.cl.post(self.url, content_type='application/json', data=req)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(psam.count(), 1)
@@ -406,8 +406,8 @@ class SaveSamples(BaseTest):
         self.assertFalse(hasattr(psam, 'quantsamplefile'))
 
     def test_update_samples_multiplex_samplechange_fail_mixedinput(self):
-        # New sample info (organism, type) on existing multiplex dset, 
-        # updates since sample is NOT in use in another dataset
+        # Changed sample info (organism, type) on existing multiplex dset, 
+        # FAILS since two samples should be identical in type/species
         qch2 = dm.QuantChannel.objects.create(name='thech2')
         qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
         req = {'dataset_id': self.ds.pk,
@@ -427,7 +427,6 @@ class SaveSamples(BaseTest):
                         ],
                     },
                 }
-
         resp = self.cl.post(self.url, content_type='application/json', data=req)
         self.assertEqual(resp.status_code, 400)
         self.assertJSONEqual(resp.content.decode('utf-8'),
@@ -436,7 +435,8 @@ class SaveSamples(BaseTest):
 
     def test_update_samples_multiplex_samplechange_onedset(self):
         # New sample info (organism, type) on existing multiplex dset, 
-        # updates since sample is NOT in use in another dataset
+        # updates since sample is NOT in use in another dataset 
+        # (otherwise one would change both dataset's samples)
         req = {'dataset_id': self.ds.pk,
                 'qtype': self.qt.pk,
                 'multiplex': {
@@ -448,7 +448,6 @@ class SaveSamples(BaseTest):
                         ],
                     },
                 }
-
         resp = self.cl.post(self.url, content_type='application/json', data=req)
         self.assertEqual(resp.status_code, 200)
         self.projsam1.refresh_from_db()
@@ -457,7 +456,6 @@ class SaveSamples(BaseTest):
         self.assertEqual(self.projsam1.datasetsample_set.filter(dataset=self.ds).count(), 1)
         self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
         self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
-
 
     def test_update_samples_multiplex_samplechange_alreadyinuse_multidset(self):
         # New sample info (organism, type) on existing multiplex dset, 
@@ -470,7 +468,6 @@ class SaveSamples(BaseTest):
         dm.QuantChannelSample.objects.create(dataset=newds, channel=self.qtch, projsample=self.projsam1)
         dm.DatasetComponentState.objects.get_or_create(dataset=newds,
                 defaults={'state': dm.DCStates.NEW, 'dtcomp': self.dtcompsamples})
-
         req = {'dataset_id': self.ds.pk,
                 'qtype': self.qt.pk,
                 'multiplex': {
@@ -506,8 +503,37 @@ class SaveSamples(BaseTest):
         self.assertEqual(self.projsam1.quantchannelsample_set.count(), 2)
         self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
 
+    def test_update_samples_multiplex_already_exist_identical(self):
+        # Test case for sample that exists already in the project but not dataset
+        # Samples passed have identical species/sampletype as existing ones
+        projsam = dm.ProjectSample.objects.create(sample='sample test yoyo', project=self.p1)
+        dm.SampleMaterial.objects.create(sample=projsam, sampletype=self.samtype2)
+        dm.SampleSpecies.objects.create(sample=projsam, species=self.spec2)
+
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': projsam.sample,
+                        'sampletypes': [{'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec2.pk}]},
+                        ],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 400)
+        errjson = json.loads(resp.content)
+        self.assertEqual(errjson['error'],
+                'Project samples exist in database, please validate the sample IDs')
+        projsam_err = {self.qtch.pk : {'id': projsam.pk,
+            'duprun_example': 'not used in dataset, only registered',
+            'sampletypes_error': [],
+            'species_error': []}}
+        self.assertEqual(errjson['sample_dups'], json.loads(json.dumps(projsam_err)))
+
     def test_update_samples_files_newsample(self):
-        # Change proj sample
+        # Change proj sample for existing datasetrawfile to another sample
         samplename = 'new proj sample update_files'
         psam = dm.ProjectSample.objects.filter(sample=samplename, project=self.oldds.runname.experiment.project)
         self.assertEqual(psam.count(), 0)
@@ -531,6 +557,73 @@ class SaveSamples(BaseTest):
         self.assertEqual(psam.datasetsample_set.filter(dataset=self.oldds).count(), 1)
         self.assertEqual(psam.quantchannelsample_set.count(), 0)
         self.assertEqual(psam.quantsamplefile_set.filter(rawfile=self.olddsr).count(), 1)
+
+    def test_update_samples_multiplex_two_identical_new_samples(self):
+        # Multiple identical new samples on existing multiplex dset
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        samplename = 'upd_sam plex new projsample twosamples'
+        psam = dm.ProjectSample.objects.filter(sample=samplename, project=self.ds.runname.experiment.project)
+        self.assertEqual(psam.count(), 0)
+
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        },
+                        {'id': qtch2.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(psam.count(), 1)
+        psam = psam.get()
+        self.assertEqual(psam.samplematerial_set.count(), 2)
+        self.assertEqual(psam.samplespecies_set.count(), 1)
+        self.assertEqual(psam.datasetsample_set.filter(dataset=self.ds).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=self.ds, channel=qtch2).count(), 1)
+        self.assertFalse(hasattr(psam, 'quantsamplefile'))
+
+    def test_update_samples_multiplex_two_identical_existing_samples(self):
+        # Multiple identical existing samples on existing multiplex dset
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        # EXISTING samples on existing multiplex dset, update sampletype
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        },
+                        {'id': qtch2.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.projsam1.refresh_from_db()
+        self.assertEqual(self.projsam1.samplematerial_set.count(), 2)
+        self.assertEqual(self.projsam1.samplespecies_set.count(), 1)
+        self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=qtch2).count(), 1)
+        self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
 
 
 class MergeProjectsTest(BaseTest):
