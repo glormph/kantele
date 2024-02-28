@@ -561,6 +561,73 @@ class SaveSamples(BaseTest):
         self.assertEqual(psam.quantchannelsample_set.count(), 0)
         self.assertEqual(psam.quantsamplefile_set.filter(rawfile=self.olddsr).count(), 1)
 
+    def test_update_samples_multiplex_two_identical_new_samples(self):
+        # Multiple identical new samples on existing multiplex dset
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        samplename = 'upd_sam plex new projsample twosamples'
+        psam = dm.ProjectSample.objects.filter(sample=samplename, project=self.ds.runname.experiment.project)
+        self.assertEqual(psam.count(), 0)
+
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        },
+                        {'id': qtch2.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(psam.count(), 1)
+        psam = psam.get()
+        self.assertEqual(psam.samplematerial_set.count(), 2)
+        self.assertEqual(psam.samplespecies_set.count(), 1)
+        self.assertEqual(psam.datasetsample_set.filter(dataset=self.ds).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=self.ds, channel=qtch2).count(), 1)
+        self.assertFalse(hasattr(psam, 'quantsamplefile'))
+
+    def test_update_samples_multiplex_two_identical_existing_samples(self):
+        # Multiple identical existing samples on existing multiplex dset
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        # EXISTING samples on existing multiplex dset, update sampletype
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        },
+                        {'id': qtch2.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.projsam1.refresh_from_db()
+        self.assertEqual(self.projsam1.samplematerial_set.count(), 2)
+        self.assertEqual(self.projsam1.samplespecies_set.count(), 1)
+        self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=qtch2).count(), 1)
+        self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
+
 
 class MergeProjectsTest(BaseTest):
     url = '/datasets/merge/projects/'

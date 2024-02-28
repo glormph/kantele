@@ -1499,8 +1499,6 @@ def save_samples(request):
             # switch from old multiplex type, delete old plex
             models.QuantChannelSample.objects.filter(dataset=dset).delete()
 
-    # FIXME what to do in case of same sample in multiple ch/file for one dset?
-    # FIXME -> write a test
     _cr, qds = models.QuantDataset.objects.update_or_create(dataset=dset,
             defaults={'quanttype_id': data['qtype']})
     dset_psams = set()
