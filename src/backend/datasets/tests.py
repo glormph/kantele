@@ -458,6 +458,35 @@ class SaveSamples(BaseTest):
         self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
         self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
 
+    def test_update_samples_multiplex_BUGFIX_pop(self):
+        # Test case for sample that exists already in the project but not dataset
+        # FIXME working, complete it
+        projsam = dm.ProjectSample.objects.create(sample='sample test yoyo', project=self.p1)
+        dm.SampleMaterial.objects.create(sample=projsam, sampletype=self.samtype2)
+        dm.SampleSpecies.objects.create(sample=projsam, species=self.spec2)
+
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': projsam.sample,
+                        'sampletypes': [{'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec2.pk}]},
+                        ],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 400)
+        errjson = json.loads(resp.content)
+        self.assertEqual(errjson['error'],
+                'Project samples exist in database, please validate the sample IDs')
+        projsam_err = {self.qtch.pk : {'id': projsam.pk,
+            'duprun_example': 'not used in dataset, only registered',
+            'sampletypes_error': [],
+            'species_error': []}}
+        self.assertEqual(errjson['sample_dups'], json.loads(json.dumps(projsam_err)))
+        self.projsam1.refresh_from_db()
 
     def test_update_samples_multiplex_samplechange_alreadyinuse_multidset(self):
         # New sample info (organism, type) on existing multiplex dset, 

@@ -1455,12 +1455,12 @@ def save_samples(request):
                 if psam_st.sampletype_id not in stype_ids[fidix]:
                     st_error.append({'id': psam_st.sampletype_id, 'name': psam_st.sampletype.name, 'add': True, 'remove': False})
                 else:
-                    stype_ids[fidix].pop(psam_st.sampletype_id)
+                    stype_ids[fidix].remove(psam_st.sampletype_id)
             for psam_sp in psam.samplespecies_set.all():
                 if psam_sp.species_id not in spec_ids[fidix]:
                     sp_error.append({'id': psam_sp.species_id, 'name': psam_sp.species.popname, 'linnean': psam_sp.species.linnean, 'add': True, 'remove': False})
                 else:
-                    spec_ids[fidix].pop(psam_sp.species_id)
+                    spec_ids[fidix].remove(psam_sp.species_id)
             for rm_id in stype_ids[fidix]:
                 st_error.append({'id': rm_id, 'name': allsampletypes[rm_id], 'add': False, 'remove': True})
             for rm_id in spec_ids[fidix]:
