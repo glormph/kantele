@@ -215,7 +215,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
             else:
                 fnpath = os.path.join(settings.SHAREMAP[fn['servershare']], fn['path'], fn['fn'])
             # FIXME not have set, etc, pass rawfnid here!
-            mzstr = 'f{fpath}\t{fn["sfid"]}\n'
+            mzstr = f'{fnpath}\t{fn["sfid"]}\n'
             fp.write(mzstr)
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
