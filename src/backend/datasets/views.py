@@ -1448,6 +1448,11 @@ def save_samples(request):
                 # FIXME make sure when input conflicting sample in dset (same name,
                 # diff types), that this doesnt override an error!
                 continue
+            elif not psam.datasetsample_set.count():
+                # Sample is up for grabs
+                # FIXME this case for psam is orphan, aka has been created
+                # but not assigned a dataset yet - is this ok?
+                duprun_txt = 'not used in dataset, only registered'
             else:
                 duprun_txt = 'Something went wrong, contact admin'
                 print('Something went wrong here validating project samples')
