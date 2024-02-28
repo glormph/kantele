@@ -407,7 +407,7 @@ class SaveSamples(BaseTest):
 
     def test_update_samples_multiplex_samplechange_fail_mixedinput(self):
         # New sample info (organism, type) on existing multiplex dset, 
-        # updates since sample is NOT in use in another dataset
+        # FAILS since two samples should be identical in type/species
         qch2 = dm.QuantChannel.objects.create(name='thech2')
         qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
         req = {'dataset_id': self.ds.pk,

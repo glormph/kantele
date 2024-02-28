@@ -1419,7 +1419,7 @@ def save_samples(request):
     samples_complete = all(stype_ids[x] and spec_ids[x] for x in dsr_chids
             if x in stype_ids and x in spec_ids)
     if dsr_chids.symmetric_difference(stype_ids) or dsr_chids.symmetric_difference(spec_ids) or not samples_complete:
-        return JsonResponse({'error': 'Samples and species need to be specified for all files'}, status=400)
+        return JsonResponse({'error': 'Samples and species need to be specified for all files or channels'}, status=400)
     # Sample name check if they already exist as projectsample in system, then reply with
     # which of them exist and which sampletype/species they have
     projsamples, allspecies = {}, {}
