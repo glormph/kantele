@@ -271,6 +271,9 @@ async function fetchDatasetDetails(fetchdsids) {
       dsets[x].changed = false;
     })
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
+// grouped_files treat here
+// f-end easiest is to keep ftype_name in key, pass that to api
+// api parses out key used from dsinputfiles, and parses in files from key on save
   }
 }
 

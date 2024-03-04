@@ -1476,6 +1476,7 @@ def save_samples(request):
             'sample IDs', 'sample_dups': projsamples}, status=400)
 
     # All is ready for saving or updating
+    # FIXME this line can be removed, not used
     lf_qtid = models.QuantType.objects.get(name='labelfree').pk
     if is_update := models.DatasetComponentState.objects.filter(dataset=dset,
             dtcomp=models.DatasetUIComponent.SAMPLES, state=models.DCStates.OK).count():
