@@ -93,7 +93,7 @@ function validate() {
     if (!('LABELCHECK_ISO' in wf.components) && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
     } else if (ds.filesaresets) {
-      if (ds.files.some(fn => !fn.setname)) {
+      if (ds.ft_files[ds.picked_ftype].some(fn => !fn.setname)) {
 			  notif.errors[`File ${fn.name} needs to have a setname`] = 1;
 			}
     } else if (ds.setname && !charRe.test(ds.setname)) {
@@ -130,10 +130,19 @@ async function storeAnalysis() {
     analysis_id: analysis_id,
     base_analysis: base_analysis,
     dsids: Object.keys(dsets),
-    dssetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => !ds.filesaresets).map(([dsid, ds]) => [dsid, ds.setname])),
-    infiles: Object.fromEntries(Object.values(dsets).flatMap(ds => ds.files.map(fn => [fn.id, {fr: fn.fr}]))),
-    fnsetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => ds.filesaresets).map(
-      ([dsid, ds]) => ds.files.map(fn => [fn.id, fn.setname])).flat()),
+    dssetnames: Object.fromEntries(Object.entries(dsets)
+      .filter(([x,ds]) => !ds.filesaresets)
+      .map(([dsid, ds]) => [dsid, ds.setname])),
+    infiles: Object.fromEntries(Object.values(dsets)
+      .flatMap(ds => ds.ft_files[ds.picked_ftype]
+        .map(fn => [fn.id, {fr: fn.fr}]))),
+    fnsetnames: Object.fromEntries(Object.entries(dsets)
+      .filter(([x,ds]) => ds.filesaresets)
+      .map(([dsid, ds]) => ds.ft_files[ds.picked_ftype]
+        .map(fn => [fn.id, fn.setname]))
+      .flat()),
+    picked_ftypes: Object.fromEntries(Object.entries(dsets)
+      .map(([dsid, ds]) => [dsid, ds.picked_ftype])),
     frregex: Object.fromEntries(Object.entries(dsets).map(([dsid, ds]) => [dsid, ds.frregex])),
     singlefiles: fns,
     multifiles: multifns,
@@ -180,14 +189,15 @@ async function storeAnalysis() {
     const resp = await postJSON('/analysis/store/', post);
     if (resp.error) {
       notif.errors[resp.error] = 1;
-      // FIXME think we no longer have links in responses, this can deprec.
-      if ('link' in resp) {
-        notif.links[resp.link] = 1;
-      }
       if ('files_nods' in resp) {
         // Dsets have been changed while editing analysis
         const files_nodset = new Set(resp.files_nods);
-        Object.values(dsets).filter(ds => files_nodset.intersect(Object.values(ds.files).map(x => x.id))).forEach(ds => {
+        Object.values(dsets)
+          .filter(ds => files_nodset
+            // FIXME this crashes
+            .intersect(Object.values(ds.ft_files[ds.picked_ftype])
+              .map(x => x.id)))
+          .forEach(ds => {
           ds.changed = true;
         });
         Object.entries(dsets).filter(([dsid, ds]) => resp.ds_newfiles.indexOf(dsid) > -1).forEach(([dsid, ds]) => {
@@ -347,8 +357,12 @@ async function loadBaseAnalysis() {
         overlapping_setnames.add(dsets[dsid].setname);
         dsets[dsid].frregex = resds.frregex;
         dsets[dsid].filesaresets = resds.filesaresets;
-        dsets[dsid].files.filter(x => x.id in resds.files).forEach(x => {
-          x.setname = resds.files[x.id].setname;
+        dsets[dsid].picked_ftype = resds.picked_ftype;
+        // FIXME address w resds.picked or ds.picked ?
+        dsets[dsid].ft_files[resds.picked_ftype]
+          .filter(x => x.id in resds.files)
+          .forEach(x => {
+            x.setname = resds.files[x.id].setname;
         });
         if (dsets[dsid].prefrac) {
           matchFractions(dsets[dsid]);
@@ -404,7 +418,7 @@ function getIntextFileName(fnid, files) {
 
 function matchFractions(ds) {
   let allfrs = new Set();
-  for (let fn of ds.files) {
+  for (let fn of ds.ft_files[ds.picked_ftype]) {
     const match = fn.name.match(RegExp(ds.frregex));
     if (match) {
       fn.fr = match[1];
@@ -600,24 +614,6 @@ onMount(async() => {
     {/if}
     <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={base_analysis.fetched} />
 	</div>
-
-  <!--
-    FIXME deprecate
-  {#if 'mzmldef' in wf.components}
-  <div class="title is-5">Mzml input type</div>
-  <div class="field">
-    <div class="select">
-      <select bind:value={config.mzmldef}>
-        <option value={false}>Please select one</option>
-        {#each Object.keys(wf.components.mzmldef) as comp}
-        <option value={comp}>{comp.split(' ').map(x => `${x[0].toUpperCase()}${x.slice(1).toLowerCase()}`).join(' ')} ({wf.components.mzmldef[comp].join(', ')})</option>
-        {/each}
-      </select>
-    </div>
-  </div>
-  {/if}
-  -->
-
   {/if}
 
 	<div class="title is-5">Datasets</div>
@@ -688,7 +684,7 @@ onMount(async() => {
 			</div>
 		</div>
     {#if ds.filesaresets}
-    {#each ds.files as fn}
+    {#each ds.ft_files[ds.picked_ftype] as fn}
     <div class="columns">
 		  <div class="column">{fn.name}</div>
 		  <div class="column">

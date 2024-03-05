@@ -129,12 +129,16 @@ def load_base_analysis(request, wfversion_id, baseanid):
     # Get datasets from base analysis for their setnames/filesamples etc
     # Only overlapping datasets are fetched here
     dsets = {x: {} for x in new_ana_dsids}
+    analysis_dsfiles = defaultdict(set)
     for ads in ana.analysisdatasetsetname_set.filter(dataset_id__in=new_ana_dsids):
         dsets[ads.dataset_id] = {'setname': ads.setname.setname, 'frregex': ads.regex,
                 'files': {}} 
+        analysis_dsfiles[ads.dataset_id] = {x.sfile_id for x in am.AnalysisDSInputFile.objects.filter(analysis_id=ads.analysis_id, analysisdset=ads)}
+
     for dsid in new_ana_dsids:
         for fn in am.AnalysisFileSample.objects.filter(analysis=ana,
                 sfile__rawfile__datasetrawfile__dataset_id=dsid):
+            analysis_dsfiles[dsid].add(fn.sfile_id)
             # FIXME files should maybe be called filesamples -> less confusion
             try:
                 dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'setname': fn.sample}
@@ -143,7 +147,26 @@ def load_base_analysis(request, wfversion_id, baseanid):
         if 'files' in dsets[dsid]:
             # Must check if dset is actually in the overlap before setting filesaresets, else it errors
             dsets[dsid]['filesaresets'] = any((x['setname'] != '' for x in dsets[dsid]['files'].values()))
+    # Clean dsets to only contain dsets from base analysis
     [dsets.pop(x) for x in new_ana_dsids if not dsets[x]]
+
+    for dsid in dsets:
+        dssfiles = rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dsid,
+                deleted=False, purged=False, checked=True)
+        print(dssfiles.count())
+        dsrawfiles = dssfiles.filter(mzmlfile__isnull=True)
+        dset_ftype = dsrawfiles.distinct('filetype')
+        rawftype = dset_ftype.get().filetype.name
+        dsf_by_type = {rawftype: dsrawfiles}
+        if dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count():
+            nrrawfiles = dsrawfiles.count()
+    #        ds_msfiles, _ = get_msdataset_files_by_type(dssfiles, nrrawfiles)
+    #        dsf_by_type.update(ds_msfiles)
+
+    #    for ft, sf_qset in dsf_by_type.items():
+    #        if not analysis_dsfiles[dsid].difference({x.pk for x in sf_qset}):
+    #            dsets[dsid]['picked_ftype'] = ft
+
 
     # Isoquants, sampletables, and also shadow isoquants (isoquants from the base analysis
     # own base analysis)
@@ -297,17 +320,28 @@ def get_allwfs():
     return {'wfs': allwfs, 'order': order}
 
 
-def get_dataset_files(dsid, use_refined):
-    dsfiles = rm.StoredFile.objects.select_related('rawfile').filter(
-        rawfile__datasetrawfile__dataset_id=dsid, checked=True, deleted=False, purged=False)
-    refineddsfiles = dsfiles.filter(mzmlfile__refined=True)
-    if use_refined and refineddsfiles.count() == dsfiles.filter(mzmlfile__refined=False).count():
-        dsfiles = refineddsfiles
-    else:
-        # TODO this gets only mzml files from the dataset:
-        # If were going to pick other files by type we need to store that also in DB
-        dsfiles = dsfiles.filter(mzmlfile__refined=False)
-    return dsfiles
+def get_msdataset_files_by_type(alldsfiles, nrrawfiles):
+    dsfiles = {}
+    last_filetype = False
+    dsmzfiles = alldsfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=False).select_related('mzmlfile__pwiz')
+    for pwiz_mzs in dsmzfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
+        ftname = f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'
+        if pwiz_mzs['pwcount'] == nrrawfiles:
+            dsfiles[ftname] = dsmzfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+            last_filetype = ftname
+# FIXME show incompletes? otherwise need to handle them in contexts (not queryset but string)
+#        elif pwiz_mzs['pwcount'] < nrrawfiles:
+#            dsfiles[f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
+    # Deliver also refined mzML
+    dsrefinedfiles = alldsfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=True).select_related('mzmlfile__pwiz')
+    for pwiz_mzs in dsrefinedfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
+        ftname = f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})' 
+        if pwiz_mzs['pwcount'] == nrrawfiles:
+            dsfiles[ftname] = dsrefinedfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+            last_filetype = ftname
+#        elif pwiz_mzs['pwcount'] < nrrawfiles:
+#            dsfiles[f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
+    return dsfiles, last_filetype 
 
 
 @login_required
@@ -364,6 +398,15 @@ def get_datasets(request, wfversion_id):
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     wfcomponents = {allcomponents[x.component].name: x.value
             for x in am.PsetComponent.objects.filter(pset__nextflowwfversionparamset=wfversion_id)}
+
+    # Get analysis filesamples for later use
+    has_filesamples, analysis_dsfiles = {}, set()
+    if anid:
+        if afss := am.AnalysisFileSample.objects.filter(analysis_id=anid):
+            has_filesamples = {x.sfile_id: x.sample for x in afss}
+            analysis_dsfiles = {x for x in has_filesamples}
+    
+    # FIXME accumulate errors across data sets and show all, but do not report other stuff if error
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
             'quantdataset'):
         # For error reporting per dset:
@@ -381,22 +424,16 @@ def get_datasets(request, wfversion_id):
             frregex = wfcomponents['PREFRAC']
 
         # Sample(set) names and previously used files
-        setname, analysis_dsfiles = '', set()
+        setname = ''
         if anid:
             if adsn := am.AnalysisDatasetSetname.objects.filter(analysis_id=anid, dataset=dset):
                 adsn = adsn.get(analysis_id=anid)
                 setname = adsn.setname.setname
-                analysis_dsfiles = {x.sfile_id for x in am.AnalysisDSInputFile.objects.filter(analysis_id=anid, analysisdset=adsn)}
+                analysis_dsfiles.update({x.sfile_id for x in am.AnalysisDSInputFile.objects.filter(analysis_id=anid, analysisdset=adsn)})
                 # PREFRAC component:
                 frregex = adsn.regex
-            elif afss := AnalysisFileSample.objects.filter(analysis_id=anid):
-                # FIXME use later now you already have sample, but need a set in the end!
-                # analysis_dsfiles = {x.sfile_id: x.sample for x in afss}
-                analysis_dsfiles = {x.sfile_id for x in afss}
-        
 
         # Get dataset files
-        dsregfiles = rm.RawFile.objects.filter(datasetrawfile__dataset=dset)
         dssfiles = rm.StoredFile.objects.select_related('rawfile__producer', 'servershare',
                 'filetype').filter(rawfile__datasetrawfile__dataset=dset,
                         deleted=False, purged=False, checked=True)
@@ -404,7 +441,7 @@ def get_datasets(request, wfversion_id):
 
         # For reporting in interface and checking
         nrrawfiles = dsrawfiles.count()
-        producers = dsrawfiles.distinct('rawfile__producer')
+        dsregfiles = rm.RawFile.objects.filter(datasetrawfile__dataset=dset)
         if dsregfiles.count() > nrrawfiles:
             return JsonResponse({'error': True, 'errmsg': [f'Dataset {dsname} contains registered files that dont '
                 'have a storage entry yet. Maybe the transferring hasnt been finished, or they are deleted.']}, status=400)
@@ -422,59 +459,32 @@ def get_datasets(request, wfversion_id):
             qtype = {'name': dset.quantdataset.quanttype.name,
                     'short': dset.quantdataset.quanttype.shortname,
                     'is_isobaric': is_isobaric}
-        elif 'ISOQUANT' in wfcomponents:
+        elif not hasattr(dset, 'quantdataset'):
             return JsonResponse({'error': True, 'errmsg': [
-                f'Workflow has isobaric quantification but dataset {dsname} has no such annotation']}, status=400)
+                f'File(s) or channels in dataset {dsname} do not have sample annotations, please edit the '
+                'dataset first']}, status=400)
         
         # Populate files
-        usefiles = {dset_ftype.get().filetype.name: dsrawfiles}
         picked_ft = dset_ftype.get().filetype.name
+        usefiles = {picked_ft: dsrawfiles}
         if is_msdata:
-            # Maybe: if mz.count() < nrrawfiles -> incomplete, etc - but, versions of pwiz
-            # would be good if we only ever allow one set of mzml + one refined
-            # also FIXME - these checks need also to run on save, so no open window saves a job
-            # where mzMLs are already deleted?
+            ms_usefiles, new_picked_ft = get_msdataset_files_by_type(dssfiles, nrrawfiles)
+            # If no mzML exist there will not be a new picked filetype
+            # TODO report incomplete or no-mzML datasets (e.g. deleted)
+            if new_picked_ft:
+                picked_ft = new_picked_ft
+            usefiles.update(ms_usefiles)
 
-            dsmzfiles = dssfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=False).select_related('mzmlfile__pwiz')
-            for pwiz_mzs in dsmzfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
-                ftname = f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'
-                if pwiz_mzs['pwcount'] == nrrawfiles:
-                    usefiles[ftname] = dsmzfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
-                    picked_ft = ftname
-                elif pwiz_mzs['pwcount'] < nrrawfiles:
-                    usefiles[f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
-            dsrefinedfiles = dssfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=True).select_related('mzmlfile__pwiz')
-            for pwiz_mzs in dsrefinedfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
-                ftname = f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})' 
-                if pwiz_mzs['pwcount'] == nrrawfiles:
-                    usefiles[ftname] = dsrefinedfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
-                    picked_ft = ftname
-                elif pwiz_mzs['pwcount'] < nrrawfiles:
-                    usefiles[f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
-
-        # FIXME mzML component or file type inputs for WF version!
-        # maybe for making sure users dont use RAW files!
-        # if wfcomponents['INPUTS'] = ['mzML'] ; if NfWfVPs.input_files == 'mzML'
-        #   check if we have relevant file type via sets or something
-        # file types though DO NOT HAVE mzMLs (thermo, bruker, VCF, GTF, etc)
-        # usefiles = {name: for name, dbids in usefiles.items()}
-
-#        # Check if files to use are mapping to rawfiles in dataset
-#        files_not_same_error = False
-#        if usefiles.filter(checked=True).count() != nrrawfiles:
-#            files_not_same_error = True
-#            response['errmsg'].append('Files selected for analysis are not same number as that '
-#                    f'of registered files in dataset {dsname}. Maybe you need to finish creating mzMLs '
-#                    'or refining them')
-
-        resp_files = {x.id: {'ft_name': ft_name, 'id': x.id, 'name': x.filename, 'fr': '', 'setname': '', 'sample': ''}
-            for ft_name, dsf in usefiles.items() for x in dsf}
-
-        # FIXME problem - resp files will be populated, but need to know what the user picked!
-        # have that in files key, by using IDs from analysisdsinputfile / analysisfilesample
+        #    # Maybe: if mz.count() < nrrawfiles -> incomplete, etc - but, versions of pwiz
+        #    # would be good if we only ever allow one set of mzml + one refined
+        #    # also FIXME - these checks need also to run on save, so no open window saves a job
+        #    # where mzMLs are already deleted?
+        resp_files = {x.id: {'ft_name': ft_name, 'id': x.id, 'name': x.filename, 'fr': '',
+            'setname': '', 'sample': ''} for ft_name, dsf in usefiles.items() for x in dsf}
 
         #qsf_error = False
         if is_msdata and is_isobaric:
+            # FIXME but isobaric can have no sample annotation and still run??
             # multiplex so add channel/samples if any exist (not for labelcheck)
             channels = {
                 ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
@@ -484,84 +494,62 @@ def get_datasets(request, wfversion_id):
             # Labelfree or other data type, add file/sample mapping
             # FIXME when saving, delete existing qsf (maybe it is refined instead of mzML)
             channels = False
-            for ft_name, dsfiles in usefiles:
+            for ft_name, dsfiles in usefiles.items():
                 for fn in dsfiles.filter(rawfile__datasetrawfile__quantsamplefile__isnull=False).select_related(
                         'rawfile__datasetrawfile__quantsamplefile__projsample'):
                     resp_files[fn.id]['sample'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
-#                except dm.QuantSampleFile.DoesNotExist:
-#                    qsf_error = True
-#                else:
-#                    resp_files[fn.id]['sample'] = qsf_sample
-#            if qsf_error:
-#                # FIXME is this possible, that you pass the "no sample prep" check,
-#                # but not the sample annotation?
-#                response['errmsg'].append(f'File(s) in dataset {dsname} do '
-#                    'not have a sample annotation, please edit the dataset first')
+                    if fn.id in has_filesamples:
+                        resp_files[fn.id]['setname'] = has_filesamples[fn.id]
 
         # Files with samples (non-MS, IP, non-isobaric, etc)
         # FIXME rename this key to samplename instead of setname!
         filesaresets = False
         if anid and is_msdata:
-            # Add possible already stored analysis file-setnames
-            # FIXME files need match dset!
-            for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
-                resp_files[afs.sfile_id]['setname'] = afs.sample
             filesaresets = any((x['setname'] != '' for x in resp_files.values()))
 
-        elif is_msdata: # and not qsf_error and not files_not_same_error:
-            # New analysis
-            [x.update({'setname': x['sample']}) for x in resp_files.values()]
-
-        elif anid and not is_msdata:
+        elif anid:
             # sequencing data etcetera, always have sample-per-file since we dont
             # expect multiplexing or fractionation here
             # Add possible already stored analysis file samplenames
-            # FIXME files need match dset!
-            for afs in am.AnalysisFileSample.objects.filter(analysis_id=anid):
-                resp_files[afs.sfile_id]['setname'] = afs.sample
+            pass
 
-        elif not is_msdata: # and not files_not_same_error:
+        else:
+            # New analysis, set names for files can be there quantsamplefile values
+            # initially
             [x.update({'setname': x['sample']}) for x in resp_files.values()]
 
         # Finalize response
-        # FIXME this doesnt happen anymore, we give 400 immediately on error
-        if resp_error := len(response['errmsg']) > 0:
-            # Errors found, dont output proper info:
-            status = 400
-        else:
-            grouped_resp_files = defaultdict(dict)
-            for sfid, respfn in resp_files.items():
-                grouped_resp_files[respfn['ft_name']][sfid] = respfn
-            for ft, ft_files in grouped_resp_files.items():
-                if not analysis_dsfiles.difference(ft_files):
-                    picked_fty = ft
+        grouped_resp_files = defaultdict(list)
+        for sfid, respfn in resp_files.items():
+            grouped_resp_files[respfn['ft_name']].append(respfn)
+        for ft, ft_files in grouped_resp_files.items():
+            ft_sfids = [x['id'] for x in ft_files]
+            if not analysis_dsfiles.difference(ft_sfids):
+                picked_ft = ft
 
-            status = 200
-            # to list for frontend
-            # Fill response object
-            dsetinfo[dset.pk] = {
-                    # FIXME add relevant stuff for other dataset types seq etc
-                    'id': dset.pk,
-                    'proj': dset.runname.experiment.project.name,
-                    'exp': dset.runname.experiment.name,
-                    'run': dset.runname.name,
-                    'dtype': dset.datatype.name,
-                    'prefrac': prefrac,
-                    'hr': hr,
-                    'setname': setname,
-                    'frregex': frregex,
-                    'instruments': [x.rawfile.producer.name for x in producers],
-                    'instrument_types': [x.rawfile.producer.shortname for x in producers],
-                    'qtype': qtype,
-                    'nrstoredfiles': {'raw': nrrawfiles},
-                    'channels': channels,
-                    #'files': [resp_files[x.id] for x in usefiles],
-                    'ft_files': grouped_resp_files,
-                    'picked_ftype': picked_ft,
-                    'filesaresets': filesaresets,
-                    }
-    # FIXME this error toggles between dsets, fix it  (or remove)
-    response['error'] = resp_error
+        status = 200
+        # Fill response object
+        producers = dsrawfiles.distinct('rawfile__producer')
+        dsetinfo[dset.pk] = {
+                'id': dset.pk,
+                'proj': dset.runname.experiment.project.name,
+                'exp': dset.runname.experiment.name,
+                'run': dset.runname.name,
+                'dtype': dset.datatype.name,
+                'prefrac': prefrac,
+                'hr': hr,
+                'setname': setname,
+                'frregex': frregex,
+                'instruments': [x.rawfile.producer.name for x in producers],
+                'instrument_types': [x.rawfile.producer.shortname for x in producers],
+                'qtype': qtype,
+                'nrstoredfiles': {'raw': nrrawfiles},
+                'channels': channels,
+                #'files': [resp_files[x.id] for x in usefiles],
+                'ft_files': grouped_resp_files,
+                'picked_ftype': picked_ft,
+                'filesaresets': filesaresets,
+                }
     response['dsets'] = dsetinfo
     return JsonResponse(response, status=status)
 
@@ -672,6 +660,7 @@ def store_analysis(request):
         req['nfwfvid']
         req['components']
         req['dssetnames']
+        req['picked_ftypes']
         req['analysisname']
         req['frregex']
         req['fnsetnames']
@@ -696,7 +685,22 @@ def store_analysis(request):
 
     # Check if files have not changed while editing an analysis (e.g. long open window)
     frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['infiles']}, set()
-    dsfiles = {dsid: get_dataset_files(dsid, use_refined=True) for dsid in req['dsids']}
+    dsfiles = {}
+    for dsid in req['dsids']:
+        dssfiles = rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dsid,
+                        deleted=False, purged=False, checked=True)
+        dsrawfiles = dssfiles.filter(mzmlfile__isnull=True)
+        try:
+            dsfiles[dsid] = {dsrawfiles.values('filetype__name').distinct().get()['filetype__name']: dsrawfiles}
+        except rm.StoredFile.MultipleObjectsReturned:
+            return JsonResponse({'error': 'Files of multiple datatypes exist in dataset'}, status=400)
+        if dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count():
+            nrrawfiles = dsrawfiles.count()
+            ds_msfiles, _ = get_msdataset_files_by_type(dssfiles, nrrawfiles)
+            dsfiles[dsid].update(ds_msfiles)
+        dsfiles[dsid] = dsfiles[dsid][req['picked_ftypes'][dsid]]
+
+    #dsfiles = {dsid: get_dataset_files(dsid, use_refined=True) for dsid in req['dsids']}
     for dsid in req['dsids']:
         for sf in dsfiles[dsid]:
             if sf.pk in frontend_files_not_in_ds:

@@ -94,6 +94,7 @@ class AnalysisIsobaric(AnalysisTest):
         self.anaset, _ = am.AnalysisSetname.objects.get_or_create(analysis=self.ana, setname='set1')
         self.ads1, _ = am.AnalysisDatasetSetname.objects.get_or_create(analysis=self.ana,
                 dataset=self.ds, setname=self.anaset, regex='hej')
+        self.adsif = am.AnalysisDSInputFile.objects.create(analysis=self.ana, sfile=self.f3sfmz, analysisdset=self.ads1)
         self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
         am.AnalysisIsoquant.objects.get_or_create(analysis=self.ana, setname=self.anaset,
                 value=self.isoqvals)
@@ -149,7 +150,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
                 'datasets': {f'{self.ds.pk}': {'frregex': f'{self.ads1.regex}',
                     'setname': f'{self.ads1.setname.setname}', 'filesaresets': False,
-                    'files': {}}}
+                    'files': {}, 'picked_ftype': f'mzML (pwiz {self.f3sfmz.mzmlfile.pwiz.version_description})'}},
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
@@ -177,6 +178,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
                 'resultfiles': [],
                 'datasets': {f'{self.ds.pk}': {'frregex': f'{self.ads1.regex}',
                     'setname': f'{self.ads1.setname.setname}',
+                    'picked_ftype': f'mzML (pwiz {self.f3sfmz.mzmlfile.pwiz.version_description})',
                     'filesaresets': False, 'files': {}},
                     }
                 }
@@ -193,7 +195,7 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
 class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
     url = '/analysis/baseanalysis/load/'
 
-    def test_diff_dsets(self):
+    def test_diff_dsets_no_mzmlfile(self):
         '''Base analysis has a single dset attached, this one has two, so we will
         not have dsets_identical and thus we will deliver resultfiles
         '''
@@ -214,6 +216,7 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
                     'ana': f'{self.wftype.name}_{self.analf.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
                 'datasets': {f'{self.oldds.pk}': {'filesaresets': True,
+                    'picked_ftype': self.afs2.sfile.filetype.name,
                     'files': {f'{self.afs2.sfile_id}': {'id': self.afs2.sfile_id,
                         'setname': self.afs2.sample}}},
                     },
@@ -278,20 +281,22 @@ class TestGetDatasets(AnalysisTest):
         self.assertEqual(resp.status_code, 405)
         resp = self.cl.get(f'{self.url}{self.nfwf.pk}/')
         self.assertEqual(resp.status_code, 400)
+        self.assertEqual(['Something wrong when asking datasets, contact admin'], resp.json()['errmsg'])
 
-    def test_without_analysis_no_sampledata(self):
-        '''Gets datasets for an analysis with self.nfwf workflow. But these being from
-        a dataset without sample info, it will also give an error message'''
+    def test_new_ok(self):
+        '''New analysis with datasets, try both LF and isobaric'''
         resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.ds.pk}', 'anid': 0})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 200)
         dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {self.ds.runname.name}'
         checkjson = {
                 'dsets': {},
-                'error': True,
-                'errmsg': [f'File(s) in dataset {dsname} do not have a sample '
-                    'annotation, please edit the dataset first'],
+                'error': False,
+                'errmsg': [],
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+    def test_with_saved_analysis(self):
+        self.fail()
 
     def test_error(self):
         '''This test is on single dataset which will fail, in various ways'''
@@ -314,7 +319,7 @@ class TestGetDatasets(AnalysisTest):
         resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{newds.pk}', 'anid': 0})
         self.assertEqual(resp.status_code, 400)
         dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {newrun.name}'
-        self.assertIn(f'File(s) in dataset {dsname} do not have a sample annotation, '
+        self.assertIn(f'File(s) or channels in dataset {dsname} do not have sample annotations, '
                 'please edit the dataset first', resp.json()['errmsg'])
 
 
@@ -402,6 +407,7 @@ class TestStoreAnalysis(AnalysisTest):
         postdata = {'dsids': [f'{self.ds.pk}'],
             'analysis_id': False,
             'infiles': {self.f3sfmz.pk: 1},
+            'picked_ftypes': {self.ds.pk: f'mzML (pwiz {self.f3sfmz.mzmlfile.pwiz.version_description})'},
             'nfwfvid': self.nfwf.pk,
             'dssetnames': {self.ds.pk: 'setA'},
             'components': {'ISOQUANT_SAMPLETABLE': {'hello': 'yes'},
