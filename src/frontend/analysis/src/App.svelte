@@ -626,6 +626,16 @@ onMount(async() => {
     {#if ds.dtype.toLowerCase() === 'labelcheck'}
     <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.qtype.name} // {ds.instruments.join(',')}</span>
     {:else}
+        <div class="subtitle is-6 has-text-primary">
+          <span>{ds.proj} // {ds.exp} // {ds.run} //</span>
+          {#if !ds.prefrac}
+          <span>{ds.dtype}</span>
+          {:else if ds.hr}
+          <span>{ds.hr}</span>
+          {:else}
+          <span>{ds.prefrac}</span>
+          {/if}
+			  </div>
 		<div class="columns">
 		  <div class="column">
         {#if !ds.prefrac && !ds.qtype.is_isobaric}
@@ -637,21 +647,36 @@ onMount(async() => {
           <input type="text" class="input" placeholder="Name of set" bind:value={ds.setname} on:change={e => updateIsoquant(ds.id)}>
 			  </div>
         {/if}
-        <div class="subtitle is-6 has-text-primary">
-          <span>{ds.proj} // {ds.exp} // {ds.run} //</span>
-          {#if !ds.prefrac}
-          <span>{ds.dtype}</span>
-          {:else if ds.hr}
-          <span>{ds.hr}</span>
-          {:else}
-          <span>{ds.prefrac}</span>
-          {/if}
-			  </div>
         {#if ds.changed}
         <div class="has-text-danger">
           <span>This dataset has changed files while editing  <button on:click={e => fetchDatasetDetails([ds.id])} class="button is-small">Reload dataset</button></span>
         </div>
         {/if}
+        <!-- FIXME -->
+        {#if ds.nrstoredfiles.refined_mzML}
+			  <div class="subtitle is-6"><strong>Enforcing use of refined mzML(s)</strong></div>
+        {/if}
+
+        {#if wf && ds.prefrac && 'PREFRAC' in wf.components}
+        <div class="field">
+					<label class="label">Regex for fraction detection</label>
+          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.frregex}>
+				</div>
+				<span>{matchedFr[ds.id]} fractions matched</span>
+        {/if}
+			</div>
+
+			<div class="column">
+        <div class="field">
+					<label class="label">File type to use</label>
+          <div class="select">
+            <select bind:value={ds.picked_ftype}>
+              {#each Object.keys(ds.ft_files) as ft}
+              <option value={ft}>{ft}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
 			  <div class="subtitle is-6">
 				  <span>{ds.qtype.name}</span>
           {#each Object.entries(ds.nrstoredfiles) as sf}
@@ -659,21 +684,7 @@ onMount(async() => {
           {/each}
 				  <span>// {ds.instruments.join(', ')} </span>
 			  </div>
-        {#if ds.nrstoredfiles.refined_mzML}
-			  <div class="subtitle is-6"><strong>Enforcing use of refined mzML(s)</strong></div>
-        {/if}
-			</div>
-			<div class="column">
-      {#if wf}
-      
-      {#if ds.prefrac && 'PREFRAC' in wf.components}
-        <div class="field">
-					<label class="label">Regex for fraction detection</label>
-          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.frregex}>
-				</div>
-				<span>{matchedFr[ds.id]} fractions matched</span>
-        {/if}
-      {/if}
+
 			</div>
 		</div>
     {#if ds.filesaresets}

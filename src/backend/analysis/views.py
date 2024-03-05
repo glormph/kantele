@@ -12,7 +12,7 @@ from django.db import IntegrityError
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET, require_POST
 from django.shortcuts import render
-from django.db.models import Q
+from django.db.models import Q, Count
 
 from kantele import settings
 from analysis import models as am
@@ -380,13 +380,20 @@ def get_datasets(request, wfversion_id):
                     hr = f'HiRIEF {str(pf.hiriefdataset.hirief)}'
             frregex = wfcomponents['PREFRAC']
 
-        # Sample(set) names
-        setname = ''
-        if anid and am.AnalysisDatasetSetname.objects.filter(analysis_id=anid):
-            adsn = dset.analysisdatasetsetname_set.get(analysis_id=anid)
-            setname = adsn.setname.setname
-            # PREFRAC component:
-            frregex = adsn.regex
+        # Sample(set) names and previously used files
+        setname, analysis_dsfiles = '', set()
+        if anid:
+            if adsn := am.AnalysisDatasetSetname.objects.filter(analysis_id=anid, dataset=dset):
+                adsn = adsn.get(analysis_id=anid)
+                setname = adsn.setname.setname
+                analysis_dsfiles = {x.sfile_id for x in am.AnalysisDSInputFile.objects.filter(analysis_id=anid, analysisdset=adsn)}
+                # PREFRAC component:
+                frregex = adsn.regex
+            elif afss := AnalysisFileSample.objects.filter(analysis_id=anid):
+                # FIXME use later now you already have sample, but need a set in the end!
+                # analysis_dsfiles = {x.sfile_id: x.sample for x in afss}
+                analysis_dsfiles = {x.sfile_id for x in afss}
+        
 
         # Get dataset files
         dsregfiles = rm.RawFile.objects.filter(datasetrawfile__dataset=dset)
@@ -420,27 +427,30 @@ def get_datasets(request, wfversion_id):
                 f'Workflow has isobaric quantification but dataset {dsname} has no such annotation']}, status=400)
         
         # Populate files
-        usefiles = {dset_ftype.get().name: dsrawfiles}
+        usefiles = {dset_ftype.get().filetype.name: dsrawfiles}
+        picked_ft = dset_ftype.get().filetype.name
         if is_msdata:
             # Maybe: if mz.count() < nrrawfiles -> incomplete, etc - but, versions of pwiz
             # would be good if we only ever allow one set of mzml + one refined
             # also FIXME - these checks need also to run on save, so no open window saves a job
             # where mzMLs are already deleted?
 
-            dsmzfiles = dssfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=False).select_related('pwiz')
-            for pwiz_mzs in dsmzfiles.values('mzmlfile__pwiz_pk', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
-                if pwiz_mzs.pwcount == nrrawfiles:
-                    usefiles[f'mzML (pwiz {pwiz_mzs.pwiz__version_description})'] = dsmzfiles.filter(
-                            mzmlfile__pwiz_id=pwiz_mzs.mzmlfile__pwiz_pk)
-                elif pwiz_mzs.pwcount < nrrawfiles:
-                    usefiles[f'mzML (pwiz {pwiz_mzs.pwiz__version_description})'] = 'incomplete'
-            dsrefinedfiles = dssfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=True).select_related('pwiz')
-            for pwiz_mzs in dsrefinedfiles.values('mzmlfile__pwiz_pk', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
-                if pwiz_mzs.pwcount == nrrawfiles:
-                    usefiles[f'refined mzML (pwiz {pwiz_mzs.pwiz__version_description})'] = dsrefinedfiles.filter(
-                            mzmlfile__pwiz_id=pwiz_mzs.mzmlfile__pwiz_pk)
-                elif pwiz_mzs.pwcount < nrrawfiles:
-                    usefiles[f'refined mzML (pwiz {pwiz_mzs.pwiz__version_description})'] = 'incomplete'
+            dsmzfiles = dssfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=False).select_related('mzmlfile__pwiz')
+            for pwiz_mzs in dsmzfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
+                ftname = f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'
+                if pwiz_mzs['pwcount'] == nrrawfiles:
+                    usefiles[ftname] = dsmzfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+                    picked_ft = ftname
+                elif pwiz_mzs['pwcount'] < nrrawfiles:
+                    usefiles[f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
+            dsrefinedfiles = dssfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=True).select_related('mzmlfile__pwiz')
+            for pwiz_mzs in dsrefinedfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
+                ftname = f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})' 
+                if pwiz_mzs['pwcount'] == nrrawfiles:
+                    usefiles[ftname] = dsrefinedfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+                    picked_ft = ftname
+                elif pwiz_mzs['pwcount'] < nrrawfiles:
+                    usefiles[f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
 
         # FIXME mzML component or file type inputs for WF version!
         # maybe for making sure users dont use RAW files!
@@ -522,6 +532,10 @@ def get_datasets(request, wfversion_id):
             grouped_resp_files = defaultdict(dict)
             for sfid, respfn in resp_files.items():
                 grouped_resp_files[respfn['ft_name']][sfid] = respfn
+            for ft, ft_files in grouped_resp_files.items():
+                if not analysis_dsfiles.difference(ft_files):
+                    picked_fty = ft
+
             status = 200
             # to list for frontend
             # Fill response object
@@ -543,10 +557,12 @@ def get_datasets(request, wfversion_id):
                     'channels': channels,
                     #'files': [resp_files[x.id] for x in usefiles],
                     'ft_files': grouped_resp_files,
+                    'picked_ftype': picked_ft,
                     'filesaresets': filesaresets,
                     }
-        response['error'] = resp_error
-        response['dsets'] = dsetinfo
+    # FIXME this error toggles between dsets, fix it  (or remove)
+    response['error'] = resp_error
+    response['dsets'] = dsetinfo
     return JsonResponse(response, status=status)
 
 
