@@ -153,19 +153,18 @@ def load_base_analysis(request, wfversion_id, baseanid):
     for dsid in dsets:
         dssfiles = rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dsid,
                 deleted=False, purged=False, checked=True)
-        print(dssfiles.count())
         dsrawfiles = dssfiles.filter(mzmlfile__isnull=True)
         dset_ftype = dsrawfiles.distinct('filetype')
         rawftype = dset_ftype.get().filetype.name
         dsf_by_type = {rawftype: dsrawfiles}
         if dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count():
             nrrawfiles = dsrawfiles.count()
-    #        ds_msfiles, _ = get_msdataset_files_by_type(dssfiles, nrrawfiles)
-    #        dsf_by_type.update(ds_msfiles)
+            ds_msfiles, _ = get_msdataset_files_by_type(dssfiles, nrrawfiles)
+            dsf_by_type.update(ds_msfiles)
 
-    #    for ft, sf_qset in dsf_by_type.items():
-    #        if not analysis_dsfiles[dsid].difference({x.pk for x in sf_qset}):
-    #            dsets[dsid]['picked_ftype'] = ft
+        for ft, sf_qset in dsf_by_type.items():
+            if not analysis_dsfiles[dsid].difference({x.pk for x in sf_qset}):
+                dsets[dsid]['picked_ftype'] = ft
 
 
     # Isoquants, sampletables, and also shadow isoquants (isoquants from the base analysis
