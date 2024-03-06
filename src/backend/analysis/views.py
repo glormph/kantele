@@ -377,21 +377,17 @@ def get_datasets(request, wfversion_id):
     """Fetches datasets to analysis, populates dataset/analysis-specific fields,
     field relevance is guided by which workflow is used (wfversion_id)
     """
-    # FIXME this can get into page render? It is loaded at start
-    # Only "update" cannot be used then, but is that a problem?
-    # Maybe keep here so user can in future dyn select dsets to add
     try:
         dsids = request.GET['dsids'].split(',')
         anid = int(request.GET['anid'])
     except (KeyError, ValueError):
         return JsonResponse({'error': True, 'errmsg': ['Something wrong when asking datasets, contact admin']}, status=400)
     response = {'error': False, 'errmsg': []}
-    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
-#    deleted = dbdsets.filter(deleted=True).count()
-#    if deleted:
-#        response['errmsg'].append('Deleted datasets can not be analysed')
-#    if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
-#        response['errmsg'].append('Some datasets could not be found, they may not exist')
+    dbdsets = dm.Dataset.objects.filter(pk__in=dsids, deleted=False).select_related(
+            'quantdataset__quanttype')
+    if dbdsets.count() < len(dsids):
+        response['errmsg'].append('Some datasets could not be found, they may not exist or '
+                'have been deleted')
 
     dsetinfo = {}
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
@@ -440,14 +436,18 @@ def get_datasets(request, wfversion_id):
         nrrawfiles = dsrawfiles.count()
         dsregfiles = rm.RawFile.objects.filter(datasetrawfile__dataset=dset)
         if dsregfiles.count() > nrrawfiles:
-            return JsonResponse({'error': True, 'errmsg': [f'Dataset {dsname} contains registered files that dont '
-                'have a storage entry yet. Maybe the transferring hasnt been finished, or they are deleted.']}, status=400)
+            response['errmsg'].append(f'Dataset {dsname} contains registered files that dont '
+                'have a storage entry yet. Maybe the transferring hasnt been finished, '
+                'or they are deleted.')
 
         # Get type of dataset (by files)
-        dset_ftype = dsrawfiles.distinct('filetype')
+        dset_ftype = dsrawfiles.order_by('filetype__name').distinct('filetype__name')
         if dset_ftype.count() > 1:
-            # This is the kind of error that can just not return datasets, only an error
-            return JsonResponse({'error': True, 'errmsg': ['Multiple different file types in dataset, not allowed']}, status=400)
+            response['errmsg'].append(f'Multiple different file types in dataset {dsname}, not allowed')
+            # Mainly for being able to continue, will not use this anyway in frontend
+            rawtype = dset_ftype.first().filetype.name
+        else:
+            rawtype = dset_ftype.get().filetype.name
         is_msdata = dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count()
 
         # Get quant data from dataset
@@ -458,24 +458,22 @@ def get_datasets(request, wfversion_id):
                     'short': dset.quantdataset.quanttype.shortname,
                     'is_isobaric': is_isobaric}
         elif not hasattr(dset, 'quantdataset'):
-            return JsonResponse({'error': True, 'errmsg': [
-                f'File(s) or channels in dataset {dsname} do not have sample annotations, please edit the '
-                'dataset first']}, status=400)
+            response['errmsg'].append(f'File(s) or channels in dataset {dsname} do not have '
+                    'sample annotations, please edit the dataset first')
         
         # Populate files
-        rawtype = dset_ftype.get().filetype.name
         usefiles = {rawtype: dsrawfiles}
         picked_ft = rawtype
         if is_msdata:
             ms_usefiles, new_picked_ft = get_msdataset_files_by_type(dssfiles, nrrawfiles)
             # If no mzML exist there will not be a new picked filetype
             # TODO report incomplete or no-mzML datasets (e.g. deleted)
+            # Maybe: if mz.count() < nrrawfiles -> incomplete, etc - but, versions of pwiz
+            # would be good if we only ever allow one set of mzml + one refined
             if new_picked_ft:
                 picked_ft = new_picked_ft
             usefiles.update(ms_usefiles)
 
-        #    # Maybe: if mz.count() < nrrawfiles -> incomplete, etc - but, versions of pwiz
-        #    # would be good if we only ever allow one set of mzml + one refined
         #    # also FIXME - these checks need also to run on save, so no open window saves a job
         #    # where mzMLs are already deleted?
         resp_files = {x.id: {'ft_name': ft_name, 'id': x.id, 'name': x.filename, 'fr': '',
@@ -484,7 +482,6 @@ def get_datasets(request, wfversion_id):
         # Fill channels with quant data
         channels = {}
         if is_msdata and is_isobaric:
-            # FIXME but isobaric can have no sample annotation and still run??
             # multiplex so add channel/samples if any exist (not for labelcheck)
             channels = {
                 ch.channel.channel.name: (ch.projsample.sample, ch.channel.channel_id) for ch in
@@ -507,11 +504,11 @@ def get_datasets(request, wfversion_id):
         if anid and is_msdata:
             filesaresets = any((x['setname'] != '' for x in resp_files.values()))
 
-        elif anid:
+        elif not is_msdata:
             # sequencing data etcetera, always have sample-per-file since we dont
             # expect multiplexing or fractionation here
             # Add possible already stored analysis file samplenames
-            pass
+            filesaresets = True
 
         else:
             # New analysis, set names for files can be there quantsamplefile values
@@ -527,7 +524,6 @@ def get_datasets(request, wfversion_id):
             if not analysis_dsfiles.difference(ft_sfids):
                 picked_ft = ft
 
-        status = 200
         # Fill response object
         producers = dsrawfiles.distinct('rawfile__producer')
         dsetinfo[dset.pk] = {
@@ -549,8 +545,11 @@ def get_datasets(request, wfversion_id):
                 'picked_ftype': picked_ft,
                 'filesaresets': filesaresets,
                 }
-    response['dsets'] = dsetinfo
-    return JsonResponse(response, status=status)
+    if len(response['errmsg']):
+        return JsonResponse(response, status=400)
+    else:
+        response['dsets'] = dsetinfo
+        return JsonResponse(response)
 
 
 @login_required

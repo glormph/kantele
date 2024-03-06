@@ -269,6 +269,7 @@ async function fetchDatasetDetails(fetchdsids) {
   // as in other places here! Instead, {errmsg: [err1, err2, ..]}
   if (result.error) {
     result.errmsg.forEach(msg => {
+      notif.errors['Errors found in datasets, please fix and refresh this page'] = 1;
       notif.errors[msg] = 1;
       setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
     });

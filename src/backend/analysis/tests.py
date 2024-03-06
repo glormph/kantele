@@ -290,21 +290,39 @@ class TestGetDatasetsBad(AnalysisTest):
         raw = rm.RawFile.objects.create(name=fn, producer=self.prod,
                 source_md5='noqt_fakemd5',
                 size=100, date=timezone.now(), claimed=True)
-        sf, _ = rm.StoredFile.objects.update_or_create(rawfile=raw, filename=fn,
-                    md5=raw.source_md5, filetype=self.ft,
-                    defaults={'servershare': self.ssnewstore, 'path': path, 'checked': True})
-        newrun, _ = dm.RunName.objects.get_or_create(experiment=self.ds.runname.experiment,
-                name='noqt_ds')
-        newds, _ = dm.Dataset.objects.get_or_create(runname=newrun, datatype=self.ds.datatype, 
-                storage_loc=path, storageshare=self.ds.storageshare,
-                defaults={'date': timezone.now()})
-        dsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=newds, rawfile=raw)
-        dm.DatasetOwner.objects.get_or_create(dataset=newds, user=self.user)
+        sf = rm.StoredFile.objects.create(rawfile=raw, filename=fn, md5=raw.source_md5, 
+                filetype=self.ft, servershare=self.ssnewstore, path=path, checked=True)
+        newrun = dm.RunName.objects.create(experiment=self.ds.runname.experiment, name='noqt_ds')
+        newds = dm.Dataset.objects.create(runname=newrun, datatype=self.ds.datatype, 
+                storage_loc=path, storageshare=self.ds.storageshare, date=timezone.now())
+        dsr = dm.DatasetRawFile.objects.create(dataset=newds, rawfile=raw)
+        dm.DatasetOwner.objects.create(dataset=newds, user=self.user)
         resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{newds.pk}', 'anid': 0})
         self.assertEqual(resp.status_code, 400)
         dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {newrun.name}'
         self.assertIn(f'File(s) or channels in dataset {dsname} do not have sample annotations, '
                 'please edit the dataset first', resp.json()['errmsg'])
+        self.assertNotIn('dsets', resp.json())
+
+        # raw file without a storedfile and some more
+        dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {self.ds.runname.name}'
+        raw = rm.RawFile.objects.create(name='nosf', producer=self.prod,
+                source_md5='nosf_fakemd5',
+                size=100, date=timezone.now(), claimed=True)
+        dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=raw)
+        raw2 = rm.RawFile.objects.create(name='nosf2', producer=self.prod,
+                source_md5='nosf2_fakemd5',
+                size=100, date=timezone.now(), claimed=True)
+        sf2 = rm.StoredFile.objects.create(rawfile=raw2, filename=raw2.name, md5=raw.source_md5,
+                filetype=self.ft2, servershare=self.ssnewstore, path=path, checked=True)
+        dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=raw2)
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.ds.pk}', 'anid': 0})
+        self.assertEqual(resp.status_code, 400)
+        rj = resp.json()
+        self.assertIn(f'Dataset {dsname} contains registered files that dont have a storage '
+                'entry yet. Maybe the transferring hasnt been finished, or they are deleted.', rj['errmsg'])
+        self.assertIn(f'Multiple different file types in dataset {dsname}, not allowed', rj['errmsg'])
+        self.assertNotIn('dsets', rj)
 
 
 class TestGetDatasetsIso(AnalysisIsobaric):
