@@ -410,10 +410,8 @@ def get_datasets(request, wfversion_id):
             'quantdataset'):
         # For error reporting per dset:
         dsname = f'{dset.runname.experiment.project.name} / {dset.runname.experiment.name} / {dset.runname.name}'
-        # Initialize
+        # Fractionation
         prefrac, hr, frregex = False, False, ''
-        is_isobaric, qtype = False, False
-        channels = {}
         if 'PREFRAC' in wfcomponents:
             if hasattr(dset, 'prefractionationdataset'):
                 pf = dset.prefractionationdataset
@@ -452,7 +450,8 @@ def get_datasets(request, wfversion_id):
             return JsonResponse({'error': True, 'errmsg': ['Multiple different file types in dataset, not allowed']}, status=400)
         is_msdata = dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count()
 
-        # Get quant data for MS analysis if any
+        # Get quant data from dataset
+        is_isobaric, qtype = False, False
         if 'ISOQUANT' in wfcomponents and is_msdata and hasattr(dset, 'quantdataset'):
             is_isobaric = any(x in dset.quantdataset.quanttype.shortname for x in ['plex', 'pro'])
             qtype = {'name': dset.quantdataset.quanttype.name,
@@ -464,8 +463,9 @@ def get_datasets(request, wfversion_id):
                 'dataset first']}, status=400)
         
         # Populate files
-        picked_ft = dset_ftype.get().filetype.name
-        usefiles = {picked_ft: dsrawfiles}
+        rawtype = dset_ftype.get().filetype.name
+        usefiles = {rawtype: dsrawfiles}
+        picked_ft = rawtype
         if is_msdata:
             ms_usefiles, new_picked_ft = get_msdataset_files_by_type(dssfiles, nrrawfiles)
             # If no mzML exist there will not be a new picked filetype
@@ -481,7 +481,8 @@ def get_datasets(request, wfversion_id):
         resp_files = {x.id: {'ft_name': ft_name, 'id': x.id, 'name': x.filename, 'fr': '',
             'setname': '', 'sample': ''} for ft_name, dsf in usefiles.items() for x in dsf}
 
-        #qsf_error = False
+        # Fill channels with quant data
+        channels = {}
         if is_msdata and is_isobaric:
             # FIXME but isobaric can have no sample annotation and still run??
             # multiplex so add channel/samples if any exist (not for labelcheck)
@@ -542,9 +543,8 @@ def get_datasets(request, wfversion_id):
                 'instruments': [x.rawfile.producer.name for x in producers],
                 'instrument_types': [x.rawfile.producer.shortname for x in producers],
                 'qtype': qtype,
-                'nrstoredfiles': {'raw': nrrawfiles},
+                'nrstoredfiles': [nrrawfiles, rawtype],
                 'channels': channels,
-                #'files': [resp_files[x.id] for x in usefiles],
                 'ft_files': grouped_resp_files,
                 'picked_ftype': picked_ft,
                 'filesaresets': filesaresets,

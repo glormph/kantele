@@ -648,10 +648,6 @@ onMount(async() => {
           <span>This dataset has changed files while editing  <button on:click={e => fetchDatasetDetails([ds.id])} class="button is-small">Reload dataset</button></span>
         </div>
         {/if}
-        <!-- FIXME -->
-        {#if ds.nrstoredfiles.refined_mzML}
-			  <div class="subtitle is-6"><strong>Enforcing use of refined mzML(s)</strong></div>
-        {/if}
 
         {#if wf && ds.prefrac && 'PREFRAC' in wf.components}
         <div class="field">
@@ -675,9 +671,7 @@ onMount(async() => {
         </div>
 			  <div class="subtitle is-6">
 				  <span>{ds.qtype.name}</span>
-          {#each Object.entries(ds.nrstoredfiles) as sf}
-		      <span> // {sf[1]} {sf[0]} files </span>
-          {/each}
+		      <span> // {ds.nrstoredfiles[0]} {ds.nrstoredfiles[1]} files </span>
 				  <span>// {ds.instruments.join(', ')} </span>
 			  </div>
 

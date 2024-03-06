@@ -273,7 +273,7 @@ class TestGetAnalysis(AnalysisIsobaric):
         self.assertInHTML(html_ana, resphtml)
 
 
-class TestGetDatasets(AnalysisTest):
+class TestGetDatasetsBad(AnalysisTest):
     url = '/analysis/dsets/'
 
     def test_bad_req(self):
@@ -282,23 +282,7 @@ class TestGetDatasets(AnalysisTest):
         resp = self.cl.get(f'{self.url}{self.nfwf.pk}/')
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(['Something wrong when asking datasets, contact admin'], resp.json()['errmsg'])
-
-    def test_new_ok(self):
-        '''New analysis with datasets, try both LF and isobaric'''
-        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.ds.pk}', 'anid': 0})
-        self.assertEqual(resp.status_code, 200)
-        dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {self.ds.runname.name}'
-        checkjson = {
-                'dsets': {},
-                'error': False,
-                'errmsg': [],
-                }
-        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
-
-    def test_with_saved_analysis(self):
-        self.fail()
-
-    def test_error(self):
+    def test_error_dset(self):
         '''This test is on single dataset which will fail, in various ways'''
         # No quant details
         fn = 'noqt_fn'
@@ -321,6 +305,150 @@ class TestGetDatasets(AnalysisTest):
         dsname = f'{self.ds.runname.experiment.project.name} / {self.ds.runname.experiment.name} / {newrun.name}'
         self.assertIn(f'File(s) or channels in dataset {dsname} do not have sample annotations, '
                 'please edit the dataset first', resp.json()['errmsg'])
+
+
+class TestGetDatasetsIso(AnalysisIsobaric):
+    url = '/analysis/dsets/'
+
+    def test_new_ok(self):
+        '''New analysis with datasets, try both LF and isobaric'''
+        # Isobaric
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.ds.pk}', 'anid': 0})
+        self.assertEqual(resp.status_code, 200)
+        mztype = f'mzML (pwiz {self.pwiz.version_description})'
+        checkjson = {
+                'dsets': {f'{self.ds.pk}': {
+                    'id': self.ds.pk,
+                    'proj': self.ds.runname.experiment.project.name,
+                    'exp': self.ds.runname.experiment.name,
+                    'run': self.ds.runname.name,
+                    'dtype': self.ds.datatype.name,
+                    'prefrac': False,
+                    'hr': False,
+                    'setname': '',
+                    'frregex': am.PsetComponent.objects.get(pset=self.pset,
+                        component=am.PsetComponent.ComponentChoices.PREFRAC).value,
+                    'instruments': [self.prod.name],
+                    'instrument_types': [self.prod.shortname],
+                    'qtype': {'name': self.ds.quantdataset.quanttype.name,
+                        'short': self.ds.quantdataset.quanttype.shortname,
+                        'is_isobaric': True},
+                    'nrstoredfiles': [1, self.ft.name],
+                    'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
+                    'ft_files': {mztype: [{'ft_name': mztype, 'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename, 'fr': '', 'setname': '', 'sample': ''}],
+                        self.ft.name: [{'ft_name': self.ft.name, 'id': self.f3sf.pk, 'name': self.f3sf.filename, 'fr': '', 'setname': '', 'sample': ''}],
+                        },
+                    'picked_ftype': mztype,
+                    'filesaresets': False,
+                    }},
+                'error': False,
+                'errmsg': [],
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+    def test_with_saved_analysis(self):
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.ds.pk}', 'anid': self.ana.pk})
+        self.assertEqual(resp.status_code, 200)
+        mztype = f'mzML (pwiz {self.pwiz.version_description})'
+        checkjson = {
+                'dsets': {f'{self.ds.pk}': {
+                    'id': self.ds.pk,
+                    'proj': self.ds.runname.experiment.project.name,
+                    'exp': self.ds.runname.experiment.name,
+                    'run': self.ds.runname.name,
+                    'dtype': self.ds.datatype.name,
+                    'prefrac': False,
+                    'hr': False,
+                    'setname': self.ads1.setname.setname,
+                    'frregex': self.ads1.regex,
+                    'instruments': [self.prod.name],
+                    'instrument_types': [self.prod.shortname],
+                    'qtype': {'name': self.ds.quantdataset.quanttype.name,
+                        'short': self.ds.quantdataset.quanttype.shortname,
+                        'is_isobaric': True},
+                    'nrstoredfiles': [1, self.ft.name],
+                    'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
+                    'ft_files': {mztype: [{'ft_name': mztype, 'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename, 'fr': '', 'setname': '', 'sample': ''}],
+                        self.ft.name: [{'ft_name': self.ft.name, 'id': self.f3sf.pk, 'name': self.f3sf.filename, 'fr': '', 'setname': '', 'sample': ''}],
+                        },
+                    'picked_ftype': mztype,
+                    'filesaresets': False,
+                    }},
+                'error': False,
+                'errmsg': [],
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+
+class TestGetDatasetsLF(AnalysisLabelfreeSamples):
+    url = '/analysis/dsets/'
+
+    def test_new_ok(self):
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.oldds.pk}', 'anid': 0})
+        self.assertEqual(resp.status_code, 200)
+        mztype = f'mzML (pwiz {self.pwiz.version_description})'
+        checkjson = {
+                'dsets': {f'{self.oldds.pk}': {
+                    'id': self.oldds.pk,
+                    'proj': self.oldds.runname.experiment.project.name,
+                    'exp': self.oldds.runname.experiment.name,
+                    'run': self.oldds.runname.name,
+                    'dtype': self.oldds.datatype.name,
+                    'prefrac': False,
+                    'hr': False,
+                    'setname': '',
+                    'frregex': am.PsetComponent.objects.get(pset=self.pset,
+                        component=am.PsetComponent.ComponentChoices.PREFRAC).value,
+                    'instruments': [self.prod.name],
+                    'instrument_types': [self.prod.shortname],
+                    'qtype': {'name': self.oldds.quantdataset.quanttype.name,
+                        'short': self.oldds.quantdataset.quanttype.shortname,
+                        'is_isobaric': False},
+                    'nrstoredfiles': [1, self.ft.name],
+                    'channels': False,
+                    'ft_files': {self.ft.name: [{'ft_name': self.ft.name, 'id': self.oldsf.pk, 'name': self.oldsf.filename, 'fr': '', 'setname': self.oldqsf.projsample.sample, 'sample': self.oldqsf.projsample.sample}],
+                        },
+                    'picked_ftype': self.ft.name,
+                    'filesaresets': False,
+                    }},
+                'error': False,
+                'errmsg': [],
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
+
+
+    def test_with_saved_analysis(self):
+        resp = self.cl.get(f'{self.url}{self.nfwf.pk}/', data={'dsids': f'{self.oldds.pk}', 'anid': self.analf.pk})
+        self.assertEqual(resp.status_code, 200)
+        mztype = f'mzML (pwiz {self.pwiz.version_description})'
+        checkjson = {
+                'dsets': {f'{self.oldds.pk}': {
+                    'id': self.oldds.pk,
+                    'proj': self.oldds.runname.experiment.project.name,
+                    'exp': self.oldds.runname.experiment.name,
+                    'run': self.oldds.runname.name,
+                    'dtype': self.oldds.datatype.name,
+                    'prefrac': False,
+                    'hr': False,
+                    'setname': '',
+                    'frregex': am.PsetComponent.objects.get(pset=self.pset,
+                        component=am.PsetComponent.ComponentChoices.PREFRAC).value,
+                    'instruments': [self.prod.name],
+                    'instrument_types': [self.prod.shortname],
+                    'qtype': {'name': self.oldds.quantdataset.quanttype.name,
+                        'short': self.oldds.quantdataset.quanttype.shortname,
+                        'is_isobaric': False},
+                    'nrstoredfiles': [1, self.ft.name],
+                    'channels': False,
+                    'ft_files': {self.ft.name: [{'ft_name': self.ft.name, 'id': self.oldsf.pk, 'name': self.oldsf.filename, 'fr': '', 'setname': self.afs2.sample, 'sample': self.oldqsf.projsample.sample}],
+                        },
+                    'picked_ftype': self.ft.name,
+                    'filesaresets': True,
+                    }},
+                'error': False,
+                'errmsg': [],
+                }
+        self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
 
 class TestGetWorkflowVersionDetails(AnalysisTest):
