@@ -120,12 +120,18 @@ async function storeAnalysis() {
   }
   runButtonActive = false;
   postingAnalysis = true;
-  notif.messages['Validated data'] = 1;
+  let msg = 'Validated data';
+  notif.messages[msg] = 1;
+  setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   let fns = Object.fromEntries(Object.entries(config.fileparams).filter(([k,v]) => v))
   let multifns = Object.fromEntries(Object.entries(config.multifileparams).map(([k, v]) => [k, Object.values(v).filter(x => x)]).filter(([k, v]) => v.length));
 
-  notif.messages[`Using ${Object.keys(dsets).length} dataset(s)`] = 1;
-  notif.messages[`${Object.keys(fns).length} other inputfiles found`];
+  msg = `Using ${Object.keys(dsets).length} dataset(s)`;
+  notif.messages[msg] = 1;
+  setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
+  msg = `${Object.keys(fns).length} other inputfiles found`;
+  notif.messages[msg] = 1;
+  setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   let post = {
     analysis_id: analysis_id,
     base_analysis: base_analysis,
@@ -185,20 +191,25 @@ async function storeAnalysis() {
    
   // Post the payload
   if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
-    notif.messages[`Storing analysis for ${config.analysisname}`] = 1;
+    msg = `Storing analysis for ${config.analysisname}`;
+    notif.messages[msg] = 1;
+    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
     const resp = await postJSON('/analysis/store/', post);
-    if (resp.error) {
-      notif.errors[resp.error] = 1;
+    if (resp.error.length) {
+      let msg = 'Errors found, please fix and try again';
+      notif.errors[msg] = 1;
+      resp.error.forEach(msg => {
+        notif.errors[msg] = 1;
+      });
       if ('files_nods' in resp) {
         // Dsets have been changed while editing analysis
         const files_nodset = new Set(resp.files_nods);
         Object.values(dsets)
-          .filter(ds => files_nodset
-            // FIXME this crashes
-            .intersect(Object.values(ds.ft_files[ds.picked_ftype])
-              .map(x => x.id)))
-          .forEach(ds => {
-          ds.changed = true;
+          .map(ds => [ds.id, Object.values(ds.ft_files[ds.picked_ftype])
+            .filter(x => files_nodset.has(x.id))
+          ]).filter(dstuple => dstuple[1].length)
+          .forEach(dstuple => {
+            dsets[dstuple[0]].changed = true;
         });
         Object.entries(dsets).filter(([dsid, ds]) => resp.ds_newfiles.indexOf(dsid) > -1).forEach(([dsid, ds]) => {
           ds.changed = true;
@@ -268,10 +279,10 @@ async function fetchDatasetDetails(fetchdsids) {
   // Only function where we have a list of errors, so not using {error: err1}
   // as in other places here! Instead, {errmsg: [err1, err2, ..]}
   if (result.error) {
+    let msg = 'Errors found in datasets, please fix and refresh this page';
+    notif.errors[msg] = 1;
     result.errmsg.forEach(msg => {
-      notif.errors['Errors found in datasets, please fix and refresh this page'] = 1;
       notif.errors[msg] = 1;
-      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
     });
   } else {
     Object.keys(result.dsets).forEach(x => {
@@ -620,6 +631,12 @@ onMount(async() => {
 	<div class="title is-5">Datasets</div>
   {#each Object.values(dsets) as ds}
   <div class="box">
+    {#if ds.changed}
+    <div class="has-text-danger">
+      <span>This dataset has changed files while editing  <button on:click={e => fetchDatasetDetails([ds.id])} class="button is-small">Reload dataset</button></span>
+    </div>
+    {/if}
+
     {#if ds.dtype.toLowerCase() === 'labelcheck'}
     <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.qtype.name} // {ds.instruments.join(',')}</span>
     {:else}
@@ -644,12 +661,6 @@ onMount(async() => {
           <input type="text" class="input" placeholder="Name of set" bind:value={ds.setname} on:change={e => updateIsoquant(ds.id)}>
 			  </div>
         {/if}
-        {#if ds.changed}
-        <div class="has-text-danger">
-          <span>This dataset has changed files while editing  <button on:click={e => fetchDatasetDetails([ds.id])} class="button is-small">Reload dataset</button></span>
-        </div>
-        {/if}
-
         {#if wf && ds.prefrac && 'PREFRAC' in wf.components}
         <div class="field">
 					<label class="label">Regex for fraction detection</label>
@@ -666,6 +677,9 @@ onMount(async() => {
             <select bind:value={ds.picked_ftype}>
               {#each Object.keys(ds.ft_files) as ft}
               <option value={ft}>{ft}</option>
+              {/each}
+              {#each ds.incomplete_files as incomp}
+              <option disabled>{incomp}</option>
               {/each}
             </select>
           </div>

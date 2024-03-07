@@ -159,7 +159,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
         dsf_by_type = {rawftype: dsrawfiles}
         if dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count():
             nrrawfiles = dsrawfiles.count()
-            ds_msfiles, _ = get_msdataset_files_by_type(dssfiles, nrrawfiles)
+            ds_msfiles, _ = get_msdataset_files_by_type(dssfiles)
             dsf_by_type.update(ds_msfiles)
 
         for ft, sf_qset in dsf_by_type.items():
@@ -319,27 +319,22 @@ def get_allwfs():
     return {'wfs': allwfs, 'order': order}
 
 
-def get_msdataset_files_by_type(alldsfiles, nrrawfiles):
+def get_msdataset_files_by_type(alldsfiles, nrrawfiles=False):
     dsfiles = {}
     last_filetype = False
     dsmzfiles = alldsfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=False).select_related('mzmlfile__pwiz')
     for pwiz_mzs in dsmzfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
         ftname = f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'
-        if pwiz_mzs['pwcount'] == nrrawfiles:
-            dsfiles[ftname] = dsmzfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+        dsfiles[ftname] = dsmzfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+        if nrrawfiles and pwiz_mzs['pwcount'] == nrrawfiles:
             last_filetype = ftname
-# FIXME show incompletes? otherwise need to handle them in contexts (not queryset but string)
-#        elif pwiz_mzs['pwcount'] < nrrawfiles:
-#            dsfiles[f'mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
     # Deliver also refined mzML
     dsrefinedfiles = alldsfiles.filter(mzmlfile__isnull=False, mzmlfile__refined=True).select_related('mzmlfile__pwiz')
     for pwiz_mzs in dsrefinedfiles.values('mzmlfile__pwiz_id', 'mzmlfile__pwiz__version_description').annotate(pwcount=Count('pk')):
         ftname = f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})' 
-        if pwiz_mzs['pwcount'] == nrrawfiles:
-            dsfiles[ftname] = dsrefinedfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+        dsfiles[ftname] = dsrefinedfiles.filter(mzmlfile__pwiz_id=pwiz_mzs['mzmlfile__pwiz_id'])
+        if nrrawfiles and pwiz_mzs['pwcount'] == nrrawfiles:
             last_filetype = ftname
-#        elif pwiz_mzs['pwcount'] < nrrawfiles:
-#            dsfiles[f'refined mzML (pwiz {pwiz_mzs["mzmlfile__pwiz__version_description"]})'] = 'incomplete'
     return dsfiles, last_filetype 
 
 
@@ -445,7 +440,11 @@ def get_datasets(request, wfversion_id):
         if dset_ftype.count() > 1:
             response['errmsg'].append(f'Multiple different file types in dataset {dsname}, not allowed')
             # Mainly for being able to continue, will not use this anyway in frontend
-            rawtype = dset_ftype.first().filetype.name
+            rawtype = 'placeholder_fake_raw'
+        elif dset_ftype.count() == 0:
+            response['errmsg'].append(f'No stored files in dataset {dsname}')
+            # Mainly for being able to continue, will not use this anyway in frontend
+            rawtype = 'placeholder_fake_raw'
         else:
             rawtype = dset_ftype.get().filetype.name
         is_msdata = dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count()
@@ -463,6 +462,7 @@ def get_datasets(request, wfversion_id):
         
         # Populate files
         usefiles = {rawtype: dsrawfiles}
+        incomplete_files = []
         picked_ft = rawtype
         if is_msdata:
             ms_usefiles, new_picked_ft = get_msdataset_files_by_type(dssfiles, nrrawfiles)
@@ -472,10 +472,12 @@ def get_datasets(request, wfversion_id):
             # would be good if we only ever allow one set of mzml + one refined
             if new_picked_ft:
                 picked_ft = new_picked_ft
-            usefiles.update(ms_usefiles)
+            for ft, msfiles in ms_usefiles.items():
+                if msfiles.count() == nrrawfiles:
+                    usefiles[ft] = msfiles
+                else:
+                    incomplete_files.append(ft)
 
-        #    # also FIXME - these checks need also to run on save, so no open window saves a job
-        #    # where mzMLs are already deleted?
         resp_files = {x.id: {'ft_name': ft_name, 'id': x.id, 'name': x.filename, 'fr': '',
             'setname': '', 'sample': ''} for ft_name, dsf in usefiles.items() for x in dsf}
 
@@ -542,11 +544,12 @@ def get_datasets(request, wfversion_id):
                 'nrstoredfiles': [nrrawfiles, rawtype],
                 'channels': channels,
                 'ft_files': grouped_resp_files,
+                'incomplete_files': incomplete_files,
                 'picked_ftype': picked_ft,
                 'filesaresets': filesaresets,
                 }
     if len(response['errmsg']):
-        return JsonResponse(response, status=400)
+        return JsonResponse({**response, 'error': True}, status=400)
     else:
         response['dsets'] = dsetinfo
         return JsonResponse(response)
@@ -677,28 +680,51 @@ def store_analysis(request):
     if req['analysis_id']:
         analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(pk=req['analysis_id'])
         if analysis.user_id != request.user.id and not request.user.is_staff:
-            return JsonResponse({'error': 'You do not have permission to edit this analysis'})
+            return JsonResponse({'error': 'You do not have permission to edit this analysis'}, status=403)
+        elif analysis.nextflowsearch.job.state == jj.Jobstates.DONE:
+            return JsonResponse({'error': 'This analysis has already finished running, it cannot be edited'}, status=403)
         elif analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
-            return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'})
+            return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'}, status=403)
 
+    response_errors = []
+    dsets = {str(x.pk): x for x in dsetquery}
     # Check if files have not changed while editing an analysis (e.g. long open window)
     frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['infiles']}, set()
     dsfiles = {}
     for dsid in req['dsids']:
+        dset = dsets[dsid]
+        dsname = f'{dset.runname.experiment.project.name} / {dset.runname.experiment.name} / {dset.runname.name}'
+        if not hasattr(dset, 'quantdataset'):
+            response_errors.append(f'File(s) or channels in dataset {dsname} do not have '
+                    'sample annotations, please edit the dataset first')
+        dsregfiles = rm.RawFile.objects.filter(datasetrawfile__dataset_id=dsid)
         dssfiles = rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dsid,
                         deleted=False, purged=False, checked=True)
         dsrawfiles = dssfiles.filter(mzmlfile__isnull=True)
+        nrrawfiles = dsrawfiles.count()
+        if nrrawfiles < dsregfiles.count():
+            response_errors.append(f'Dataset {dsname} contains registered files that dont '
+                'have a storage entry yet. Maybe the transferring hasnt been finished, '
+                'or they are deleted.')
+        # Load the raw files
         try:
             dsfiles[dsid] = {dsrawfiles.values('filetype__name').distinct().get()['filetype__name']: dsrawfiles}
         except rm.StoredFile.MultipleObjectsReturned:
-            return JsonResponse({'error': 'Files of multiple datatypes exist in dataset'}, status=400)
+            response_errors.append(f'Files of multiple datatypes exist in dataset {dsname}')
+            dsfiles[dsid] = {req['picked_ftypes'][dsid]: dsrawfiles}
+        except rm.StoredFile.DoesNotExist:
+            dsfiles[dsid] = {req['picked_ftypes'][dsid]: dsrawfiles}
+            response_errors.append(f'No stored files exist for dataset {dsname}')
+        # MS data get mzML files 
         if dsrawfiles.filter(rawfile__producer__msinstrument__isnull=False).count():
-            nrrawfiles = dsrawfiles.count()
-            ds_msfiles, _ = get_msdataset_files_by_type(dssfiles, nrrawfiles)
+            ds_msfiles, _ = get_msdataset_files_by_type(dssfiles)
             dsfiles[dsid].update(ds_msfiles)
+        # Settle for picked type
         dsfiles[dsid] = dsfiles[dsid][req['picked_ftypes'][dsid]]
+        if dsfiles[dsid].count() < nrrawfiles:
+            response_errors.append(f'Files of type {req["picked_ftypes"][dsid]} are fewer than '
+                    f'raw files, please fix - for dataset {dsname}')
 
-    #dsfiles = {dsid: get_dataset_files(dsid, use_refined=True) for dsid in req['dsids']}
     for dsid in req['dsids']:
         for sf in dsfiles[dsid]:
             if sf.pk in frontend_files_not_in_ds:
@@ -706,8 +732,10 @@ def store_analysis(request):
             else:
                 ds_withfiles_not_in_frontend.add(dsid)
     if len(frontend_files_not_in_ds) or len(ds_withfiles_not_in_frontend):
-        return JsonResponse({'error': 'Files in dataset(s) have changed while you were editing. Please check the datasets marked.',
-            'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)})
+        response_errors.append('Files in dataset(s) have changed while you were editing. Please check the datasets marked.')
+        response_special = {'files_nods': list(frontend_files_not_in_ds), 'ds_newfiles': list(ds_withfiles_not_in_frontend)}
+    else:
+        response_special = {}
     # Components
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     nfwf_ver = am.NextflowWfVersionParamset.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
@@ -718,7 +746,7 @@ def store_analysis(request):
         try:
             qtype = dsetquery.values('quantdataset__quanttype__shortname').distinct().get()
         except dm.Dataset.MultipleObjectsReturned:
-            return JsonResponse({'error': 'Labelcheck pipeline cannot handle mixed isobaric types'})
+            response_errors.append('Labelcheck pipeline cannot handle mixed isobaric types')
         else:
             jobparams['--isobaric'] = [qtype['quantdataset__quanttype__shortname']]
 
@@ -743,18 +771,23 @@ def store_analysis(request):
     if 'ISOQUANT' in wf_components:
         for setname, quants in req['components']['ISOQUANT'].items():
             if setname not in set(req['dssetnames'].values()):
-                return JsonResponse({'error': f'Isobaric setname {setname} '
-                'could not be matched to dataset setnames, something went wrong'})
+                response_errors.append(f'Isobaric setname {setname} '
+                'could not be matched to dataset setnames, something went wrong')
             vals, calc_psm = parse_isoquant(quants)
             if not vals:
-                return JsonResponse({'error': 'Need to select one of '
-                    f'sweep/intensity/denominator for set {setname}'})
+                response_errors.append('Need to select one of '
+                    f'sweep/intensity/denominator for set {setname}')
             db_isoquant[setname] = vals
             isoq_cli.append('{}:{}:{}'.format(setname, quants['chemistry'], calc_psm))
         if isoq_cli:
             jobparams['--isobaric'] = [' '.join(isoq_cli)]
 
-    # Checks passed, now start database actions
+    # In case of errors, do not save anything
+    # No storing above this line
+    if len(response_errors):
+        return JsonResponse({'error': response_errors, **response_special}, status=400)
+
+    # Checks passed, now start storing to database
     if req['analysis_id']:
         analysis.name = req['analysisname']
         analysis.save()
@@ -793,7 +826,6 @@ def store_analysis(request):
         setname_ids[setname] = anaset.pk
     # setnames for datasets, optionally fractions and strips
     new_ads = {}
-    dsets = {str(dset.id): dset for dset in dsetquery}
     am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['infiles']).delete()
     for dsid, setname in req['dssetnames'].items():
         if 'PREFRAC' in wf_components:
@@ -831,7 +863,7 @@ def store_analysis(request):
     paramopts = {po.pk: po.value for po in am.ParamOption.objects.all()}
     for pid, valueids in req['params']['multicheck'].items():
         ap, created = am.AnalysisParam.objects.update_or_create(param_id=pid, analysis=analysis,
-                value=[int(x) for x in valueids])
+                defaults={'value': [int(x) for x in valueids]})
         jobparams[ap.param.nfparam].extend([paramopts[x] for x in ap.value])
     for pid in req['params']['flags'].keys():
         ap, created = am.AnalysisParam.objects.update_or_create(analysis=analysis, param_id=pid, value=True)
