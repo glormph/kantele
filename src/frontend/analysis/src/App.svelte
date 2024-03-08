@@ -246,6 +246,7 @@ async function fetchWorkflow() {
   to get input files that are results of any previous workflow that has
   the same datasets as input
   */
+  notif = {errors: {}, messages: {}, links: {}};
   let url = new URL('/analysis/workflow', document.location)
   const params = {dsids: dsids.join(','), wfvid: config.wfversion.id};
   url.search = new URLSearchParams(params).toString();

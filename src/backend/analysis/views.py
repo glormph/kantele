@@ -452,10 +452,14 @@ def get_datasets(request, wfversion_id):
         # Get quant data from dataset
         is_isobaric, qtype = False, False
         if 'ISOQUANT' in wfcomponents and is_msdata and hasattr(dset, 'quantdataset'):
-            is_isobaric = any(x in dset.quantdataset.quanttype.shortname for x in ['plex', 'pro'])
-            qtype = {'name': dset.quantdataset.quanttype.name,
-                    'short': dset.quantdataset.quanttype.shortname,
-                    'is_isobaric': is_isobaric}
+            if dset.quantchannelsample_set.count() < dset.quantdataset.quanttype.quanttypechannel_set.count():
+                response['errmsg'].append(f'Not all channels in dataset {dsname} have '
+                        'sample annotations, please edit the dataset first')
+            else:
+                is_isobaric = any(x in dset.quantdataset.quanttype.shortname for x in ['plex', 'pro'])
+                qtype = {'name': dset.quantdataset.quanttype.name,
+                        'short': dset.quantdataset.quanttype.shortname,
+                        'is_isobaric': is_isobaric}
         elif not hasattr(dset, 'quantdataset'):
             response['errmsg'].append(f'File(s) or channels in dataset {dsname} do not have '
                     'sample annotations, please edit the dataset first')
@@ -741,7 +745,14 @@ def store_analysis(request):
     nfwf_ver = am.NextflowWfVersionParamset.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
     wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
 
-    # Check if labelcheck 
+    # Check if labelcheck - do we have quantchannel in single-file:
+    if 'LABELCHECK_ISO' in wf_components and 'channel' in wf_components['INPUTDEF']:
+        for dsid in req['dsids']:
+            qfcnr = dsets[dsid].datasetrawfile_set.filter(quantfilechannel__isnull=False).count()
+            if qfcnr < nrrawfiles:
+                response_errors.append('Single-file-channel labelcheck needs file/channel '
+                        f'annotations, dataset {dsname} does not have those')
+    # Also check if qtypes not mixed for all LC
     if 'LABELCHECK_ISO' in wf_components:
         try:
             qtype = dsetquery.values('quantdataset__quanttype__shortname').distinct().get()
