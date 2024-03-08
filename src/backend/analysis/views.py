@@ -150,6 +150,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
     # Clean dsets to only contain dsets from base analysis
     [dsets.pop(x) for x in new_ana_dsids if not dsets[x]]
 
+    # Select files (raw, mzml, refined) used in base analysis
     for dsid in dsets:
         dssfiles = rm.StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=dsid,
                 deleted=False, purged=False, checked=True)
@@ -495,7 +496,6 @@ def get_datasets(request, wfversion_id):
                     'projsample', 'channel__channel').filter(dataset_id=dset.pk)}
         else:
             # Labelfree or other data type, add file/sample mapping
-            # FIXME when saving, delete existing qsf (maybe it is refined instead of mzML)
             channels = False
             for ft_name, dsfiles in usefiles.items():
                 for fn in dsfiles.filter(rawfile__datasetrawfile__quantsamplefile__isnull=False).select_related(
@@ -605,7 +605,6 @@ def get_workflow_versioned(request):
                 'name': x.sfile.filename}
                 for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}
     }
-
     resp['prev_resultfiles'] = get_prev_resultfiles(dsids)
     return JsonResponse({'wf': resp})
 
@@ -647,10 +646,7 @@ def show_analysis_log(request, nfs_id):
 @login_required
 @require_POST
 def store_analysis(request):
-    # FIXME need to block analysis editing when stored, so it cannot be re-stored. Check if:
-    # job for analysis is in states pending, error, etc to see if storeable (like in home when is edit button, basically that can always be on if this is implemented)
-    # 
-    """Edits or stores a new analysis"""
+    """Edits or stores a new analysis, checking for errors along the way and not storing any if those are found"""
     # Init
     jobparams = defaultdict(list)
     isoq_cli = []
@@ -675,9 +671,9 @@ def store_analysis(request):
         req['base_analysis']
         req['wfid']
     except json.decoder.JSONDecodeError:
-        return JsonResponse({'error': 'Something went wrong, contact admin'}, status=400)
+        return JsonResponse({'error': 'Something went wrong, contact admin concerning a bad request'}, status=400)
     except KeyError:
-        return JsonResponse({'error': 'Something went wrong, contact admin'}, status=400)
+        return JsonResponse({'error': 'Something went wrong, contact admin concerning missing data'}, status=400)
     dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related('prefractionationdataset__prefractionation')
     if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
@@ -761,8 +757,8 @@ def store_analysis(request):
         else:
             jobparams['--isobaric'] = [qtype['quantdataset__quanttype__shortname']]
 
-    # Check if isoquant is OK
     def parse_isoquant(quants):
+        '''Parse passed isoquant for job and DB'''
         vals = {'sweep': False, 'report_intensity': False, 'denoms': {}}
         if quants['sweep']:
             vals['sweep'] = True
@@ -777,8 +773,7 @@ def store_analysis(request):
             return False, False
         return vals, calc_psm
 
-    # FIXME isobaric quant is API v1/v2 diff, fix it by using diff components!
-    # need passed: setname, any denom, or sweep or intensity
+    # isobaric quant, need passed: setname, any denom, or sweep or intensity
     if 'ISOQUANT' in wf_components:
         for setname, quants in req['components']['ISOQUANT'].items():
             if setname not in set(req['dssetnames'].values()):
@@ -915,6 +910,7 @@ def store_analysis(request):
         shadow_dss = {x.dataset_id: {'setname': x.setname.setname, 'regex': x.regex}
                 for x in base_ana.analysisdatasetsetname_set.all()}
         shadow_isoquants = get_isoquants(base_ana, sampletables)
+        # Add the base analysis' own base analysis shadow isquants/dss is any
         try:
             baseana_dbrec = am.AnalysisBaseanalysis.objects.get(analysis=base_ana)
         except am.AnalysisBaseanalysis.DoesNotExist:
@@ -930,10 +926,6 @@ def store_analysis(request):
         for dsid, setname in req['dssetnames'].items():
             if int(dsid) in shadow_dss:
                 del(shadow_dss[int(dsid)])
-# This doesnt work: resets ads to wrong regex, why did we have it?
-#            ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
-#                    defaults={'setname_id': setname_ids[setname], 'regex': regex},
-#                    analysis=analysis, dataset_id=dsid) 
         if 'COMPLEMENT_ANALYSIS' in wf_components:
             is_complement = req['base_analysis']['isComplement']
             rerun = req['base_analysis']['runFromPSM']
@@ -969,8 +961,8 @@ def store_analysis(request):
             am.AnalysisIsoquant.objects.update_or_create(defaults={'value': quantvals},
                     analysis=analysis, setname_id=setname_ids[setname])
 
-    # If any, store sampletable TODO make possible to run without sampletable (so users can skip sample names)
-    # Need to go through job components as well
+    # If any, store sampletable
+    # TODO make possible to run without sampletable (so users can skip sample names)
     if (sampletable := in_components.get('ISOQUANT_SAMPLETABLE', False)) and \
             'ISOQUANT_SAMPLETABLE' in wf_components:
         am.AnalysisSampletable.objects.update_or_create(defaults={'samples': sampletable}, analysis=analysis)

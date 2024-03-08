@@ -1407,9 +1407,6 @@ def save_samples(request):
     if stype_dups:
         return JsonResponse({'error': f'Sampletypes need to be identical for identical sample IDs, check {", ".join(stype_dups)}'}, status=400)
 
-    # FIXME labelcheck single can remove the sample names from datatype so we dont have to store those?
-    # kind of nice to store but not sure yet
-
     # Check if all channels/samples have values for sampletype and species
     dset = models.Dataset.objects.select_related('runname__experiment__project').get(pk=dset_id)
     if data['multiplex']:

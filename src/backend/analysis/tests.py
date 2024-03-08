@@ -138,7 +138,6 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
-                #'mzmldef': self.mzmldef.mzmldef,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
@@ -168,7 +167,6 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': True,
-                #'mzmldef': self.mzmldef.mzmldef,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
@@ -208,7 +206,6 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         checkjson = {'base_analysis': {'analysis_id': self.analf.pk, 'dsets_identical': False,
-                #'mzmldef': self.mzmldeflf.mzmldef,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparamlf.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
@@ -592,7 +589,6 @@ class TestStoreAnalysis(AnalysisTest):
         timestamp = datetime.strftime(datetime.now(), '%Y%m%d_')
         self.assertEqual(resp.status_code, 200)
         ana = am.Analysis.objects.last()
-        #self.assertEqual(ana.analysismzmldef.mzmldef, postdata['components']['mzmldef'])
         self.assertEqual(ana.analysissampletable.samples, {'hello': 'yes'})
         for adsif in ana.analysisdsinputfile_set.all():
             self.assertEqual(adsif.analysisdset.dataset_id, self.ds.pk)

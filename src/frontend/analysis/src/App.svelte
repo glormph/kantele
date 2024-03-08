@@ -32,14 +32,12 @@ let base_analysis = {
   dsets_identical: false,
   selected: false,
   typedname: '',
-  fetched: {},
   resultfiles: [],
 }
 
 let adding_analysis = {
   selected: false,
   typedname: '',
-  fetched: {},
 }
 
 let added_analyses_order = [];
@@ -294,9 +292,6 @@ async function fetchDatasetDetails(fetchdsids) {
       dsets[x].changed = false;
     })
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
-// grouped_files treat here
-// f-end easiest is to keep ftype_name in key, pass that to api
-// api parses out key used from dsinputfiles, and parses in files from key on save
   }
 }
 
@@ -371,7 +366,6 @@ async function loadBaseAnalysis() {
         dsets[dsid].frregex = resds.frregex;
         dsets[dsid].filesaresets = resds.filesaresets;
         dsets[dsid].picked_ftype = resds.picked_ftype;
-        // FIXME address w resds.picked or ds.picked ?
         dsets[dsid].ft_files[resds.picked_ftype]
           .filter(x => x.id in resds.files)
           .forEach(x => {
@@ -625,7 +619,7 @@ onMount(async() => {
       {/if}
     </div>
     {/if}
-    <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={base_analysis.fetched} />
+    <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" />
 	</div>
   {/if}
 
@@ -852,7 +846,7 @@ onMount(async() => {
   <div class="box">
     <div class="title is-5">Input files</div>
     Pick previous analyses to use results as input if needed:
-    <DynamicSelect bind:intext={adding_analysis.typedname} bind:selectval={adding_analysis.selected} on:selectedvalue={e => loadAnalysisResults()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={adding_analysis.fetched} />
+    <DynamicSelect bind:intext={adding_analysis.typedname} bind:selectval={adding_analysis.selected} on:selectedvalue={e => loadAnalysisResults()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" />
 
     <div class="tags">
     {#each added_analyses_order as anaid}
