@@ -68,9 +68,8 @@ class NextflowWfVersionParamset(models.Model):
     nfworkflow = models.ForeignKey(NextflowWorkflowRepo, on_delete=models.CASCADE)
     paramset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
     date = models.DateTimeField(auto_now=True)
-    kanteleanalysis_version = models.IntegerField() # TODO remove this when noone uses v1 anymore
     nfversion = models.TextField()
-    #active = models.BooleanField(default=True)
+    active = models.BooleanField(default=False)
     
     def __str__(self):
         return '{} - {}'.format(self.nfworkflow.description, self.update)
@@ -140,15 +139,6 @@ class PsetMultiFileParam(models.Model):
 
     def __str__(self):
         return '{} -- {}'.format(self.pset.name, self.param.name)
-
-# TODO get rid of predefined files, put them in some workflow config file instead
-class PsetPredefFileParam(models.Model):
-    param = models.ForeignKey(FileParam, on_delete=models.CASCADE)
-    libfile = models.ForeignKey(LibraryFile, on_delete=models.CASCADE)
-    pset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
-
-    def __str__(self):
-        return '{} -- {} -- {}'.format(self.pset.name, self.param.name, self.libfile.description)
 
 
 class PsetParam(models.Model):

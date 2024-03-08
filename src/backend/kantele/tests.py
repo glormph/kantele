@@ -75,7 +75,7 @@ class BaseTest(TestCase):
         msit, _ = rm.MSInstrumentType.objects.get_or_create(name='test')
         rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
                 filetype=self.ft)
-        self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='tqt')
+        self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='testqtplex')
         self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
         self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
         self.lfqt, _ = dm.QuantType.objects.get_or_create(name='labelfree', shortname='lf')
@@ -119,8 +119,8 @@ class BaseTest(TestCase):
                 description='pwiz_repo_base desc', repo='pwiz_repo_base')
         wfv, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='pwiz wfv base',
                 commit='pwiz ci base', filename='pwiz.nf', nfworkflow=nfw,
-                paramset=pset, kanteleanalysis_version=1, nfversion='')
-        self.pwiz = am.Proteowizard.objects.create(version_description='',
+                paramset=pset, nfversion='', active=True)
+        self.pwiz = am.Proteowizard.objects.create(version_description='pwversion desc1',
                 container_version='', nf_version=wfv)
         self.f3sfmz, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw,
                 filename=f'{fn3}.mzML', md5='md5_for_f3sf_mzml', filetype=self.ft,
@@ -140,7 +140,7 @@ class BaseTest(TestCase):
         self.oldds, _ = dm.Dataset.objects.update_or_create(date=self.oldp.registered,
                 runname=self.oldrun, datatype=self.dtype, defaults={
                     'storageshare': self.ssoldstorage, 'storage_loc': self.oldstorloc})
-        dm.QuantDataset.objects.get_or_create(dataset=self.oldds, quanttype=self.qt)
+        dm.QuantDataset.objects.get_or_create(dataset=self.oldds, quanttype=self.lfqt)
         dm.DatasetComponentState.objects.create(dataset=self.oldds, dtcomp=self.dtcompfiles, state=dm.DCStates.OK)
         dm.DatasetComponentState.objects.create(dataset=self.oldds, dtcomp=self.dtcompsamples, state=dm.DCStates.OK)
         self.contact, _ = dm.ExternalDatasetContact.objects.get_or_create(dataset=self.oldds,
@@ -156,7 +156,7 @@ class BaseTest(TestCase):
                     md5=self.oldraw.source_md5, filetype=self.ft,
                     defaults={'servershare': self.ssoldstorage, 'path': self.oldstorloc, 
                         'checked': True})
-        dm.QuantSampleFile.objects.get_or_create(rawfile=self.olddsr, projsample=self.projsam2)
+        self.oldqsf = dm.QuantSampleFile.objects.create(rawfile=self.olddsr, projsample=self.projsam2)
 
         # Tmp rawfile
         tmpfn = 'raw2'

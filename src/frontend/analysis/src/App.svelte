@@ -32,14 +32,12 @@ let base_analysis = {
   dsets_identical: false,
   selected: false,
   typedname: '',
-  fetched: {},
   resultfiles: [],
 }
 
 let adding_analysis = {
   selected: false,
   typedname: '',
-  fetched: {},
 }
 
 let added_analyses_order = [];
@@ -59,23 +57,6 @@ function updateResultfiles() {
 }
 
 
-/*
-Removing:
-NF workflow API v1:
-- no mixed isobaric
-- no mixed instruments
-- mixed dtype is ok i guess, but stupid
-- predefined files exist, e.g. vardb
-- isobaric spec as --isobaric tmt10plex --denoms set1:126 set2:127N
- 
-
-NF workflow API v2:
-- mods / locptms via multi-checkbox
-- DBs via multi-file interface
-- isobaric spec as --isobaric set1:tmt10plex:126 set2:6plex:sweep
-*/
-
-
 let config = {
   wfid: false,
   wfversion: false,
@@ -86,14 +67,6 @@ let config = {
   fileparams: {},
   inputparams: {},
   multifileparams: {},
-  v1: false,
-  v2: false,
-  version_dep: {
-    v1: {
-      instype: false,
-      dtype: false,
-    }
-  },
 }
 let matchedFr = {};
 
@@ -118,7 +91,7 @@ function validate() {
     if (!('LABELCHECK_ISO' in wf.components) && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
     } else if (ds.filesaresets) {
-      if (ds.files.some(fn => !fn.setname)) {
+      if (ds.ft_files[ds.picked_ftype].some(fn => !fn.setname)) {
 			  notif.errors[`File ${fn.name} needs to have a setname`] = 1;
 			}
     } else if (ds.setname && !charRe.test(ds.setname)) {
@@ -145,23 +118,35 @@ async function storeAnalysis() {
   }
   runButtonActive = false;
   postingAnalysis = true;
-  notif.messages['Validated data'] = 1;
+  let msg = 'Validated data';
+  notif.messages[msg] = 1;
+  setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   let fns = Object.fromEntries(Object.entries(config.fileparams).filter(([k,v]) => v))
-  wf.fixedfileparams.forEach(fn => {
-    fns[fn.id] = fn.sfid
-  })
   let multifns = Object.fromEntries(Object.entries(config.multifileparams).map(([k, v]) => [k, Object.values(v).filter(x => x)]).filter(([k, v]) => v.length));
 
-  notif.messages[`Using ${Object.keys(dsets).length} dataset(s)`] = 1;
-  notif.messages[`${Object.keys(fns).length} other inputfiles found`];
+  msg = `Using ${Object.keys(dsets).length} dataset(s)`;
+  notif.messages[msg] = 1;
+  setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
+  msg = `${Object.keys(fns).length} other inputfiles found`;
+  notif.messages[msg] = 1;
+  setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   let post = {
     analysis_id: analysis_id,
     base_analysis: base_analysis,
     dsids: Object.keys(dsets),
-    dssetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => !ds.filesaresets).map(([dsid, ds]) => [dsid, ds.setname])),
-    infiles: Object.fromEntries(Object.values(dsets).flatMap(ds => ds.files.map(fn => [fn.id, {fr: fn.fr}]))),
-    fnsetnames: Object.fromEntries(Object.entries(dsets).filter(([x,ds]) => ds.filesaresets).map(
-      ([dsid, ds]) => ds.files.map(fn => [fn.id, fn.setname])).flat()),
+    dssetnames: Object.fromEntries(Object.entries(dsets)
+      .filter(([x,ds]) => !ds.filesaresets)
+      .map(([dsid, ds]) => [dsid, ds.setname])),
+    infiles: Object.fromEntries(Object.values(dsets)
+      .flatMap(ds => ds.ft_files[ds.picked_ftype]
+        .map(fn => [fn.id, {fr: fn.fr}]))),
+    fnsetnames: Object.fromEntries(Object.entries(dsets)
+      .filter(([x,ds]) => ds.filesaresets)
+      .map(([dsid, ds]) => ds.ft_files[ds.picked_ftype]
+        .map(fn => [fn.id, fn.setname]))
+      .flat()),
+    picked_ftypes: Object.fromEntries(Object.entries(dsets)
+      .map(([dsid, ds]) => [dsid, ds.picked_ftype])),
     frregex: Object.fromEntries(Object.entries(dsets).map(([dsid, ds]) => [dsid, ds.frregex])),
     singlefiles: fns,
     multifiles: multifns,
@@ -188,10 +173,6 @@ async function storeAnalysis() {
         }))),
     },
   };
-  // FIXME this is for LC pipelien, which we need to fix the input format for
-  if (config.v1) {
-    post.params.inst = ['--instrument', config.version_dep.v1.instype];
-  }
   if ('ISOQUANT' in wf.components) {
     post.components.ISOQUANT = config.isoquants;
   }
@@ -208,19 +189,25 @@ async function storeAnalysis() {
    
   // Post the payload
   if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
-    notif.messages[`Storing analysis for ${config.analysisname}`] = 1;
+    msg = `Storing analysis for ${config.analysisname}`;
+    notif.messages[msg] = 1;
+    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
     const resp = await postJSON('/analysis/store/', post);
-    if (resp.error) {
-      notif.errors[resp.error] = 1;
-      // FIXME think we no longer have links in responses, this can deprec.
-      if ('link' in resp) {
-        notif.links[resp.link] = 1;
-      }
+    if (resp.error.length) {
+      let msg = 'Errors found, please fix and try again';
+      notif.errors[msg] = 1;
+      resp.error.forEach(msg => {
+        notif.errors[msg] = 1;
+      });
       if ('files_nods' in resp) {
         // Dsets have been changed while editing analysis
         const files_nodset = new Set(resp.files_nods);
-        Object.values(dsets).filter(ds => files_nodset.intersect(Object.values(ds.files).map(x => x.id))).forEach(ds => {
-          ds.changed = true;
+        Object.values(dsets)
+          .map(ds => [ds.id, Object.values(ds.ft_files[ds.picked_ftype])
+            .filter(x => files_nodset.has(x.id))
+          ]).filter(dstuple => dstuple[1].length)
+          .forEach(dstuple => {
+            dsets[dstuple[0]].changed = true;
         });
         Object.entries(dsets).filter(([dsid, ds]) => resp.ds_newfiles.indexOf(dsid) > -1).forEach(([dsid, ds]) => {
           ds.changed = true;
@@ -257,6 +244,7 @@ async function fetchWorkflow() {
   to get input files that are results of any previous workflow that has
   the same datasets as input
   */
+  notif = {errors: {}, messages: {}, links: {}};
   let url = new URL('/analysis/workflow', document.location)
   const params = {dsids: dsids.join(','), wfvid: config.wfversion.id};
   url.search = new URLSearchParams(params).toString();
@@ -271,8 +259,6 @@ async function fetchWorkflow() {
     libfnorder = Object.fromEntries(Object.entries(result.wf.libfiles).map(([ft, lf]) => [ft, lf.map(x => x.id)]));
     prev_resultfiles = result.wf.prev_resultfiles;
     wf = result.wf;
-    config.v1 = wf.analysisapi === 1;
-    config.v2 = wf.analysisapi === 2;
   }
   if (wf.multifileparams.length) {
     config.multifileparams = Object.assign(config.multifileparams, Object.fromEntries(wf.multifileparams.filter(x => !(x.id in config.multifileparams)).map(x => [x.id, {0: ''}])));
@@ -292,9 +278,10 @@ async function fetchDatasetDetails(fetchdsids) {
   // Only function where we have a list of errors, so not using {error: err1}
   // as in other places here! Instead, {errmsg: [err1, err2, ..]}
   if (result.error) {
+    let msg = 'Errors found in datasets, please fix and refresh this page';
+    notif.errors[msg] = 1;
     result.errmsg.forEach(msg => {
       notif.errors[msg] = 1;
-      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
     });
   } else {
     Object.keys(result.dsets).forEach(x => {
@@ -305,23 +292,6 @@ async function fetchDatasetDetails(fetchdsids) {
       dsets[x].changed = false;
     })
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
-    // API v1 stuff
-    // 
-    const dtypes = new Set(Object.values(dsets).map(ds => ds.dtype.toLowerCase()));
-    config.version_dep.v1.dtype = dtypes.size > 1 ? 'mixed' : dtypes.keys().next().value;
-    const qtypes = new Set(Object.values(dsets).map(ds => ds.qtype.short));
-    if (config.v1 && qtypes.size > 1) {
-      notif.errors['Mixed quant types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
-    } else {
-      config.version_dep.v1.qtype = qtypes.keys().next().value;
-    }
-    // FIXME deprecate, remove old pipelines with v1 kantele api!
-    const instypes = new Set(Object.values(dsets).flatMap(ds => ds.instrument_types).map(x => x.toLowerCase()));
-    if (config.v1 && instypes.size> 1) {
-      notif.errors['Mixed instrument types detected, cannot use those in single run, use more advanced pipeline version'] = 1;
-    } else {
-      config.version_dep.v1.instype = instypes.keys().next().value;
-    }
   }
 }
 
@@ -395,8 +365,11 @@ async function loadBaseAnalysis() {
         overlapping_setnames.add(dsets[dsid].setname);
         dsets[dsid].frregex = resds.frregex;
         dsets[dsid].filesaresets = resds.filesaresets;
-        dsets[dsid].files.filter(x => x.id in resds.files).forEach(x => {
-          x.setname = resds.files[x.id].setname;
+        dsets[dsid].picked_ftype = resds.picked_ftype;
+        dsets[dsid].ft_files[resds.picked_ftype]
+          .filter(x => x.id in resds.files)
+          .forEach(x => {
+            x.setname = resds.files[x.id].setname;
         });
         if (dsets[dsid].prefrac) {
           matchFractions(dsets[dsid]);
@@ -452,7 +425,7 @@ function getIntextFileName(fnid, files) {
 
 function matchFractions(ds) {
   let allfrs = new Set();
-  for (let fn of ds.files) {
+  for (let fn of ds.ft_files[ds.picked_ftype]) {
     const match = fn.name.match(RegExp(ds.frregex));
     if (match) {
       fn.fr = match[1];
@@ -646,35 +619,32 @@ onMount(async() => {
       {/if}
     </div>
     {/if}
-    <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={base_analysis.fetched} />
+    <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" />
 	</div>
-
-  <!--
-    FIXME deprecate
-  {#if 'mzmldef' in wf.components}
-  <div class="title is-5">Mzml input type</div>
-  <div class="field">
-    <div class="select">
-      <select bind:value={config.mzmldef}>
-        <option value={false}>Please select one</option>
-        {#each Object.keys(wf.components.mzmldef) as comp}
-        <option value={comp}>{comp.split(' ').map(x => `${x[0].toUpperCase()}${x.slice(1).toLowerCase()}`).join(' ')} ({wf.components.mzmldef[comp].join(', ')})</option>
-        {/each}
-      </select>
-    </div>
-  </div>
-  {/if}
-  -->
-
   {/if}
 
-  <!-------------------------- ############### API v1? -->
 	<div class="title is-5">Datasets</div>
   {#each Object.values(dsets) as ds}
   <div class="box">
+    {#if ds.changed}
+    <div class="has-text-danger">
+      <span>This dataset has changed files while editing  <button on:click={e => fetchDatasetDetails([ds.id])} class="button is-small">Reload dataset</button></span>
+    </div>
+    {/if}
+
     {#if ds.dtype.toLowerCase() === 'labelcheck'}
     <span class="has-text-primary">{ds.proj} // Labelcheck // {ds.run} // {ds.qtype.name} // {ds.instruments.join(',')}</span>
     {:else}
+        <div class="subtitle is-6 has-text-primary">
+          <span>{ds.proj} // {ds.exp} // {ds.run} //</span>
+          {#if !ds.prefrac}
+          <span>{ds.dtype}</span>
+          {:else if ds.hr}
+          <span>{ds.hr}</span>
+          {:else}
+          <span>{ds.prefrac}</span>
+          {/if}
+			  </div>
 		<div class="columns">
 		  <div class="column">
         {#if !ds.prefrac && !ds.qtype.is_isobaric}
@@ -686,47 +656,39 @@ onMount(async() => {
           <input type="text" class="input" placeholder="Name of set" bind:value={ds.setname} on:change={e => updateIsoquant(ds.id)}>
 			  </div>
         {/if}
-        <div class="subtitle is-6 has-text-primary">
-          <span>{ds.proj} // {ds.exp} // {ds.run} //</span>
-          {#if !ds.prefrac}
-          <span>{ds.dtype}</span>
-          {:else if ds.hr}
-          <span>{ds.hr}</span>
-          {:else}
-          <span>{ds.prefrac}</span>
-          {/if}
-			  </div>
-        {#if ds.changed}
-        <div class="has-text-danger">
-          <span>This dataset has changed files while editing  <button on:click={e => fetchDatasetDetails([ds.id])} class="button is-small">Reload dataset</button></span>
-        </div>
-        {/if}
-			  <div class="subtitle is-6">
-				  <span>{ds.qtype.name}</span>
-          {#each Object.entries(ds.nrstoredfiles) as sf}
-		      <span> // {sf[1]} {sf[0]} files </span>
-          {/each}
-				  <span>// {ds.instruments.join(', ')} </span>
-			  </div>
-        {#if ds.nrstoredfiles.refined_mzML}
-			  <div class="subtitle is-6"><strong>Enforcing use of refined mzML(s)</strong></div>
-        {/if}
-			</div>
-			<div class="column">
-      {#if wf}
-      
-      {#if ds.prefrac && 'PREFRAC' in wf.components}
+        {#if wf && ds.prefrac && 'PREFRAC' in wf.components}
         <div class="field">
 					<label class="label">Regex for fraction detection</label>
           <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.frregex}>
 				</div>
 				<span>{matchedFr[ds.id]} fractions matched</span>
         {/if}
-      {/if}
+			</div>
+
+			<div class="column">
+        <div class="field">
+					<label class="label">File type to use</label>
+          <div class="select">
+            <select bind:value={ds.picked_ftype}>
+              {#each Object.keys(ds.ft_files) as ft}
+              <option value={ft}>{ft}</option>
+              {/each}
+              {#each ds.incomplete_files as incomp}
+              <option disabled>{incomp}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+			  <div class="subtitle is-6">
+				  <span>{ds.qtype.name}</span>
+		      <span> // {ds.nrstoredfiles[0]} {ds.nrstoredfiles[1]} files </span>
+				  <span>// {ds.instruments.join(', ')} </span>
+			  </div>
+
 			</div>
 		</div>
     {#if ds.filesaresets}
-    {#each ds.files as fn}
+    {#each ds.ft_files[ds.picked_ftype] as fn}
     <div class="columns">
 		  <div class="column">{fn.name}</div>
 		  <div class="column">
@@ -884,7 +846,7 @@ onMount(async() => {
   <div class="box">
     <div class="title is-5">Input files</div>
     Pick previous analyses to use results as input if needed:
-    <DynamicSelect bind:intext={adding_analysis.typedname} bind:selectval={adding_analysis.selected} on:selectedvalue={e => loadAnalysisResults()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" bind:fetchedData={adding_analysis.fetched} />
+    <DynamicSelect bind:intext={adding_analysis.typedname} bind:selectval={adding_analysis.selected} on:selectedvalue={e => loadAnalysisResults()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" />
 
     <div class="tags">
     {#each added_analyses_order as anaid}
@@ -935,24 +897,6 @@ onMount(async() => {
     </div>
     {/each}
 	</div>
-  {/if}
-
-
-  {#if wf.fixedfileparams.length}
-	<div class="box">
-    <div class="title is-5">Predefined files</div>
-    {#each wf.fixedfileparams as ffilep}
-    <div class="field">
-      <label class="label">{ffilep.name}</label>
-      <div class="select" >
-        <select>
-          <option disabled value="">Fixed selection</option>
-          <option>{ffilep.fn} -- {ffilep.desc}</option>
-        </select>
-      </div>
-    </div>
-    {/each}
-  </div>
   {/if}
 
   {#if runButtonActive && (!existing_analysis || existing_analysis.editable)}
