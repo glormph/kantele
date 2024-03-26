@@ -110,10 +110,9 @@ def load_base_analysis(request, wfversion_id, baseanid):
         if ap.param.ptype == am.Param.PTypes.FLAG and ap.value:
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == am.Param.PTypes.MULTI:
-            analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
-        elif ap.param.ptype == am.Param.PTypes.NUMBER:
-            analysis['inputparams'][ap.param_id] = ap.value
-        elif ap.param.ptype == am.Param.PTypes.TEXT:
+            analysis['multicheck'].extend([f'{ap.param.id}___{x}' for x in ap.value])
+        else:
+            # For NUMBER, TEXT, SELECT params
             analysis['inputparams'][ap.param_id] = ap.value
     #pset = ana.nextflowsearch.nfwfversionparamset.paramset
     for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
@@ -226,9 +225,8 @@ def get_analysis(request, anid):
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == PTypes.MULTI:
             analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
-        elif ap.param.ptype == PTypes.TEXT:
-            analysis['inputparams'][ap.param_id] = ap.value
-        elif ap.param.ptype == PTypes.NUMBER:
+        else:
+            # For NUMBER, TEXT, SELECT
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfwfversionparamset.paramset
 
@@ -593,6 +591,9 @@ def get_workflow_versioned(request):
                 'help': p.param.help or False} for p in params.filter(param__ptype=PTypes.NUMBER)],
             'textparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
                 'help': p.param.help or False} for p in params.filter(param__ptype=PTypes.TEXT)],
+            'selectparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
+                'opts': {po.pk: po.name for po in p.param.paramoption_set.all()},
+                'help': p.param.help or False} for p in params.filter(param__ptype=PTypes.SELECT)],
             'multicheck': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
                 'opts': {po.pk: po.name for po in p.param.paramoption_set.all()},
                 'help': p.param.help or False}
