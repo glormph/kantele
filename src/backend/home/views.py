@@ -546,10 +546,10 @@ def get_analysis_invocation(ana):
                 allp_options[x.nfparam] = {opt.id: opt.value}
     params = []
     for ap in anmodels.AnalysisParam.objects.select_related('param').filter(analysis=ana):
-        if ap.param.ptype == am.Param.PTypes.MULTI:
+        if ap.param.ptype == anmodels.Param.PTypes.MULTI:
             vals = [allp_options[ap.param.nfparam][x] for x in ap.value]
             params.extend([ap.param.nfparam, *vals])
-        elif ap.param.ptype == am.Param.PTypes.FLAG and ap.value:
+        elif ap.param.ptype == anmodels.Param.PTypes.FLAG and ap.value:
             params.append(ap.param.nfparam)
         else:
             params.extend([ap.param.nfparam, ap.value])
