@@ -107,13 +107,13 @@ def load_base_analysis(request, wfversion_id, baseanid):
             'isoquants': {},
             }
     for ap in ana.analysisparam_set.filter(param__psetparam__pset_id=new_pset_id):
-        if ap.param.ptype == 'flag' and ap.value:
+        if ap.param.ptype == am.Param.PTypes.FLAG and ap.value:
             analysis['flags'].append(ap.param.id)
-        elif ap.param.ptype == 'multi':
+        elif ap.param.ptype == am.Param.PTypes.MULTI:
             analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
-        elif ap.param.ptype == 'number':
+        elif ap.param.ptype == am.Param.PTypes.NUMBER:
             analysis['inputparams'][ap.param_id] = ap.value
-        elif ap.param.ptype == 'text':
+        elif ap.param.ptype == am.Param.PTypes.TEXT:
             analysis['inputparams'][ap.param_id] = ap.value
     #pset = ana.nextflowsearch.nfwfversionparamset.paramset
     for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
@@ -220,14 +220,15 @@ def get_analysis(request, anid):
             'isoquants': {},
             'added_results': {},
             }
+    PTypes = am.Param.PTypes
     for ap in ana.analysisparam_set.all():
-        if ap.param.ptype == 'flag' and ap.value:
+        if ap.param.ptype == PTypes.FLAG and ap.value:
             analysis['flags'].append(ap.param.id)
-        elif ap.param.ptype == 'multi':
+        elif ap.param.ptype == PTypes.MULTI:
             analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
-        elif ap.param.ptype == 'text':
+        elif ap.param.ptype == PTypes.TEXT:
             analysis['inputparams'][ap.param_id] = ap.value
-        elif ap.param.ptype == 'number':
+        elif ap.param.ptype == PTypes.NUMBER:
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfwfversionparamset.paramset
 
@@ -581,20 +582,21 @@ def get_workflow_versioned(request):
         sfile__filetype__in=ftypes).order_by('-sfile__regdate')]
     selectable_files.extend(userfiles)
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+    PTypes = am.Param.PTypes
     resp = {
             'components': {allcomponents[psc.component].name: psc.value for psc in 
                 wf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': f.param.nfparam, 'id': f.param.pk, 'name': f.param.name,
                 'help': f.param.help or False}
-                for f in params.filter(param__ptype='flag', param__visible=True)],
+                for f in params.filter(param__ptype=PTypes.FLAG, param__visible=True)],
             'numparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
-                'help': p.param.help or False} for p in params.filter(param__ptype='number')],
+                'help': p.param.help or False} for p in params.filter(param__ptype=PTypes.NUMBER)],
             'textparams': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
-                'help': p.param.help or False} for p in params.filter(param__ptype='text')],
+                'help': p.param.help or False} for p in params.filter(param__ptype=PTypes.TEXT)],
             'multicheck': [{'nf': p.param.nfparam, 'id': p.param.pk, 'name': p.param.name,
                 'opts': {po.pk: po.name for po in p.param.paramoption_set.all()},
                 'help': p.param.help or False}
-                for p in params.filter(param__ptype='multi', param__visible=True)],
+                for p in params.filter(param__ptype=PTypes.MULTI, param__visible=True)],
             'fileparams': [{'name': f.param.name, 'id': f.param.pk, 'nf': f.param.nfparam,
                 'ftype': f.param.filetype_id, 'allow_resultfile': f.allow_resultfiles,
                 'help': f.param.help or False} for f in files],

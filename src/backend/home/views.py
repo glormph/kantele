@@ -538,7 +538,7 @@ def get_analysis_invocation(ana):
     for param, fninfos in fnmap.items():
         invoc['files'].append({'param': param, 'multif': fninfos})
     allp_options = {}
-    for x in anmodels.Param.objects.filter(ptype='multi'):
+    for x in anmodels.Param.objects.filter(ptype=anmodels.Param.PTypes.MULTI):
         for opt in x.paramoption_set.all():
             try:
                 allp_options[x.nfparam][opt.id] = opt.value
@@ -546,10 +546,10 @@ def get_analysis_invocation(ana):
                 allp_options[x.nfparam] = {opt.id: opt.value}
     params = []
     for ap in anmodels.AnalysisParam.objects.select_related('param').filter(analysis=ana):
-        if ap.param.ptype == 'multi':
+        if ap.param.ptype == am.Param.PTypes.MULTI:
             vals = [allp_options[ap.param.nfparam][x] for x in ap.value]
             params.extend([ap.param.nfparam, *vals])
-        elif ap.param.ptype == 'flag' and ap.value:
+        elif ap.param.ptype == am.Param.PTypes.FLAG and ap.value:
             params.append(ap.param.nfparam)
         else:
             params.extend([ap.param.nfparam, ap.value])

@@ -17,9 +17,9 @@ class AnalysisTest(BaseTest):
     def setUp(self):
         super().setUp()
         self.pset, _ = am.ParameterSet.objects.get_or_create(name='ps1')
-        self.param1, _ = am.Param.objects.get_or_create(name='a flag', nfparam='--flag', ptype='flag', help='flag help')
-        self.param2, _ = am.Param.objects.get_or_create(name='a chbox', nfparam='--multi', ptype='multi', help='help')
-        self.param3, _ = am.Param.objects.get_or_create(name='a num', nfparam='--num', ptype='number', help='help')
+        self.param1, _ = am.Param.objects.get_or_create(name='a flag', nfparam='--flag', ptype=am.Param.PTypes.FLAG, help='flag help')
+        self.param2, _ = am.Param.objects.get_or_create(name='a chbox', nfparam='--multi', ptype=am.Param.PTypes.MULTI, help='help')
+        self.param3, _ = am.Param.objects.get_or_create(name='a num', nfparam='--num', ptype=am.Param.PTypes.NUMBER, help='help')
         self.popt1, _ = am.ParamOption.objects.get_or_create(param=self.param2, name='opt 1', value='nr1')
         self.popt2, _ = am.ParamOption.objects.get_or_create(param=self.param2, name='opt 2', value='nr2')
         self.pfn1, _ = am.FileParam.objects.get_or_create(name='fp1', nfparam='--fp1', filetype=self.ft, help='help')
@@ -510,17 +510,17 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
                 for x in  self.nfwf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='flag')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.FLAG)],
             'numparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='number')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.NUMBER)],
             'textparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='text')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.TEXT)],
             'multicheck': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'opts': {f'{po.pk}': po.name for po in x.param.paramoption_set.all()},
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='multi')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.MULTI)],
             'fileparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'ftype': x.param.filetype_id, 'allow_resultfile': x.allow_resultfiles,
                 'help': x.param.help or False}
@@ -594,9 +594,10 @@ class TestStoreAnalysis(AnalysisTest):
             self.assertEqual(adsif.analysisdset.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisdset.setname.setname, postdata['dssetnames'][self.ds.pk])
             self.assertEqual(adsif.analysisdset.regex, postdata['frregex'][f'{self.ds.pk}'])
+        PT = am.Param.PTypes
         for ap in ana.analysisparam_set.all():
-            pt = {'multi': 'multicheck', 'text': 'inputparams', 'number': 'inputparams',
-                    'flag': 'flags'}[ap.param.ptype]
+            pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
+                    PT.FLAG: 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(ana.name, postdata['analysisname'])
         fullname = f'{ana.pk}_{self.wftype.name}_{ana.name}_{timestamp}'
@@ -651,9 +652,10 @@ class TestStoreExistingIsoAnalysis(AnalysisIsobaric):
             self.assertEqual(adsif.analysisdset.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisdset.setname.setname, postdata['dssetnames'][self.ds.pk])
             self.assertEqual(adsif.analysisdset.regex, postdata['frregex'][f'{self.ds.pk}'])
+        PT = am.Param.PTypes
         for ap in self.ana.analysisparam_set.all():
-            pt = {'multi': 'multicheck', 'text': 'inputparams', 'number': 'inputparams',
-                    'flag': 'flags'}[ap.param.ptype]
+            pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
+                    PT.FLAG: 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(self.ana.name, postdata['analysisname'])
         fullname = f'{self.ana.pk}_{self.wftype.name}_{self.ana.name}_{timestamp}'
@@ -708,9 +710,10 @@ class TestStoreExistingLFAnalysis(AnalysisLabelfreeSamples):
         self.assertEqual(self.analf.analysisdsinputfile_set.count(), 0)
         for afs in self.analf.analysisfilesample_set.all():
             self.assertEqual(postdata['fnsetnames'][afs.sfile_id], afs.sample)
+        PT = am.Param.PTypes
         for ap in self.analf.analysisparam_set.all():
-            pt = {'multi': 'multicheck', 'text': 'inputparams', 'number': 'inputparams',
-                    'flag': 'flags'}[ap.param.ptype]
+            pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
+                    PT.FLAG: 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(self.analf.analysisparam_set.filter(param=self.param1).count(), 0)
         self.assertEqual(self.analf.name, postdata['analysisname'])

@@ -25,9 +25,16 @@ class FileParam(models.Model):
 
 
 class Param(models.Model):
+    class PTypes(models.IntegerChoices):
+        FLAG = 1, 'Flag'
+        MULTI = 2, 'Multiple choice checkbox'
+        TEXT = 3, 'Text'
+        NUMBER = 4, 'Numbers, integers, floats'
+        SELECT = 5, 'Single choice select'
+
     name = models.TextField()
     nfparam = models.TextField()
-    ptype = models.TextField()  # multi (options), number, flag or ...
+    ptype = models.IntegerField(choices=PTypes.choices)
     visible = models.BooleanField(default=True)
     help = models.TextField()
 
