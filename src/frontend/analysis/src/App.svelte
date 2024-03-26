@@ -786,7 +786,7 @@ onMount(async() => {
   </div>
   {/if}
 
-  {#if wf.multicheck.length + wf.numparams.length + wf.flags.length + wf.textparams.length}
+  {#if wf.multicheck.length + wf.numparams.length + wf.flags.length + wf.textparams.length + wf.selectparams.length}
   <div class="box">
     <div class="title is-5">Workflow parameters</div>
     {#each wf.multicheck as {nf, id, name, opts, help}}
@@ -805,7 +805,26 @@ onMount(async() => {
     </div>
     {/each}
 
-    {#each wf.textparams as {nf, id, name, type, help}}
+    {#each wf.selectparams as {nf, id, name, opts, help}}
+    <div class="field">
+      <label class="label">{name} 
+        {#if help}
+          <a title={help}><i class="fa fa-question-circle"></i></a>
+        {/if}
+        <code>{nf}</code>
+      </label> 
+      <div class="select">
+        <select bind:value={config.inputparams[id]}>
+          <option disabled value={false}>None</option>
+          {#each Object.entries(opts) as opt}
+          <option value={opt[0]}>{opt[1]} </option>
+          {/each}
+        </select>
+      </div>
+    </div>
+    {/each}
+
+    {#each wf.textparams as {nf, id, name, help}}
     <div class="field">
       <label class="label">{name} 
         {#if help}
@@ -817,7 +836,7 @@ onMount(async() => {
     </div>
     {/each}
 
-    {#each wf.numparams as {nf, id, name, type, help}}
+    {#each wf.numparams as {nf, id, name, help}}
     <div class="field">
       <label class="label">{name} 
         {#if help}

@@ -16,76 +16,84 @@ from datasets import models as dm
 class AnalysisTest(BaseTest):
     def setUp(self):
         super().setUp()
-        self.pset, _ = am.ParameterSet.objects.get_or_create(name='ps1')
-        self.param1, _ = am.Param.objects.get_or_create(name='a flag', nfparam='--flag', ptype='flag', help='flag help')
-        self.param2, _ = am.Param.objects.get_or_create(name='a chbox', nfparam='--multi', ptype='multi', help='help')
-        self.param3, _ = am.Param.objects.get_or_create(name='a num', nfparam='--num', ptype='number', help='help')
-        self.popt1, _ = am.ParamOption.objects.get_or_create(param=self.param2, name='opt 1', value='nr1')
-        self.popt2, _ = am.ParamOption.objects.get_or_create(param=self.param2, name='opt 2', value='nr2')
-        self.pfn1, _ = am.FileParam.objects.get_or_create(name='fp1', nfparam='--fp1', filetype=self.ft, help='help')
+        self.pset = am.ParameterSet.objects.create(name='ps1')
+        self.param1 = am.Param.objects.create(name='a flag', nfparam='--flag', ptype=am.Param.PTypes.FLAG, help='flag help')
+        self.param2 = am.Param.objects.create(name='a chbox', nfparam='--multi', ptype=am.Param.PTypes.MULTI, help='help')
+        self.param3 = am.Param.objects.create(name='a num', nfparam='--num', ptype=am.Param.PTypes.NUMBER, help='help')
+        self.param4 = am.Param.objects.create(name='a select', nfparam='--select', ptype=am.Param.PTypes.SELECT, help='help')
+        self.popt1 = am.ParamOption.objects.create(param=self.param2, name='opt 1', value='nr1')
+        self.popt2 = am.ParamOption.objects.create(param=self.param2, name='opt 2', value='nr2')
+        self.popt3 = am.ParamOption.objects.create(param=self.param4, name='opt 3', value='nr3')
+        self.popt4 = am.ParamOption.objects.create(param=self.param4, name='opt 4', value='nr4')
+        self.pfn1 = am.FileParam.objects.create(name='fp1', nfparam='--fp1', filetype=self.ft, help='help')
 
-        self.ft2, _ = rm.StoredFileType.objects.get_or_create(name='result ft', filetype='txt')
-        self.pfn2, _ = am.FileParam.objects.get_or_create(name='fp1', nfparam='--fp2', filetype=self.ft2, help='helppi')
-        self.txtraw, _ = rm.RawFile.objects.get_or_create(name='txtfn', producer=self.anaprod,
+        self.ft2 = rm.StoredFileType.objects.create(name='result ft', filetype='txt')
+        self.pfn2 = am.FileParam.objects.create(name='fp1', nfparam='--fp2', filetype=self.ft2, help='helppi')
+        self.txtraw = rm.RawFile.objects.create(name='txtfn', producer=self.anaprod,
                 source_md5='txtraw_fakemd5', size=1234, date=timezone.now(), claimed=False)
-        self.txtsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.txtraw,
-                md5=self.txtraw.source_md5, defaults={'filename': self.txtraw.name,
-                    'servershare': self.sstmp, 'path': '', 'checked': True, 'filetype': self.ft2})
+        self.txtsf = rm.StoredFile.objects.create(rawfile=self.txtraw,
+                md5=self.txtraw.source_md5, filename=self.txtraw.name, servershare=self.sstmp,
+                path='', checked=True, filetype=self.ft2)
 
         c_ch = am.PsetComponent.ComponentChoices
-        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.INPUTDEF, value=['plate', 2, 3])
-        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.ISOQUANT)
-        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.ISOQUANT_SAMPLETABLE)
-        am.PsetComponent.objects.get_or_create(pset=self.pset, component=c_ch.PREFRAC, value='.*fr([0-9]+).*mzML$')
-        am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param1)
-        am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param2)
-        am.PsetParam.objects.get_or_create(pset=self.pset, param=self.param3)
-        am.PsetMultiFileParam.objects.get_or_create(pset=self.pset, param=self.pfn1)
-        am.PsetFileParam.objects.get_or_create(pset=self.pset, param=self.pfn2, allow_resultfiles=True)
+        am.PsetComponent.objects.create(pset=self.pset, component=c_ch.INPUTDEF, value=['plate', 2, 3])
+        am.PsetComponent.objects.create(pset=self.pset, component=c_ch.ISOQUANT)
+        am.PsetComponent.objects.create(pset=self.pset, component=c_ch.ISOQUANT_SAMPLETABLE)
+        am.PsetComponent.objects.create(pset=self.pset, component=c_ch.PREFRAC, value='.*fr([0-9]+).*mzML$')
+        am.PsetParam.objects.create(pset=self.pset, param=self.param1)
+        am.PsetParam.objects.create(pset=self.pset, param=self.param2)
+        am.PsetParam.objects.create(pset=self.pset, param=self.param3)
+        am.PsetParam.objects.create(pset=self.pset, param=self.param4)
+        am.PsetMultiFileParam.objects.create(pset=self.pset, param=self.pfn1)
+        am.PsetFileParam.objects.create(pset=self.pset, param=self.pfn2, allow_resultfiles=True)
 
-        self.nfw, _ = am.NextflowWorkflowRepo.objects.get_or_create(description='a wf', repo='gh/wf')
-        self.nfwf, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='an update', commit='abc123',
+        self.nfw = am.NextflowWorkflowRepo.objects.create(description='a wf', repo='gh/wf')
+        self.nfwf = am.NextflowWfVersionParamset.objects.create(update='an update', commit='abc123',
                 filename='main.nf', profiles=[], nfworkflow=self.nfw, paramset=self.pset, nfversion='22', active=True)
         self.wftype = am.UserWorkflow.WFTypeChoices.STD
-        self.wf, _ = am.UserWorkflow.objects.get_or_create(name='testwf', wftype=self.wftype, public=True)
+        self.wf = am.UserWorkflow.objects.create(name='testwf', wftype=self.wftype, public=True)
         self.wf.nfwfversionparamsets.add(self.nfwf)
         # Create analysis for isoquant:
-        self.ana, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_iso', storage_dir='testdir_iso')
-        am.DatasetAnalysis.objects.get_or_create(analysis=self.ana, dataset=self.ds)
+        self.ana = am.Analysis.objects.create(user=self.user, name='testana_iso', storage_dir='testdir_iso')
+        am.DatasetAnalysis.objects.create(analysis=self.ana, dataset=self.ds)
         self.anajob = jm.Job.objects.create(funcname='testjob', kwargs={}, state=jj.Jobstates.WAITING,
                 timestamp=timezone.now())
-        self.nfs, _ = am.NextflowSearch.objects.get_or_create(analysis=self.ana, nfwfversionparamset=self.nfwf,
+        self.nfs = am.NextflowSearch.objects.create(analysis=self.ana, nfwfversionparamset=self.nfwf,
                 workflow=self.wf, token='tok123', job=self.anajob)
-        am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param1, value=True)
-        self.anamcparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana, param=self.param2,
+        am.AnalysisParam.objects.create(analysis=self.ana, param=self.param1, value=True)
+        self.anamcparam = am.AnalysisParam.objects.create(analysis=self.ana, param=self.param2,
                 value=[self.popt1.pk])
-        self.ananormparam, _ = am.AnalysisParam.objects.get_or_create(analysis=self.ana,
+        self.ananormparam = am.AnalysisParam.objects.create(analysis=self.ana,
                 param=self.param3, value=3)
-        self.anamfparam, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.ana,
+        self.anaselectparam = am.AnalysisParam.objects.create(analysis=self.ana,
+                param=self.param4, value=self.popt4.pk)
+        self.anamfparam = am.AnalysisFileParam.objects.create(analysis=self.ana,
                 param=self.pfn1, sfile=self.tmpsf)
-        self.anafparam, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.ana,
+        self.anafparam = am.AnalysisFileParam.objects.create(analysis=self.ana,
                 param=self.pfn2, sfile=self.txtsf)
-        self.resultfn, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.ana,
+        self.resultfn = am.AnalysisResultFile.objects.create(analysis=self.ana,
                 sfile=self.anasfile)
 
         # Create analysis for LF
-        self.analf, _ = am.Analysis.objects.get_or_create(user=self.user, name='testana_lf', storage_dir='testdirlf')
-        am.DatasetAnalysis.objects.get_or_create(analysis=self.analf, dataset=self.oldds)
+        self.analf = am.Analysis.objects.create(user=self.user, name='testana_lf', storage_dir='testdirlf')
+        am.DatasetAnalysis.objects.create(analysis=self.analf, dataset=self.oldds)
         self.anajoblf = jm.Job.objects.create(funcname='testjob', kwargs={}, state=jj.Jobstates.WAITING,
                 timestamp=timezone.now())
-        self.nfslf, _ = am.NextflowSearch.objects.get_or_create(analysis=self.analf, nfwfversionparamset=self.nfwf,
+        self.nfslf = am.NextflowSearch.objects.create(analysis=self.analf, nfwfversionparamset=self.nfwf,
                 workflow=self.wf, token='tok12344', job=self.anajoblf)
 
-        am.AnalysisParam.objects.get_or_create(analysis=self.analf, param=self.param1, value=True)
-        self.anamcparamlf, _ = am.AnalysisParam.objects.get_or_create(analysis=self.analf, param=self.param2,
-                value=[self.popt1.value])
-        self.ananormparamlf, _ = am.AnalysisParam.objects.get_or_create(analysis=self.analf,
+        am.AnalysisParam.objects.create(analysis=self.analf, param=self.param1, value=True)
+        self.anamcparamlf = am.AnalysisParam.objects.create(analysis=self.analf, param=self.param2,
+                value=[self.popt1.pk])
+        self.ananormparamlf = am.AnalysisParam.objects.create(analysis=self.analf,
                 param=self.param3, value=3)
-        self.anamfparamlf, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.analf,
+        self.anaselectparamlf = am.AnalysisParam.objects.create(analysis=self.analf,
+                param=self.param4, value=self.popt3.pk)
+        self.anamfparamlf = am.AnalysisFileParam.objects.create(analysis=self.analf,
                 param=self.pfn1, sfile=self.tmpsf)
-        self.anafparamlf, _ = am.AnalysisFileParam.objects.get_or_create(analysis=self.analf,
+        self.anafparamlf = am.AnalysisFileParam.objects.create(analysis=self.analf,
                 param=self.pfn2, sfile=self.txtsf)
-        self.resultfnlf, _ = am.AnalysisResultFile.objects.get_or_create(analysis=self.analf,
+        self.resultfnlf = am.AnalysisResultFile.objects.create(analysis=self.analf,
                 sfile=self.anasfile2)
 
         self.anaset = am.AnalysisSetname.objects.create(analysis=self.ana, setname='set1')
@@ -97,13 +105,6 @@ class AnalysisTest(BaseTest):
                 value=self.isoqvals)
         self.samples = am.AnalysisSampletable.objects.create(analysis=self.ana,
                 samples=[[self.qch.name, self.anaset.setname, self.projsam1.sample, 'thegroup']])
-
-
-class AnalysisIsobaric(AnalysisTest):
-    '''For preloaded isobaric analysis (base or new) we load setnames and isoquant'''
-
-    def setUp(self):
-        super().setUp()
 
 
 class AnalysisLabelfreeSamples(AnalysisTest):
@@ -126,7 +127,7 @@ class TestNewAnalysis(BaseTest):
         self.assertEqual(resp.status_code, 405)
 
 
-class LoadBaseAnaTestIso(AnalysisIsobaric):
+class LoadBaseAnaTestIso(AnalysisTest):
     url = '/analysis/baseanalysis/load/'
 
     def test_diff_dsets(self):
@@ -140,7 +141,8 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
-                'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
+                'inputparams': {f'{self.param3.pk}': self.ananormparam.value,
+                    f'{self.param4.pk}': self.anaselectparam.value},
                 'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
                 'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
                 'isoquants': {self.ads1.setname.setname: {**self.isoqvals,
@@ -169,7 +171,8 @@ class LoadBaseAnaTestIso(AnalysisIsobaric):
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': True,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
-                'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
+                'inputparams': {f'{self.param3.pk}': self.ananormparam.value,
+                    f'{self.param4.pk}': self.anaselectparam.value},
                 'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
                 'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
                 'isoquants': {self.ads1.setname.setname: {**self.isoqvals,
@@ -208,7 +211,8 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
         checkjson = {'base_analysis': {'analysis_id': self.analf.pk, 'dsets_identical': False,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparamlf.value[0]}'],
-                'inputparams': {f'{self.param3.pk}': self.ananormparam.value},
+                'inputparams': {f'{self.param3.pk}': self.ananormparam.value,
+                    f'{self.param4.pk}': self.anaselectparamlf.value},
                 'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
                 'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
                 'isoquants': {},
@@ -225,7 +229,7 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
         self.assertJSONEqual(resp.content.decode('utf-8'), json.dumps(checkjson))
 
 
-class TestGetAnalysis(AnalysisIsobaric):
+class TestGetAnalysis(AnalysisTest):
     url = '/analysis/'
 
     # FIXME load_base and get_analysis do the same serialization on the inputs I think,
@@ -268,7 +272,7 @@ class TestGetAnalysis(AnalysisIsobaric):
         self.assertInHTML(html_dsids, resphtml)
         self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
         html_ana = f'''<script id="analysis_data" type="application/json">
-        {{"analysis_id": {self.ana.pk}, "editable": true, "wfversion_id": {self.nfwf.pk}, "wfid": {self.wf.pk}, "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": {{"{self.qch.pk}": true}}, "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
+        {{"analysis_id": {self.ana.pk}, "editable": true, "wfversion_id": {self.nfwf.pk}, "wfid": {self.wf.pk}, "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}, "{self.param4.pk}": {self.anaselectparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": {{"{self.qch.pk}": true}}, "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
         </script>
         '''
         self.assertInHTML(html_ana, resphtml)
@@ -326,7 +330,7 @@ class TestGetDatasetsBad(AnalysisTest):
         self.assertNotIn('dsets', rj)
 
 
-class TestGetDatasetsIso(AnalysisIsobaric):
+class TestGetDatasetsIso(AnalysisTest):
     url = '/analysis/dsets/'
 
     def test_new_ok(self):
@@ -510,17 +514,21 @@ class TestGetWorkflowVersionDetails(AnalysisTest):
                 for x in  self.nfwf.paramset.psetcomponent_set.all()},
             'flags': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='flag')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.FLAG)],
             'numparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='number')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.NUMBER)],
+            'selectparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
+                'opts': {f'{po.pk}': po.name for po in x.param.paramoption_set.all()},
+                'help': x.param.help or False}
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.SELECT)],
             'textparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='text')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.TEXT)],
             'multicheck': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'opts': {f'{po.pk}': po.name for po in x.param.paramoption_set.all()},
                 'help': x.param.help or False}
-                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype='multi')],
+                for x in self.nfwf.paramset.psetparam_set.filter(param__ptype=am.Param.PTypes.MULTI)],
             'fileparams': [{'nf': x.param.nfparam, 'name': x.param.name, 'id': x.param.pk,
                 'ftype': x.param.filetype_id, 'allow_resultfile': x.allow_resultfiles,
                 'help': x.param.help or False}
@@ -594,9 +602,10 @@ class TestStoreAnalysis(AnalysisTest):
             self.assertEqual(adsif.analysisdset.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisdset.setname.setname, postdata['dssetnames'][self.ds.pk])
             self.assertEqual(adsif.analysisdset.regex, postdata['frregex'][f'{self.ds.pk}'])
+        PT = am.Param.PTypes
         for ap in ana.analysisparam_set.all():
-            pt = {'multi': 'multicheck', 'text': 'inputparams', 'number': 'inputparams',
-                    'flag': 'flags'}[ap.param.ptype]
+            pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
+                    PT.FLAG: 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(ana.name, postdata['analysisname'])
         fullname = f'{ana.pk}_{self.wftype.name}_{ana.name}_{timestamp}'
@@ -606,7 +615,7 @@ class TestStoreAnalysis(AnalysisTest):
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
 
 
-class TestStoreExistingIsoAnalysis(AnalysisIsobaric):
+class TestStoreExistingIsoAnalysis(AnalysisTest):
     url = '/analysis/store/'
 
     def test_existing_analysis(self):
@@ -651,9 +660,10 @@ class TestStoreExistingIsoAnalysis(AnalysisIsobaric):
             self.assertEqual(adsif.analysisdset.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisdset.setname.setname, postdata['dssetnames'][self.ds.pk])
             self.assertEqual(adsif.analysisdset.regex, postdata['frregex'][f'{self.ds.pk}'])
+        PT = am.Param.PTypes
         for ap in self.ana.analysisparam_set.all():
-            pt = {'multi': 'multicheck', 'text': 'inputparams', 'number': 'inputparams',
-                    'flag': 'flags'}[ap.param.ptype]
+            pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
+                    PT.FLAG: 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(self.ana.name, postdata['analysisname'])
         fullname = f'{self.ana.pk}_{self.wftype.name}_{self.ana.name}_{timestamp}'
@@ -708,9 +718,10 @@ class TestStoreExistingLFAnalysis(AnalysisLabelfreeSamples):
         self.assertEqual(self.analf.analysisdsinputfile_set.count(), 0)
         for afs in self.analf.analysisfilesample_set.all():
             self.assertEqual(postdata['fnsetnames'][afs.sfile_id], afs.sample)
+        PT = am.Param.PTypes
         for ap in self.analf.analysisparam_set.all():
-            pt = {'multi': 'multicheck', 'text': 'inputparams', 'number': 'inputparams',
-                    'flag': 'flags'}[ap.param.ptype]
+            pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
+                    PT.FLAG: 'flags'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(self.analf.analysisparam_set.filter(param=self.param1).count(), 0)
         self.assertEqual(self.analf.name, postdata['analysisname'])
