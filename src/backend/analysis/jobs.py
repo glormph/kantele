@@ -137,7 +137,7 @@ def recurse_nrdsets_baseanalysis(aba):
         old_mzmls, old_dsets = recurse_nrdsets_baseanalysis(older_aba)
     # First get stripnames of old ds
     strips = {}
-    for oldads in aba.base_analysis.analysisdatasetsetname_set.select_related('dataset__prefractionationdataset__hiriefdataset'):
+    for oldads in aba.base_analysis.analysisdatasetsetvalue_set.select_related('dataset__prefractionationdataset__hiriefdataset'):
         if hasattr(oldads.dataset, 'prefractionationdataset'):
             pfd = oldads.dataset.prefractionationdataset
             if hasattr(pfd, 'hiriefdataset'):
@@ -152,26 +152,28 @@ def recurse_nrdsets_baseanalysis(aba):
     # This would in 3. give us all oldmzmls from 1. and 2., so setB would be double
     single_ana_oldmzml = {}
     single_ana_oldds = {}
+    regexes = {x.dataset_id: x.regex for x in models.AnalysisDatasetSetValue.objects.filter(
+        analysis=aba.base_analysis) if x.regex}
     for asf in models.AnalysisDSInputFile.objects.filter(
-            analysis=aba.base_analysis).select_related(
-                    'sfile__rawfile__producer', 'analysisdset__setname'):
-        if asf.analysisdset.regex:
-            frnr = re.match(asf.analysisdset.regex, asf.sfile.filename) or False
+            analysisset__analysis=aba.base_analysis).select_related(
+                    'sfile__rawfile__producer', 'analysisset__setname'):
+        if asf.dsanalysis.dataset_id in regexes:
+            frnr = re.match(regexes[asf.dsanalysis.dataset_id], asf.sfile.filename) or False
             frnr = frnr.group(1) if frnr else 'NA'
         else:
             frnr = 'NA'
         oldasf = {'fn': asf.sfile.filename,
                 'instrument': asf.sfile.rawfile.producer.name,
-                'setname': asf.analysisdset.setname.setname,
-                'plate': strips[asf.analysisdset.dataset_id],
+                'setname': asf.analysisset.setname,
+                'plate': strips[asf.analysisset.dataset_id],
                 'fraction': frnr,
                 }
         try:
-            single_ana_oldmzml[asf.analysisdset.setname.setname].append(oldasf)
-            single_ana_oldds[asf.analysisdset.setname.setname].add(asf.analysisdset.dataset_id)
+            single_ana_oldmzml[asf.analyisset.setname].append(oldasf)
+            single_ana_oldds[asf.analysisset.setname].add(asf.dsanalysis.dataset_id)
         except KeyError:
-            single_ana_oldmzml[asf.analysisdset.setname.setname] = [oldasf]
-            single_ana_oldds[asf.analysisdset.setname.setname] = {asf.analysisdset.dataset_id}
+            single_ana_oldmzml[asf.analysisset.setname] = [oldasf]
+            single_ana_oldds[asf.analysisset.setname] = {asf.dsanalysis.dataset_id}
     old_mzmls.update(single_ana_oldmzml)
     old_dsets.update(single_ana_oldds)
     return old_mzmls, old_dsets
@@ -236,8 +238,8 @@ class RunNextflowWorkflow(BaseJob):
 
         # Now remove obsolete deleted-from-dataset files from job (e.g. corrupt, empty, etc)
         obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis__in=dsa)
-        analysis.analysisdsinputfile_set.filter(sfile__in=obsolete).delete()
-        analysis.analysisfilesample_set.filter(sfile__in=obsolete).delete()
+        models.AnalysisDSInputFile.objects.filter(analysisset__analysis=analysis, sfile__in=obsolete).delete()
+        analysis.analysisfilevalue_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
         for del_sf in obsolete:
             # FIXME setnames/frac is specific
@@ -312,7 +314,7 @@ class RunNextflowWorkflow(BaseJob):
             run['infiles'] = infiles
         else:
             # SELECT prefrac with fraction regex to get fractionated datasets in old analysis
-            if ana_baserec.base_analysis.exclude(analysisdatasetsetname__regex='').count():
+            if ana_baserec.base_analysis.exclude(analysisdatasetsetvalue__regex='').count():
                 # rerun/complement runs with fractionated base analysis need --oldmzmldef parameter
                 old_infiles, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
                 run['old_infiles'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in run['components']['INPUTDEF']]))

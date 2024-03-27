@@ -251,8 +251,7 @@ class AnalysisSampletable(models.Model):
 
 
 class AnalysisSetname(models.Model):
-    '''All set or sample names in an analysis that are per dataset,
-    which means prefractionated proteomics data'''
+    '''All set or sample names in an analysis that are per dataset'''
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     setname = models.TextField()
 
@@ -260,7 +259,17 @@ class AnalysisSetname(models.Model):
         constraints = [models.UniqueConstraint(fields=['analysis', 'setname'], name='uni_anasets')]
 
 
-class AnalysisDatasetSetname(models.Model):
+class DatasetAnalysis(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
+    # cannot put setname here because of searches without dset/setname
+    # model used in reporting, and also for finding datasets for base analysis etc
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_dsa_anadsets')]
+
+
+class AnalysisDatasetSetValue(models.Model):
     '''Dataset mapping to setnames (multiple dataset can have the same setname)'''
     # Note that datasets can be deleted, or have their file contents changed
     # That means this is not to be trusted for future bookkeeping of what was in the analysis
@@ -278,31 +287,24 @@ class AnalysisDatasetSetname(models.Model):
 
 class AnalysisDSInputFile(models.Model):
     '''Input files for set-based analysis (isobaric and prefraction-datasets)'''
-    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    dsanalysis = models.ForeignKey(DatasetAnalysis, on_delete=models.CASCADE)
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
-    analysisdset = models.ForeignKey(AnalysisDatasetSetname, on_delete=models.CASCADE)
+    analysisset = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anainfile')]
+        constraints = [models.UniqueConstraint(fields=['analysisset', 'sfile'], name='uni_anaset_infile')]
 
 
-class AnalysisFileSample(models.Model):
+class AnalysisFileValue(models.Model):
     '''If one sample per file is used in labelfree analyses, the samples are stored
     here'''
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
-    sample = models.TextField()
+    value = models.TextField()
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
 
     # FIXME this should maybe FK to infile above here?
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anassamplefile')]
-
-
-class DatasetAnalysis(models.Model):
-    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
-    dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
-    # cannot put setname here because of searches without dset/setname
-    # model used in reporting, and also for finding datasets for base analysis etc
 
 
 class AnalysisIsoquant(models.Model):
