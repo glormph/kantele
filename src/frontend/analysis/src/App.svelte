@@ -88,9 +88,9 @@ function validate() {
     notif.errors['No datasets are in this analysis, maybe they need some editing'] = 1;
   }
   Object.values(dsets).forEach(ds => {
-    if (!('LABELCHECK_ISO' in wf.components) && !ds.filesaresets && !ds.setname) {
+    if (!('LABELCHECK_ISO' in wf.components) && ds.allfilessamesample && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
-    } else if (ds.filesaresets) {
+    } else if (!ds.allfilessamesample) {
       if (ds.ft_files[ds.picked_ftype].some(fn => !fn.fields.__sample)) {
 			  notif.errors[`File ${fn.name} needs to have a sample name`] = 1;
 			}
@@ -135,13 +135,13 @@ async function storeAnalysis() {
     base_analysis: base_analysis,
     dsids: Object.keys(dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets)
-      .filter(([x,ds]) => !ds.filesaresets)
+      .filter(([x,ds]) => ds.allfilessamesample)
       .map(([dsid, ds]) => [dsid, ds.setname])),
     infiles: Object.fromEntries(Object.values(dsets)
       .flatMap(ds => ds.ft_files[ds.picked_ftype]
         .map(fn => [fn.id, {fr: fn.fr}]))),
     fnsetnames: Object.fromEntries(Object.entries(dsets)
-      .filter(([x,ds]) => ds.filesaresets)
+      .filter(([x,ds]) => !ds.allfilessamesample)
       .map(([dsid, ds]) => ds.ft_files[ds.picked_ftype]
         .map(fn => [fn.id, fn.fields.__sample]))
       .flat()),
@@ -366,7 +366,7 @@ async function loadBaseAnalysis() {
         if ('__regex' in resds.fields) {
           dsets[dsid].fields.frregex = resds.fields.__regex;
         }
-        dsets[dsid].filesaresets = resds.filesaresets;
+        dsets[dsid].allfilessamesample = resds.allfilessamesample;
         dsets[dsid].picked_ftype = resds.picked_ftype;
         dsets[dsid].ft_files[resds.picked_ftype]
           .filter(x => x.id in resds.files)
@@ -650,10 +650,10 @@ onMount(async() => {
 		<div class="columns">
 		  <div class="column">
         {#if !ds.prefrac && !ds.qtype.is_isobaric}
-        <input type="checkbox" bind:checked={ds.filesaresets}>
-				<label class="checkbox">One sample - one file (non-fractionated, non-isobaric)</label>
+        <input type="checkbox" bind:checked={ds.allfilessamesample}>
+        <label class="checkbox">Same sample in each file in the dataset</label>
         {/if}
-        {#if !ds.filesaresets}
+        {#if ds.allfilessamesample}
 			  <div class="field">
           <input type="text" class="input" placeholder="Name of set" bind:value={ds.setname} on:change={e => updateIsoquant(ds.id)}>
 			  </div>
@@ -689,7 +689,7 @@ onMount(async() => {
 
 			</div>
 		</div>
-    {#if ds.filesaresets}
+    {#if !ds.allfilessamesample}
     {#each ds.ft_files[ds.picked_ftype] as fn}
     <div class="columns">
 		  <div class="column">{fn.name}</div>

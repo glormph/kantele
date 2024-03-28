@@ -147,8 +147,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
                 dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'fields': {fn.field: fn.value}}
                 dsets[dsid]['fields'] = {}
         if 'files' in dsets[dsid]:
-            # Must check if dset is actually in the overlap before setting filesaresets, else it errors
-            dsets[dsid]['filesaresets'] = any(x['fields']['__sample'] for x in dsets[dsid]['files'].values())
+            # Must check if dset is actually in the overlap before setting allfilessamesample, else it errors
+            dsets[dsid]['allfilessamesample'] = all(not x['fields']['__sample'] for x in dsets[dsid]['files'].values())
     # Clean dsets to only contain dsets from base analysis
     [dsets.pop(x) for x in new_ana_dsids if not dsets[x]]
 
@@ -510,19 +510,19 @@ def get_datasets(request, wfversion_id):
                         resp_files[fn.id]['fields']['__sample'] = has_filesamples[fn.id]
 
         # Files with samples (non-MS, IP, non-isobaric, etc)
-        filesaresets = False
         if anid and is_msdata:
-            filesaresets = any((x['fields']['__sample'] != '' for x in resp_files.values()))
+            allfilessamesample  = all((x['fields']['__sample'] == '' for x in resp_files.values()))
 
         elif not is_msdata:
             # sequencing data etcetera, always have sample-per-file since we dont
             # expect multiplexing or fractionation here
             # Add possible already stored analysis file samplenames
-            filesaresets = True
+            allfilessamesample= False
 
         else:
             # New analysis, set names for files can be there quantsamplefile values
             # initially
+            allfilessamesample = True 
             [x['fields'].update({'__sample': x['dsetsample']}) for x in resp_files.values()]
 
         # Finalize response
@@ -554,7 +554,7 @@ def get_datasets(request, wfversion_id):
                 'ft_files': grouped_resp_files,
                 'incomplete_files': incomplete_files,
                 'picked_ftype': picked_ft,
-                'filesaresets': filesaresets,
+                'allfilessamesample': allfilessamesample,
                 }
     if len(response['errmsg']):
         return JsonResponse({**response, 'error': True}, status=400)
