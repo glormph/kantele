@@ -556,8 +556,8 @@ def get_analysis_invocation(ana):
 
     iqparams = []
     for aiq in anmodels.AnalysisIsoquant.objects.select_related('setname').filter(analysis=ana):
-        set_dsets = aiq.setname.analysisdatasetsetname_set.all()
-        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').distinct().get()['dataset__quantdataset__quanttype__shortname']
+        set_dsas = aiq.setname.analysisdsinputfile_set.distinct('dsanalysis').values('dsanalysis')
+        qtypename = set_dsas.values('dsanalysis__dataset__quantdataset__quanttype__shortname').distinct().get()['dsanalysis__dataset__quantdataset__quanttype__shortname']
         if aiq.value['sweep']:
             calc_psm = 'sweep'
         elif aiq.value['report_intensity']:
@@ -601,6 +601,8 @@ def get_analysis_info(request, nfs_id):
         # This means we have to check for taskerror__isnull here
         if task.taskerror.message:
             errors.append(task.taskerror.message)
+    dsicount = anmodels.AnalysisDSInputFile.objects.filter(analysisset__analysis=ana).count()
+    afscount = ana.analysisfilevalue_set.count()
     resp = {'name': aj.get_ana_fullname(ana),
             'wf': {'fn': nfs.nfwfversionparamset.filename, 
                    'name': nfs.nfwfversionparamset.nfworkflow.description,
@@ -608,7 +610,7 @@ def get_analysis_info(request, nfs_id):
                    'repo': nfs.nfwfversionparamset.nfworkflow.repo},
 ##             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
-            'nrfiles': ana.analysisdsinputfile_set.count(),
+            'nrfiles': dsicount + afscount,
             'storage_locs': [{'server': x.servershare.server.uri, 'share': x.servershare.name, 'path': x.path}
                 for x in storeloc],
             'log': logentry, 
