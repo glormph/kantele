@@ -13,29 +13,26 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='AnalysisFileValue',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('value', models.TextField()),
-                ('analysis', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='analysis.analysis')),
-                ('sfile', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='rawstatus.storedfile')),
-            ],
-        ),
         migrations.RenameModel(
             old_name='AnalysisDatasetSetname',
             new_name='AnalysisDatasetSetValue',
         ),
-        migrations.DeleteModel(
-            name='AnalysisFileSample',
+        migrations.RenameModel(
+            old_name='AnalysisFileSample',
+            new_name='AnalysisFileValue',
         ),
-        migrations.AddConstraint(
-            model_name='analysisfilevalue',
-            constraint=models.UniqueConstraint(fields=('analysis', 'sfile'), name='uni_anassamplefile'),
+        migrations.RenameField(
+            model_name='AnalysisFileValue',
+            old_name='sample',
+            new_name='value',
         ),
         migrations.RemoveConstraint(
             model_name='analysisdsinputfile',
             name='uni_anainfile',
+        ),
+        migrations.RemoveConstraint(
+            model_name='analysisfilevalue',
+            name='uni_anassamplefile',
         ),
         migrations.AddField(
             model_name='analysisdsinputfile',
