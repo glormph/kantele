@@ -556,8 +556,8 @@ def get_analysis_invocation(ana):
 
     iqparams = []
     for aiq in anmodels.AnalysisIsoquant.objects.select_related('setname').filter(analysis=ana):
-        set_dsets = aiq.setname.analysisdatasetsetvalue_set.all()
-        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').distinct().get()['dataset__quantdataset__quanttype__shortname']
+        set_dsas = aiq.setname.analysisdsinputfile_set.distinct('dsanalysis').values('dsanalysis')
+        qtypename = set_dsas.values('dsanalysis__dataset__quantdataset__quanttype__shortname').distinct().get()['dsanalysis__dataset__quantdataset__quanttype__shortname']
         if aiq.value['sweep']:
             calc_psm = 'sweep'
         elif aiq.value['report_intensity']:

@@ -277,10 +277,11 @@ class AnalysisDatasetSetValue(models.Model):
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE, null=True)
-    regex = models.TextField() # optional
+    field = models.TextField()
+    value = models.TextField()
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_anadsets')]
+        constraints = [models.UniqueConstraint(fields=['analysis', 'dataset', 'field'], name='uni_anadsetsfields')]
 
 # FIXME how should we do with pgt DBGEN input? Are those sets, or are they something else?
 # they def have sample names, and can be multiple per sample (BAMs merged, VCFs indel/snv etc)
@@ -298,13 +299,20 @@ class AnalysisDSInputFile(models.Model):
 class AnalysisFileValue(models.Model):
     '''If one sample per file is used in labelfree analyses, the samples are stored
     here'''
+    # this assumes at least one entry of this model per file/analysis
+    # (for non-set data), so samplename is a field. This is the only mapping of
+    # file/analysis we have currently for non-set data. If there's ever need
+    # of mapping files WITHOUT field/value for an analysis, we can break out
+    # to an extra model, alternatively null the fields
+
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    field = models.TextField()
     value = models.TextField()
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
 
     # FIXME this should maybe FK to infile above here?
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anassamplefile')]
+        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile', 'field'], name='uni_anassamplefile')]
 
 
 class AnalysisIsoquant(models.Model):

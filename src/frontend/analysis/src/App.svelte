@@ -91,8 +91,8 @@ function validate() {
     if (!('LABELCHECK_ISO' in wf.components) && !ds.filesaresets && !ds.setname) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have a set name`] = 1;
     } else if (ds.filesaresets) {
-      if (ds.ft_files[ds.picked_ftype].some(fn => !fn.setname)) {
-			  notif.errors[`File ${fn.name} needs to have a setname`] = 1;
+      if (ds.ft_files[ds.picked_ftype].some(fn => !fn.fields.__sample)) {
+			  notif.errors[`File ${fn.name} needs to have a sample name`] = 1;
 			}
     } else if (ds.setname && !charRe.test(ds.setname)) {
 			notif.errors[`Dataset ${ds.proj} - ${ds.exp} - ${ds.run} needs to have another set name: only a-z 0-9 _ are allowed`] = 1;
@@ -143,11 +143,11 @@ async function storeAnalysis() {
     fnsetnames: Object.fromEntries(Object.entries(dsets)
       .filter(([x,ds]) => ds.filesaresets)
       .map(([dsid, ds]) => ds.ft_files[ds.picked_ftype]
-        .map(fn => [fn.id, fn.setname]))
+        .map(fn => [fn.id, fn.fields.__sample]))
       .flat()),
     picked_ftypes: Object.fromEntries(Object.entries(dsets)
       .map(([dsid, ds]) => [dsid, ds.picked_ftype])),
-    frregex: Object.fromEntries(Object.entries(dsets).map(([dsid, ds]) => [dsid, ds.frregex])),
+    frregex: Object.fromEntries(Object.entries(dsets).map(([dsid, ds]) => [dsid, ds.fields.frregex])),
     singlefiles: fns,
     multifiles: multifns,
     components: {
@@ -363,13 +363,15 @@ async function loadBaseAnalysis() {
         const resds = result.datasets[dsid];
         dsets[dsid].setname = resds.setname;
         overlapping_setnames.add(dsets[dsid].setname);
-        dsets[dsid].frregex = resds.frregex;
+        if ('__regex' in resds.fields) {
+          dsets[dsid].fields.frregex = resds.fields.__regex;
+        }
         dsets[dsid].filesaresets = resds.filesaresets;
         dsets[dsid].picked_ftype = resds.picked_ftype;
         dsets[dsid].ft_files[resds.picked_ftype]
           .filter(x => x.id in resds.files)
           .forEach(x => {
-            x.setname = resds.files[x.id].setname;
+            x.fields.__sample = resds.files[x.id].fields.__sample;
         });
         if (dsets[dsid].prefrac) {
           matchFractions(dsets[dsid]);
@@ -426,7 +428,7 @@ function getIntextFileName(fnid, files) {
 function matchFractions(ds) {
   let allfrs = new Set();
   for (let fn of ds.ft_files[ds.picked_ftype]) {
-    const match = fn.name.match(RegExp(ds.frregex));
+    const match = fn.name.match(RegExp(ds.fields.frregex));
     if (match) {
       fn.fr = match[1];
       allfrs.add(match[1]);
@@ -659,7 +661,7 @@ onMount(async() => {
         {#if wf && ds.prefrac && 'PREFRAC' in wf.components}
         <div class="field">
 					<label class="label">Regex for fraction detection</label>
-          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.frregex}>
+          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.fields.frregex}>
 				</div>
 				<span>{matchedFr[ds.id]} fractions matched</span>
         {/if}
@@ -692,7 +694,7 @@ onMount(async() => {
     <div class="columns">
 		  <div class="column">{fn.name}</div>
 		  <div class="column">
-        <input type="text" class="input" bind:value={fn.setname} placeholder={fn.sample}>
+        <input type="text" class="input" bind:value={fn.fields.__sample} placeholder={fn.dsetsample}>
 			</div>
 		</div>
     {/each}

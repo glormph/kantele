@@ -152,8 +152,8 @@ def recurse_nrdsets_baseanalysis(aba):
     # This would in 3. give us all oldmzmls from 1. and 2., so setB would be double
     single_ana_oldmzml = {}
     single_ana_oldds = {}
-    regexes = {x.dataset_id: x.regex for x in models.AnalysisDatasetSetValue.objects.filter(
-        analysis=aba.base_analysis) if x.regex}
+    regexes = {x.dataset_id: x.value for x in models.AnalysisDatasetSetValue.objects.filter(
+        analysis=aba.base_analysis, field='__regex')}
     for asf in models.AnalysisDSInputFile.objects.filter(
             analysisset__analysis=aba.base_analysis).select_related(
                     'sfile__rawfile__producer', 'analysisset__setname'):
@@ -314,7 +314,7 @@ class RunNextflowWorkflow(BaseJob):
             run['infiles'] = infiles
         else:
             # SELECT prefrac with fraction regex to get fractionated datasets in old analysis
-            if ana_baserec.base_analysis.exclude(analysisdatasetsetvalue__regex='').count():
+            if ana_baserec.base_analysis.filter(analysisdatasetsetvalue__field='__regex').count():
                 # rerun/complement runs with fractionated base analysis need --oldmzmldef parameter
                 old_infiles, old_dsets = recurse_nrdsets_baseanalysis(ana_baserec)
                 run['old_infiles'] = ['{}\t{}'.format(x['fn'], '\t'.join([x[key] for key in run['components']['INPUTDEF']]))
