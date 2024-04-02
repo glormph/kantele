@@ -161,7 +161,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
                 else:
                     fndir = os.path.join(settings.SHAREMAP[fn['servershare']], fn['path'])
                 fnpath = os.path.join(fndir, fn['fn'])
-                fn_metadata = '\t'.join(fn[x] for x in run['components']['INPUTDEF'][1:] if fn[x])
+                fn_metadata = '\t'.join(fn[x] or '' for x in run['components']['INPUTDEF'][1:])
                 fp.write(f'\n{fnpath}\t{fn_metadata}')
         params.extend(['--input', os.path.join(rundir, 'inputdef.txt')])
 

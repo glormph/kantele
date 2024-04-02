@@ -36,7 +36,7 @@ class AnalysisTest(BaseTest):
                 path='', checked=True, filetype=self.ft2)
 
         c_ch = am.PsetComponent.ComponentChoices
-        am.PsetComponent.objects.create(pset=self.pset, component=c_ch.INPUTDEF, value=['plate', 2, 3])
+        self.inputdef = am.PsetComponent.objects.create(pset=self.pset, component=c_ch.INPUTDEF, value=['file_path', 'plate', 'fake'])
         am.PsetComponent.objects.create(pset=self.pset, component=c_ch.ISOQUANT)
         am.PsetComponent.objects.create(pset=self.pset, component=c_ch.ISOQUANT_SAMPLETABLE)
         am.PsetComponent.objects.create(pset=self.pset, component=c_ch.PREFRAC, value='.*fr([0-9]+).*mzML$')
@@ -156,7 +156,7 @@ class LoadBaseAnaTestIso(AnalysisTest):
                     'ana': f'{self.wftype.name}_{self.ana.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
                 'datasets': {f'{self.ds.pk}': {'fields': {'__regex': f'{self.ads1.value}'},
-                    'setname': f'{self.ads1.setname.setname}', 'filesaresets': False,
+                    'setname': f'{self.ads1.setname.setname}', 'allfilessamesample': True,
                     'files': {}, 'picked_ftype': f'mzML (pwiz {self.f3sfmz.mzmlfile.pwiz.version_description})'}},
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), json.dumps(checkjson))
@@ -186,7 +186,7 @@ class LoadBaseAnaTestIso(AnalysisTest):
                 'datasets': {f'{self.ds.pk}': {'fields': {'__regex': f'{self.ads1.value}'},
                     'setname': f'{self.ads1.setname.setname}',
                     'picked_ftype': f'mzML (pwiz {self.f3sfmz.mzmlfile.pwiz.version_description})',
-                    'filesaresets': False, 'files': {}},
+                    'allfilessamesample': True, 'files': {}},
                     }
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), json.dumps(checkjson))
@@ -222,7 +222,7 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
                 'resultfiles': [{'id': self.resultfnlf.sfile.pk, 'fn': self.resultfnlf.sfile.filename,
                     'ana': f'{self.wftype.name}_{self.analf.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
-                'datasets': {f'{self.oldds.pk}': {'filesaresets': True, 'fields': {},
+                'datasets': {f'{self.oldds.pk}': {'allfilessamesample': False, 'fields': {},
                     'picked_ftype': self.afs2.sfile.filetype.name,
                     'files': {f'{self.afs2.sfile_id}': {'id': self.afs2.sfile_id,
                         'fields': {'__sample': self.afs2.value}}}},
@@ -351,7 +351,7 @@ class TestGetDatasetsIso(AnalysisTest):
                     'prefrac': False,
                     'hr': False,
                     'setname': '',
-                    'fields': {'frregex': am.PsetComponent.objects.get(pset=self.pset,
+                    'fields': {'fake': '', '__regex': am.PsetComponent.objects.get(pset=self.pset,
                         component=am.PsetComponent.ComponentChoices.PREFRAC).value},
                     'instruments': [self.prod.name],
                     'instrument_types': [self.prod.shortname],
@@ -360,13 +360,14 @@ class TestGetDatasetsIso(AnalysisTest):
                         'is_isobaric': True},
                     'nrstoredfiles': [1, self.ft.name],
                     'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
-                    'ft_files': {mztype: [{'ft_name': mztype, 'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': ''}}],
-                        self.ft.name: [{'ft_name': self.ft.name, 'id': self.f3sf.pk, 'name': self.f3sf.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': ''}}],
+                    'ft_files': {mztype: [{'ft_name': mztype, 'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': '', 'fake': ''}}],
+                        self.ft.name: [{'ft_name': self.ft.name, 'id': self.f3sf.pk, 'name': self.f3sf.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': '', 'fake': ''}}],
                         },
                     'incomplete_files': [],
                     'picked_ftype': mztype,
-                    'filesaresets': False,
+                    'allfilessamesample': True,
                     }},
+                'field_order': self.inputdef.value[-1:],
                 'error': False,
                 'errmsg': [],
                 }
@@ -386,7 +387,7 @@ class TestGetDatasetsIso(AnalysisTest):
                     'prefrac': False,
                     'hr': False,
                     'setname': self.ads1.setname.setname,
-                    'fields': {'frregex': self.ads1.value},
+                    'fields': {'fake': '', '__regex': self.ads1.value},
                     'instruments': [self.prod.name],
                     'instrument_types': [self.prod.shortname],
                     'qtype': {'name': self.ds.quantdataset.quanttype.name,
@@ -394,13 +395,14 @@ class TestGetDatasetsIso(AnalysisTest):
                         'is_isobaric': True},
                     'nrstoredfiles': [1, self.ft.name],
                     'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
-                    'ft_files': {mztype: [{'ft_name': mztype, 'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': ''}}],
-                        self.ft.name: [{'ft_name': self.ft.name, 'id': self.f3sf.pk, 'name': self.f3sf.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': ''}}],
+                    'ft_files': {mztype: [{'ft_name': mztype, 'id': self.f3sfmz.pk, 'name': self.f3sfmz.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': '', 'fake': ''}}],
+                        self.ft.name: [{'ft_name': self.ft.name, 'id': self.f3sf.pk, 'name': self.f3sf.filename, 'fr': '', 'dsetsample': '', 'fields': {'__sample': '', 'fake': ''}}],
                         },
                     'incomplete_files': [],
                     'picked_ftype': mztype,
-                    'filesaresets': False,
+                    'allfilessamesample': True,
                     }},
+                'field_order': self.inputdef.value[-1:],
                 'error': False,
                 'errmsg': [],
                 }
@@ -424,7 +426,7 @@ class TestGetDatasetsLF(AnalysisLabelfreeSamples):
                     'prefrac': False,
                     'hr': False,
                     'setname': '',
-                    'fields': {'frregex': am.PsetComponent.objects.get(pset=self.pset,
+                    'fields': {'fake': '', '__regex': am.PsetComponent.objects.get(pset=self.pset,
                         component=am.PsetComponent.ComponentChoices.PREFRAC).value},
                     'instruments': [self.prod.name],
                     'instrument_types': [self.prod.shortname],
@@ -433,12 +435,13 @@ class TestGetDatasetsLF(AnalysisLabelfreeSamples):
                         'is_isobaric': False},
                     'nrstoredfiles': [1, self.ft.name],
                     'channels': False,
-                    'ft_files': {self.ft.name: [{'ft_name': self.ft.name, 'id': self.oldsf.pk, 'name': self.oldsf.filename, 'fr': '', 'fields': {'__sample': self.oldqsf.projsample.sample}, 'dsetsample': self.oldqsf.projsample.sample}],
+                    'ft_files': {self.ft.name: [{'ft_name': self.ft.name, 'id': self.oldsf.pk, 'name': self.oldsf.filename, 'fr': '', 'fields': {'__sample': self.oldqsf.projsample.sample, 'fake': ''}, 'dsetsample': self.oldqsf.projsample.sample}],
                         },
                     'incomplete_files': [],
                     'picked_ftype': self.ft.name,
-                    'filesaresets': False,
+                    'allfilessamesample': True,
                     }},
+                'field_order': self.inputdef.value[-1:],
                 'error': False,
                 'errmsg': [],
                 }
@@ -459,7 +462,7 @@ class TestGetDatasetsLF(AnalysisLabelfreeSamples):
                     'prefrac': False,
                     'hr': False,
                     'setname': '',
-                    'fields': {'frregex': am.PsetComponent.objects.get(pset=self.pset,
+                    'fields': {'fake': '', '__regex': am.PsetComponent.objects.get(pset=self.pset,
                         component=am.PsetComponent.ComponentChoices.PREFRAC).value},
                     'instruments': [self.prod.name],
                     'instrument_types': [self.prod.shortname],
@@ -468,12 +471,13 @@ class TestGetDatasetsLF(AnalysisLabelfreeSamples):
                         'is_isobaric': False},
                     'nrstoredfiles': [1, self.ft.name],
                     'channels': False,
-                    'ft_files': {self.ft.name: [{'ft_name': self.ft.name, 'id': self.oldsf.pk, 'name': self.oldsf.filename, 'fr': '', 'fields': {'__sample': self.afs2.value}, 'dsetsample': self.oldqsf.projsample.sample}],
+                    'ft_files': {self.ft.name: [{'ft_name': self.ft.name, 'id': self.oldsf.pk, 'name': self.oldsf.filename, 'fr': '', 'fields': {'__sample': self.afs2.value, 'fake': ''}, 'dsetsample': self.oldqsf.projsample.sample}],
                         },
                     'incomplete_files': [],
                     'picked_ftype': self.ft.name,
-                    'filesaresets': True,
+                    'allfilessamesample': False,
                     }},
+                'field_order': self.inputdef.value[-1:],
                 'error': False,
                 'errmsg': [],
                 }
@@ -580,8 +584,9 @@ class TestStoreAnalysis(AnalysisTest):
                     }},
                 },
             'analysisname': 'Test new analysis',
-            'frregex': {f'{self.ds.pk}': 'fr_find'},
-            'fnsetnames': {},
+            # FIXME add some fields
+            'fnfields': {},
+            'dsetfields': {f'{self.ds.pk}': {'__regex': 'fr_find'}},
             'params': params,
             'singlefiles': {self.pfn2.pk: self.sflib.pk},
             'multifiles': {self.pfn1.pk: [self.sfusr.pk]},
@@ -605,7 +610,7 @@ class TestStoreAnalysis(AnalysisTest):
         for adsif in am.AnalysisDSInputFile.objects.filter(analysisset__analysis=ana):
             self.assertEqual(adsif.dsanalysis.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisset.setname, postdata['dssetnames'][self.ds.pk])
-            self.assertEqual(regexes[adsif.dsanalysis.dataset_id], postdata['frregex'][f'{self.ds.pk}'])
+            self.assertEqual(regexes[adsif.dsanalysis.dataset_id], postdata['dsetfields'][f'{self.ds.pk}']['__regex'])
         PT = am.Param.PTypes
         for ap in ana.analysisparam_set.all():
             pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
@@ -641,8 +646,8 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
                     }},
                 },
             'analysisname': 'Test existing analysis',
-            'frregex': {f'{self.ds.pk}': 'fr_find'},
-            'fnsetnames': {},
+            'fnfields': {},
+            'dsetfields': {f'{self.ds.pk}': {'__regex': 'fr_find'}},
             'params': params,
             'singlefiles': {self.pfn2.pk: self.sflib.pk},
             'multifiles': {self.pfn1.pk: [self.sfusr.pk]},
@@ -665,7 +670,7 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
         for adsif in am.AnalysisDSInputFile.objects.filter(analysisset__analysis=self.ana):
             self.assertEqual(adsif.dsanalysis.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisset.setname, postdata['dssetnames'][self.ds.pk])
-            self.assertEqual(regexes[adsif.dsanalysis.dataset_id], postdata['frregex'][f'{self.ds.pk}'])
+            self.assertEqual(regexes[adsif.dsanalysis.dataset_id], postdata['dsetfields'][f'{self.ds.pk}']['__regex'])
         PT = am.Param.PTypes
         for ap in self.ana.analysisparam_set.all():
             pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
@@ -701,8 +706,8 @@ class TestStoreExistingLFAnalysis(AnalysisLabelfreeSamples):
                 'ISOQUANT': {},
                 },
             'analysisname': 'Test existing analysis LF',
-            'frregex': {f'{self.oldds.pk}': ''},
-            'fnsetnames': {self.oldsf.pk: 'testsample'},
+            'dsetfields': {f'{self.oldds.pk}': {'__regex': ''}},
+            'fnfields': {self.oldsf.pk: {'__sample': 'testsample'}},
             'params': params,
             'singlefiles': {self.pfn2.pk: self.sflib.pk},
             'multifiles': {self.pfn1.pk: [self.sfusr.pk]},
@@ -723,7 +728,7 @@ class TestStoreExistingLFAnalysis(AnalysisLabelfreeSamples):
         self.assertFalse(hasattr(self.analf, 'analysissampletable'))
         self.assertEqual(am.AnalysisDSInputFile.objects.filter(analysisset__analysis=self.analf).count(), 0)
         for afs in self.analf.analysisfilevalue_set.all():
-            self.assertEqual(postdata['fnsetnames'][afs.sfile_id], afs.value)
+            self.assertEqual(postdata['fnfields'][afs.sfile_id]['__sample'], afs.value)
         PT = am.Param.PTypes
         for ap in self.analf.analysisparam_set.all():
             pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
@@ -780,8 +785,8 @@ class TestStoreExistingLFAnalysis(AnalysisLabelfreeSamples):
                 'ISOQUANT': {},
                 },
             'analysisname': 'Test existing analysis LF',
-            'frregex': {f'{newds.pk}': ''},
-            'fnsetnames': {},
+            'fnfields': {},
+            'dsetfields': {f'{newds.pk}': {'__regex': ''}},
             'params': params,
             'singlefiles': {self.pfn2.pk: self.sflib.pk},
             'multifiles': {self.pfn1.pk: [self.sfusr.pk]},

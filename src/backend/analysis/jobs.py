@@ -273,31 +273,24 @@ class RunNextflowWorkflow(BaseJob):
             for fn in sfiles_passed:
                 infile = {'servershare': fn.servershare.name, 'path': fn.path, 'fn': fn.filename}
                 if 'setname' in inputdef_fields:
-                    infile['setname'] = kwargs['setnames'].get(str(fn.id), '')
+                    infile['setname'] = kwargs['filesamples'].get(str(fn.id), '')
                 if 'plate' in inputdef_fields:
                     infile['plate'] = kwargs['platenames'].get(str(fn.rawfile.datasetrawfile.dataset_id), '')
                 if 'sampleID' in inputdef_fields:
                     # sampleID is for pgt / dbgenerator
-                    infile['sampleID'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample 
+                    # No fallback, is required if in header
+                    infile['sampleID'] = kwargs['filesamples'][str(fn.id)]
                 if 'fraction' in inputdef_fields:
                     infile['fraction'] = kwargs['infiles'].get(str(fn.id), {}).get('fr') 
                 if 'instrument' in inputdef_fields:
+                    # No fallback, instrument in header cannot be ''
                     infile['instrument'] = fn.rawfile.producer.msinstrument.instrumenttype.name 
                 if 'channel' in inputdef_fields:
-                    # For non-pooled labelcheck
+                    # For non-pooled labelcheck, cannot be ''
                     infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannel.channel.channel.name 
-                if 'file_type' in inputdef_fields:
-                    infile['file_type'] = fn.filetype.filetype
-                if 'pep_prefix' in inputdef_fields:
-                    # FIXME needs to be able to change to none, mutalt (VCF), fusion_squid, etc
-                    # We can probably use setname frontend code for that
-                    infile['pep_prefix'] = 'none' 
-
-
-                # FIXME add the pgt DB/other fields here
-                #  expr_str        expr_thresh     sample_gtf_file pep_prefix
+                # Dynamic fields
+                infile.update(kwargs['filefields'][fn.pk])
                 infiles.append(infile)
-            # FIXME this in tasks and need to write header
         # FIXME bigrun not hardcode, probably need to remove when new infra
         shortname = models.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
         bigrun = shortname == 'PISEP' or len(infiles) > 500

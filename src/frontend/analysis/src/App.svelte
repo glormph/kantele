@@ -26,6 +26,7 @@ let prev_resultfiles = [];
 let resfn_arr = [];
 let resultfiles = {}
 let resultfnorder = [];
+let field_order = [];
 
 let base_analysis = {
   isComplement: false,
@@ -140,14 +141,15 @@ async function storeAnalysis() {
     infiles: Object.fromEntries(Object.values(dsets)
       .flatMap(ds => ds.ft_files[ds.picked_ftype]
         .map(fn => [fn.id, {fr: fn.fr}]))),
-    fnsetnames: Object.fromEntries(Object.entries(dsets)
+    fnfields: Object.fromEntries(Object.entries(dsets)
       .filter(([x,ds]) => !ds.allfilessamesample)
       .map(([dsid, ds]) => ds.ft_files[ds.picked_ftype]
-        .map(fn => [fn.id, fn.fields.__sample]))
+        .map(fn => [fn.id, fn.fields]))
       .flat()),
     picked_ftypes: Object.fromEntries(Object.entries(dsets)
       .map(([dsid, ds]) => [dsid, ds.picked_ftype])),
-    frregex: Object.fromEntries(Object.entries(dsets).map(([dsid, ds]) => [dsid, ds.fields.frregex])),
+    dsetfields: Object.fromEntries(Object.entries(dsets)
+      .map(([dsid, ds]) => [dsid, ds.fields])),
     singlefiles: fns,
     multifiles: multifns,
     components: {
@@ -292,6 +294,7 @@ async function fetchDatasetDetails(fetchdsids) {
       dsets[x].changed = false;
     })
     Object.entries(dsets).filter(x=>x[1].prefrac).forEach(x=>matchFractions(dsets[x[0]]));
+    field_order = result.field_order;
   }
 }
 
@@ -363,15 +366,15 @@ async function loadBaseAnalysis() {
         const resds = result.datasets[dsid];
         dsets[dsid].setname = resds.setname;
         overlapping_setnames.add(dsets[dsid].setname);
-        if ('__regex' in resds.fields) {
-          dsets[dsid].fields.frregex = resds.fields.__regex;
-        }
+        Object.keys(resds.fields).forEach(f => {
+          dsets[dsid].fields[f] = resds.fields[f];
+        });
         dsets[dsid].allfilessamesample = resds.allfilessamesample;
         dsets[dsid].picked_ftype = resds.picked_ftype;
         dsets[dsid].ft_files[resds.picked_ftype]
           .filter(x => x.id in resds.files)
           .forEach(x => {
-            x.fields.__sample = resds.files[x.id].fields.__sample;
+            x.fields = resds.files[x.id].fields;
         });
         if (dsets[dsid].prefrac) {
           matchFractions(dsets[dsid]);
@@ -428,7 +431,7 @@ function getIntextFileName(fnid, files) {
 function matchFractions(ds) {
   let allfrs = new Set();
   for (let fn of ds.ft_files[ds.picked_ftype]) {
-    const match = fn.name.match(RegExp(ds.fields.frregex));
+    const match = fn.name.match(RegExp(ds.fields.__regex));
     if (match) {
       fn.fr = match[1];
       allfrs.add(match[1]);
@@ -661,9 +664,20 @@ onMount(async() => {
         {#if wf && ds.prefrac && 'PREFRAC' in wf.components}
         <div class="field">
 					<label class="label">Regex for fraction detection</label>
-          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.fields.frregex}>
+          <input type="text" class="input" on:change={e => matchFractions(ds)} bind:value={ds.fields.__regex}>
 				</div>
 				<span>{matchedFr[ds.id]} fractions matched</span>
+        {/if}
+
+        {#if ds.allfilessamesample && field_order.filter(x => !x.startsWith('__')).length}
+        <hr>
+        <h6 class="title is-6">Workflow specific fields:</h6>
+        {#each field_order.filter(x => !x.startsWith('__')) as field}
+        <div class="field">
+          <label class="label"><code>{field}</code></label>
+          <input type="text" class="input" bind:value={ds.fields[field]}>
+				</div>
+        {/each}
         {/if}
 			</div>
 
@@ -690,14 +704,32 @@ onMount(async() => {
 			</div>
 		</div>
     {#if !ds.allfilessamesample}
-    {#each ds.ft_files[ds.picked_ftype] as fn}
-    <div class="columns">
-		  <div class="column">{fn.name}</div>
-		  <div class="column">
-        <input type="text" class="input" bind:value={fn.fields.__sample} placeholder={fn.dsetsample}>
-			</div>
-		</div>
-    {/each}
+    <table class="table is-striped is-narrow">
+      <thead>
+        <th>File name</th>
+        <th>Sample</th>
+        {#each field_order.filter(x => !x.startsWith('__')) as field}
+        <th><code>{field}</code></th>
+        {/each}
+      </thead>
+      <tbody>
+        {#each ds.ft_files[ds.picked_ftype] as fn}
+        <tr>
+          <td>{fn.name}</td>
+          <td>
+            <input type="text" class="input" bind:value={fn.fields.__sample} placeholder={fn.dsetsample}>
+          </td>
+          {#each field_order.filter(x => !x.startsWith('__')) as field}
+          <td>
+            <div class="field">
+              <input type="text" class="input" bind:value={fn.fields[field]}>
+				    </div>
+          </td>
+          {/each}
+        </tr>
+        {/each}
+      </tbody>
+    </table>
     {/if}
     {/if}
   </div>
