@@ -586,7 +586,7 @@ class TestStoreAnalysis(AnalysisTest):
             'analysisname': 'Test new analysis',
             # FIXME add some fields
             'fnfields': {},
-            'dsetfields': {f'{self.ds.pk}': {'__regex': 'fr_find'}},
+            'dsetfields': {f'{self.ds.pk}': {'__regex': 'fr_find', 'fake': 'hello'}},
             'params': params,
             'singlefiles': {self.pfn2.pk: self.sflib.pk},
             'multifiles': {self.pfn1.pk: [self.sfusr.pk]},
@@ -607,10 +607,14 @@ class TestStoreAnalysis(AnalysisTest):
         self.assertEqual(ana.analysissampletable.samples, {'hello': 'yes'})
         regexes = {x.dataset_id: x.value for x in am.AnalysisDatasetSetValue.objects.filter(
             analysis=ana, field='__regex')}
+        fakevals = {x.dataset_id: x.value for x in am.AnalysisDatasetSetValue.objects.filter(
+            analysis=ana, field='fake')}
         for adsif in am.AnalysisDSInputFile.objects.filter(analysisset__analysis=ana):
             self.assertEqual(adsif.dsanalysis.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisset.setname, postdata['dssetnames'][self.ds.pk])
             self.assertEqual(regexes[adsif.dsanalysis.dataset_id], postdata['dsetfields'][f'{self.ds.pk}']['__regex'])
+            self.assertEqual(fakevals[adsif.dsanalysis.dataset_id], postdata['dsetfields'][f'{self.ds.pk}']['fake'])
+
         PT = am.Param.PTypes
         for ap in ana.analysisparam_set.all():
             pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',

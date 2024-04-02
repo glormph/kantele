@@ -853,12 +853,11 @@ def store_analysis(request):
     new_ads = {}
     am.AnalysisDSInputFile.objects.filter(analysisset__analysis=analysis).exclude(sfile_id__in=req['infiles']).delete()
     for dsid, setname in req['dssetnames'].items():
-        if 'PREFRAC' in wf_components:
-            regex = req['dsetfields'][dsid]['__regex']
+        for fieldname, value in req['dsetfields'][dsid].items():
             ads, created = am.AnalysisDatasetSetValue.objects.update_or_create(
-                    defaults={'setname_id': setname_ids[setname], 'value': regex},
-                    analysis=analysis, field='__regex', dataset_id=dsid) 
-        new_ads[ads.pk] = created
+                    defaults={'setname_id': setname_ids[setname], 'value': value},
+                    analysis=analysis, field=fieldname, dataset_id=dsid) 
+            new_ads[ads.pk] = created
         for sf in dsfiles[dsid]:
             am.AnalysisDSInputFile.objects.get_or_create(sfile=sf, analysisset_id=setname_ids[setname],
                     dsanalysis_id=dss_map[dsid])
