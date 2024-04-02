@@ -699,7 +699,7 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
         checkjson = {'analysis_id': self.ana.pk,
           'dstsharename': settings.ANALYSISSHARENAME,
           'filefields': {},
-          'filesamples': {'2': 'setA'},
+          'filesamples': {self.f3sfmz.pk: 'setA'},
           'fullname': fullname,
           'infiles': {f'{self.f3sfmz.pk}': 1},
           'inputs': {'components': {c_ch.INPUTDEF.name: self.inputdef.value,
