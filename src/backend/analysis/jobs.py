@@ -289,7 +289,7 @@ class RunNextflowWorkflow(BaseJob):
                     # For non-pooled labelcheck, cannot be ''
                     infile['channel'] = fn.rawfile.datasetrawfile.quantfilechannel.channel.channel.name 
                 # Dynamic fields
-                infile.update(kwargs['filefields'][fn.pk])
+                infile.update(kwargs['filefields'].get(str(fn.pk), {}))
                 infiles.append(infile)
         # FIXME bigrun not hardcode, probably need to remove when new infra
         shortname = models.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
