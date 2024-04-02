@@ -879,9 +879,11 @@ def store_analysis(request):
         for fieldname, value in sample.items():
             am.AnalysisFileValue.objects.update_or_create(defaults={'value': value},
                     field=fieldname, analysis=analysis, sfile_id=sfid) 
-            # __sample etc is stored in special dicts, filefields is for dynamic only
+            # __sample etc is stored in filesamples, filefields is for dynamic only
             if not fieldname.startswith('__'):
                 data_args['filefields'][sfid][fieldname] = value
+            elif fieldname == '__sample':
+                data_args['filesamples'][sfid] = value
 
     # Store params
     passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams'], **req['params']['multicheck']}
