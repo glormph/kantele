@@ -899,7 +899,10 @@ def store_analysis(request):
     for pid, value in req['params']['inputparams'].items():
         ap, created = am.AnalysisParam.objects.update_or_create(
             defaults={'value': value}, analysis=analysis, param_id=pid)
-        jobparams[ap.param.nfparam].append(ap.value)
+        if ap.param.ptype == am.Param.PTypes.SELECT:
+            jobparams[ap.param.nfparam].append(paramopts[ap.value])
+        else:
+            jobparams[ap.param.nfparam].append(ap.value)
 
     # store parameter files
     # TODO remove single/multifiles distinction when no longer in use in home etc

@@ -6,6 +6,7 @@ from django.db.models import Max
 from django.contrib.auth.models import User
 
 from kantele.tests import BaseTest
+from kantele import settings
 from analysis import models as am
 from rawstatus import models as rm
 from jobs import models as jm
@@ -633,7 +634,8 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
 
     def test_existing_analysis(self):
         quant = self.ds.quantdataset.quanttype
-        params = {'flags': {self.param1.pk: True}, 'inputparams': {self.param3.pk: 42}, 
+        params = {'flags': {self.param1.pk: True},
+                'inputparams': {self.param3.pk: 42, self.param4.pk: self.popt4.pk}, 
                 'multicheck': {self.param2.pk: [self.popt1.pk]}}
         postdata = {'dsids': [f'{self.ds.pk}'],
             'analysis_id': self.ana.pk,
@@ -641,7 +643,7 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
             'picked_ftypes': {self.ds.pk: f'mzML (pwiz {self.f3sfmz.mzmlfile.pwiz.version_description})'},
             'nfwfvid': self.nfwf.pk,
             'dssetnames': {self.ds.pk: 'setA'},
-            'components': {'ISOQUANT_SAMPLETABLE': {'hello': 'yes'},
+            'components': {'ISOQUANT_SAMPLETABLE': [[self.qch.name, 'setA', 'samplename', 'groupname']],
                 'INPUTDEF': 'a',
                 'ISOQUANT': {'setA': {'chemistry': quant.shortname,
                     'denoms': {x.channel.name: [f'{x}_sample', x.channel.id] for x in quant.quanttypechannel_set.all()},
@@ -664,11 +666,18 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
                 },
             'wfid': self.wf.pk,
             }
+        prenow = datetime.now()
         resp = self.cl.post(self.url, content_type='application/json', data=postdata)
-        timestamp = datetime.strftime(datetime.now(), '%Y%m%d_')
+        now = datetime.now()
+        timeformat = '%Y%m%d_%H.%M'
+        if prenow.second == 59 and (prenow + (now - prenow) / 2).second == 59:
+            timestamp = datetime.strftime(prenow, timeformat)
+        else:
+            timestamp = datetime.strftime(now, timeformat)
         self.assertEqual(resp.status_code, 200)
         self.ana.refresh_from_db()
-        self.assertEqual(self.ana.analysissampletable.samples, {'hello': 'yes'})
+        self.assertEqual(self.ana.analysissampletable.samples, 
+                [[self.qch.name, 'setA', 'samplename', 'groupname']])
         regexes = {x.dataset_id: x.value for x in am.AnalysisDatasetSetValue.objects.filter(
             analysis=self.ana, field='__regex')}
         for adsif in am.AnalysisDSInputFile.objects.filter(analysisset__analysis=self.ana):
@@ -678,12 +687,36 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
         PT = am.Param.PTypes
         for ap in self.ana.analysisparam_set.all():
             pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
-                    PT.FLAG: 'flags'}[ap.param.ptype]
+                    PT.FLAG: 'flags', PT.SELECT: 'inputparams'}[ap.param.ptype]
             self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(self.ana.name, postdata['analysisname'])
         fullname = f'{self.ana.pk}_{self.wftype.name}_{self.ana.name}_{timestamp}'
         # This test flakes if executed right at midnight due to timestamp in assert string
-        self.assertEqual(self.ana.storage_dir[:-5], f'{self.ana.user.username}/{fullname}')
+        storedir =  f'{self.ana.user.username}/{fullname}'
+        self.assertEqual(self.ana.storage_dir, storedir)
+        self.anajob.refresh_from_db()
+        c_ch = am.PsetComponent.ComponentChoices
+        checkjson = {'analysis_id': self.ana.pk,
+          'dstsharename': settings.ANALYSISSHARENAME,
+          'filefields': {},
+          'filesamples': {'2': 'setA'},
+          'fullname': fullname,
+          'infiles': {f'{self.f3sfmz.pk}': 1},
+          'inputs': {'components': {c_ch.INPUTDEF.name: self.inputdef.value,
+              c_ch.PREFRAC.name: '.*fr([0-9]+).*mzML$', c_ch.ISOQUANT.name: {},
+              c_ch.ISOQUANT_SAMPLETABLE.name: [[self.qch.name, 'setA', 'samplename', 'groupname']],
+              },
+              'multifiles': {f'{self.pfn1.nfparam}': [self.sfusr.pk]},
+              'params': ['--isobaric', f'setA:{self.qt.shortname}:{self.qch.name}',
+                  f'{self.param2.nfparam}', self.popt1.value, 
+                  f'{self.param1.nfparam}', '',
+                  f'{self.param3.nfparam}', '42',
+                  f'{self.param4.nfparam}', self.popt4.value,
+                  ],
+              'singlefiles': {f'{self.pfn2.nfparam}': self.sflib.pk}},
+              'platenames': {}, 'storagepath': storedir, 'wfv_id': self.nfwf.pk}
+
+        self.assertJSONEqual(json.dumps(self.anajob.kwargs), json.dumps(checkjson))
         checkjson = {'error': False, 'analysis_id': self.ana.pk}
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
         self.assertFalse(hasattr(self.ana, 'analysisbaseanalysis'))
