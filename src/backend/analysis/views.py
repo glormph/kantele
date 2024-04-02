@@ -126,26 +126,29 @@ def load_base_analysis(request, wfversion_id, baseanid):
             analysis['fileparams'][afp.param_id] = afp.sfile_id
 
     # Get datasets from base analysis for their setnames/filesamples etc
-    # Only overlapping datasets are fetched here
-    dsets = {x: {} for x in new_ana_dsids}
+    # Only overlapping datasets are fetched here (empty dsets are popped at the end)
+    dsets = {x: defaultdict(dict) for x in new_ana_dsids}
     analysis_dsfiles = defaultdict(set)
-    for ads in ana.analysisdatasetsetname_set.filter(dataset_id__in=new_ana_dsids):
-        dsets[ads.dataset_id] = {'setname': ads.setname.setname, 'frregex': ads.regex,
-                'files': {}} 
-        analysis_dsfiles[ads.dataset_id] = {x.sfile_id for x in am.AnalysisDSInputFile.objects.filter(analysis_id=ads.analysis_id, analysisdset=ads)}
+    for ads in ana.analysisdatasetsetvalue_set.filter(dataset_id__in=new_ana_dsids):
+        dsets[ads.dataset_id]['fields'][ads.field] = ads.value
+        dsets[ads.dataset_id]['setname'] = ads.setname.setname
+        dsets[ads.dataset_id]['files'] = {}
+        analysis_dsfiles[ads.dataset_id] = {x.sfile_id for x in
+                am.AnalysisDSInputFile.objects.filter(analysisset=ads.setname)}
 
     for dsid in new_ana_dsids:
-        for fn in am.AnalysisFileSample.objects.filter(analysis=ana,
+        for fn in am.AnalysisFileValue.objects.filter(analysis=ana,
                 sfile__rawfile__datasetrawfile__dataset_id=dsid):
             analysis_dsfiles[dsid].add(fn.sfile_id)
             # FIXME files should maybe be called filesamples -> less confusion
             try:
-                dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'setname': fn.sample}
+                dsets[dsid]['files'][fn.sfile_id]['fields'][fn.field] = fn.value
             except KeyError:
-                dsets[dsid]['files'] = {fn.sfile_id: {'id': fn.sfile_id, 'setname': fn.sample}}
+                dsets[dsid]['files'][fn.sfile_id] = {'id': fn.sfile_id, 'fields': {fn.field: fn.value}}
+                dsets[dsid]['fields'] = {}
         if 'files' in dsets[dsid]:
-            # Must check if dset is actually in the overlap before setting filesaresets, else it errors
-            dsets[dsid]['filesaresets'] = any((x['setname'] != '' for x in dsets[dsid]['files'].values()))
+            # Must check if dset is actually in the overlap before setting allfilessamesample, else it errors
+            dsets[dsid]['allfilessamesample'] = all(not x['fields']['__sample'] for x in dsets[dsid]['files'].values())
     # Clean dsets to only contain dsets from base analysis
     [dsets.pop(x) for x in new_ana_dsids if not dsets[x]]
 
@@ -388,13 +391,17 @@ def get_datasets(request, wfversion_id):
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     wfcomponents = {allcomponents[x.component].name: x.value
             for x in am.PsetComponent.objects.filter(pset__nextflowwfversionparamset=wfversion_id)}
+    inputcomps = wfcomponents.get('INPUTDEF', [])
+    non_fields = {'setname', 'sampleID', 'instrument', 'channel', 'plate', 'fraction'}
+    fields = {x: '' for x in inputcomps[1:] if not x in non_fields}
+    field_order = [x for x in fields.keys()]
 
     # Get analysis filesamples for later use
-    has_filesamples, analysis_dsfiles = {}, set()
+    has_filesamples, analysis_dsfiles = defaultdict(dict), set()
     if anid:
-        if afss := am.AnalysisFileSample.objects.filter(analysis_id=anid):
-            has_filesamples = {x.sfile_id: x.sample for x in afss}
-            analysis_dsfiles = {x for x in has_filesamples}
+        for afv in am.AnalysisFileValue.objects.filter(analysis_id=anid):
+            has_filesamples[afv.sfile_id][afv.field] = afv.value
+        analysis_dsfiles = {x for x in has_filesamples}
     
     # FIXME accumulate errors across data sets and show all, but do not report other stuff if error
     for dset in dbdsets.select_related('runname__experiment__project', 'prefractionationdataset',
@@ -411,15 +418,22 @@ def get_datasets(request, wfversion_id):
                     hr = f'HiRIEF {str(pf.hiriefdataset.hirief)}'
             frregex = wfcomponents['PREFRAC']
 
-        # Sample(set) names and previously used files
+        # Sample(set) names, adsv fields and previously used files
         setname = ''
         if anid:
-            if adsn := am.AnalysisDatasetSetname.objects.filter(analysis_id=anid, dataset=dset):
-                adsn = adsn.get(analysis_id=anid)
-                setname = adsn.setname.setname
-                analysis_dsfiles.update({x.sfile_id for x in am.AnalysisDSInputFile.objects.filter(analysis_id=anid, analysisdset=adsn)})
-                # PREFRAC component:
-                frregex = adsn.regex
+            if adsis := am.AnalysisDSInputFile.objects.filter(dsanalysis__analysis_id=anid,
+                    dsanalysis__dataset=dset):
+                anasetname = adsis.select_related('analysisset').first().analysisset
+                setname = anasetname.setname
+                analysis_dsfiles.update({x.sfile_id for x in adsis})
+            # PREFRAC component:
+            if adsvs := am.AnalysisDatasetSetValue.objects.filter(analysis_id=anid,
+                    dataset=dset, field='__regex'):
+                frregex = adsvs.get().value
+            # Get other existing fields if any
+            fields.update({x.field: x.value for x in
+                am.AnalysisDatasetSetValue.objects.filter(analysis_id=anid,
+                    dataset=dset).exclude(field__startswith='__')})
 
         # Get dataset files
         dssfiles = rm.StoredFile.objects.select_related('rawfile__producer', 'servershare',
@@ -483,7 +497,8 @@ def get_datasets(request, wfversion_id):
                     incomplete_files.append(ft)
 
         resp_files = {x.id: {'ft_name': ft_name, 'id': x.id, 'name': x.filename, 'fr': '',
-            'setname': '', 'sample': ''} for ft_name, dsf in usefiles.items() for x in dsf}
+            'dsetsample': '', 'fields': {'__sample': '', **fields}}
+            for ft_name, dsf in usefiles.items() for x in dsf}
 
         # Fill channels with quant data
         channels = {}
@@ -499,26 +514,25 @@ def get_datasets(request, wfversion_id):
             for ft_name, dsfiles in usefiles.items():
                 for fn in dsfiles.filter(rawfile__datasetrawfile__quantsamplefile__isnull=False).select_related(
                         'rawfile__datasetrawfile__quantsamplefile__projsample'):
-                    resp_files[fn.id]['sample'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
+                    resp_files[fn.id]['dsetsample'] = fn.rawfile.datasetrawfile.quantsamplefile.projsample.sample
                     if fn.id in has_filesamples:
-                        resp_files[fn.id]['setname'] = has_filesamples[fn.id]
+                        resp_files[fn.id]['fields'].update(has_filesamples[fn.id])
 
         # Files with samples (non-MS, IP, non-isobaric, etc)
-        # FIXME rename this key to samplename instead of setname!
-        filesaresets = False
         if anid and is_msdata:
-            filesaresets = any((x['setname'] != '' for x in resp_files.values()))
+            allfilessamesample  = all((x['fields']['__sample'] == '' for x in resp_files.values()))
 
         elif not is_msdata:
             # sequencing data etcetera, always have sample-per-file since we dont
             # expect multiplexing or fractionation here
             # Add possible already stored analysis file samplenames
-            filesaresets = True
+            allfilessamesample= False
 
         else:
             # New analysis, set names for files can be there quantsamplefile values
             # initially
-            [x.update({'setname': x['sample']}) for x in resp_files.values()]
+            allfilessamesample = True 
+            [x['fields'].update({'__sample': x['dsetsample']}) for x in resp_files.values()]
 
         # Finalize response
         grouped_resp_files = defaultdict(list)
@@ -540,7 +554,7 @@ def get_datasets(request, wfversion_id):
                 'prefrac': prefrac,
                 'hr': hr,
                 'setname': setname,
-                'frregex': frregex,
+                'fields': {'__regex': frregex, **fields},
                 'instruments': [x.rawfile.producer.name for x in producers],
                 'instrument_types': [x.rawfile.producer.shortname for x in producers],
                 'qtype': qtype,
@@ -549,12 +563,12 @@ def get_datasets(request, wfversion_id):
                 'ft_files': grouped_resp_files,
                 'incomplete_files': incomplete_files,
                 'picked_ftype': picked_ft,
-                'filesaresets': filesaresets,
+                'allfilessamesample': allfilessamesample,
                 }
     if len(response['errmsg']):
         return JsonResponse({**response, 'error': True}, status=400)
     else:
-        response['dsets'] = dsetinfo
+        response.update({'dsets': dsetinfo, 'field_order': field_order})
         return JsonResponse(response)
 
 
@@ -666,8 +680,8 @@ def store_analysis(request):
         req['dssetnames']
         req['picked_ftypes']
         req['analysisname']
-        req['frregex']
-        req['fnsetnames']
+        req['dsetfields']
+        req['fnfields']
         req['params']
         req['singlefiles']
         req['multifiles']
@@ -803,13 +817,16 @@ def store_analysis(request):
         dss = am.DatasetAnalysis.objects.filter(analysis=analysis)
         excess_dss = {x.dataset_id for x in dss}.difference(req['dsids'])
         dss.filter(dataset_id__in=excess_dss).delete()
-        am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
+        newdss = am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
         wfshortname = am.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
+        dss_map = {x.dataset_id: x.pk for x in [*dss, *newdss]}
     else:
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
         wfshortname = am.UserWorkflow.WFTypeChoices(am.UserWorkflow.objects.get(pk=req['wfid']).wftype).name
-        am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) for dsid in req['dsids']])
+        dss = am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid,
+            analysis=analysis) for dsid in req['dsids']])
+        dss_map = {x.dataset_id: x.pk for x in dss}
     ana_storpathname = (f'{analysis.pk}_{wfshortname}_{analysis.name}_'
             f'{datetime.strftime(analysis.date, "%Y%m%d_%H.%M")}')
     analysis.storage_dir = f'{analysis.user.username}/{ana_storpathname}'
@@ -817,7 +834,7 @@ def store_analysis(request):
 
     in_components = {k: v for k, v in req['components'].items() if v}
     jobinputs = {'components': wf_components, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
-    data_args = {'setnames': {}, 'platenames': {}}
+    data_args = {'filesamples': {}, 'platenames': {}, 'filefields': defaultdict(dict)}
     data_args['infiles'] = req['infiles']
 
     # Input file definition
@@ -827,7 +844,6 @@ def store_analysis(request):
         jobinputs['components']['INPUTDEF'] = False
 
     # Store setnames
-    # FIXME component?
     setname_ids = {}
     am.AnalysisSetname.objects.filter(analysis=analysis).exclude(setname__in=req['dssetnames'].values()).delete()
     for setname in set(req['dssetnames'].values()):
@@ -835,19 +851,18 @@ def store_analysis(request):
         setname_ids[setname] = anaset.pk
     # setnames for datasets, optionally fractions and strips
     new_ads = {}
-    am.AnalysisDSInputFile.objects.filter(analysis=analysis).exclude(sfile_id__in=req['infiles']).delete()
+    am.AnalysisDSInputFile.objects.filter(analysisset__analysis=analysis).exclude(sfile_id__in=req['infiles']).delete()
     for dsid, setname in req['dssetnames'].items():
         if 'PREFRAC' in wf_components:
-            regex = req['frregex'][dsid] 
-        else:
-            regex = ''
-        ads, created = am.AnalysisDatasetSetname.objects.update_or_create(
-                defaults={'setname_id': setname_ids[setname], 'regex': regex},
-                analysis=analysis, dataset_id=dsid) 
+            regex = req['dsetfields'][dsid]['__regex']
+            ads, created = am.AnalysisDatasetSetValue.objects.update_or_create(
+                    defaults={'setname_id': setname_ids[setname], 'value': regex},
+                    analysis=analysis, field='__regex', dataset_id=dsid) 
         new_ads[ads.pk] = created
         for sf in dsfiles[dsid]:
-            am.AnalysisDSInputFile.objects.update_or_create(sfile=sf, analysis=analysis, analysisdset=ads)
-            data_args['setnames'][sf.pk] = setname
+            am.AnalysisDSInputFile.objects.get_or_create(sfile=sf, analysisset_id=setname_ids[setname],
+                    dsanalysis_id=dss_map[dsid])
+            data_args['filesamples'][sf.pk] = setname
         dset = dsets[dsid]
         if 'PREFRAC' in wf_components and hasattr(dset, 'prefractionationdataset'):
             # get platenames
@@ -857,14 +872,15 @@ def store_analysis(request):
                 data_args['platenames'][dsid] = strip
             else:
                 data_args['platenames'][dsid] = pfd.prefractionation.name
-    am.AnalysisDatasetSetname.objects.filter(analysis=analysis).exclude(pk__in=new_ads).delete()
+    am.AnalysisDatasetSetValue.objects.filter(analysis=analysis).exclude(pk__in=new_ads).delete()
 
     # store samples if non-prefrac labelfree files are sets
-    am.AnalysisFileSample.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fnsetnames']).delete()
-    for sfid, sample in req['fnsetnames'].items():
-        am.AnalysisFileSample.objects.update_or_create(defaults={'sample': sample},
-                analysis=analysis, sfile_id=sfid) 
-    data_args['setnames'].update({sfid: sample for sfid, sample in req['fnsetnames'].items()})
+    am.AnalysisFileValue.objects.filter(analysis=analysis).exclude(sfile_id__in=req['fnfields']).delete()
+    for sfid, sample in req['fnfields'].items():
+        for fieldname, value in sample.items():
+            am.AnalysisFileValue.objects.update_or_create(defaults={'value': value},
+                    field=fieldname, analysis=analysis, sfile_id=sfid) 
+    data_args['filesamples'].update({sfid: sample for sfid, sample in req['fnfields'].items()})
 
     # Store params
     passedparams_exdelete = {**req['params']['flags'], **req['params']['inputparams'], **req['params']['multicheck']}
@@ -910,8 +926,12 @@ def store_analysis(request):
             sampletables = base_ana.analysissampletable.samples
         else:
             sampletables = {}
-        shadow_dss = {x.dataset_id: {'setname': x.setname.setname, 'regex': x.regex}
-                for x in base_ana.analysisdatasetsetname_set.all()}
+        shadow_dss = {}
+        for x in base_ana.analysisdatasetsetvalue_set.all():
+            try:
+                shadow_dss[x.dataset_id]['fields'][x.field] = x.value
+            except KeyError:
+                shadow_dss[x.dataset_id] = {'setname': x.setname.setname, 'fields': {x.field: x.value}}
         shadow_isoquants = get_isoquants(base_ana, sampletables)
         # Add the base analysis' own base analysis shadow isquants/dss is any
         try:
@@ -1003,7 +1023,7 @@ def get_isoquants(analysis, sampletables):
     """For analysis passed, return its analysisisoquants from DB in nice format for frontend"""
     isoquants = {}
     for aiq in am.AnalysisIsoquant.objects.select_related('setname').filter(analysis=analysis):
-        set_dsets = aiq.setname.analysisdatasetsetname_set.all()
+        set_dsets = am.DatasetAnalysis.objects.filter(analysisdsinputfile__analysisset=aiq.setname)
         qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').distinct().get()['dataset__quantdataset__quanttype__shortname']
         qcsamples = {qcs.channel.channel_id: qcs.projsample.sample for qcs in dm.QuantChannelSample.objects.filter(dataset_id__in=set_dsets.values('dataset'))}
         channels = {qtc.channel.name: qtc.channel_id for anasds in set_dsets.distinct('dataset__quantdataset__quanttype') for qtc in anasds.dataset.quantdataset.quanttype.quanttypechannel_set.all()}
