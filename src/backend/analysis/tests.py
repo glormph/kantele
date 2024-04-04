@@ -635,8 +635,12 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
     def test_existing_analysis(self):
         quant = self.ds.quantdataset.quanttype
         params = {'flags': {self.param1.pk: True},
-                'inputparams': {self.param3.pk: 42, self.param4.pk: self.popt4.pk}, 
-                'multicheck': {self.param2.pk: [self.popt1.pk]}}
+                # str(self.popt4.pk) is because it is a key in a select param (value is its name)
+                # and in JSON keys are not ints
+                'inputparams': {self.param3.pk: 42, self.param4.pk: str(self.popt4.pk)},
+                # str(self.popt1.pk) is because it is multiparam which is passed as string
+                # {param}___{value} in the frontend
+                'multicheck': {self.param2.pk: [str(self.popt1.pk)]}}
         postdata = {'dsids': [f'{self.ds.pk}'],
             'analysis_id': self.ana.pk,
             'infiles': {self.f3sfmz.pk: 1},
@@ -653,7 +657,7 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
                 },
             'analysisname': 'Test existing analysis',
             'fnfields': {},
-            'dsetfields': {f'{self.ds.pk}': {'__regex': 'fr_find'}},
+            'dsetfields': {self.ds.pk: {'__regex': 'fr_find'}},
             'params': params,
             'singlefiles': {self.pfn2.pk: self.sflib.pk},
             'multifiles': {self.pfn1.pk: [self.sfusr.pk]},
@@ -683,12 +687,17 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
         for adsif in am.AnalysisDSInputFile.objects.filter(analysisset__analysis=self.ana):
             self.assertEqual(adsif.dsanalysis.dataset_id, self.ds.pk)
             self.assertEqual(adsif.analysisset.setname, postdata['dssetnames'][self.ds.pk])
-            self.assertEqual(regexes[adsif.dsanalysis.dataset_id], postdata['dsetfields'][f'{self.ds.pk}']['__regex'])
+            self.assertEqual(regexes[adsif.dsanalysis.dataset_id], postdata['dsetfields'][self.ds.pk]['__regex'])
         PT = am.Param.PTypes
         for ap in self.ana.analysisparam_set.all():
             pt = {PT.MULTI: 'multicheck', PT.TEXT: 'inputparams', PT.NUMBER: 'inputparams',
                     PT.FLAG: 'flags', PT.SELECT: 'inputparams'}[ap.param.ptype]
-            self.assertEqual(ap.value, params[pt][ap.param_id])
+            if ap.param.ptype == PT.SELECT:
+                self.assertEqual(ap.value, int(params[pt][ap.param_id]))
+            elif ap.param.ptype ==  PT.MULTI:
+                self.assertEqual(ap.value, [int(x) for x in params[pt][ap.param_id]])
+            else:
+                self.assertEqual(ap.value, params[pt][ap.param_id])
         self.assertEqual(self.ana.name, postdata['analysisname'])
         fullname = f'{self.ana.pk}_{self.wftype.name}_{self.ana.name}_{timestamp}'
         # This test flakes if executed right at midnight due to timestamp in assert string
@@ -696,27 +705,27 @@ class TestStoreExistingIsoAnalysis(AnalysisTest):
         self.assertEqual(self.ana.storage_dir, storedir)
         self.anajob.refresh_from_db()
         c_ch = am.PsetComponent.ComponentChoices
-        checkjson = {'analysis_id': self.ana.pk,
+        job_check_kwargs = {'analysis_id': self.ana.pk,
           'dstsharename': settings.ANALYSISSHARENAME,
           'filefields': {},
           'filesamples': {self.f3sfmz.pk: 'setA'},
           'fullname': fullname,
-          'infiles': {f'{self.f3sfmz.pk}': 1},
+          'infiles': {self.f3sfmz.pk: 1},
           'inputs': {'components': {c_ch.INPUTDEF.name: self.inputdef.value,
               c_ch.PREFRAC.name: '.*fr([0-9]+).*mzML$', c_ch.ISOQUANT.name: {},
               c_ch.ISOQUANT_SAMPLETABLE.name: [[self.qch.name, 'setA', 'samplename', 'groupname']],
               },
-              'multifiles': {f'{self.pfn1.nfparam}': [self.sfusr.pk]},
+              'multifiles': {self.pfn1.nfparam: [self.sfusr.pk]},
               'params': ['--isobaric', f'setA:{self.qt.shortname}:{self.qch.name}',
-                  f'{self.param2.nfparam}', self.popt1.value, 
-                  f'{self.param1.nfparam}', '',
-                  f'{self.param3.nfparam}', '42',
-                  f'{self.param4.nfparam}', self.popt4.value,
+                  self.param2.nfparam, self.popt1.value, 
+                  self.param1.nfparam, '',
+                  self.param3.nfparam, '42',
+                  self.param4.nfparam, self.popt4.value,
                   ],
               'singlefiles': {f'{self.pfn2.nfparam}': self.sflib.pk}},
               'platenames': {}, 'storagepath': storedir, 'wfv_id': self.nfwf.pk}
 
-        self.assertJSONEqual(json.dumps(self.anajob.kwargs), json.dumps(checkjson))
+        self.assertJSONEqual(json.dumps(self.anajob.kwargs), json.dumps(job_check_kwargs))
         checkjson = {'error': False, 'analysis_id': self.ana.pk}
         self.assertJSONEqual(resp.content.decode('utf-8'), checkjson)
         self.assertFalse(hasattr(self.ana, 'analysisbaseanalysis'))
