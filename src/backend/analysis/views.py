@@ -834,8 +834,8 @@ def store_analysis(request):
 
     in_components = {k: v for k, v in req['components'].items() if v}
     jobinputs = {'components': wf_components, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
-    data_args = {'filesamples': {}, 'platenames': {}, 'filefields': defaultdict(dict)}
-    data_args['infiles'] = req['infiles']
+    data_args = {'filesamples': {}, 'platenames': {}, 'filefields': defaultdict(dict),
+            'infiles': req['infiles'], 'sf_ids': [int(x) for x in req['infiles'].keys()]}
 
     # Input file definition
     if 'INPUTDEF' in wf_components:
@@ -1115,9 +1115,11 @@ def purge_analysis(request):
     for webfile in rm.StoredFile.objects.filter(analysisresultfile__analysis__id=analysis.pk, servershare_id=webshare.pk):
         fpath = os.path.join(settings.WEBSHARE, webfile.path, webfile.filename)
         os.unlink(fpath)
-    jj.create_job('purge_analysis', analysis_id=analysis.id)
-    jj.create_job('delete_empty_directory',
-            sf_ids=[x.sfile_id for x in analysis.analysisresultfile_set.all()])
+    sfiles = rm.StoredFile.objects.filter(analysisresultfile__analysis__id=analysis.pk)
+    sfiles.update(deleted=True)
+    sf_ids = [x['pk'] for x in sfiles.values('pk')]
+    jj.create_job('purge_analysis', analysis_id=analysis.pk, sf_ids=sf_ids)
+    jj.create_job('delete_empty_directory', sf_ids=sf_ids)
     return JsonResponse({})
 
 

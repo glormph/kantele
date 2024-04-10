@@ -220,9 +220,8 @@ def purge_storedfile(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').get()
-    sfile.purged, sfile.deleted = True, True
-    sfile.save()
+    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').update(
+            deleted=True, purged=True)
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()

@@ -8,7 +8,6 @@ from kantele import settings
 from jobs.models import Job, Task
 from rawstatus.models import StoredFile
 from datasets import models as dm
-from analysis import models as am
 
 
 class Jobstates:
@@ -53,6 +52,9 @@ class BaseJob:
         the job (so it cant run if if files are in use by other job)"""
         return [x.pk for x in self.getfiles_query(**kwargs)]
 
+    def get_dsids_jobrunner(self, **kwargs):
+        return []
+
     def run(self, **kwargs):
         self.process(**kwargs)
         self.queue_tasks()
@@ -73,19 +75,39 @@ class BaseJob:
 
 
 class SingleFileJob(BaseJob):
-    def getfiles_pre_query(self, **kwargs):
-        return StoredFile.objects.filter(pk=kwargs['sf_id']).select_related(
-                'servershare', 'rawfile')
-
     def getfiles_query(self, **kwargs):
-        return self.getfiles_pre_query(**kwargs).get()
+        # FIXME do .get and .select_related in jobs itself?
+        # As in multifile job (PurgeFiles)
+        return StoredFile.objects.filter(pk=kwargs['sf_id']).select_related(
+                'servershare', 'rawfile').get()
 
     def get_sf_ids_jobrunner(self, **kwargs):
         return [self.getfiles_query(**kwargs).id]
 
+    def get_dsids_jobrunner(self, **kwargs):
+        ''''In case a single file has a dataset'''
+        return [x['pk'] for x in dm.Dataset.objects.filter(deleted=False, purged=False,
+            datasetrawfile__rawfile__storedfile_id=kwargs['sf_id']).values('pk')]
+
+
+class MultiFileJob(BaseJob):
+    def getfiles_query(self, **kwargs):
+        return StoredFile.objects.filter(pk__in=kwargs['sf_ids'])
+
+    def get_sf_ids_jobrunner(self, **kwargs):
+        return [x['pk'] for x in self.getfiles_query(**kwargs).values('pk')]
+
+    def get_dsids_jobrunner(self, **kwargs):
+        ''''In case a single file has a dataset'''
+        return [x['pk'] for x in dm.Dataset.objects.filter(deleted=False, purged=False,
+            datasetrawfile__rawfile__storedfile__in=kwargs['sf_ids']).values('pk')]
+
 
 class DatasetJob(BaseJob):
     '''Any job that changes a dataset (rename, adding/removing files, backup, reactivate)'''
+
+    def get_dsids_jobrunner(self, **kwargs):
+        return [kwargs['dset_id']]
 
     def get_sf_ids_jobrunner(self, **kwargs):
         '''Let all files associated with dataset wait, including added files on other path, and 
@@ -96,16 +118,42 @@ class DatasetJob(BaseJob):
         return [x.pk for x in dsfiles.union(ds_ondisk)]
 
     def getfiles_query(self, **kwargs):
-        '''Get all files with same path as dset.storage_loc'''
+        '''Get all files with same path as dset.storage_loc. This gets all files in the dset dir,
+        not only the ones that have a datasetrawfile. This means there will also be
+        ... FIXME which files are not dsetrawfile but still in the dataset dir?? Probably "removed files"
+        or some other state in which files are not yet or no longer associated?
+        '''
         dset = dm.Dataset.objects.get(pk=kwargs['dset_id'])
         return StoredFile.objects.filter(servershare=dset.storageshare, path=dset.storage_loc)
 
+
+class ProjectJob(BaseJob):
+    def get_dsids_jobrunner(self, **kwargs):
+        return [x.pk for x in dm.Dataset.objects.filter(deleted=False, purged=False,
+            runname__experiment__project_id=kwargs['proj_id'])]
+
+    def getfiles_query(self, **kwargs):
+        '''Get all files with same path as project_dsets.storage_locs, used to update
+        path of those files post-job'''
+        dsets = dm.Dataset.objects.filter(runname__experiment__project_id=kwargs['proj_id'])
+        return StoredFile.objects.filter(
+                servershare__in=[x.storageshare for x in dsets.distinct('storageshare')],
+                path__in=[x.storage_loc for x in dsets.distinct('storage_loc')])
+
+    def get_sf_ids_jobrunner(self, **kwargs):
+        """Get all sf ids in project to mark them as not using pre-this-job"""
+        projfiles = StoredFile.objects.filter(deleted=False, purged=False,
+                rawfile__datasetrawfile__dataset__runname__experiment__project_id=kwargs['proj_id'])
+        dsets = dm.Dataset.objects.filter(runname__experiment__project_id=kwargs['proj_id'])
+        allfiles = StoredFile.objects.filter(servershare__in=[x.storageshare for x in dsets.distinct('storageshare')],
+                path__in=[x.storage_loc for x in dsets.distinct('storage_loc')]).union(projfiles)
+        return [x.pk for x in allfiles]
 
 
 class MultiDatasetJob(BaseJob):
 
     def getfiles_query(self, **kwargs):
-         return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id__in=kwargs['dset_ids'])
+        return StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id__in=kwargs['dset_ids'])
 
 
 def check_existing_search_job(fname, wf_id, wfv_id, inputs, dset_ids, components, platenames=False, fractions=False, setnames=False):

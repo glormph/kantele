@@ -49,8 +49,8 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 for sf_id in sf_ids])
             job_fn_map[job.id] = set(sf_ids)
             # Register dsets FIXME
-            # ds_ids = ...
-            # job_ds_map[job.id] = set(ds_ids)
+            ds_ids = jwrapper.get_dsids_jobrunner(**job.kwargs)
+            job_ds_map[job.id] = set(ds_ids)
             # New jobs can be running/error when e.g. the jobrunner is restarted:
             if job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
                 active_jobs.add(job.pk)
@@ -59,7 +59,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
         # job.refresh_from_db() # speed up job runner after processing
         tasks = job.task_set.all()
         if job.state == Jobstates.DONE:
-            #del(job_ds_map[job.id])
+            del(job_ds_map[job.id])
             del(job_fn_map[job.id])
             active_jobs.remove(job.id)
 
@@ -79,7 +79,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
             job.state = Jobstates.CANCELED
             job.save()
             del(job_fn_map[job.id])
-            #del(job_ds_map[job.id])
+            del(job_ds_map[job.id])
             active_jobs.remove(job.id)
 
         # Ongoing jobs get updated
@@ -94,6 +94,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 print(f'All tasks finished, job {job.id} done')
                 job.state = Jobstates.DONE
                 job.save()
+                del(job_ds_map[job.id])
                 del(job_fn_map[job.id])
                 active_jobs.remove(job.id)
             else:
@@ -103,14 +104,14 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
         # is finished. Errored jobs thus block pending jobs if they are on same files.
         elif job.state == Jobstates.PENDING:
             jobfiles = job_fn_map[job.id]
-            #job_ds = job_ds_map[job.id]
+            job_ds = job_ds_map[job.id]
             # do not start job if there is activity on files or datasets
             active_files = {sf for jid in active_jobs for sf in job_fn_map[jid]}
-            #active_datasets = {ds for jid in active_jobs for ds in job_ds_map[jid]}
+            active_datasets = {ds for jid in active_jobs for ds in job_ds_map[jid]}
             if blocking_files := active_files.intersection(jobfiles):
                 print(f'Deferring job since files {blocking_files} are being used in other job')
-#            elif blocking_ds := active_datasets.intersection(job_ds):
-#                print(f'Deferring job since datasets {blocking_ds} are being used in other job')
+            elif blocking_ds := active_datasets.intersection(job_ds):
+                print(f'Deferring job since datasets {blocking_ds} are being used in other job')
             else:
                 print('Executing job {}'.format(job.id))
                 active_jobs.add(job.id)

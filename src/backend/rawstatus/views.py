@@ -62,25 +62,25 @@ def import_external_data(request):
         extprod = Producer.objects.get(pk=indset['instrument_id'])
         run, created = dsmodels.RunName.objects.get_or_create(name=indset['name'], experiment=exp)
         dset = dsmodels.Dataset.objects.filter(runname=run)
+        # save_new_dset is complex enough to not use .get_or_create
         if not dset.exists():
             dset = dsviews.save_new_dataset(dscreatedata, proj, exp, run, request.user.id)
         else:
             dset = dset.get()
-        raw_ids = []
+        sf_ids = []
         for fpath, size in indset['files']:
             path, fn = os.path.split(fpath)
             fakemd5 = md5()
             fakemd5.update(fn.encode('utf-8'))
             fakemd5 = fakemd5.hexdigest()
             rawfn = get_or_create_rawfile(fakemd5, fn, extprod, size, date, {'claimed': True})
-            raw_ids.append(rawfn['file_id'])
-            if not rawfn['stored']:
-                StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
-                        filetype_id=extprod.msinstrument.filetype_id, filename=fn,
-                        defaults={'servershare_id': share.id, 'path': os.path.join(req['dirname'], path),
-                            'md5': fakemd5})
+            sfile = StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
+                    filetype_id=extprod.msinstrument.filetype_id, filename=fn,
+                    defaults={'servershare_id': share.id,
+                        'path': os.path.join(req['dirname'], path), 'md5': fakemd5})
+            sf_ids.append(sfile.pk)
         # Jobs to get MD5 etc
-        jobutil.create_job('register_external_raw', dset_id=dset.id, rawfnids=raw_ids, sharename=share.name)
+        jobutil.create_job('register_external_raw', dset_id=dset.id, sf_ids=sf_ids, sharename=share.name)
     return JsonResponse({})
 
 

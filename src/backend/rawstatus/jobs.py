@@ -7,7 +7,7 @@ from datetime import datetime
 from rawstatus import tasks, models
 from datasets import tasks as dstasks
 from kantele import settings
-from jobs.jobs import BaseJob, SingleFileJob
+from jobs.jobs import SingleFileJob, MultiFileJob, DatasetJob
 
 
 def create_upload_dst_web(rfid, ftype):
@@ -100,26 +100,26 @@ class MoveSingleFile(SingleFileJob):
             sfile.path, kwargs['dst_path'], sfile.id, dstsharename), taskkwargs))
 
 
-class PurgeFiles(BaseJob):
+class PurgeFiles(MultiFileJob):
     """Removes a number of files from active storage"""
     refname = 'purge_files'
     task = tasks.delete_file
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related(
-                'servershare', 'filetype')
+        return super().getfiles_query(**kwargs).values('mzmlfile', 'path', 'filename',
+                'filetype__is_folder', 'servershare__name', 'pk') 
 
     def process(self, **kwargs):
         for fn in self.getfiles_query(**kwargs):
-            fullpath = os.path.join(fn.path, fn.filename)
-            if hasattr(fn, 'mzmlfile'):
+            fullpath = os.path.join(fn['path'], fn['filename'])
+            if fn['mzmlfile'] is not None:
                 is_folder = False
             else:
-                is_folder = fn.filetype.is_folder
-            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id, is_folder), {}))
+                is_folder = fn['filetype__is_folder']
+            self.run_tasks.append(((fn['servershare__name'], fullpath, fn['pk'], is_folder), {}))
 
 
-class DeleteEmptyDirectory(BaseJob):
+class DeleteEmptyDirectory(MultiFileJob):
     """Check first if all the sfids are set to purged, indicating the dir is actually empty.
     Then queue a task. The sfids also make this job dependent on other jobs on those, as in
     the file-purging tasks before this directory deletion"""
@@ -127,14 +127,13 @@ class DeleteEmptyDirectory(BaseJob):
     task = tasks.delete_empty_dir
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related(
-                'servershare', 'rawfile')
+        return super().getfiles_query(**kwargs).values('servershare__name', 'path')
     
     def process(self, **kwargs):
         sfiles = self.getfiles_query(**kwargs)
         if sfiles.count() and sfiles.count() == sfiles.filter(purged=True).count():
             fn = sfiles.last()
-            self.run_tasks.append(((fn.servershare.name, fn.path), {}))
+            self.run_tasks.append(((fn['servershare__name'], fn['path']), {}))
         elif not sfiles.count():
             pass
         else:
@@ -142,7 +141,7 @@ class DeleteEmptyDirectory(BaseJob):
                 'have not been purged yet in the directory')
 
 
-class RegisterExternalFile(BaseJob):
+class RegisterExternalFile(MultiFileJob):
     refname = 'register_external_raw'
     task = tasks.register_downloaded_external_raw
     """gets sf_ids, of non-checked downloaded external RAW files in tmp., checks MD5 and 
@@ -150,20 +149,25 @@ class RegisterExternalFile(BaseJob):
     """
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(rawfile_id__in=kwargs['rawfnids'], checked=False)
+        return super().filter(checked=False).values('path', 'filename', 'pk', 'rawfile_id')
     
     def process(self, **kwargs):
         for fn in self.getfiles_query(**kwargs):
-            self.run_tasks.append(((os.path.join(fn.path, fn.filename), fn.id,
-                fn.rawfile_id, kwargs['sharename'], kwargs['dset_id']), {}))
+            self.run_tasks.append(((os.path.join(fn['path'], fn['filename']), fn['pk'],
+                fn['rawfile_id'], kwargs['sharename'], kwargs['dset_id']), {}))
 
 
-class DownloadPXProject(BaseJob):
+class DownloadPXProject(DatasetJob):
     refname = 'download_px_data'
     task = tasks.download_px_file_raw
     """gets sf_ids, of non-checked non-downloaded PX files.
     checks pride, fires tasks for files not yet downloaded. 
     """
+
+    def get_sf_ids_jobrunner(self, **kwargs):
+        """This is run before running job, to define files used by
+        the job (so it cant run if if files are in use by other job)"""
+        return [x.pk for x in self.getfiles_query(**kwargs)]
 
     def getfiles_query(self, **kwargs):
         return models.StoredFile.objects.filter(rawfile_id__in=kwargs['shasums'], 

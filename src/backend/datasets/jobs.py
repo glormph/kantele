@@ -9,11 +9,11 @@ from datasets.models import Dataset, DatasetRawFile, Project
 from analysis.models import Proteowizard, MzmlFile, NextflowWfVersionParamset
 from datasets import tasks
 from rawstatus import tasks as filetasks
-from jobs.jobs import BaseJob, DatasetJob, create_job
+from jobs.jobs import DatasetJob, ProjectJob
 from rawstatus import jobs as rsjobs
 
 
-class RenameProject(BaseJob):
+class RenameProject(ProjectJob):
     '''Uses task that does os.rename on project lvl dir. Needs also to update
     dsets / storedfiles to new path post job'''
     refname = 'rename_top_lvl_projectdir'
@@ -22,20 +22,13 @@ class RenameProject(BaseJob):
 
     def getfiles_query(self, **kwargs):
         '''Get all files with same path as project_dsets.storage_locs, used to update
-        path of those files post-job'''
-        dsets = Dataset.objects.filter(runname__experiment__project_id=kwargs['proj_id'])
-        return StoredFile.objects.filter(
+        path of those files post-job. NB this is not ALL sfids in this project, but only
+        those confirmed to be in correct location'''
+        dsets = Dataset.objects.filter(runname__experiment__project_id=kwargs['proj_id'],
+                deleted=False, purged=False)
+        return StoredFile.objects.filter(deleted=False, purged=False,
                 servershare__in=[x.storageshare for x in dsets.distinct('storageshare')],
                 path__in=[x.storage_loc for x in dsets.distinct('storage_loc')])
-
-    def get_sf_ids_jobrunner(self, **kwargs):
-        """Get all sf ids in project to mark them as not using pre-this-job"""
-        projfiles = StoredFile.objects.filter(
-                rawfile__datasetrawfile__dataset__runname__experiment__project_id=kwargs['proj_id'])
-        dsets = Dataset.objects.filter(runname__experiment__project_id=kwargs['proj_id'])
-        allfiles = StoredFile.objects.filter(servershare__in=[x.storageshare for x in dsets.distinct('storageshare')],
-                path__in=[x.storage_loc for x in dsets.distinct('storage_loc')]).union(projfiles)
-        return [x.pk for x in allfiles]
 
     def process(self, **kwargs):
         """Fetch fresh project name here, then queue for move from there"""
