@@ -72,11 +72,9 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertEqual(self.f3sf.path, self.ds.storage_loc)
         newf3sf_path = os.path.join(settings.SHAREMAP[self.sstmp.name], self.f3sf.filename)
         self.assertFalse(os.path.exists(newf3sf_path))
-        # call twice to execute tmp-move files on disk, first call only resolves rename dset job
         self.run_job()
         rename_job.refresh_from_db()
         self.assertEqual(rename_job.state, Jobstates.DONE)
-        self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
         # f3 file should now exist in tmp
@@ -121,8 +119,6 @@ class UpdateDatasetTest(BaseIntegrationTest):
         newtmpsf_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.ds.storage_loc,
                 self.tmpsf.filename)
         self.assertFalse(os.path.exists(newtmpsf_path))
-        # call twice to execute add files on disk, first call only resolves rename dset job
-        self.run_job()
         self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
@@ -256,8 +252,6 @@ class RenameProjectTest(BaseIntegrationTest):
         newtmpsf_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.ds.storage_loc,
                 self.tmpsf.filename)
         self.assertFalse(os.path.exists(newtmpsf_path))
-        # call twice to execute add files on disk, first call only resolves rename dset job
-        self.run_job()
         self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
