@@ -8,25 +8,21 @@ Prerequisites:
 
 First you build the containers for running the Django backend with postgres and nginx:
 ```
-# Set user and group id for the file ownership to the same ids the user has.
-# I am not sure how to do this on windows or if it is necessary
-export USER_ID=$(id -u)
-export GROUP_ID=$(id -g)
-
 # Create an .env file:
 cp .env.example .env
 
 # Edit the new .env file!
 
-# Now build the containers
-docker compose build
-
-# Create static files
-bash src/docker/create_static.sh
+# Build containers, with static files and database skeleton
+bash src/docker/init_develop.sh
 
 # Now you can run and go to http://${your-machine-url}/
+# The admin login / password is test / test
 docker compose up
 ```
+
+
+
 
 ## Development:
 
@@ -45,6 +41,19 @@ npm run build
 
 # You can run continuous frontend rebuilding with live reload like this:
 npm run dev
+
+# For refreshing ALL frontend apps at the same time
+# Also does Django static file collection
+bash src/docker/create_static.sh
+```
+
+If you want to rebuild the containers:
+```
+# Set user and group id for the file ownership to the same ids the user has.
+# I am not sure how to do this on windows or if it is necessary
+export USER_ID=$(id -u)
+export GROUP_ID=$(id -g)
+docker compose build
 ```
 
 

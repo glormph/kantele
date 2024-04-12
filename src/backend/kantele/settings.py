@@ -232,6 +232,17 @@ DATABASES = {
     }
 }
 
+if os.environ.get('CLEAN_DB_INIT'):
+    MIGRATION_MODULES = {
+            'analysis': None,
+            'corefac': None,
+            'dashboard': None,
+            'datasets': None,
+            'home': None,
+            'jobs': None,
+            'mstulos': None,
+            'rawstatus': None,
+            }
 
 # Password validation
 # https://docs.djangoproject.com/en/1.11/ref/settings/#auth-password-validators

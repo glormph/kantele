@@ -42,5 +42,6 @@ sleep 5
 
 echo Running tests
 # Run tests
-$DOCKERCMD run --use-aliases web $TESTCMD || (docker-compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml logs storage_mvfiles storage_downloads && exit 1)
+$DOCKERCMD run --use-aliases web $TESTCMD || ($DOCKERCMD logs web storage_mvfiles storage_downloads && exit 1)
 
+$DOCKERCMD down
