@@ -18,18 +18,12 @@ services:
             ANALYSISSHARE: '/analysisfiles' # test only, remove
         volumes:
             - ./src/backend:/kantele
+            - ./static:/kantele/static
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
             - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
     
     nginx:
-        image: kantele_nginx_stage
-        build:
-            context: ./src
-            dockerfile: ./docker/Dockerfile
-            target: nginx_stage
-            args:
-                USER_ID: "${USER_ID:-You must run export USER_ID}"
-                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
+        image: "nginx:1.21"
         depends_on:
             - web
         ports:

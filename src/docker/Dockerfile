@@ -29,13 +29,13 @@ RUN pip install pylint
 USER kantele
 RUN mkdir /home/kantele/.ssh && chmod 700 /home/kantele/.ssh
 
-# Build django static for the nginx container
+# Build django static for the nginx prod container
 FROM django AS django_static
 ARG SECRET_KEY=abcd1234
-RUN python manage.py collectstatic
+RUN python manage.py collectstatic --no-input
 
+# Compile node frontend stuff for prod container
 FROM node:18 AS build_frontend
-# Compile node stuff
 COPY ./frontend /src/frontend
 RUN cd /src/frontend/analysis && npm install && npm run build
 RUN cd /src/frontend/dashboard && npm install && npm run build
@@ -44,15 +44,10 @@ RUN cd /src/frontend/file-inflow && npm install && npm run build
 RUN cd /src/frontend/home && npm install && npm run build
 
 # Nginx to serve static stuff, uploads etc
-# Needs static things in here, for stage only put the static file
-# in case developer has not built all NPM things
-FROM nginx:1.21 AS nginx_stage
-COPY --from=django_static /kantele/static /static
-
-
-# For prod also copy in the relevant config files
-FROM nginx_stage AS nginx_prod
+# also copy in the relevant config files
+FROM nginx:1.21 AS nginx_prod
 COPY --from=build_frontend /static /static
+COPY --from=django_static /kantele/static/ /static/
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/uwsgi_params /etc/nginx/uwsgi_params
 

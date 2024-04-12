@@ -12,8 +12,8 @@ DOCKERCMD="docker compose --env-file  src/docker/.compose.testing.env -f src/doc
 
 # remove old test results if needed (locally)
 echo Cleaning up
-git clean -xf data/fakestorage
-git checkout -- data/fakestorage
+git clean -xf data/teststorage
+git checkout -- data/teststorage
 
 # Clean old containers
 $DOCKERCMD down
