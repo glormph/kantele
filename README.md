@@ -73,14 +73,16 @@ Installing a new database dump:
 ```
 # First delete the old DB - if there is none, first start the containers 
 # with "docker compose up" to initialize postgres:
-docker compose run db dropdb kantele
-docker compose run db createdb kantele
-
-# Now install the new data
 # If the containers are down:
-docker compose run db psql -U kanteleuser -d kantele -f /pgbackups/file_with_dump.sql
-# If you have the containers up:
-docker compose exec db psql -U kanteleuser -d kantele -f /pgbackups/file_with_dump.sql
+docker compose run db dropdb -U postgres kantele
+docker compose run db createdb -U postgres kantele
+# Now install the new data
+docker compose run db psql -U postgres -d kantele -f /pgbackups/file_with_dump.sql
+
+# If instead you have the containers up:
+docker compose exec db dropdb -U postgres kantele
+docker compose exec db createdb -U postgres kantele
+docker compose exec db psql -U postgres -d kantele -f /pgbackups/file_with_dump.sql
 ```
 
 ## Testing
