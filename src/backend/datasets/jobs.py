@@ -160,29 +160,21 @@ class ConvertDatasetMzml(DatasetJob):
         pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
         res_share = ServerShare.objects.get(pk=kwargs['dstshare_id'])
         # First create jobs to delete old files
-        # TODO problem may arise if eg storage worker is down and hasnt finished processing the
-        # and old batch of files. Then the new files will come in before the worker is restarted.
-        # The old files, which will at that point be lying around in their inbox: 
-        # analysis/mzml_in folder, will then be 1.moved, 2.deleted, 3. new file move job will error
         nf_raws = []
+        runpath = f'{dset.id}_convert_mzml_{kwargs["timestamp"]}'
         for fn in self.getfiles_query(**kwargs):
-            mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz, servershare_id=res_share.pk)
+            mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
+            mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz, refined=False,
+                    servershare_id=res_share.pk, path=runpath, mzmlfilename=mzmlfilename)
             if mzsf.checked and not mzsf.purged:
                 continue
-            # refresh file status for previously purged (deleted from disk)  mzmls,
-            # set servershare in case it is not analysis
-            if mzsf.purged:
-                mzsf.checked = False
-                mzsf.purged = False
-            mzsf.servershare = res_share
-            mzsf.save()
-            nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id))
+            nf_raws.append((fn.servershare.name, fn.path, fn.filename, mzsf.id, mzmlfilename))
         if not nf_raws:
             return
         # FIXME last file filetype decides mzml input filetype, we should enforce
         # same filetype files in a dataset if possible
         ftype = mzsf.filetype.name
-        print('Queuing {} raw files for conversion'.format(len(nf_raws)))
+        print(f'Queuing {len(nf_raws)} raw files for conversion')
         nfwf = NextflowWfVersionParamset.objects.select_related('nfworkflow').get(
                 pk=pwiz.nf_version_id)
         run = {'timestamp': kwargs['timestamp'],
@@ -192,7 +184,7 @@ class ConvertDatasetMzml(DatasetJob):
                'repo': nfwf.nfworkflow.repo,
                'nfrundirname': 'small' if len(nf_raws) < 500 else 'larger',
                'dstsharename': res_share.name,
-               'runname': f'{dset.id}_convert_mzml_{kwargs["timestamp"]}',
+               'runname': runpath,
                }
         params = ['--container', pwiz.container_version]
         for pname in ['options', 'filters']:
@@ -290,15 +282,20 @@ class DeleteDatasetPDCBackup(DatasetJob):
     # this for e.g empty or active-only dsets
 
 
-def get_or_create_mzmlentry(fn, pwiz, refined=False, servershare_id=False):
-    '''This also resets the path of the mzML file'''
-    if not servershare_id:
-        servershare_id = fn.servershare_id
-    mzmlfilename = os.path.splitext(fn.filename)[0] + '.mzML'
-    mzsf, cr = StoredFile.objects.update_or_create(mzmlfile__pwiz=pwiz, mzmlfile__refined=refined,
-            rawfile_id=fn.rawfile_id, filetype_id=fn.filetype_id, defaults={
-                'md5': f'mzml_{fn.rawfile.source_md5[5:]}', 'servershare_id': servershare_id,
-                'filename': mzmlfilename, 'path': fn.rawfile.datasetrawfile.dataset.storage_loc})
+def get_or_create_mzmlentry(fn, pwiz, refined, servershare_id, path, mzmlfilename):
+    '''This also resets the path of the mzML file in case it's deleted'''
+    new_md5 = f'mzml_{fn.rawfile.source_md5[5:]}'
+    mzsf, cr = StoredFile.objects.get_or_create(mzmlfile__pwiz=pwiz, mzmlfile__refined=refined,
+            rawfile_id=fn.rawfile_id, filetype_id=fn.filetype_id, defaults={'md5': new_md5,
+                'servershare_id': servershare_id, 'filename': mzmlfilename, 'path': path})
     if cr:
         MzmlFile.objects.create(sfile=mzsf, pwiz=pwiz, refined=refined)
+    elif mzsf.purged or not mzsf.checked:
+        # Any previous mzML files which are deleted or otherwise odd need resetting
+        mzsf.purged = False
+        mzsf.checked = False
+        mzsf.servershare_id = servershare_id
+        mzsf.path = path
+        mzsf.md5 = new_md5
+        mzsf.save()
     return mzsf

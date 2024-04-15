@@ -51,27 +51,29 @@ class RefineMzmls(DatasetJob):
         existing_refined = mzmlfiles.filter(mzmlfile__refined=True)
         mzml_nonrefined = mzmlfiles.exclude(rawfile__storedfile__in=existing_refined).select_related('mzmlfile__pwiz')
         dstshare = rm.ServerShare.objects.get(pk=kwargs['dstshare_id'])
+        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
+        runpath = f'{analysis.id}_{analysis.name}_{timestamp}'
         mzmls = []
         for x in mzml_nonrefined:
-            ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True, servershare_id=dstshare.pk)
+            # FIXME In task: ln -s {dbid}___{fn}_refined.mzML name as input, leave out that part
+            # from NF pipeline, process that name in task also, keep out of job and NF
+            ref_mzml_fname = f'{os.path.splitext(x.filename)[0]}_refined.mzML'
+            ref_sf = get_or_create_mzmlentry(x, x.mzmlfile.pwiz, refined=True,
+                    servershare_id=dstshare.pk, path=runpath, mzmlfilename=ref_mzml_fname)
             mzmls.append({'servershare': x.servershare.name, 'path': x.path, 'fn': x.filename,
                 'sfid': ref_sf.id})
-            if ref_sf.purged:
-                ref_sf.checked = False
-                ref_sf.purged = False
         if not mzmls:
             return
         mzml_ins = mzmlfiles.distinct('rawfile__producer__msinstrument__instrumenttype__name').get()
         params = ['--instrument', mzml_ins.rawfile.producer.msinstrument.instrumenttype.name]
         if kwargs['qtype'] != 'labelfree':
             params.extend(['--isobaric', kwargs['qtype']])
-        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'runname':  f'{analysis.id}_{analysis.name}_{timestamp}',
+               'runname':  runpath,
                'outdir': analysis.user.username,
                'dstsharename': dstshare.name,
                }

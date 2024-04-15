@@ -337,8 +337,6 @@ def mzml_convert_or_refine_file_done(request):
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=data['fn_id'])
-    sfile.path = data['outdir']
-    sfile.filename = data['filename']
     sfile.md5 = data['md5']
     sfile.checked = True
     sfile.deleted = False
