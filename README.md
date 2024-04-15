@@ -21,9 +21,6 @@ bash src/docker/init_develop.sh
 docker compose up
 ```
 
-
-
-
 ## Development:
 
 The backend Django code is mounted in the running web container while developing.
@@ -56,6 +53,35 @@ export GROUP_ID=$(id -g)
 docker compose build
 ```
 
+## DB content
+
+Kantele uses a postgres database, and the development container has local folders
+bind-mounted in the container for persistence, so if the container is removed, the
+database will persist. There is also a backup folder mounted (defined in .env
+as `BACKUP_PATH`), through which you can deliver SQL dump files.
+
+Creating a database dump:
+```
+# If you have the containers up:
+docker compose exec db pg_dump -U kanteleuser -d kantele -f /pgbackups/file_to_dump_to.sql
+
+# If the containers are down:
+docker compose run db pg_dump -U kanteleuser -d kantele -f /pgbackups/file_to_dump_to.sql
+```
+
+Installing a new database dump:
+```
+# First delete the old DB - if there is none, first start the containers 
+# with "docker compose up" to initialize postgres:
+docker compose run db dropdb kantele
+docker compose run db createdb kantele
+
+# Now install the new data
+# If the containers are down:
+docker compose run db psql -U kanteleuser -d kantele -f /pgbackups/file_with_dump.sql
+# If you have the containers up:
+docker compose exec db psql -U kanteleuser -d kantele -f /pgbackups/file_with_dump.sql
+```
 
 ## Testing
 

@@ -46,6 +46,7 @@ services:
         volumes:
             - "./src/docker/create_kantele_db.sh:/docker-entrypoint-initdb.d/create_kantele_db.sh"
             - "${PG_DATA_PATH:-./false_pg_data}:/var/lib/postgresql/data"
+            - "${BACKUP_PATH}:/pgbackups"
 
     mq:
         extends:
