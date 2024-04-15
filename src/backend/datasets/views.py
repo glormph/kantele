@@ -1136,7 +1136,8 @@ def find_files(request):
         subquery = Q(name__icontains=term)
         subquery |= Q(producer__name__icontains=term)
         query &= subquery
-    newfiles = filemodels.RawFile.objects.filter(query).filter(claimed=False)
+    newfiles = filemodels.RawFile.objects.filter(query).filter(claimed=False,
+            storedfile__checked=True)
     return JsonResponse({
         'newfn_order': [x.id for x in newfiles.order_by('-date')],
         'newFiles': {x.id:
@@ -1148,8 +1149,9 @@ def find_files(request):
 
 
 def empty_files_json():
+    '''Shows to user all uploaded non-claimed and checked files in a 200 day window'''
     newfiles = filemodels.RawFile.objects.select_related('producer').filter(
-            claimed=False, date__gt=datetime.now() - timedelta(200))
+            claimed=False, storedfile__checked=True, date__gt=datetime.now() - timedelta(200))
     return {'instruments': [x.name for x in filemodels.Producer.objects.all()], 'datasetFiles': [],
             'newfn_order': [x.id for x in newfiles.order_by('-date')],
             'newFiles': {x.id: {'id': x.id, 'name': x.name, 'size': round(x.size / (2**20), 1), 
@@ -1179,6 +1181,10 @@ def save_or_update_files(data):
     switch_fileserver = dset.storageshare.server != tmpshare.server
     mvjobs = []
     if added_fnids:
+        if not models.RawFile.objects.filter(pk__in=added_fnids,
+                storedfile__checked=True).exists():
+            return {'error': 'Some files cannot be saved to dataset since they '
+                    'are not confirmed to be stored yet'}, 403
         models.DatasetRawFile.objects.bulk_create([
             models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
             for fnid in added_fnids])
@@ -1214,6 +1220,7 @@ def save_or_update_files(data):
                     models.DCStates.INCOMPLETE)
     if dset.datatype_id != settings.QC_DATATYPE:
         set_component_state(dset_id, models.DatasetUIComponent.FILES, models.DCStates.OK)
+    return {'error': False}, 200
 
 
 @login_required
@@ -1223,8 +1230,8 @@ def save_files(request):
     user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
-    save_or_update_files(data)    
-    return JsonResponse({})
+    err_result, status = save_or_update_files(data)
+    return JsonResponse(err_result, status=status)
 
 
 def update_mssamples(dset, data):

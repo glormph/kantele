@@ -153,9 +153,18 @@ class UpdateFilesTest(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
             self.ds.storage_loc, self.tmpsf.filename)))
-
-        # clean up
-        newdsr.delete()
+    
+    def test_add_fails(self):
+        fn = 'raw_no_sf'
+        raw = rm.RawFile.objects.create(name=fn, producer=self.prod, claimed=False,
+                source_md5='raw_no_sf_fakemd5', size=1024, date=timezone.now())
+        resp = self.post_json({'dataset_id': self.ds.pk, 'added_files': {raw.pk: {'id': raw.pk}},
+            'removed_files': {}})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('cannot be saved to dataset', json.loads(resp.content)['error'])
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=raw)
+        self.assertEqual(newdsr.count(), 0)
+        self.assertFalse(raw.claimed)
 
 
 class RenameProjectTest(BaseIntegrationTest):

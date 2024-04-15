@@ -102,6 +102,7 @@ class MoveFilesToStorage(DatasetJob):
         dset_registered_files = DatasetRawFile.objects.filter(
             dataset_id=kwargs['dset_id'], rawfile_id__in=kwargs['rawfn_ids'])
         if dset_files.count() != dset_registered_files.count():
+            # DEPRECATE, this should no longer happen?
             raise RuntimeError(
                 'Not all files to move have been transferred or '
                 'registered as transferred yet, or have non-matching MD5 sums '
