@@ -32,7 +32,6 @@ alljobs = [
         dsjobs.MoveFilesToStorage,
         dsjobs.MoveFilesStorageTmp,
         dsjobs.ConvertDatasetMzml,
-        dsjobs.ConvertFileMzml,
         dsjobs.DeleteActiveDataset,
         dsjobs.DeleteDatasetMzml,
         dsjobs.BackupPDCDataset,

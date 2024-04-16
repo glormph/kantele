@@ -195,32 +195,6 @@ class ConvertDatasetMzml(DatasetJob):
         self.run_tasks.append(((run, params, nf_raws, ftype, nfwf.nfversion, profiles), {'pwiz_id': pwiz.id}))
 
 
-class ConvertFileMzml(ConvertDatasetMzml):
-    # FIXME deprecate, no longer using this
-    refname = 'convert_single_mzml'
-
-    def getfiles_query(self, **kwargs):
-        return StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').filter(pk=kwargs['sf_id'])
-
-    def process(self, **kwargs):
-        queue = kwargs.get('queue', settings.QUEUES_PWIZ[0])
-        fn = self.getfiles_query(**kwargs).get()
-        storageloc = fn.rawfile.datasetrawfile.dataset.storage_loc
-        pwiz = Proteowizard.objects.get(pk=kwargs['pwiz_id'])
-        mzsf = get_or_create_mzmlentry(fn, pwiz=pwiz)
-        if mzsf.servershare_id != fn.servershare_id:
-            # change servershare, in case of bugs the raw sf is set to tmp servershare
-            # then after it wont be changed when rerunning the job
-            mzsf.servershare_id = fn.servershare_id
-            mzsf.save()
-        if mzsf.checked:
-            pass
-        else:
-            options = ['--{}'.format(x) for x in kwargs.get('options', [])]
-            filters = [y for x in kwargs.get('filters', []) for y in ['--filter', x]]
-            self.run_tasks.append(((fn, mzsf, storageloc, options + filters, queue, settings.QUEUES_PWIZOUT[queue]), {}))
-
-
 class DeleteDatasetMzml(DatasetJob):
     """Removes dataset mzml files from active storage"""
     refname = 'delete_mzmls_dataset'
