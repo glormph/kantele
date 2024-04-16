@@ -87,7 +87,7 @@ class SingleFileJob(BaseJob):
     def get_dsids_jobrunner(self, **kwargs):
         ''''In case a single file has a dataset'''
         return [x['pk'] for x in dm.Dataset.objects.filter(deleted=False, purged=False,
-            datasetrawfile__rawfile__storedfile_id=kwargs['sf_id']).values('pk')]
+            datasetrawfile__rawfile__storedfile__id=kwargs['sf_id']).values('pk')]
 
 
 class MultiFileJob(BaseJob):

@@ -37,10 +37,12 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
         state__in=jj.JOBSTATES_DONE + [Jobstates.WAITING])
     print(f'{jobs_not_finished.count()} jobs in queue, including errored jobs')
+    wait_jobs = Job.objects.filter(state=Jobstates.WAITING, pk__in=active_jobs).values('pk')
+    active_jobs.difference_update([x['pk'] for x in wait_jobs])
     for job in jobs_not_finished:
         # First check if job is new or already registered
         if not job.id in job_fn_map:
-            print(f'Registering new job {job.id} - {job.funcname}')
+            print(f'Registering new job {job.id} - {job.funcname} - {job.state}')
             jwrapper = jobmap[job.funcname](job.id) 
             # Register files
             # FIXME do some jobs really have no files?
@@ -67,8 +69,8 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
             print('ERROR MESSAGES:')
             if not tasks.count():
                 print(f'Job {job.id} has state error, without tasks')
-            for joberror in job.joberror_set.all():
-                print(joberror.message)
+            if hasattr(job, 'joberror'):
+                print(job.joberror.message)
                 
         elif job.state == Jobstates.REVOKING:
             jwrapper = jobmap[job.funcname](job.id) 
@@ -103,6 +105,8 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
         # Pending jobs are trickier, wait queueing until any previous job on same files
         # is finished. Errored jobs thus block pending jobs if they are on same files.
         elif job.state == Jobstates.PENDING:
+            # In case job changed from error to pending by retry, remove it from active jobs
+            active_jobs.discard(job.id)
             jobfiles = job_fn_map[job.id]
             job_ds = job_ds_map[job.id]
             # do not start job if there is activity on files or datasets

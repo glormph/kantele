@@ -251,7 +251,7 @@ def instrument_check_in(request):
             return JsonResponse({'error': 'File type does not exist'}, status=403)
         print('New token issued for a valid task ID without a token')
         staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
-        if staff_ops.exist():
+        if staff_ops.exists():
             user_op = staff_ops.first()
         else:
             user_op = dsmodels.Operator.objects.first()
@@ -454,6 +454,7 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
         rfn.claimed = True
         rfn.save()
         jobutil.create_job('move_single_file', sf_id=sfn.id,
+                dstsharename=settings.PRIMARY_STORAGESHARENAME,
                 dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
         run_singlefile_qc(sfn.rawfile, sfn)
         newname = fn
@@ -578,7 +579,7 @@ def run_singlefile_qc(rawfile, storedfile):
         params.extend(['--options', ';'.join([x[2:] for x in options])])
     wf_id = NextflowWfVersionParamset.objects.filter(userworkflow__wftype=UserWorkflow.WFTypeChoices.QC).latest('pk').id
     staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
-    if staff_ops.exist():
+    if staff_ops.exists():
         user_op = staff_ops.first()
     else:
         user_op = dsmodels.Operator.objects.first()

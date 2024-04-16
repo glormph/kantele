@@ -194,8 +194,9 @@ class RunNextflowWorkflow(MultiFileJob):
     """
 
     def getfiles_query(self, **kwargs):
-        return super().values('servershare__name', 'path' 'filename', 'pk',
+        return super().getfiles_query(**kwargs).values('servershare__name', 'path', 'filename', 'pk',
                 'rawfile__producer__msinstrument__instrumenttype__name',
+                'rawfile__datasetrawfile__dataset_id',
                 'rawfile__datasetrawfile__quantfilechannel__channel__channel__name')
 
     def process(self, **kwargs):
@@ -237,14 +238,14 @@ class RunNextflowWorkflow(MultiFileJob):
                     'save, and re-queue the job')
 
         # Now remove obsolete deleted-from-dataset files from job (e.g. corrupt, empty, etc)
-        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis__in=dsa)
+        obsolete = sfiles_passed.exclude(rawfile__datasetrawfile__dataset__datasetanalysis__in=dsa).values('pk')
         models.AnalysisDSInputFile.objects.filter(analysisset__analysis=analysis, sfile__in=obsolete).delete()
         analysis.analysisfilevalue_set.filter(sfile__in=obsolete).delete()
         rm.FileJob.objects.filter(job_id=job.pk, storedfile__in=obsolete).delete()
         for del_sf in obsolete:
             # FIXME setnames/frac is specific
-            kwargs['setnames'].pop(str(del_sf.pk))
-            kwargs['infiles'].pop(str(del_sf.pk))
+            kwargs['setnames'].pop(str(del_sf['pk']))
+            kwargs['infiles'].pop(str(del_sf['pk']))
         if obsolete.exists():
             job.kwargs = kwargs
             job = job.save()
@@ -276,7 +277,7 @@ class RunNextflowWorkflow(MultiFileJob):
                 if 'setname' in inputdef_fields:
                     infile['setname'] = kwargs['filesamples'].get(str(fn['pk']), '')
                 if 'plate' in inputdef_fields:
-                    infile['plate'] = kwargs['platenames'].get(str(fn.rawfile.datasetrawfile.dataset_id), '')
+                    infile['plate'] = kwargs['platenames'].get(str(fn['rawfile__datasetrawfile__dataset_id']), '')
                 if 'sampleID' in inputdef_fields:
                     # sampleID is for pgt / dbgenerator
                     # No fallback, is required if in header
@@ -336,7 +337,7 @@ class PurgeAnalysis(MultiFileJob):
     job for directory removal"""
 
     def getfiles_query(self, **kwargs):
-        return super().values('path', 'filename', 'servershare', 'servershare__name', 'pk')
+        return super().getfiles_query(**kwargs).values('path', 'filename', 'servershare', 'servershare__name', 'pk')
 
     def process(self, **kwargs):
         webshare = rm.ServerShare.objects.get(name=settings.WEBSHARENAME)

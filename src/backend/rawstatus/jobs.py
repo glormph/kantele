@@ -149,7 +149,7 @@ class RegisterExternalFile(MultiFileJob):
     """
 
     def getfiles_query(self, **kwargs):
-        return super().filter(checked=False).values('path', 'filename', 'pk', 'rawfile_id')
+        return super().getfiles_query(**kwargs).filter(checked=False).values('path', 'filename', 'pk', 'rawfile_id')
     
     def process(self, **kwargs):
         for fn in self.getfiles_query(**kwargs):
