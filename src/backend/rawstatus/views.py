@@ -62,25 +62,25 @@ def import_external_data(request):
         extprod = Producer.objects.get(pk=indset['instrument_id'])
         run, created = dsmodels.RunName.objects.get_or_create(name=indset['name'], experiment=exp)
         dset = dsmodels.Dataset.objects.filter(runname=run)
+        # save_new_dset is complex enough to not use .get_or_create
         if not dset.exists():
             dset = dsviews.save_new_dataset(dscreatedata, proj, exp, run, request.user.id)
         else:
             dset = dset.get()
-        raw_ids = []
+        sf_ids = []
         for fpath, size in indset['files']:
             path, fn = os.path.split(fpath)
             fakemd5 = md5()
             fakemd5.update(fn.encode('utf-8'))
             fakemd5 = fakemd5.hexdigest()
             rawfn = get_or_create_rawfile(fakemd5, fn, extprod, size, date, {'claimed': True})
-            raw_ids.append(rawfn['file_id'])
-            if not rawfn['stored']:
-                StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
-                        filetype_id=extprod.msinstrument.filetype_id, filename=fn,
-                        defaults={'servershare_id': share.id, 'path': os.path.join(req['dirname'], path),
-                            'md5': fakemd5})
+            sfile = StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
+                    filetype_id=extprod.msinstrument.filetype_id, filename=fn,
+                    defaults={'servershare_id': share.id,
+                        'path': os.path.join(req['dirname'], path), 'md5': fakemd5})
+            sf_ids.append(sfile.pk)
         # Jobs to get MD5 etc
-        jobutil.create_job('register_external_raw', dset_id=dset.id, rawfnids=raw_ids, sharename=share.name)
+        jobutil.create_job('register_external_raw', dset_id=dset.id, sf_ids=sf_ids, sharename=share.name)
     return JsonResponse({})
 
 
@@ -250,7 +250,12 @@ def instrument_check_in(request):
         except StoredFileType.DoesNotExist:
             return JsonResponse({'error': 'File type does not exist'}, status=403)
         print('New token issued for a valid task ID without a token')
-        newtoken = create_upload_token(ftype.pk, settings.QC_USER_ID, producer)
+        staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
+        if staff_ops.exist():
+            user_op = staff_ops.first()
+        else:
+            user_op = dsmodels.Operator.objects.first()
+        newtoken = create_upload_token(ftype.pk, user_op.user_id, producer)
         response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
     elif not upload:
         return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
@@ -446,7 +451,11 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
         jobutil.create_job('purge_files', sf_ids=[sfn.pk])
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
-        singlefile_qc(sfn.rawfile, sfn)
+        rfn.claimed = True
+        rfn.save()
+        jobutil.create_job('move_single_file', sf_id=sfn.id,
+                dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
+        run_singlefile_qc(sfn.rawfile, sfn)
         newname = fn
     elif hasattr(sfn, 'libraryfile'):
         newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
@@ -552,9 +561,8 @@ def transfer_file(request):
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
-def singlefile_qc(rawfile, storedfile):
+def run_singlefile_qc(rawfile, storedfile):
     """This method is only run for detecting new incoming QC files"""
-    add_to_qc(rawfile, storedfile)
     filters = ['"peakPicking true 2"', '"precursorRefine"']
     params = ['--instrument', rawfile.producer.msinstrument.instrumenttype.name]
     options = []
@@ -569,10 +577,15 @@ def singlefile_qc(rawfile, storedfile):
     if len(options):
         params.extend(['--options', ';'.join([x[2:] for x in options])])
     wf_id = NextflowWfVersionParamset.objects.filter(userworkflow__wftype=UserWorkflow.WFTypeChoices.QC).latest('pk').id
-    analysis = Analysis.objects.create(user_id=settings.QC_USER_ID,
-                        name='{}_{}_{}'.format(rawfile.producer.name, rawfile.name, rawfile.date))
+    staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
+    if staff_ops.exist():
+        user_op = staff_ops.first()
+    else:
+        user_op = dsmodels.Operator.objects.first()
+    analysis = Analysis.objects.create(user_id=user_op.user_id,
+            name=f'{rawfile.producer.name}_{rawfile.name}_{rawfile.date}')
     jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,
-            wfv_id=wf_id, dbfn_id=settings.LONGQC_FADB_ID, params=params)
+            dbfn_id=settings.LONGQC_FADB_ID, params=params)
 
 
 def get_file_owners(sfile):
@@ -608,25 +621,6 @@ def rename_file(request):
         return JsonResponse({'error': 'Illegal characteres in new file name'}, status=403)
     jobutil.create_job('rename_file', sf_id=sfile.id, newname=newfilename)
     return JsonResponse({})
-
-
-def add_to_qc(rawfile, storedfile):
-    # add file to dataset: proj:QC, exp:Hela, run:instrument
-    try:
-        runname = dsmodels.RunName.objects.get(
-            experiment_id=settings.INSTRUMENT_QC_EXP, name=rawfile.producer.name)
-    except dsmodels.RunName.DoesNotExist:
-        runname = dsmodels.RunName.objects.create(
-            experiment_id=settings.INSTRUMENT_QC_EXP, name=rawfile.producer.name)
-    data = {'dataset_id': False, 'experiment_id': settings.INSTRUMENT_QC_EXP,
-            'project_id': settings.INSTRUMENT_QC_PROJECT,
-            'runname_id': runname.id}
-    dset = dsviews.get_or_create_qc_dataset(data)
-    data['dataset_id'] = dset.id
-    data['removed_files'] = {}
-    data['added_files'] = {1: {'id': rawfile.id}}
-    dsviews.save_or_update_files(data)
-    return dset
 
 
 def zip_instrument_upload_pkg(prod, runtransferfile):
@@ -737,7 +731,7 @@ def cleanup_old_files(request):
     # if there are ALSO joins where date is gt...
     # old normal mzmls from searches
     old_searched_mzmls = mzmls.exclude(
-            rawfile__datasetrawfile__dataset__datatype_id__in=[settings.QC_DATATYPE, *settings.LC_DTYPE_IDS]).exclude(
+            rawfile__datasetrawfile__dataset__datatype_id__in=settings.LC_DTYPE_IDS).exclude(
             rawfile__datasetrawfile__dataset__datasetanalysis__isnull=True).exclude(
             rawfile__datasetrawfile__dataset__datasetanalysis__analysis__date__gt=maxtime_nonint)
     # old LC mzmls
@@ -745,9 +739,8 @@ def cleanup_old_files(request):
             rawfile__datasetrawfile__dataset__datatype_id__in=settings.LC_DTYPE_IDS,
             rawfile__datasetrawfile__dataset__datasetanalysis__isnull=False).exclude(
             rawfile__datasetrawfile__dataset__datasetanalysis__analysis__date__gt=timezone.now() - timedelta(settings.MAX_MZML_LC_STORAGE_TIME))
-    # old non-QC mzmls without searches
-    old_nonsearched_mzml = mzmls.exclude(
-            rawfile__datasetrawfile__dataset__datatype_id=settings.QC_DATATYPE).filter(
+    # old mzmls without searches
+    old_nonsearched_mzml = mzmls.filter(
             rawfile__datasetrawfile__dataset__datasetanalysis__isnull=True,
             regdate__lt=maxtime_nonint)
     all_old_mzmls = old_searched_mzmls.union(lcmzmls, old_nonsearched_mzml)

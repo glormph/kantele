@@ -32,7 +32,6 @@ alljobs = [
         dsjobs.MoveFilesToStorage,
         dsjobs.MoveFilesStorageTmp,
         dsjobs.ConvertDatasetMzml,
-        dsjobs.ConvertFileMzml,
         dsjobs.DeleteActiveDataset,
         dsjobs.DeleteDatasetMzml,
         dsjobs.BackupPDCDataset,
@@ -220,9 +219,8 @@ def purge_storedfile(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').get()
-    sfile.purged, sfile.deleted = True, True
-    sfile.save()
+    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').update(
+            deleted=True, purged=True)
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
@@ -338,8 +336,6 @@ def mzml_convert_or_refine_file_done(request):
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=data['fn_id'])
-    sfile.path = data['outdir']
-    sfile.filename = data['filename']
     sfile.md5 = data['md5']
     sfile.checked = True
     sfile.deleted = False

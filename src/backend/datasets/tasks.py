@@ -30,7 +30,6 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
         raise RuntimeError('Error occurred converting mzML files: '
                            '{}\n\nERROR MESSAGE:\n{}'.format(rundir, errmsg))
     transfer_url = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
-    resultfiles = {}
     outpath = os.path.split(rundir)[-1]
     outfullpath = os.path.join(settings.SHAREMAP[run['dstsharename']], outpath)
     try:
@@ -41,9 +40,8 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
     token = False
     for raw in raws:
         token = check_in_transfer_client(self.request.id, token, ftype_name)
-        fname = os.path.splitext(raw[2])[0] + '.mzML'
-        srcpath = os.path.join(run_outdir, fname)
-        fdata = {'md5': calc_md5(srcpath), 'file_id': raw[3], 'newname': fname}
+        srcpath = os.path.join(run_outdir, raw[4])
+        fdata = {'md5': calc_md5(srcpath), 'file_id': raw[3], 'newname': raw[4]}
         transfer_resultfile(outfullpath, outpath, srcpath, run['dstsharename'],
                 fdata, transfer_url, token, self.request.id)
     # FIXME first check tstate so no dup transfers used?
@@ -84,6 +82,7 @@ def rename_top_level_project_storage_dir(self, projsharename, srcname, newname, 
             'task': self.request.id, 'client_id': settings.APIKEY}
     url = urljoin(settings.KANTELEHOST, reverse('jobs:renameproject'))
     update_db(url, json=postdata)
+
 
 @shared_task(bind=True, queue=settings.QUEUE_FILE_DOWNLOAD)
 def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, dstsharename, fns, upd_sf_ids):

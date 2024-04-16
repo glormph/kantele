@@ -266,9 +266,6 @@ class TestMultiStorageServers(BaseIntegrationTest):
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.path, '')
         self.assertEqual(self.tmpsf.servershare_id, self.sstmp.pk)
-        # first mark prev job as DONE
-        self.run_job()
-        # Now execute move file job
         self.run_job()
         self.assertTrue(os.path.exists(os.path.join(newdspath, self.tmpsf.filename)))
         self.tmpsf.refresh_from_db()

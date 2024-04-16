@@ -502,23 +502,6 @@ def get_or_create_px_dset(exp, px_acc, user_id):
         return save_new_dataset(data, project, experiment, run, user_id)
 
 
-def get_or_create_qc_dataset(data):
-    # FIXME maybe objects.get_or_create at least:
-    qcds = models.Dataset.objects.filter(
-        runname__experiment_id=data['experiment_id'],
-        runname_id=data['runname_id'])
-    if qcds:
-        return qcds.get()
-    else:
-        project = models.Project.objects.get(pk=settings.INSTRUMENT_QC_PROJECT)
-        exp = models.Experiment.objects.get(pk=settings.INSTRUMENT_QC_EXP)
-        run = models.RunName.objects.get(pk=data['runname_id'])
-        data['datatype_id'] = settings.QC_DATATYPE
-        data['prefrac_id'] = False
-        data['ptype_id'] = settings.LOCAL_PTYPE_ID
-        return save_new_dataset(data, project, exp, run, settings.QC_USER_ID)
-
-
 def save_new_dataset(data, project, experiment, runname, user_id):
     dtype = models.Datatype.objects.get(pk=data['datatype_id'])
     prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
@@ -536,18 +519,6 @@ def save_new_dataset(data, project, experiment, runname, user_id):
         dset_mail = models.ExternalDatasetContact(dataset=dset,
                                                  email=data['externalcontact'])
         dset_mail.save()
-    if dset.datatype_id != settings.QC_DATATYPE:
-        dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
-                component=models.DatasetUIComponent.DEFINITION)
-        models.DatasetComponentState.objects.create(dtcomp=dtcomp,
-                                                    dataset_id=dset.id,
-                                                    state=models.DCStates.OK)
-        models.DatasetComponentState.objects.bulk_create([
-            models.DatasetComponentState(
-                dtcomp=x, dataset_id=dset.id, state=models.DCStates.NEW) for x in
-            models.DatatypeComponent.objects.filter(
-                datatype_id=dset.datatype_id).exclude(
-                component=models.DatasetUIComponent.DEFINITION)])
     return dset
 
 
@@ -1136,7 +1107,8 @@ def find_files(request):
         subquery = Q(name__icontains=term)
         subquery |= Q(producer__name__icontains=term)
         query &= subquery
-    newfiles = filemodels.RawFile.objects.filter(query).filter(claimed=False)
+    newfiles = filemodels.RawFile.objects.filter(query).filter(claimed=False,
+            storedfile__checked=True)
     return JsonResponse({
         'newfn_order': [x.id for x in newfiles.order_by('-date')],
         'newFiles': {x.id:
@@ -1148,8 +1120,9 @@ def find_files(request):
 
 
 def empty_files_json():
+    '''Shows to user all uploaded non-claimed and checked files in a 200 day window'''
     newfiles = filemodels.RawFile.objects.select_related('producer').filter(
-            claimed=False, date__gt=datetime.now() - timedelta(200))
+            claimed=False, storedfile__checked=True, date__gt=datetime.now() - timedelta(200))
     return {'instruments': [x.name for x in filemodels.Producer.objects.all()], 'datasetFiles': [],
             'newfn_order': [x.id for x in newfiles.order_by('-date')],
             'newFiles': {x.id: {'id': x.id, 'name': x.name, 'size': round(x.size / (2**20), 1), 
@@ -1179,6 +1152,10 @@ def save_or_update_files(data):
     switch_fileserver = dset.storageshare.server != tmpshare.server
     mvjobs = []
     if added_fnids:
+        if not models.RawFile.objects.filter(pk__in=added_fnids,
+                storedfile__checked=True).exists():
+            return {'error': 'Some files cannot be saved to dataset since they '
+                    'are not confirmed to be stored yet'}, 403
         models.DatasetRawFile.objects.bulk_create([
             models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
             for fnid in added_fnids])
@@ -1212,8 +1189,7 @@ def save_or_update_files(data):
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
             set_component_state(dset_id, models.DatasetUIComponent.SAMPLES,
                     models.DCStates.INCOMPLETE)
-    if dset.datatype_id != settings.QC_DATATYPE:
-        set_component_state(dset_id, models.DatasetUIComponent.FILES, models.DCStates.OK)
+    return {'error': False}, 200
 
 
 @login_required
@@ -1223,8 +1199,8 @@ def save_files(request):
     user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
-    save_or_update_files(data)    
-    return JsonResponse({})
+    err_result, status = save_or_update_files(data)
+    return JsonResponse(err_result, status=status)
 
 
 def update_mssamples(dset, data):

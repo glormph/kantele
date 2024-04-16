@@ -220,8 +220,9 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
     # TODO ideally do this:
-    # stage mzML with {dbid}___{filename}.mzML
+    # ln -s stage mzML with {dbid}___{filename}.mzML
     # This keeps dbid / ___ split out of the NF workflow 
+    # We dont necessarily need outfiles, we can read from infiles
     outfiles_db = {}
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
     outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])

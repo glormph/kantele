@@ -83,9 +83,6 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = os.environ.get('CELERY_PREFETCH', 4)
 
 JOBRUNNER_INTERVAL = 5
 
-# datatypes
-RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID', -1))
-
 # DB FTID also used in worker, make sure it exists
 DATABASE_FTID = int(os.environ.get('DATABASE_FTID', -1))
 
@@ -102,6 +99,9 @@ TOKEN_RENEWAL_WINDOW_DAYS = 7
 # Labelcheck experiment name
 LCEXPNAME = '__labelchecks'
 LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID', '-1').split(',')]
+
+# QC files storage
+QC_STORAGE_DIR = 'Instrument QC'
 
 # local datasets 
 LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID', -1))
@@ -122,14 +122,6 @@ PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 EXTERNAL_PRODUCER_IDS = [int(x) for x in os.environ.get('EXTERNAL_PRODUCER_IDS', '-1').split(',')]
 USERFILEDIR = 'uploadfiles'
 
-# qc datasets
-QC_USER_ID = os.environ.get('QC_USER_ID')
-QC_DATATYPE = int(os.environ.get('QC_DATATYPE', -1))
-QC_ORGANISM = os.environ.get('QC_ORGANISM')
-INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
-INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
-INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
-
 # nextflow
 NXF_COMMAND = os.environ.get('NXF_COMMAND', 'nextflow')
 LIBRARY_FILE_PATH = 'databases'
@@ -139,6 +131,7 @@ LARGER_NFRUNDIR = os.environ.get('LARGER_NFRUNDIR')
 NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
               'larger': LARGER_NFRUNDIR,
             }
+# FIXME let QC pipe use its own DB (downloadable or in lehtio server)
 LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
