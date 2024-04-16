@@ -502,23 +502,6 @@ def get_or_create_px_dset(exp, px_acc, user_id):
         return save_new_dataset(data, project, experiment, run, user_id)
 
 
-def get_or_create_qc_dataset(data):
-    # FIXME maybe objects.get_or_create at least:
-    qcds = models.Dataset.objects.filter(
-        runname__experiment_id=data['experiment_id'],
-        runname_id=data['runname_id'])
-    if qcds:
-        return qcds.get()
-    else:
-        project = models.Project.objects.get(pk=settings.INSTRUMENT_QC_PROJECT)
-        exp = models.Experiment.objects.get(pk=settings.INSTRUMENT_QC_EXP)
-        run = models.RunName.objects.get(pk=data['runname_id'])
-        data['datatype_id'] = settings.QC_DATATYPE
-        data['prefrac_id'] = False
-        data['ptype_id'] = settings.LOCAL_PTYPE_ID
-        return save_new_dataset(data, project, exp, run, settings.QC_USER_ID)
-
-
 def save_new_dataset(data, project, experiment, runname, user_id):
     dtype = models.Datatype.objects.get(pk=data['datatype_id'])
     prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
@@ -536,18 +519,6 @@ def save_new_dataset(data, project, experiment, runname, user_id):
         dset_mail = models.ExternalDatasetContact(dataset=dset,
                                                  email=data['externalcontact'])
         dset_mail.save()
-    if dset.datatype_id != settings.QC_DATATYPE:
-        dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
-                component=models.DatasetUIComponent.DEFINITION)
-        models.DatasetComponentState.objects.create(dtcomp=dtcomp,
-                                                    dataset_id=dset.id,
-                                                    state=models.DCStates.OK)
-        models.DatasetComponentState.objects.bulk_create([
-            models.DatasetComponentState(
-                dtcomp=x, dataset_id=dset.id, state=models.DCStates.NEW) for x in
-            models.DatatypeComponent.objects.filter(
-                datatype_id=dset.datatype_id).exclude(
-                component=models.DatasetUIComponent.DEFINITION)])
     return dset
 
 
@@ -1218,8 +1189,6 @@ def save_or_update_files(data):
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
             set_component_state(dset_id, models.DatasetUIComponent.SAMPLES,
                     models.DCStates.INCOMPLETE)
-    if dset.datatype_id != settings.QC_DATATYPE:
-        set_component_state(dset_id, models.DatasetUIComponent.FILES, models.DCStates.OK)
     return {'error': False}, 200
 
 
