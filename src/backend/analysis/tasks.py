@@ -387,10 +387,15 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
     # Revoked jobs do not need DB-updating, but need just to be stopped, 
     # so do not catch SoftTimeLimit exception
 
-    with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
-        nflog = fp.read()
+    # Get log
+    env = os.environ
+    env['NXF_VER'] = nf_version
+    logfields = ('task_id,hash,native_id,name,status,exit,submit,duration,realtime,pcpu,peak_rss'
+            ',peak_vmem,rchar,wch')
+    cmd = [settings.NXF_COMMAND, 'log', run['token'], '-f', logfields]
+    nxf_log = subprocess.run(cmd, capture_output=True, text=True, cwd=gitwfdir, env=env)
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
-                 ' cleaning. Full NF trace log: \n{}'.format(nflog))
+                 f' cleaning. Full NF trace log: \n{nxf_log.stdout}')
     outfiles = [os.path.join(outdir, x) for x in os.listdir(outdir)]
     outfiles = [x for x in outfiles if not os.path.isdir(x)]
     reportfile = os.path.join(rundir, 'output', 'Documentation', 'pipeline_report.html')
