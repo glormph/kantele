@@ -519,6 +519,18 @@ def save_new_dataset(data, project, experiment, runname, user_id):
         dset_mail = models.ExternalDatasetContact(dataset=dset,
                                                  email=data['externalcontact'])
         dset_mail.save()
+    # Set components
+    dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
+            component=models.DatasetUIComponent.DEFINITION)
+    models.DatasetComponentState.objects.create(dtcomp=dtcomp,
+                                                dataset_id=dset.id,
+                                                state=models.DCStates.OK)
+    models.DatasetComponentState.objects.bulk_create([
+        models.DatasetComponentState(
+            dtcomp=x, dataset_id=dset.id, state=models.DCStates.NEW) for x in
+        models.DatatypeComponent.objects.filter(
+            datatype_id=dset.datatype_id).exclude(
+            component=models.DatasetUIComponent.DEFINITION)])
     return dset
 
 

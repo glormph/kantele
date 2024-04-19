@@ -14,8 +14,27 @@ from jobs.jobs import Jobstates
 from rawstatus import models as rm
 
 
-class UpdateDatasetTest(BaseIntegrationTest):
+class SaveUpdateDatasetTest(BaseIntegrationTest):
     url = '/datasets/save/dataset/'
+
+    def test_new_dset(self):
+        resp = self.post_json(data={'dataset_id': False, 'project_id': self.p1.pk,
+            'experiment_id': self.exp1.pk, 'runname': 'newrunname',
+            'datatype_id': self.dtype.pk, 
+            'prefrac_id': False, 'ptype_id': self.ptype.pk,
+            'externalcontact': self.contact.email})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(dm.RunName.objects.filter(name='newrunname').count(), 1)
+        ds = dm.Dataset.objects.get(runname__name='newrunname', runname__experiment=self.exp1)
+        self.assertEqual(ds.datatype_id, self.dtype.pk)
+        self.assertEqual(ds.storage_loc, os.path.join(self.p1.name, self.exp1.name, self.dtype.name, 'newrunname'))
+        self.assertEqual(ds.datasetowner_set.count(), 1)
+        self.assertEqual(ds.datasetowner_set.get().user, self.user)
+        dsc = ds.datasetcomponentstate_set
+        self.assertEqual(dsc.count(), self.dtype.datatypecomponent_set.count())
+        self.assertEqual(dsc.filter(state=dm.DCStates.OK).count(), 1)
+        self.assertTrue(dsc.filter(state=dm.DCStates.OK, dtcomp=self.dtcompdef).exists())
+        self.assertEqual(dsc.filter(state=dm.DCStates.NEW).count(), self.dtype.datatypecomponent_set.count() - 1)
 
     def test_update_dset_newexp_location(self):
         newexpname = 'edited_exp'
