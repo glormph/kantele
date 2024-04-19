@@ -221,7 +221,8 @@ async function save() {
     if ('error' in response) {
       saveerrors.basics = [response.error, ...saveerrors.basics];
     } else {
-  	  dataset_id.set(response.dataset_id);
+      dataset_id.set(response.dataset_id);
+      history.pushState({}, '', `/datasets/show/${response.dataset_id}/`);
       fetchDataset();
     }
   }
