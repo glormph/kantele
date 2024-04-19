@@ -327,7 +327,7 @@ def update_dataset(data):
         existing_dtcstates.delete()
         for dtc in new_dtcomponents:
             try:
-                old_dtcs = existing_dtcstates.get(dtcomp__component_id=dtc.component_id)
+                old_dtcs = existing_dtcstates.get(dtcomp__component=dtc.component)
             except models.DatasetComponentState.DoesNotExist:
                 state = models.DCStates.NEW
             else:
