@@ -816,8 +816,17 @@ def move_dataset_active(request):
         dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(pk=data['item_id'])
     except models.Dataset.DoesNotExist:
         return JsonResponse({'error': 'Dataset does not exist'}, status=403)
-    if not check_ownership(request.user, dset):
+    # check_ownership without deleted demand:
+    pt_id = dset.runname.experiment.project.projtype.ptype_id 
+    if request.user.id in get_dataset_owners_ids(dset) or request.user.is_staff:
+        pass
+    elif pt_id == settings.LOCAL_PTYPE_ID:
         return JsonResponse({'error': 'Cannot reactivate dataset, no permission for user'}, status=403)
+    else:
+        try:
+            models.UserPtype.objects.get(ptype_id=pt_id, user_id=request.user.id)
+        except models.UserPtype.DoesNotExist:
+            return JsonResponse({'error': 'Cannot reactivate dataset, no permission for user'}, status=403)
     reactivated_msg = reactivate_dataset(dset)
     if reactivated_msg['state'] == 'error':
         return JsonResponse(reactivated_msg, status=500)
