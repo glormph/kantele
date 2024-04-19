@@ -9,10 +9,11 @@ import { dataset_id, datasetFiles, projsamples } from './stores.js';
 export let errors;
 
 let preperrors = [];
-let edited = false;
+let edited = true;
 let fetchedSpecies = {};
+let saved = false;
 
-$: stored = $dataset_id && !edited;
+$: stored = $dataset_id && !edited && saved;
 
 
 function editMade() { 
@@ -360,6 +361,9 @@ async function fetchData() {
   }
   allspecies = response.allspecies;
   allsampletypes = response.allsampletypes;
+  if (Object.keys(prepdata.samples).length) {
+    saved = true;
+  }
   edited = false;
 }
 
@@ -373,7 +377,7 @@ onMount(async() => {
 <h5 id="sampleprep" class="has-text-primary title is-5">
   {#if stored}
   <i class="icon fas fa-check-circle"></i>
-  {:else if edited}
+  {:else}
   <i class="icon fas fa-edit"></i>
   {/if}
   Sample sheet
@@ -429,7 +433,7 @@ onMount(async() => {
         {#if channel.projsam_dup}
         <p class="help is-danger">This sample ID exists in the database for this project,<br>
         you cannot change an existing sample's types or organisms in this sheet,<br>
-        please use a different sample ID or confirm it is the same sample as used in:</p>
+        please either use a different sample ID or confirm it is the same sample as used in:</p>
         <p class="help is-info">{channel.duprun}</p>
         <p>
         <button class="button is-small" on:click={e => useDuplicateSampleChannel(chix)}>Accept</button>
@@ -512,7 +516,7 @@ onMount(async() => {
         {#if prepdata.samples[file.associd].projsam_dup}
         <p class="help is-danger">This sample ID exists in the database for this project,<br>
         you cannot change an existing sample's types or organisms in this sheet,<br>
-        please use a different sample ID or confirm it is the same sample as used in:</p>
+        please either use a different sample ID or confirm it is the same sample as used in:</p>
         <p class="help is-info">{prepdata.samples[file.associd].duprun}</p>
         <p>
         <button class="button is-small" on:click={e => useDuplicateFileSam(file.associd)}>Accept</button>
@@ -587,3 +591,6 @@ onMount(async() => {
     {/if}
   </tbody>
 </table>
+
+<button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
+<button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>

@@ -16,10 +16,11 @@ let lcdata = {
   samples: {},
 }
 let edited = false;
+let saved = false;
 
 $: Object.keys($datasetFiles).length ? fetchData() : false;
 
-$: stored = $dataset_id && !edited;
+$: stored = $dataset_id && !edited && saved;
 
 
 function editMade() {
@@ -102,6 +103,9 @@ async function fetchData() {
   const response = await getJSON(`${url}?lctype=single`);
   for (let [key, val] of Object.entries(response)) { lcdata[key] = val; }
   edited = false;
+  if (lcdata.samples.length) {
+    saved = true;
+  }
 }
 
 </script>
@@ -110,7 +114,7 @@ async function fetchData() {
 <h5 id="labelcheck" class="has-text-primary title is-5">
   {#if stored}
   <i class="icon fas fa-check-circle"></i>
-  {:else if edited}
+  {:else}
   <i class="icon fas fa-edit"></i>
   {/if}
   Label check
@@ -177,3 +181,6 @@ async function fetchData() {
   </tbody>
   {/if}
 </table>
+
+<button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
+<button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>

@@ -24,8 +24,9 @@ let acqdata = {
   operators: [],
 }
 
+let saved = false;
 let edited = false;
-$: stored = $dataset_id && !edited;
+$: stored = $dataset_id && !edited && saved;
 
 function editMade() { 
   errors = errors.length ? validate() : [];
@@ -82,6 +83,9 @@ async function fetchData() {
   for (let [key, val] of Object.entries(response.acqdata)) { acqdata[key] = val; }
   for (let [key, val] of Object.entries(response.dsinfo)) { dsinfo[key] = val; }
   edited = false;
+  if (dsinfo.operator_id) {
+    saved = true;
+  }
 }
 
 onMount(async() => {
@@ -96,7 +100,7 @@ onMount(async() => {
 <h5 class="has-text-primary title is-5">
   {#if stored}
   <i class="icon fas fa-check-circle"></i>
-  {:else if edited}
+  {:else}
   <i class="icon fas fa-edit"></i>
   {/if}
   MS data
@@ -146,3 +150,6 @@ onMount(async() => {
 {#each Object.entries(dsinfo.params) as [param_id, param]}
 <Param bind:param={param} on:edited={editMade}/>
 {/each}
+
+<button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
+<button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>

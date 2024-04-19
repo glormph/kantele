@@ -68,7 +68,6 @@ let isExternal = false;
 let isNewExperiment = false;
 let isNewPI = false;
 let experiments = []
-let stored = true;
 let tabshow = 'meta';
 let tabcolor = 'has-text-grey-lighter';
   // Yes, for microscopy/genomics, we need separation between samples/prep
@@ -78,6 +77,7 @@ let tabcolor = 'has-text-grey-lighter';
 $: showMsdata = components.indexOf('ACQUISITION') > -1;
 $: isExternal = Boolean(dsinfo.ptype_id && dsinfo.ptype_id !== local_ptype_id);
 $: isLabelcheck = datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x => x.name.indexOf('abelcheck') > -1).length;
+$: stored = $dataset_id && !edited;
 
 async function getcomponents() {
   // FIXME can get these in single shot? Need not network trip.
@@ -285,6 +285,8 @@ function showFiles() {
       <h5 class="has-text-primary title is-5">
         {#if stored}
         <i class="icon fas fa-check-circle"></i>
+        {:else}
+        <i class="icon fas fa-edit"></i>
         {/if}
         Basics
         <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
@@ -377,24 +379,30 @@ function showFiles() {
       </div>
       {/if}
   
+
       {#if showMsdata}
+      <!-- storage location depends on prefractionation, so put it here -->
       <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} prefracs={prefracs} hirief_ranges={hirief_ranges} />
+      {/if}
 
+      {#if showMsdata || dsinfo.datatype_id}
       <div class="field">
         <label class="label">Run name</label>
         <div class="control">
           <input class="input" bind:value={dsinfo.runname} on:change={editMade} type="text" placeholder="E.g set1, lc3, rerun5b, etc">
         </div>
       </div>
+      {/if}
 
+      <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
+      <button class="button is-small is-info has-text-weight-bold" disabled={!edited || !dsinfo.datatype_id} on:click={fetchDataset}>Revert</button>
+
+      <hr>
+
+      {#if showMsdata}
+      <!-- acquisition and MS data -->
       <MSDataComp bind:this={msdatacomp} bind:errors={errors.msdata} />
-      {:else if dsinfo.datatype_id}
-      <div class="field">
-        <label class="label">Run name</label>
-        <div class="control">
-          <input class="input" bind:value={dsinfo.runname} on:change={editMade} type="text" placeholder="E.g set1, lc3, rerun5b, etc">
-        </div>
-      </div>
+      <hr>
       {/if}
 
       {#if (Object.keys($datasetFiles).length && components.indexOf('LCSAMPLES')>-1)}
