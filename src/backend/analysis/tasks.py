@@ -391,7 +391,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
     env = os.environ
     env['NXF_VER'] = nf_version
     logfields = ('task_id,hash,native_id,name,status,exit,submit,duration,realtime,pcpu,peak_rss'
-            ',peak_vmem,rchar,wch')
+            ',peak_vmem,rchar,wchar')
     cmd = [settings.NXF_COMMAND, 'log', run['token'], '-f', logfields]
     nxf_log = subprocess.run(cmd, capture_output=True, text=True, cwd=gitwfdir, env=env)
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
