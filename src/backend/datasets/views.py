@@ -327,7 +327,7 @@ def update_dataset(data):
         existing_dtcstates.delete()
         for dtc in new_dtcomponents:
             try:
-                old_dtcs = existing_dtcstates.get(dtcomp__component_id=dtc.component_id)
+                old_dtcs = existing_dtcstates.get(dtcomp__component=dtc.component)
             except models.DatasetComponentState.DoesNotExist:
                 state = models.DCStates.NEW
             else:
@@ -519,6 +519,18 @@ def save_new_dataset(data, project, experiment, runname, user_id):
         dset_mail = models.ExternalDatasetContact(dataset=dset,
                                                  email=data['externalcontact'])
         dset_mail.save()
+    # Set components
+    dtcomp = models.DatatypeComponent.objects.get(datatype_id=dset.datatype_id,
+            component=models.DatasetUIComponent.DEFINITION)
+    models.DatasetComponentState.objects.create(dtcomp=dtcomp,
+                                                dataset_id=dset.id,
+                                                state=models.DCStates.OK)
+    models.DatasetComponentState.objects.bulk_create([
+        models.DatasetComponentState(
+            dtcomp=x, dataset_id=dset.id, state=models.DCStates.NEW) for x in
+        models.DatatypeComponent.objects.filter(
+            datatype_id=dset.datatype_id).exclude(
+            component=models.DatasetUIComponent.DEFINITION)])
     return dset
 
 
@@ -804,8 +816,17 @@ def move_dataset_active(request):
         dset = models.Dataset.objects.select_related('runname__experiment__project__projtype').get(pk=data['item_id'])
     except models.Dataset.DoesNotExist:
         return JsonResponse({'error': 'Dataset does not exist'}, status=403)
-    if not check_ownership(request.user, dset):
+    # check_ownership without deleted demand:
+    pt_id = dset.runname.experiment.project.projtype.ptype_id 
+    if request.user.id in get_dataset_owners_ids(dset) or request.user.is_staff:
+        pass
+    elif pt_id == settings.LOCAL_PTYPE_ID:
         return JsonResponse({'error': 'Cannot reactivate dataset, no permission for user'}, status=403)
+    else:
+        try:
+            models.UserPtype.objects.get(ptype_id=pt_id, user_id=request.user.id)
+        except models.UserPtype.DoesNotExist:
+            return JsonResponse({'error': 'Cannot reactivate dataset, no permission for user'}, status=403)
     reactivated_msg = reactivate_dataset(dset)
     if reactivated_msg['state'] == 'error':
         return JsonResponse(reactivated_msg, status=500)

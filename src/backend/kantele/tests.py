@@ -62,6 +62,7 @@ class BaseTest(TestCase):
 
         # Datasets/projects prep
         self.dtype, _ = dm.Datatype.objects.get_or_create(name='dtype1')
+        self.dtcompdef = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dm.DatasetUIComponent.DEFINITION)
         self.dtcompfiles = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dm.DatasetUIComponent.FILES)
         self.dtcompsamples = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dm.DatasetUIComponent.SAMPLES)
         qdt, _ = dm.Datatype.objects.get_or_create(name='Quantitative proteomics')

@@ -8,8 +8,9 @@ export let errors;
 
 let preperrors = [];
 let edited = false;
+let saved = false;
 
-$: stored = $dataset_id && !edited;
+$: stored = $dataset_id && !edited && saved;
 
 
 function editMade() { 
@@ -53,6 +54,9 @@ async function fetchData() {
   const response = await getJSON(`${url}?lctype=pooled`);
   for (let [key, val] of Object.entries(response)) { prepdata[key] = val; }
   edited = false;
+  if (prepdata.quanttype) {
+    saved = true;
+  }
 }
 
 onMount(async() => {
@@ -65,7 +69,7 @@ onMount(async() => {
 <h5 id="sampleprep" class="has-text-primary title is-5">
   {#if stored}
   <i class="icon fas fa-check-circle"></i>
-  {:else if edited}
+  {:else}
   <i class="icon fas fa-edit"></i>
   {/if}
   Label check
@@ -88,3 +92,6 @@ onMount(async() => {
     </div>
   </div>
 </div>
+
+<button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
+<button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>

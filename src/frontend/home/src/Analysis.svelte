@@ -86,7 +86,6 @@ async function getAnalysisDetails(anaId) {
   errors = errors ? `<div class="notification is-danger is-light"><div>ERROR(s):</div>${errors}</div>` : '';
   return `
     ${errors}
-    ${resp.errmsg ? resp.errmsg.join('<br>') : ''}
     <p><span class="has-text-weight-bold">Workflow version:</span> ${resp.wf.update}</p>
     <p>${resp.nrfiles} raw files from ${resp.nrdsets} dataset(s) analysed</p>
     <p><span class="has-text-weight-bold">Quant type:</span> ${resp.quants.join(', ')}</p>
