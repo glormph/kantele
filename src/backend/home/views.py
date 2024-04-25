@@ -948,7 +948,7 @@ def refine_mzmls(request):
     analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}')
     job = jj.create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=data['wfid'],
             dstshare_id=res_share.pk, dbfn_id=data['dbid'], qtype=dset.quantdataset.quanttype.shortname)
-    uwf = anmodels.UserWorkflow.objects.get(nfwfversionparamset_id=data['wfid'],
+    uwf = anmodels.UserWorkflow.objects.get(nfwfversionparamsets=data['wfid'],
             wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC)
     anmodels.NextflowSearch.objects.update_or_create(analysis=analysis, defaults={
         'nfwfversionparamset_id': data['wfid'], 'job_id': job.id, 'workflow_id': uwf.pk, 'token': ''})
