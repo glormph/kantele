@@ -44,7 +44,7 @@ class RefineMzmls(DatasetJob):
         """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
         nfwf = models.NextflowWfVersionParamset.objects.get(pk=kwargs['wfv_id'])
-        dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
+        dbfn = rm.StoredFile.objects.get(pk=kwargs['dbfn_id'])
         stagefiles = {'--tdb': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         mzmlfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False,
                 mzmlfile__isnull=False)

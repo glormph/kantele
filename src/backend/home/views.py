@@ -779,11 +779,16 @@ def fetch_dset_details(dset):
     info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))
     rawfiles = files.filter(mzmlfile__isnull=True)
     # Show mzML/refine things for MS data:
+    refine_dbs = filemodels.StoredFile.objects.filter(filetype__name=settings.DBFA_FT_NAME)
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles = {'raw': rawfiles.count()}
-        info.update({'refine_mzmls': [], 'convert_dataset_mzml': []})
+        info.update({'refine_mzmls': [], 'convert_dataset_mzml': [], 'refine_dbs': []})
         # FIXME hardcoded refine version, wtf
-        info['refine_versions'] = [{'id': 15, 'name': 'v1.0'}]
+        info['refine_versions'] = [{'id': x.pk, 'name': x.update} for x in
+                anmodels.NextflowWfVersionParamset.objects.filter(
+                userworkflow__name__icontains='refine',
+                userworkflow__wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC)]
+        # go through all filejobs that are not done to find current jobs and get pwiz id
         for mzj in filemodels.FileJob.objects.exclude(job__state__in=jj.JOBSTATES_DONE).filter(
                 storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
                         'job').values('job__funcname', 'job__kwargs'):
@@ -806,17 +811,26 @@ def fetch_dset_details(dset):
             pwpk, refined = pwsid.split('_')
             refined = refined == 'True'
             if (not refined and pws['id'] in info['convert_dataset_mzml']) or (refined and pws['id'] in info['refine_mzmls']):
+                # there are jobs for this pw/refine block, either of convert or refine
                 state = 'Processing'
             elif pws['existing'] == nrstoredfiles['raw']:
+                # this pw/refine block is complete
                 state = 'Ready'
-                if not refined and '{}_True'.format(pwpk) not in pw_sets:
+                if not refined and f'{pwpk}_True' not in pw_sets:
+                    # it's not refined and does not have another refined of same pw,
+                    # so we can refine it
                     pws['refineready'] = True
-            elif not refined or pw_sets['{}_False'.format(pwpk)]['existing'] == nrstoredfiles['raw']:
-                if refined and pws['existing'] == 0:
-                    state = 'Incomplete'
-                elif pws['existing'] == 0:
+                    if not len(info['refine_dbs']):
+                        info['refine_dbs'] = {x.id: {'name': x.filename, 'id': x.id} for x in refine_dbs}
+            elif not refined or pw_sets[f'{pwpk}_False']['existing'] == nrstoredfiles['raw']:
+                # either non-refined or refined but with ok non-refined mzml
+                if not refined and pws['existing'] == 0:
+                    # so not refined at all
                     state = 'No mzmls'
                 else:
+                    # Can be either refined or not but with non-complete mzML
+                    if refined and not len(info['refine_dbs']):
+                        info['refine_dbs'] = {x.id: {'name': x.filename, 'id': x.id} for x in refine_dbs}
                     state = 'Incomplete'
             elif refined:
                 state = 'No mzmls'
@@ -916,7 +930,15 @@ def refine_mzmls(request):
         return JsonResponse({'error': 'Refined data already exists'}, status=403)
     elif not nr_exist_mzml or nr_exist_mzml < nr_dsrs:
         return JsonResponse({'error': 'Need to create normal mzMLs before refining'}, status=403)
-    
+    # Check DB
+    if filemodels.StoredFile.objects.filter(pk=data['dbid'],
+            filetype__name=settings.DBFA_FT_NAME).count() != 1:
+        return JsonResponse({'error': 'Wrong database to refine with'}, status=403)
+    # Check WF
+    if anmodels.NextflowWfVersionParamset.objects.filter(pk=data['wfid'],
+           userworkflow__name__icontains='refine',
+           userworkflow__wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC).count() != 1:
+        return JsonResponse({'error': 'Wrong workflow to refine with'}, status=403)
     # Move entire project if not on same file server
     res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
     if dset.storageshare.server != res_share.server:
@@ -925,9 +947,8 @@ def refine_mzmls(request):
     # Refine data
     # FIXME get analysis if it does exist, in case someone reruns?
     analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}')
-    jj.create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
-            dstshare_id=res_share.pk, dbfn_id=settings.MZREFINER_FADB_ID,
-            qtype=dset.quantdataset.quanttype.shortname)
+    jj.create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=data['wfid'],
+            dstshare_id=res_share.pk, dbfn_id=data['dbid'], qtype=dset.quantdataset.quanttype.shortname)
     return JsonResponse({})
 
 
