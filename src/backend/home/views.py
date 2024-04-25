@@ -783,9 +783,8 @@ def fetch_dset_details(dset):
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles = {'raw': rawfiles.count()}
         info.update({'refine_mzmls': [], 'convert_dataset_mzml': [], 'refine_dbs': []})
-        # FIXME hardcoded refine version, wtf
         info['refine_versions'] = [{'id': x.pk, 'name': x.update} for x in
-                anmodels.NextflowWfVersionParamset.objects.filter(
+                anmodels.NextflowWfVersionParamset.objects.filter(active=True,
                 userworkflow__name__icontains='refine',
                 userworkflow__wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC)]
         # go through all filejobs that are not done to find current jobs and get pwiz id
