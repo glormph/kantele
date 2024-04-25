@@ -215,7 +215,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
         os.makedirs(infile_target_dir, exist_ok=True)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
-            fntarget = os.path.join(infile_target_dir, f'{fn["sfid"]}___{fn["fn"]}')
+            fntarget = os.path.join(infile_target_dir, f'{fn["sfid"]}___{fn["fn"]}\n')
             fp.write(fntarget)
             # Create link or staged mzML:
             if infiledir_or_nostage:
