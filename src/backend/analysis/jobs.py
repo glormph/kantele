@@ -43,7 +43,7 @@ class RefineMzmls(DatasetJob):
     def process(self, **kwargs):
         """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
-        analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
+        analysis.nextflowsearch.token = f'nf-{uuid4()}'
         analysis.nextflowsearch.save()
         nfwf = models.NextflowWfVersionParamset.objects.get(pk=kwargs['wfv_id'])
         dbfn = rm.StoredFile.objects.get(pk=kwargs['dbfn_id'])
@@ -106,7 +106,7 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         models.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': nfwf.id, 
-            'job_id': self.job_id, 'workflow_id': wf.id, 'token': 'nf-{}'.format(uuid4)},
+            'job_id': self.job_id, 'workflow_id': wf.id, 'token': f'nf-{uuid4()}'},
             analysis=analysis)
         run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
@@ -255,7 +255,7 @@ class RunNextflowWorkflow(MultiFileJob):
             job = job.save()
 
         # token is unique per job run:
-        analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
+        analysis.nextflowsearch.token = f'nf-{uuid4()}'
         analysis.nextflowsearch.save()
         timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         run = {'analysis_id': analysis.id,
