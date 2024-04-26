@@ -115,18 +115,18 @@ class BaseTest(TestCase):
         dm.DatasetSample.objects.create(dataset=self.ds, projsample=self.projsam1)
 
         # Pwiz/mzml
-        pset, _ = am.ParameterSet.objects.get_or_create(name='pwiz_pset_base')
-        nfw, _ = am.NextflowWorkflowRepo.objects.get_or_create(
-                description='pwiz_repo_base desc', repo='pwiz_repo_base')
-        wfv, _ = am.NextflowWfVersionParamset.objects.get_or_create(update='pwiz wfv base',
-                commit='pwiz ci base', filename='pwiz.nf', nfworkflow=nfw,
-                paramset=pset, nfversion='', active=True)
+        self.pset = am.ParameterSet.objects.create(name='pset_base')
+        self.nfw = am.NextflowWorkflowRepo.objects.create(
+                description='repo_base desc', repo='repo_base')
+        wfv = am.NextflowWfVersionParamset.objects.create(update='pwiz wfv base',
+                commit='pwiz ci base', filename='pwiz.nf', nfworkflow=self.nfw,
+                paramset=self.pset, nfversion='', active=True)
         self.pwiz = am.Proteowizard.objects.create(version_description='pwversion desc1',
                 container_version='', nf_version=wfv)
-        self.f3sfmz, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw,
-                filename=f'{fn3}.mzML', md5='md5_for_f3sf_mzml', filetype=self.ft,
-                defaults={'servershare': self.ssnewstore, 'path': self.storloc, 'checked': True})
-        am.MzmlFile.objects.get_or_create(sfile=self.f3sfmz, pwiz=self.pwiz)
+        self.f3sfmz = rm.StoredFile.objects.create(rawfile=self.f3raw, filename=f'{fn3}.mzML',
+                md5='md5_for_f3sf_mzml', filetype=self.ft, servershare=self.ssnewstore,
+                path=self.storloc, checked=True)
+        am.MzmlFile.objects.create(sfile=self.f3sfmz, pwiz=self.pwiz)
 
         # Project/dataset/files on old storage
         oldfn = 'raw1'

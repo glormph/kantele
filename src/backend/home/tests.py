@@ -171,6 +171,21 @@ class TestCreateMzmls(MzmlTests):
 class TestRefineMzmls(MzmlTests):
     url = '/refinemzml/'
 
+    def setUp(self):
+        super().setUp()
+        dbft = rm.StoredFileType.objects.create(name='database', filetype='tst', is_rawdata=False)
+        dbraw = rm.RawFile.objects.create(name='db.fa', producer=self.prod, source_md5='db.famd5',
+                size=100, date=timezone.now(), claimed=True)
+        self.dbsf = rm.StoredFile.objects.create(rawfile=dbraw, filename=dbraw.name,
+                    md5=dbraw.source_md5, filetype=dbft, servershare=self.ssnewstore,
+                    path=self.storloc, checked=True)
+        self.refinewf = am.NextflowWfVersionParamset.objects.create(update='refine wf',
+                commit='refine ci', filename='refine.nf', nfworkflow=self.nfw, paramset=self.pset, 
+                nfversion='', active=True)
+        wf = am.UserWorkflow.objects.create(name='refine', wftype=am.UserWorkflow.WFTypeChoices.SPEC,
+                public=False)
+        wf.nfwfversionparamsets.add(self.refinewf)
+        
     def test_fail_requests(self):
         # GET
         resp = self.cl.get(self.url)
@@ -204,12 +219,13 @@ class TestRefineMzmls(MzmlTests):
         self.assertEqual(resp.status_code, 403)
 
     def do_refine(self, ds):
-        resp = self.cl.post(self.url, content_type='application/json', data={'dsid': ds.pk})
+        resp = self.cl.post(self.url, content_type='application/json', data={'dsid': ds.pk,
+            'dbid': self.dbsf.pk, 'wfid': self.refinewf.pk})
         self.assertEqual(resp.status_code, 200)
         j = jm.Job.objects.last()
         self.assertEqual(j.funcname, 'refine_mzmls')
-        exp_kw = {'dset_id': self.ds.pk, 'wfv_id': settings.MZREFINER_NXFWFV_ID,
-                'dbfn_id': settings.MZREFINER_FADB_ID, 'dstshare_id': self.ssmzml.pk,
+        exp_kw = {'dset_id': self.ds.pk, 'wfv_id': self.refinewf.pk,
+                'dbfn_id': self.dbsf.pk, 'dstshare_id': self.ssmzml.pk,
                 'qtype': self.ds.quantdataset.quanttype.shortname}
         for k, val in exp_kw.items():
             self.assertEqual(j.kwargs[k], val)
