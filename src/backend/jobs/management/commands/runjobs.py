@@ -53,8 +53,8 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
             # Register dsets FIXME
             ds_ids = jwrapper.get_dsids_jobrunner(**job.kwargs)
             job_ds_map[job.id] = set(ds_ids)
-            # New jobs can be running/error when e.g. the jobrunner is restarted:
-            if job.state in [Jobstates.PROCESSING, Jobstates.ERROR]:
+            # New jobs can be running/error/just-revoked when e.g. the jobrunner is restarted:
+            if job.state in [Jobstates.PROCESSING, Jobstates.ERROR, Jobstates.REVOKING]:
                 active_jobs.add(job.pk)
 
         # Just print info about ERROR-jobs, but also process tasks

@@ -43,8 +43,10 @@ class RefineMzmls(DatasetJob):
     def process(self, **kwargs):
         """Return all a dset mzMLs but not those that have a refined mzML associated, to not do extra work."""
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
+        analysis.nextflowsearch.token = f'nf-{uuid4()}'
+        analysis.nextflowsearch.save()
         nfwf = models.NextflowWfVersionParamset.objects.get(pk=kwargs['wfv_id'])
-        dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
+        dbfn = rm.StoredFile.objects.get(pk=kwargs['dbfn_id'])
         stagefiles = {'--tdb': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         mzmlfiles = self.getfiles_query(**kwargs).filter(checked=True, deleted=False, purged=False,
                 mzmlfile__isnull=False)
@@ -70,6 +72,7 @@ class RefineMzmls(DatasetJob):
             params.extend(['--isobaric', kwargs['qtype']])
         run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
+               'token': analysis.nextflowsearch.token,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
@@ -102,8 +105,12 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
                       '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
         timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
+        models.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': nfwf.id, 
+            'job_id': self.job_id, 'workflow_id': wf.id, 'token': f'nf-{uuid4()}'},
+            analysis=analysis)
         run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
+               'token': analysis.nextflowsearch.token,
                'rf_id': mzml.rawfile_id,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
@@ -112,9 +119,6 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
                'filename': mzml.filename,
                'instrument': mzml.rawfile.producer.name,
                }
-        models.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': nfwf.id, 
-            'job_id': self.job_id, 'workflow_id': wf.id, 'token': 'nf-{}'.format(uuid4)},
-            analysis=analysis)
         self.run_tasks.append(((run, params, stagefiles, ','.join(nfwf.profiles), nfwf.nfversion), {}))
         analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()
@@ -251,7 +255,7 @@ class RunNextflowWorkflow(MultiFileJob):
             job = job.save()
 
         # token is unique per job run:
-        analysis.nextflowsearch.token = 'nf-{}'.format(uuid4())
+        analysis.nextflowsearch.token = f'nf-{uuid4()}'
         analysis.nextflowsearch.save()
         timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         run = {'analysis_id': analysis.id,

@@ -74,7 +74,7 @@ function findQuery(event) {
   }
 }
 
-async function showDetails(itemId) {
+async function hoverDetails(itemId) {
   showDetailBox = itemId; 
   detailsLoaded = false;
   detailBoxContent = await getdetails(itemId);
@@ -173,7 +173,7 @@ div.spinner {
     <tr>
       <td>
         <input type="checkbox" bind:group={selected} value={row.id}>
-        <a on:click={e => clickSingleDetails(rowid)} on:mouseenter={e => showDetails(rowid)} on:mouseleave={e => showDetailBox = false}>
+        <a on:click={e => clickSingleDetails(rowid)} on:mouseenter={e => hoverDetails(rowid)} on:mouseleave={e => showDetailBox = false}>
           <span class="has-text-info icon is-small"> <i class="fa fa-eye"></i></span>
           {#if showDetailBox === rowid}
           <div class="box" >

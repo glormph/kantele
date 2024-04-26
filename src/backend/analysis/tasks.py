@@ -205,24 +205,42 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     params, gitwfdir, infiledir_or_nostage = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
     if infiledir_or_nostage:
         stagedir_to_rm = os.path.split(infiledir_or_nostage)[0]
+        infile_target_dir = infiledir_or_nostage
     else:
         stagedir_to_rm = False
-    # FIXME Should we use components here? -- internal pipe so maybe not?
+        # No stageing on system -> we need to copy mzml to rundir, symlinks made below
+        # will not be accessible to container. We could also change the names
+        # of the actual mzML files temporarily in a pre-refine-job
+        infile_target_dir = os.path.join(rundir, 'infile_links')
+        os.makedirs(infile_target_dir, exist_ok=True)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
+            fntarget = os.path.join(infile_target_dir, f'{fn["sfid"]}___{fn["fn"]}')
+            fp.write(f'{fntarget}\n')
+            # Create link or staged mzML:
             if infiledir_or_nostage:
                 fnpath = os.path.join(infiledir_or_nostage, fn['fn'])
+                if not os.path.exists(fntarget):
+                    os.symlink(fnpath, fntarget)
             else:
+                # if not stageing but direct pulling from server, files will not
+                # be accessible to container if we make links to the rundir, so we 
+                # will copy them here, "stage them anyway"
                 fnpath = os.path.join(settings.SHAREMAP[fn['servershare']], fn['path'], fn['fn'])
-            # FIXME not have set, etc, pass rawfnid here!
-            mzstr = f'{fnpath}\t{fn["sfid"]}\n'
-            fp.write(mzstr)
-    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
+                if os.path.exists(fntarget) and os.path.getsize(fntarget) != os.path.getsize(fnpath):
+                    # file exists but is not correct, delete first
+                    os.remove(fntarget)
+                if not os.path.exists(fntarget):
+                    try:
+                        shutil.copy(fnpath, fntarget)
+                    except FileNotFoundError:
+                        taskfail_update_db(self.request.id, f'Could not stage mzML files for refine, '
+                                'file {fn["fn"]} does not exist with path {fnpath}')
+                    except Exception:
+                        taskfail_update_db(self.request.id, f'Unknown error, could not stage mzML files '
+                                'for refine')
+    params.extend(['--input', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
-    # TODO ideally do this:
-    # ln -s stage mzML with {dbid}___{filename}.mzML
-    # This keeps dbid / ___ split out of the NF workflow 
-    # We dont necessarily need outfiles, we can read from infiles
     outfiles_db = {}
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
     outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])

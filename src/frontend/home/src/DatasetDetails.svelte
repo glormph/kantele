@@ -3,9 +3,12 @@ import { onMount } from 'svelte';
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import { flashtime } from '../../util.js'
 import DetailBox from './DetailBox.svelte'
+import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 
 export let closeWindow;
 export let dsetIds;
+
+let refine_dbid;
 
 let notif = {errors: {}, messages: {}};
 let dsets = {};
@@ -45,8 +48,8 @@ async function convertDset(dsid, pwiz_id) {
   }
 }
 
-async function refineDset(dsid, refine_id) {
-  const resp = await postJSON('refinemzml/', {dsid: dsid, refine_id: refine_id});
+async function refineDset(dsid, wfid, dbid) {
+  const resp = await postJSON('refinemzml/', {dsid: dsid, wfid: wfid, dbid: dbid});
   if (!resp.ok) {
     const msg = `Something went wrong trying to queue precursor refining: ${resp.error}`;
     notif.errors[msg] = 1;
@@ -172,7 +175,16 @@ onMount(async() => {
         <tr>
           <td>
             {#if (pw.state === 'Incomplete' && pw.refined && pw.active)}
-            <button class="button is-small" on:click={e => refineDset(dsid, pw.id)}>Re-refine</button>
+            <div class="select is-small">
+              <select bind:value={refine_v_touse[dset.id]}>
+                <option value="">Pick a refine version</option>
+                {#each dset.refine_versions as {id, name}}
+                <option value={id}>Refine {name}</option>
+                {/each}
+              </select>
+            </div>
+            <button class="button is-small" on:click={e => refineDset(dsid, refine_v_touse[dset.id], refine_dbid)}>Re-refine</button>
+            <DynamicSelect bind:selectval={refine_dbid} niceName={x => x.name} fixedoptions={dset.refine_dbs} placeholder='Pick a db for your organism' />
             {:else if !pw.refined && pw.active && (pw.state === 'Incomplete' || pw.state === 'No mzmls')}
             <button class="button is-small" on:click={e => convertDset(dsid, pw.id)}>Re-convert</button>
             {:else if pw.refineready}
@@ -184,7 +196,8 @@ onMount(async() => {
                 {/each}
               </select>
             </div>
-            <button class="button is-small" on:click={e => refineDset(dsid, refine_v_touse[dset.id])}>Refine mzML</button>
+            <button class="button is-small" on:click={e => refineDset(dsid, refine_v_touse[dset.id], refine_dbid)}>Refine mzML</button>
+           <DynamicSelect bind:selectval={refine_dbid} niceName={x => x.name} fixedoptions={dset.refine_dbs} placeholder='Pick a db for your organism' />
             {/if}
           </td>
           <td>
