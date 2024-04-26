@@ -234,10 +234,10 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
                     try:
                         shutil.copy(fnpath, fntarget)
                     except FileNotFoundError:
-                        taskfail_update_db(taskid, f'Could not stage mzML files for refine, '
+                        taskfail_update_db(self.request.id, f'Could not stage mzML files for refine, '
                                 'file {fn["fn"]} does not exist with path {fnpath}')
                     except Exception:
-                        taskfail_update_db(taskid, f'Unknown error, could not stage mzML files '
+                        taskfail_update_db(self.request.id, f'Unknown error, could not stage mzML files '
                                 'for refine')
     params.extend(['--input', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
