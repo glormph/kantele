@@ -54,7 +54,7 @@ class RefineMzmls(DatasetJob):
         mzml_nonrefined = mzmlfiles.exclude(rawfile__storedfile__in=existing_refined).select_related('mzmlfile__pwiz')
         dstshare = rm.ServerShare.objects.get(pk=kwargs['dstshare_id'])
         timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
-        runpath = sub('[^a-zA-Z0-9\.\-_]', '_', f'{analysis.id}_{analysis.name}_{timestamp}')
+        runpath = re.sub('[^a-zA-Z0-9\.\-_]', '_', f'{analysis.id}_{analysis.name}_{timestamp}')
         mzmls = []
         for x in mzml_nonrefined:
             # FIXME In task: ln -s {dbid}___{fn}_refined.mzML name as input, leave out that part
