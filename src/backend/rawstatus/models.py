@@ -89,6 +89,11 @@ class StoredFile(models.Model):
     deleted = models.BooleanField(default=False) # marked for deletion by user, only UI
     purged = models.BooleanField(default=False) # deleted from active storage filesystem
 
+    class Meta:
+        # Include the deleted field to allow for multi-version of a file 
+        # as can be the case in mzML (though only one existing)
+        constraints = [models.UniqueConstraint(fields=['servershare', 'path', 'filename', 'deleted'], name='uni_storedfile')]
+
     def __str__(self):
         return self.rawfile.name
 

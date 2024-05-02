@@ -72,7 +72,7 @@ class BaseTest(TestCase):
         # File prep, producers etc
         self.ft, _ = rm.StoredFileType.objects.get_or_create(name='testft', filetype='tst',
                 is_rawdata=True)
-        self.prod, _ = rm.Producer.objects.get_or_create(name='prod1', client_id='abcdefg', shortname='p1')
+        self.prod, _ = rm.Producer.objects.get_or_create(name='prod1', client_id='abcdefg', shortname='p1', internal=True)
         msit, _ = rm.MSInstrumentType.objects.get_or_create(name='test')
         rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
                 filetype=self.ft)
@@ -207,7 +207,7 @@ class BaseTest(TestCase):
         self.ana_raw2, _ = rm.RawFile.objects.get_or_create(name='ana_file2', producer=self.anaprod,
                 source_md5='anarawabc1234', size=100, defaults={'date': timezone.now(), 'claimed': True})
         self.anasfile2, _ = rm.StoredFile.objects.get_or_create(rawfile=self.ana_raw2,
-                filetype_id=self.ft.id, defaults={'filename': self.ana_raw.name, 'filetype': self.ft,
+                filetype_id=self.ft.id, defaults={'filename': self.ana_raw2.name, 'filetype': self.ft,
                     'servershare_id': self.sstmp.id, 'path': '', 'md5': self.ana_raw2.source_md5})
 
 

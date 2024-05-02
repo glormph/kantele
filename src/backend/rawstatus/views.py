@@ -103,16 +103,6 @@ def scan_raws_tmp(request):
 
 @require_POST
 def register_file(request):
-    # TODO return scp address to transfer file to
-    # Find out something for SSH key rotation (client creates new key and uploads pubkey)
-    # But how to know the client is the real client?
-    # Strong secret needed, although if the client computer is used
-    # By someone else we are fucked anyway
-    # Rotate SSH keys to remove the danger of SSH key leaking,
-    # And automate to not give the "lab laptop uploads" an actual SSH 
-    # key (else theyd have to get it from admin all the time, PITA!)
-    # Auto-Rotate key every sunday night or something on client (stop transferring, fix keys)
-    # User file uploads get key per upload (have to wait until it is installed on the data/server
     """New files are registered in the system on this view, where producer 
     or user passes info on file (name, md5, date, etc). Auth is done 
     via a token either from web console or CLI script.
@@ -191,6 +181,13 @@ def browser_userupload(request):
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)
+
+    # Unfortunately have to do checking after upload as we need the MD5 of the file
+    # NB not needed to test if file w identical name exists due to inclusion of ID
+    # in filename.
+    fname = f'{raw["file_id"]}_{upfile.name}'
+    dstpath = settings.USERFILEDIR
+    dstshare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
     sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
     if sfns.count() == 1:
         os.unlink(dst)
@@ -200,11 +197,9 @@ def browser_userupload(request):
         os.unlink(dst)
         return JsonResponse({'success': False, 'msg': 'Multiple files already found, this '
             'should not happen, please inform your administrator'}, status=403)
-    sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
-        filename=f'{raw["file_id"]}_{upfile.name}',
-        checked=True, filetype=upload.filetype,
-        md5=dighash, path=settings.USERFILEDIR,
-        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
+    # All good, get the file to storage
+    sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
+            filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
     jobutil.create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
     if not ftype.is_rawdata and upload.is_library:
         LibraryFile.objects.create(sfile=sfile, description=desc)
@@ -512,8 +507,23 @@ def transfer_file(request):
         # TODO create exception for that if ever needed? data['overwrite'] = True?
         # Also look at below get_or_create call and checking created
         return JsonResponse({'error': 'This file is already in the '
-            f'system: {sfns.get().filename}, if you are re-uploading a previously '
+            f'system: {sfns.first().filename}, if you are re-uploading a previously '
             'deleted file, consider reactivating from backup, or contact admin'}, status=403)
+    # Now prepare file system info, check if duplicate name exists:
+    if upload.archive_only:
+        dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
+    else:
+        dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+    # FIXME Why do we want a file id to the name? Uniqueness because harder to control external files?
+    fname = fname if rawfn.producer.internal else f'{rawfn.pk}_{fname}'
+    dstpath = settings.TMPPATH
+    if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
+        return JsonResponse({'error': 'Another file in the system has the same name '
+            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+            'Please investigate, possibly change the file name or location of this or the other '
+            'file to enable transfer without overwriting.'}, status=403)
+
+    # All clear, do the upload storing:
     upfile = request.FILES['file']
     dighash = md5()
     upload_dst = rsjobs.create_upload_dst_web(rawfn.pk, upload.filetype.filetype)
@@ -540,16 +550,9 @@ def transfer_file(request):
             os.unlink(upload_dst)
             return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
     os.chmod(upload_dst, 0o644)
-    # Now prepare for move to proper destination
-    if upload.archive_only:
-        dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
-    else:
-        dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
-    fname = fname if rawfn.producer.internal else f'{rawfn.pk}_{fname}'
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
-            defaults={'servershare': dstshare, 'path': settings.TMPPATH,
-                'filename': fname})
+            defaults={'servershare': dstshare, 'path': dstpath, 'filename': fname})
     if not created:
         # This could happen in the future when there is some kind of bypass of the above
         # check sfns.count(). 

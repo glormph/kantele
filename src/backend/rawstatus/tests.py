@@ -280,9 +280,16 @@ class TestFileTransfer(BaseFilesTest):
         # Now do checks
         if existing_file:
             self.assertEqual(resp.status_code, 403)
-            self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
-            f'{self.registered_raw.name}, if you are re-uploading a previously '
-            'deleted file, consider reactivating from backup, or contact admin'})
+            try:
+                self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
+                f'{self.registered_raw.name}, if you are re-uploading a previously '
+                'deleted file, consider reactivating from backup, or contact admin'})
+            except AssertionError:
+                self.assertEqual(resp.json(), {'error': 'Another file in the system has the same name '
+            f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}. '
+            'Please investigate, possibly change the file name or location of this or the other '
+            'file to enable transfer without overwriting.'})
+
         elif not self.uploadtoken.filetype.is_rawdata and not self.uploadtoken.is_library and not userdesc:
             self.assertEqual(resp.status_code, 403)
             self.assertIn('User file needs a description', resp.json()['error'])
@@ -312,10 +319,19 @@ class TestFileTransfer(BaseFilesTest):
     def test_transfer_again(self):
         '''Transfer already existing file, e.g. overwrites of previously
         found to be corrupt file'''
-        # FIXME 403, not overwrite (need overwrite?)
-        sf = rm.StoredFile.objects.create(rawfile=self.registered_raw, filetype=self.ft,
+        # Create storedfile which is the existing file w same md5, to get 403:
+        rm.StoredFile.objects.create(rawfile=self.registered_raw, filetype=self.ft,
                 md5=self.registered_raw.source_md5, servershare=self.sstmp, path='',
                 filename=self.registered_raw.name)
+        self.test_transfer_file(existing_file=True)
+
+    def test_transfer_same_name(self):
+        # Test trying to upload file with same name/path but diff MD5
+        other_raw = rm.RawFile.objects.create(name=self.registered_raw.name, producer=self.prod,
+                source_md5='fake_existing_md5', size=100, date=timezone.now(), claimed=False)
+        rm.StoredFile.objects.create(rawfile=other_raw, filetype=self.ft,
+                md5=other_raw.source_md5, servershare=self.sstmp, path=settings.TMPPATH,
+                filename=other_raw.name)
         self.test_transfer_file(existing_file=True)
 
     def transfer_archive_only(self):
