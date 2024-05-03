@@ -6,6 +6,7 @@ from datetime import datetime
 
 from rawstatus import tasks, models
 from datasets import tasks as dstasks
+from datasets import models as dm
 from kantele import settings
 from jobs.jobs import SingleFileJob, MultiFileJob, DatasetJob
 
@@ -58,23 +59,31 @@ class RenameFile(SingleFileJob):
     refname = 'rename_file'
     task = dstasks.move_file_storage
     retryable = False
-    """Only renames file inside same path/server. Does not move cross directories.
-    This job checks if there is a RawFile entry with the same name in the same folder
-    to avoid possible renaming collisions. Updates RawFile in job instead of view 
-    since jobs are processed in a single queue.
-    Since it only expects raw files it will also rename all mzML attached converted
-    files. newname should NOT contain the file extension, only name.
-    FIXME: make impossible to overwrite using move jobs at all (also moving etc)
+    """Only renames file inside same path/server. Does not move cross directories. Does not change extensions.
+    Updates RawFile in job instead of view since jobs are processed in a single queue. StoredFile names are
+    updated in the post job view.
+    It will also rename all mzML attached converted files.
     """
 
+    def check_error(self, **kwargs):
+        '''Check for file name collisions, also with directories'''
+        src_sf = self.getfiles_query(**kwargs)
+        fn_ext = os.path.splitext(src_sf.filename)[1]
+        fullnewname = f'{kwargs["newname"]}{fn_ext}'
+        fullnewpath = os.path.join(src_sf.path, f'{kwargs["newname"]}{fn_ext}')
+        if models.StoredFile.objects.filter(filename=fullnewname, path=src_sf.path,
+                servershare_id=src_sf.servershare_id).exists():
+            return f'A file in path {src_sf.path} with name {fullnewname} already exists. Please choose another name.'
+        elif dm.Dataset.objects.filter(storage_loc=fullnewpath,
+                storageshare_id=src_sf.servershare_id).exists():
+            return f'A dataset with the same directory name as your new file name {fullnewpath} already exists'
+        else:
+            return False
+        
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         newname = kwargs['newname']
         fn_ext = os.path.splitext(sfile.filename)[1]
-        if models.StoredFile.objects.exclude(pk=sfile.id).filter(
-                rawfile__name=newname + fn_ext, path=sfile.path,
-                servershare_id=sfile.servershare_id).exists():
-            raise RuntimeError('A file in path {} with name {} already exists or will soon be created. Please choose another name'.format(sfile.path, newname))
         sfile.rawfile.name = newname + fn_ext
         sfile.rawfile.save()
         for changefn in sfile.rawfile.storedfile_set.select_related('mzmlfile'):
@@ -87,16 +96,35 @@ class RenameFile(SingleFileJob):
 
 
 class MoveSingleFile(SingleFileJob):
+    '''Move file from one share/path to another. Technically the same as rename, as you can
+    also specify a new filename, but this job is not exposed to the user, and only used
+    internally for moving files to a predestined path (i.e. incoming mzML, QC raw files, library etc'''
     refname = 'move_single_file'
     task = dstasks.move_file_storage
 
+    def check_error(self, **kwargs):
+        '''Check for file name collisions'''
+        src_sf = self.getfiles_query(**kwargs)
+        if dstsharename := kwargs.get('dstsharename'):
+            sshare = models.ServerShare.objects.filter(name=dstsharename).get()
+        else:
+            sshare = src_sf.servershare
+        newfn = kwargs.get('newname', src_sf.filename)
+        fullnewpath = os.path.join(kwargs['dst_path'], newfn)
+        if models.StoredFile.objects.filter(filename=newfn, path=kwargs['dst_path'],
+                servershare=sshare).exists():
+            return f'A file in path {kwargs["dst_path"]} with name {src_sf.filename} already exists. Please choose another name.'
+        elif dm.Dataset.objects.filter(storage_loc=fullnewpath, storageshare=sshare).exists():
+            return f'A dataset with the same directory name as your new file location {fullnewpath} already exists'
+        else:
+            return False
+
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
-        oldname = sfile.filename if not 'oldname' in kwargs or not kwargs['oldname'] else kwargs['oldname']
         taskkwargs = {x: kwargs[x] for x in ['newname'] if x in kwargs}
         dstsharename = kwargs.get('dstsharename') or sfile.servershare.name
         self.run_tasks.append(((
-            oldname, sfile.servershare.name,
+            sfile.filename, sfile.servershare.name,
             sfile.path, kwargs['dst_path'], sfile.id, dstsharename), taskkwargs))
 
 

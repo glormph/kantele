@@ -99,7 +99,7 @@ class BaseTest(TestCase):
                 defaults={'email': 'contactname'})
         dm.DatasetOwner.objects.get_or_create(dataset=self.ds, user=self.user)
         self.f3path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
-        fn3 = 'raw3'
+        fn3 = 'raw3.raw'
         f3size = os.path.getsize(os.path.join(self.f3path, fn3))
         self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,
                 source_md5='f3_fakemd5',

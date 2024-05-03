@@ -356,7 +356,9 @@ def update_dataset(data):
                                            dtype, prefrac, hrrange_id)
     if (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
-        create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
+        job = create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
+        if job['error']: 
+            return JsonResponse({'error': job['error']}, status=403)
     dset.save()
     if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
         try:
@@ -614,11 +616,10 @@ def merge_projects(request):
                 prefrac = pfds.prefractionation if pfds else False
                 hrrange_id = pfds.hiriefdataset.hirief_id if hasattr(pfds, 'hiriefdataset') else False
                 new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange_id)
-                if models.Dataset.objects.filter(storage_loc=new_storage_loc):
-                    return JsonResponse({'error': 'You cannot change the dataset path to an '
-                        f'existing dataset path {new_storage_loc}'}, status=403)
-                create_job('rename_dset_storage_loc', dset_id=dset.id,
+                job = create_job('rename_dset_storage_loc', dset_id=dset.id,
                         dstpath=new_storage_loc)
+                if job['error']:
+                    return JsonResponse({'error': job['error']}, status=403)
             # Also, should we possibly NOT chaneg anything here but only check pre the job, then merge after job complete?
             # In case of waiting times, job problems, etc? Prob doesnt matter much.
         proj.delete()
@@ -637,19 +638,17 @@ def rename_project(request):
     except models.Project.DoesNotExist:
         return JsonResponse({'error': f'Project with that ID does not exist in DB'}, status=404)
     # check if new project not already exist, and user have permission for all dsets
-    proj_exist = models.Project.objects.filter(name=data['newname'])
-    if proj_exist.count():
-        if proj_exist.get().id == proj.id:
-            return JsonResponse({'error': f'Cannot change name to existing name for project {proj.name}'}, status=403)
-        else:
-            return JsonResponse({'error': f'There is already a project by that name {data["newname"]}'}, status=403)
-    if is_invalid_proj_exp_runnames(data['newname']):
+    if data['newname'] == proj.name:
+        return JsonResponse({'error': f'Cannot change name to existing name for project {proj.name}'}, status=403)
+    elif is_invalid_proj_exp_runnames(data['newname']):
         return JsonResponse({'error': f'Project name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
     dsets = models.Dataset.objects.filter(runname__experiment__project=proj)
     if not all(check_ownership(request.user, ds) for ds in dsets):
         return JsonResponse({'error': f'You do not have the rights to change all datasets in this project'}, status=403)
     # queue jobs to rename project, update project name after that since it is needed in job for path
-    create_job('rename_top_lvl_projectdir', newname=data['newname'], proj_id=data['projid'])
+    job = create_job('rename_top_lvl_projectdir', newname=data['newname'], proj_id=data['projid'])
+    if job['error']:
+        return JsonResponse({'error': job['error']}, status=403)
     proj.name = data['newname']
     proj.save()
     return JsonResponse({})

@@ -30,8 +30,14 @@ class RenameProject(ProjectJob):
                 servershare__in=[x.storageshare for x in dsets.distinct('storageshare')],
                 path__in=[x.storage_loc for x in dsets.distinct('storage_loc')])
 
-    def check_create_error(self, **kwargs):
-        return False
+    def check_error(self, **kwargs):
+        # Since proj name is unique, this wont do much, but its ok to check here instead of in view 
+        # just in case of weird race between view/job
+        '''Duplicate check'''
+        if Project.objects.filter(name=kwargs['newname']).exclude(pk=kwargs['proj_id']).exists():
+            return f'There is already a project by that name {kwargs["newname"]}'
+        else:
+            return False
 
     def process(self, **kwargs):
         """Fetch fresh project name here, then queue for move from there"""
@@ -51,10 +57,19 @@ class RenameProject(ProjectJob):
 class RenameDatasetStorageLoc(DatasetJob):
     '''Renames dataset, then updates storage_loc of it and path of all dataset storedfiles
     which have same path as dataset.storage_loc, including any deleted files, but not newly
-    added files from tmp'''
+    added files from tmp.
+    Calling this job needs to be checked for forbidden duplicate storage locs
+    '''
     refname = 'rename_dset_storage_loc'
     task = tasks.rename_dset_storage_location
     retryable = False
+
+    def check_error(self, **kwargs):
+        '''Duplicate check, not only check other storage loc, but also any files with the same name'''
+        if Dataset.objects.filter(storage_loc=kwargs['dstpath']):
+            return f'There is already a dataset at the location {kwargs["dstpath"]} you are renaming to'
+        else:
+            return False
 
     def process(self, **kwargs):
         """Fetch fresh storage_loc src dir here, then queue for move from there"""

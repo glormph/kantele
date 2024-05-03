@@ -624,8 +624,12 @@ def rename_file(request):
         return JsonResponse({'error': 'Files of this type cannot be renamed'}, status=403)
     elif re.match('^[a-zA-Z_0-9\-]*$', newfilename) is None:
         return JsonResponse({'error': 'Illegal characteres in new file name'}, status=403)
-    create_job('rename_file', sf_id=sfile.id, newname=newfilename)
-    return JsonResponse({})
+    job = create_job('rename_file', sf_id=sfile.id, newname=newfilename)
+    print(job)
+    if job['error']:
+        return JsonResponse({'error': job['error']}, status=403)
+    else:
+        return JsonResponse({})
 
 
 def zip_instrument_upload_pkg(prod, runtransferfile):

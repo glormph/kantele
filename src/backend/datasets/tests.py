@@ -212,7 +212,11 @@ class RenameProjectTest(BaseIntegrationTest):
         self.assertEqual(resp.status_code, 403)
         self.assertIn(f'cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}',
                 json.loads(resp.content)['error'])
-        # existing proj name? proj name identical to old projname
+        oldp = dm.Project.objects.create(name='project to rename', pi=self.pi)
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'projid': oldp.pk, 'newname': self.p1.name})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('There is already a project by that name', resp.json()['error'])
 
     def test_rename_ok(self):
         newname = 'testnewname'

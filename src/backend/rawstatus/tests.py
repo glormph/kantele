@@ -14,6 +14,7 @@ from kantele import settings
 from kantele.tests import BaseTest, ProcessJobTest, BaseIntegrationTest
 from rawstatus import models as rm
 from rawstatus import jobs as rjobs
+from datasets import models as dm
 from analysis import models as am
 from analysis import models as am
 from jobs import models as jm
@@ -558,6 +559,96 @@ class TestPurgeFilesJob(ProcessJobTest):
                 ]
         self.check(exp_t)
 
+
+class TestMoveSingleFile(ProcessJobTest):
+    jobclass = rjobs.MoveSingleFile
+
+    def test_mv_fn(self):
+        newpath = os.path.split(self.f3sf.path)[0]
+        kwargs = {'sf_id': self.f3sf.pk, 'dst_path': newpath}
+        self.assertEqual(self.job.check_error(**kwargs), False)
+        self.job.process(**kwargs)
+        exp_t = [((self.f3sf.filename, self.f3sf.servershare.name, self.f3sf.path, newpath,
+            self.f3sf.pk, self.f3sf.servershare.name), {})]
+        self.check(exp_t)
+
+    def test_error_duplicatefn(self):
+        # Another fn exists w same name
+        oldraw = rm.RawFile.objects.create(name=self.f3sf.filename, producer=self.prod,
+                source_md5='rename_oldraw_fakemd5', size=10, date=timezone.now(), claimed=True)
+        sf = rm.StoredFile.objects.create(rawfile=oldraw, filename=self.f3sf.filename, md5=oldraw.source_md5,
+                filetype=self.ft, servershare=self.f3sf.servershare, path='oldpath', checked=True)
+        newpath = os.path.split(self.f3path)
+        kwargs = {'sf_id': sf.pk, 'dst_path': self.f3sf.path}
+        self.assertIn('A file in path', self.job.check_error(**kwargs))
+        self.assertIn('already exists. Please choose another', self.job.check_error(**kwargs))
+
+        # A dataset has the same name as the file
+        run = dm.RunName.objects.create(name='run1.raw', experiment=self.exp1)
+        storloc = os.path.join(self.p1.name, self.exp1.name, self.dtype.name, run.name)
+        ds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
+                datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=storloc)
+        newpath, newname = os.path.split(storloc)
+        kwargs = {'sf_id': sf.pk, 'dst_path': newpath, 'newname': newname}
+        self.assertIn('A dataset with the same directory name as your new', self.job.check_error(**kwargs))
+
+
+class TestRenameFile(BaseIntegrationTest):
+    url = '/files/rename/'
+
+    def test_renamefile(self):
+        # There is no mzML for this sfile:
+        self.f3sfmz.delete()
+        oldfn = self.f3sf.filename
+        oldname, ext = os.path.splitext(oldfn)
+        newname = f'renamed_{oldname}'
+        newfile_path = os.path.join(self.f3path, f'{newname}{ext}')
+        kwargs_postdata = {'sf_id': self.f3sf.pk, 'newname': newname}
+        # First call HTTP
+        resp = self.post_json(data=kwargs_postdata)
+        self.assertEqual(resp.status_code, 200)
+        file_path = os.path.join(self.f3path, self.f3sf.filename)
+        self.assertTrue(os.path.exists(file_path))
+        self.assertFalse(os.path.exists(newfile_path))
+        self.f3sf.refresh_from_db()
+        self.assertEqual(self.f3sf.filename, oldfn)
+        job = jm.Job.objects.last()
+        self.assertEqual(job.kwargs, kwargs_postdata)
+        # Now run job
+        self.run_job()
+        job.refresh_from_db()
+        self.assertEqual(job.state, jj.Jobstates.PROCESSING)
+        self.assertFalse(os.path.exists(file_path))
+        self.assertTrue(os.path.exists(newfile_path))
+
+    def test_cannot_create_job(self):
+        # Try with non-existing file
+        resp = self.post_json(data={'sf_id': -1000, 'newname': self.f3sf.filename})
+        self.assertEqual(resp.status_code, 403)
+        rj = resp.json()
+        self.assertEqual('File does not exist', rj['error'])
+
+        # Create file record
+        oldfn = 'rename_oldfn.raw'
+        oldraw = rm.RawFile.objects.create(name=oldfn, producer=self.prod,
+                source_md5='rename_oldraw_fakemd5', size=10, date=timezone.now(), claimed=True)
+        sf = rm.StoredFile.objects.create(rawfile=oldraw, filename=oldfn, md5=oldraw.source_md5,
+                filetype=self.ft, servershare=self.f3sf.servershare, path=self.f3sf.path, checked=True)
+        # Try with no file ownership 
+        resp = self.post_json(data={'sf_id': sf.pk, 'newname': self.f3sf.filename})
+        self.assertEqual(resp.status_code, 403)
+        rj = resp.json()
+        self.assertEqual('Not authorized to rename this file', rj['error'])
+
+        self.user.is_superuser = True
+        self.user.save()
+
+        # Try rename to existing file
+        resp = self.post_json(data={'sf_id': sf.pk, 'newname': self.f3sf.filename})
+        self.assertEqual(resp.status_code, 403)
+        rj = resp.json()
+        self.assertIn('A file in path', rj['error'])
+        self.assertIn('already exists. Please choose', rj['error'])
 
 
 class TestDeleteFile(BaseIntegrationTest):
