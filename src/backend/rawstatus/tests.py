@@ -57,7 +57,8 @@ class TransferStateTest(BaseFilesTest):
                 path='', md5=self.multifileraw.source_md5, filetype=self.ft)
         # ft2 = rm.StoredFileType.objects.create(name='testft2', filetype='tst')
         # FIXME multisf with two diff filenames shouldnt be a problem right?
-        multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, 
+        multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw,
+                filename=f'{self.multifileraw.name}.mzML', 
                 servershare=self.sstmp, path='', md5='', filetype=self.ft)
 
     def test_transferstate_done(self):
@@ -74,13 +75,13 @@ class TransferStateTest(BaseFilesTest):
         '''Test if state done is correctly reported for uploaded library file,
         and that archiving and move jobs exist for it'''
         # Create lib file which is not claimed yet
-        libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone',
+        libraw = rm.RawFile.objects.create(name='another_libfiledone',
                 producer=self.prod, source_md5='test_trfstate_libfile',
-                size=100, defaults={'claimed': False, 'date': timezone.now()})
-        sflib, _ = rm.StoredFile.objects.update_or_create(rawfile=libraw, md5=libraw.source_md5,
-                filetype=self.ft, defaults={'checked': True, 'filename': libraw.name,
-                    'servershare': self.sstmp, 'path': ''})
-        lf, _ = am.LibraryFile.objects.get_or_create(sfile=sflib, description='This is a libfile')
+                size=100, claimed=False, date=timezone.now())
+        sflib = rm.StoredFile.objects.create(rawfile=libraw, md5=libraw.source_md5,
+                filetype=self.ft, checked=True, filename=libraw.name,
+                    servershare=self.sstmp, path='')
+        lf = am.LibraryFile.objects.create(sfile=sflib, description='This is a libfile')
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': self.token, 'fnid': libraw.id})
         rj = resp.json()
@@ -412,8 +413,10 @@ class TestArchiveFile(BaseFilesTest):
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp.json()['error'], 'File is currently marked as deleted, can not archive')
         # purged file to also test the check for it. Unrealistic to have it deleted but
-        # not purged obviously
-        sfile2 = rm.StoredFile.objects.create(rawfile=self.registered_raw, filename=self.registered_raw.name, 
+        # not purged obviously, as jobrunner shouldnt trigger that - except for when there is a delete job
+        # which is deleted before running (no post-job purge set), which is bad!
+        sfile2 = rm.StoredFile.objects.create(rawfile=self.registered_raw,
+                filename=f'{self.registered_raw.name}_purged', 
                 servershare_id=self.sstmp.id, path='', md5='deletedmd5_2',
                 filetype_id=self.ft.id, deleted=False, purged=True)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile2.pk})

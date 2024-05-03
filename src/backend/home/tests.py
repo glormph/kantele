@@ -211,8 +211,8 @@ class TestRefineMzmls(MzmlTests):
         self.assertIn('Need to create normal mzMLs', resp.json()['error'])
 
         # refined exists already
-        refinedsf = rm.StoredFile.objects.create(rawfile=self.qeraw, filename=self.qeraw.name, servershare=self.ds.storageshare,
-                path=self.storloc, md5='refined_md5', checked=True, filetype=self.ft)
+        refinedsf = rm.StoredFile.objects.create(rawfile=self.qeraw, filename=f'{self.qeraw.name}_refined',
+                servershare=self.ds.storageshare, path=self.storloc, md5='refined_md5', checked=True, filetype=self.ft)
         am.MzmlFile.objects.create(sfile=refinedsf, pwiz=self.pw, refined=True)
         am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
         resp = self.cl.post(self.url, content_type='application/json', data={'dsid': self.ds.pk})
