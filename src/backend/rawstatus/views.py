@@ -35,6 +35,7 @@ from datasets import models as dsmodels
 from dashboard import models as dashmodels
 from jobs import models as jm
 from jobs import jobs as jobutil
+from jobs.jobutil import create_job
 
 
 def inflow_page(request):
@@ -80,7 +81,7 @@ def import_external_data(request):
                         'path': os.path.join(req['dirname'], path), 'md5': fakemd5})
             sf_ids.append(sfile.pk)
         # Jobs to get MD5 etc
-        jobutil.create_job('register_external_raw', dset_id=dset.id, sf_ids=sf_ids, sharename=share.name)
+        create_job('register_external_raw', dset_id=dset.id, sf_ids=sf_ids, sharename=share.name)
     return JsonResponse({})
 
 
@@ -200,7 +201,7 @@ def browser_userupload(request):
     # All good, get the file to storage
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
             filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
-    jobutil.create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
+    create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
     if not ftype.is_rawdata and upload.is_library:
         LibraryFile.objects.create(sfile=sfile, description=desc)
     elif not ftype.is_rawdata:
@@ -427,7 +428,7 @@ def get_files_transferstate(request):
 
         else:
             # There is an unlikely rsync job which is canceled, requeue it
-            jobutil.create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst)
+            create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst)
             tstate = 'wait'
     response = {'transferstate': tstate}
     return JsonResponse(response)
@@ -441,26 +442,26 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
     """
     is_ms = hasattr(rfn.producer, 'msinstrument')
     is_active_ms = is_ms and rfn.producer.internal and rfn.producer.msinstrument.active
-    jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
+    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
     if archive_only:
-        jobutil.create_job('purge_files', sf_ids=[sfn.pk])
+        create_job('purge_files', sf_ids=[sfn.pk])
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
         rfn.claimed = True
         rfn.save()
-        jobutil.create_job('move_single_file', sf_id=sfn.id,
+        create_job('move_single_file', sf_id=sfn.id,
                 dstsharename=settings.PRIMARY_STORAGESHARENAME,
                 dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
         run_singlefile_qc(sfn.rawfile, sfn)
         newname = fn
     elif hasattr(sfn, 'libraryfile'):
         newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
-        jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
+        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
                 newname=newname)
     elif hasattr(sfn, 'userfile'):
         newname = f'userfile_{rfn.id}_{rfn.name}'
         # FIXME can we move a folder!?
-        jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
+        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
                 newname=newname)
     else:
         newname = sfn.filename
@@ -561,7 +562,7 @@ def transfer_file(request):
         LibraryFile.objects.create(sfile=file_trf, description=libdesc)
     elif not upload.filetype.is_rawdata:
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
-    jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
+    create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
@@ -588,7 +589,7 @@ def run_singlefile_qc(rawfile, storedfile):
         user_op = dsmodels.Operator.objects.first()
     analysis = Analysis.objects.create(user_id=user_op.user_id,
             name=f'{rawfile.producer.name}_{rawfile.name}_{rawfile.date}')
-    jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,
+    create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,
             dbfn_id=settings.LONGQC_FADB_ID, params=params)
 
 
@@ -623,7 +624,7 @@ def rename_file(request):
         return JsonResponse({'error': 'Files of this type cannot be renamed'}, status=403)
     elif re.match('^[a-zA-Z_0-9\-]*$', newfilename) is None:
         return JsonResponse({'error': 'Illegal characteres in new file name'}, status=403)
-    jobutil.create_job('rename_file', sf_id=sfile.id, newname=newfilename)
+    create_job('rename_file', sf_id=sfile.id, newname=newfilename)
     return JsonResponse({})
 
 
@@ -764,7 +765,7 @@ def cleanup_old_files(request):
 
     if queue_job:
         for chunk in chunk_iter(all_old_mzmls, 500):
-            jobutil.create_job('purge_files', sf_ids=[x.id for x in chunk])
+            create_job('purge_files', sf_ids=[x.id for x in chunk])
         return JsonResponse({'ok': True})
     else:
         # cannot aggregate Sum on UNION
@@ -810,7 +811,7 @@ def download_px_project(request):
             StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'], filetype_id=ftid,
                     filename=fn, defaults={'servershare_id': tmpshare, 'path': '',
                         'md5': fakemd5})
-    rsjob = jobutil.create_job(
+    create_job(
         'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], sharename=settings.TMPSHARENAME, shasums=shasums)
     return HttpResponse()
 
@@ -836,7 +837,7 @@ def restore_file_from_cold(request):
     elif hasattr(sfile, 'mzmlfile'):
         return JsonResponse({'error': 'mzML derived files are not archived, please regenerate it from RAW data'}, status=403)
     # File is set to deleted, purged = False, False in the post-job-view
-    jobutil.create_job('restore_from_pdc_archive', sf_id=sfile.pk)
+    create_job('restore_from_pdc_archive', sf_id=sfile.pk)
     return JsonResponse({'state': 'ok'})
 
 
@@ -862,6 +863,7 @@ def archive_file(request):
         return JsonResponse({'error': 'File is already archived'}, status=403)
     elif hasattr(sfile, 'mzmlfile'):
         return JsonResponse({'error': 'Derived mzML files are not archived, they can be regenerated from RAW data'}, status=403)
-    # File is set to deleted,purged=True,True in the post-job-view
-    jobutil.create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)
+    create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)
+    # File is set to deleted,purged=True,True in the post-job-view for purge
+    create_job('purge_files', sf_ids=[sfile.pk])
     return JsonResponse({'state': 'ok'})

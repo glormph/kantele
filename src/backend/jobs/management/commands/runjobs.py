@@ -12,10 +12,11 @@ from time import sleep
 
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
-from jobs.jobs import Jobstates, send_slack_message
+from jobs.jobs import Jobstates
+from jobs.views import send_slack_message
 from jobs import jobs as jj
 from rawstatus.models import FileJob
-from jobs.views import jobmap
+from jobs.jobutil import jobmap
 
 
 class Command(BaseCommand):

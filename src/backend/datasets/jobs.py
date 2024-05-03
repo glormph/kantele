@@ -30,6 +30,9 @@ class RenameProject(ProjectJob):
                 servershare__in=[x.storageshare for x in dsets.distinct('storageshare')],
                 path__in=[x.storage_loc for x in dsets.distinct('storage_loc')])
 
+    def check_create_error(self, **kwargs):
+        return False
+
     def process(self, **kwargs):
         """Fetch fresh project name here, then queue for move from there"""
         new_is_oldname = True

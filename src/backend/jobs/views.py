@@ -3,6 +3,7 @@ import json
 import requests
 import shutil
 from datetime import datetime 
+from urllib.parse import urljoin
 from tempfile import NamedTemporaryFile
 
 from celery import states
@@ -12,49 +13,16 @@ from django.views.decorators.http import require_POST
 from django.db.models import F
 
 from jobs import models
-from jobs.jobs import Jobstates, create_job, send_slack_message
+
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
-        SwestoreBackedupFile, PDCBackedupFile, Producer)
-from rawstatus.views import validate_token
+        SwestoreBackedupFile, PDCBackedupFile, Producer, UploadToken)
 from analysis import models as am
 from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
 from datasets.models import DatasetRawFile, Dataset
+from jobs.jobs import Jobstates
 from kantele import settings
-
-from datasets import jobs as dsjobs
-from rawstatus import jobs as rsjobs
-from analysis import jobs as anjobs
-
-alljobs = [
-        dsjobs.RenameDatasetStorageLoc,
-        dsjobs.MoveFilesToStorage,
-        dsjobs.MoveFilesStorageTmp,
-        dsjobs.ConvertDatasetMzml,
-        dsjobs.DeleteActiveDataset,
-        dsjobs.DeleteDatasetMzml,
-        dsjobs.BackupPDCDataset,
-        dsjobs.ReactivateDeletedDataset,
-        dsjobs.DeleteDatasetPDCBackup,
-        dsjobs.RenameProject,
-        dsjobs.MoveDatasetServershare,
-        rsjobs.RsyncFileTransfer,
-        rsjobs.CreatePDCArchive,
-        rsjobs.RestoreFromPDC,
-        rsjobs.RenameFile,
-        rsjobs.MoveSingleFile,
-        rsjobs.DeleteEmptyDirectory,
-        rsjobs.PurgeFiles,
-        rsjobs.DownloadPXProject,
-        rsjobs.RegisterExternalFile,
-        anjobs.RunLongitudinalQCWorkflow,
-        anjobs.RunNextflowWorkflow,
-        anjobs.RefineMzmls,
-        anjobs.PurgeAnalysis,
-        anjobs.DownloadFastaFromRepos,
-        ]
-jobmap = {job.refname: job for job in alljobs}
 
 
 def set_task_done(task_id):
@@ -497,3 +465,18 @@ def do_retry_job(job, force=False):
         pass
     job.state = Jobstates.PENDING
     job.save()
+
+
+def send_slack_message(text, channel):
+    try:
+        channelpath = settings.SLACK_HOOKS[channel.upper()]
+    except KeyError:
+        print('Kantele cant send slack message to channel {}, please check configuration'.format(channel))
+        return
+    url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, channelpath] for x in y.split('/')]))
+    req = requests.post(url, json={'text': text})
+    # FIXME need to fix network outage (no raise_for_status
+    try:
+        req.raise_for_status()
+    except Exception as error:
+        print('Kantele cant send slack message to channel {}, please check configuration. Error was {}'.format(channel, error))

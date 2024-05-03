@@ -14,7 +14,7 @@ from django.utils import timezone
 from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
-from jobs.jobs import create_job
+from jobs.jobutil import create_job
 
 
 INTERNAL_PI_PK = 1
