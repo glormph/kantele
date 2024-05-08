@@ -149,7 +149,8 @@ class TestCreateMzmls(MzmlTests):
         qeraw.save()
         dm.DatasetRawFile.objects.update_or_create(rawfile=qeraw, defaults={'dataset': ds})
         qesf = self.qesf
-        qesf.pk, qesf.md5, qesf.path = None, qeraw.source_md5, ds.storage_loc
+        qesf.pk, qesf.md5, qeraw.source_md5
+        qesf.path, qesf.servershare_id = ds.storage_loc, ds.storageshare_id
         qesf.rawfile, qesf.filename = qeraw, qeraw.name
         qesf.save()
         postdata = {'pwiz_id': self.pw.pk, 'dsid': ds.pk}
@@ -248,13 +249,14 @@ class TestRefineMzmls(MzmlTests):
         ds.runname = moverun
         ds.save()
         dm.QuantDataset.objects.get_or_create(dataset=ds, quanttype=self.qt)
-        # Add raw files
+        # Add raw files (pk=None, save -> copy original object)
         qeraw = self.qeraw
         qeraw.pk, qeraw.source_md5 = None, 'refine_test_with_filemove'
         qeraw.save()
-        dm.DatasetRawFile.objects.update_or_create(rawfile=qeraw, defaults={'dataset': ds})
+        dm.DatasetRawFile.objects.create(rawfile=qeraw, dataset=ds)
         qesf = self.qesf
-        qesf.pk, qesf.md5, qesf.path = None, qeraw.source_md5, ds.storage_loc
+        qesf.pk, qesf.md5 = None, qeraw.source_md5
+        qesf.path, qesf.servershare_id = ds.storage_loc, ds.storageshare_id
         qesf.rawfile, qesf.filename = qeraw, qeraw.name
         qesf.save()
         am.MzmlFile.objects.create(sfile=qesf, pwiz=self.pw)

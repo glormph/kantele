@@ -882,16 +882,20 @@ def create_mzmls(request):
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
         return JsonResponse({'error': 'This dataset already has existing mzML files of that '
             'proteowizard version'}, status=403)
+
+    # Saving starts here, except for the move_dset_project_servershare which checks errors
+    # before saving, allowing to return a 403 here.
+    # Move entire project if not on same file server
+    res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
+    if dset.storageshare.server != res_share.server:
+        if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+            return JsonResponse({'error': error}, status=403)
     # Remove other pwiz mzMLs
     other_pwiz_mz = mzmls_exist.exclude(mzmlfile__pwiz=pwiz)
     if other_pwiz_mz.count():
         for sf in other_pwiz_mz.distinct('mzmlfile__pwiz_id').values('mzmlfile__pwiz_id'):
             create_job('delete_mzmls_dataset', dset_id=dset.pk, pwiz_id=sf['mzmlfile__pwiz_id'])
         other_pwiz_mz.update(deleted=True)
-    res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
-    # Move entire project if not on same file server
-    if dset.storageshare.server != res_share.server:
-        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
     create_job('convert_dataset_mzml', options=options, filters=filters,
             dset_id=data['dsid'], dstshare_id=res_share.pk, pwiz_id=pwiz.pk,
             timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
@@ -939,12 +943,14 @@ def refine_mzmls(request):
            userworkflow__name__icontains='refine',
            userworkflow__wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC).count() != 1:
         return JsonResponse({'error': 'Wrong workflow to refine with'}, status=403)
-    # Move entire project if not on same file server
+
+    # Checks done, refine data, now we can start storing POST data
+    # Move entire project if not on same file server (403 is checked before saving anything
+    # or queueing jobs)
     res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
     if dset.storageshare.server != res_share.server:
-        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
-
-    # Refine data
+        if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+            return JsonResponse({'error': error}, status=403)
     # FIXME get analysis if it does exist, in case someone reruns?
     analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}')
     job = create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=data['wfid'],

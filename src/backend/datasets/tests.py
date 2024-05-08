@@ -57,6 +57,57 @@ class SaveUpdateDatasetTest(BaseIntegrationTest):
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ds.storageshare.name],
             self.ds.storage_loc, self.f3sf.filename)))
 
+    def test_trigger_movejob_errors(self):
+        # add files are already in dset
+        dupe_raw = rm.RawFile.objects.create(name=self.f3raw.name, producer=self.prod,
+                source_md5='tmpraw_dupe_fakemd5', size=100, date=timezone.now(), claimed=False)
+        dupe_sf = rm.StoredFile.objects.create(rawfile=dupe_raw, md5=dupe_raw.source_md5, path='',
+                filename=dupe_raw.name, servershare=self.sstmp, checked=True, filetype=self.ft)
+        resp = self.cl.post('/datasets/save/files/', content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'added_files': {dupe_raw.pk: {'id': dupe_raw.pk}},
+            'removed_files': {}})
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=dupe_raw)
+        self.assertEqual(newdsr.count(), 0)
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(dupe_raw.claimed)
+        self.assertIn(f'Cannot move files selected to dset {self.ds.storage_loc}', resp.json()['error'])
+        self.assertEqual(dupe_sf.servershare, self.sstmp)
+        self.assertEqual(dupe_sf.path, '')
+
+        # remove files results in a job and claimed files still on tmp
+        # dupe_raw above is needed!
+        resp = self.cl.post('/datasets/save/files/', content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'added_files': {},
+            'removed_files': {self.f3raw.pk: {'id': self.f3raw.pk}}})
+        self.f3sf.refresh_from_db()
+        dsr = dm.DatasetRawFile.objects.get(rawfile=self.f3raw, dataset=self.ds)
+        self.assertEqual(dsr.pk, self.f3dsr.pk)
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(self.f3raw.claimed)
+        self.assertIn(f'Cannot move files from dataset {self.ds.pk}', resp.json()['error'])
+        self.assertEqual(self.f3sf.servershare, self.ds.storageshare)
+        self.assertEqual(self.f3sf.path, self.ds.storage_loc)
+
+    def test_dset_is_filename_job_error(self):
+        # new file is dir w same name as dset storage dir
+        run = dm.RunName.objects.create(name='newrun', experiment=self.exp1)
+        newpath, newfn = os.path.split(self.ds.storage_loc)
+        self.tmpsf.filename = newfn
+        self.tmpsf.save()
+        newds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
+                datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=newpath)
+        dm.DatasetOwner.objects.get_or_create(dataset=newds, user=self.user)
+        resp = self.cl.post('/datasets/save/files/', content_type='application/json', data={
+            'dataset_id': newds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
+            'removed_files': {}})
+        dsr = dm.DatasetRawFile.objects.filter(rawfile=self.tmpraw, dataset=self.ds)
+        self.assertEqual(dsr.count(), 0)
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(self.tmpraw.claimed)
+        self.assertIn(f'Cannot move selected files to path {newds.storage_loc}', resp.json()['error'])
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+
     def test_remove_files_wait_for_rename(self):
         '''First queue a move dataset job, to new experiment name. Then queue a remove
         files job from dataset. The second job should wait for the first one, so the removed

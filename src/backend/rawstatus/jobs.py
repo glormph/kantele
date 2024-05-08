@@ -24,6 +24,15 @@ class RsyncFileTransfer(SingleFileJob):
     refname = 'rsync_transfer'
     task = tasks.rsync_transfer_file
 
+    def check_error(self, **kwargs):
+        src_sf = self.getfiles_query(**kwargs)
+        if models.StoredFile.objects.exclude(pk=src_sf.pk).filter(filename=src_sf.filename,
+                path=src_sf.path, servershare_id=src_sf.servershare_id).exists():
+            return (f'Cannot rsync file {src_sf.pk} to location {src_sf.servershare.name} / '
+                    f'{src_sf.path} as another file with the same name is already there')
+        else:
+            return False
+
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         dstpath = os.path.join(sfile.path, sfile.filename)

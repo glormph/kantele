@@ -39,14 +39,30 @@ alljobs = [
 jobmap = {job.refname: job for job in alljobs}
 
 
+
+def check_job_error(name, **kwargs):
+    jwrap = jobmap[name](False)
+    return jwrap.check_error(**kwargs)
+
+
 def create_job(name, state=False, **kwargs):
+    '''Checks errors and then creates the job'''
     if not state:
         state = Jobstates.PENDING
-    jwrap = jobmap[name](False)
-    if error := jwrap.check_error(**kwargs):
+    if error := check_job_error(name, **kwargs):
         jobdata = {'id': False, 'error': error}
     else:
         job = Job.objects.create(funcname=name, timestamp=timezone.now(),
             state=state, kwargs=kwargs)
         jobdata = {'id': job.id, 'error': False}
     return jobdata
+
+
+def create_job_without_check(name, state=False, **kwargs):
+    '''In case you do error checking before creating jobs, you can use this
+    for quicker creation without another check'''
+    if not state:
+        state = Jobstates.PENDING
+    job = Job.objects.create(funcname=name, timestamp=timezone.now(),
+            state=state, kwargs=kwargs)
+    return {'id': job.id, 'error': False}

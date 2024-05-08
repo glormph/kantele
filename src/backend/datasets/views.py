@@ -14,7 +14,7 @@ from django.utils import timezone
 from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
-from jobs.jobutil import create_job
+from jobs.jobutil import create_job, check_job_error, create_job_without_check
 
 
 INTERNAL_PI_PK = 1
@@ -509,10 +509,13 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
     hrrange_id = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
     prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
-    dset = models.Dataset.objects.create(date=timezone.now(),
-            runname_id=runname.id, storage_loc=set_storage_location(
-                project, experiment, runname, dtype, prefrac, hrrange_id),
-            storageshare=prim_share, datatype=dtype)
+    storloc = set_storage_location(project, experiment, runname, dtype, prefrac, hrrange_id)
+    err_fpath, err_fname = os.path.split(storloc)
+    if filemodels.StoredFile.objects.filter(servershare=prim_share, path=err_fpath,
+            filename=err_fname).exists():
+        raise IntegrityError(f'There is already a file with that exact path {storloc}')
+    dset = models.Dataset.objects.create(date=timezone.now(), runname_id=runname.id,
+            storage_loc=storloc, storageshare=prim_share, datatype=dtype)
     dsowner = models.DatasetOwner(dataset=dset, user_id=user_id)
     dsowner.save()
     if data['prefrac_id']:
@@ -919,8 +922,8 @@ def save_dataset(request):
         try:
             dset = save_new_dataset(data, project, experiment, runname, request.user.id)
         except IntegrityError:
-            print('Cannot save dataset with non-unique location')
-            return JsonResponse({'state': 'error', 'error': 'Cannot save dataset, storage location not unique'})
+            return JsonResponse({'state': 'error', 'error': 'Cannot save dataset, storage location '
+                'not unique, there is either a file or an existing dataset on that location.'})
     return JsonResponse({'dataset_id': dset.id})
 
 
@@ -1153,50 +1156,65 @@ def empty_files_json():
 def move_dset_project_servershare(dset, dstsharename):
     '''Takes a dataset and moves its entire project to a new
     servershare'''
-    create_job('move_dset_servershare', dset_id=dset.pk, srcsharename=dset.storageshare.name,
-                dstsharename=dstsharename)
+    kwargs = [{'dset_id': dset.pk, 'srcsharename': dset.storageshare.name, 'dstsharename': dstsharename}]
+    if error := check_job_error('move_dset_servershare', **kwargs[0]):
+        return error
     for other_ds in models.Dataset.objects.filter(deleted=False, purged=False,
             runname__experiment__project=dset.runname.experiment.project).exclude(pk=dset.pk):
-        create_job('move_dset_servershare', dset_id=other_ds.pk, srcsharename=other_ds.storageshare.name,
-                dstsharename=dstsharename)
+        kwargs.append({'dset_id': other_ds.pk, 'srcsharename': other_ds.storageshare.name,
+            'dstsharename': dstsharename})
+        if error := check_job_error('move_dset_servershare', **kwargs[-1]):
+            return error
+    [create_job_without_check('move_dset_servershare', **kw) for kw in kwargs]
+    return False
 
 
 def save_or_update_files(data):
-    '''Called from jobs, rawstatus as well, so broke out from request
+    '''Called from views in jobs, rawstatus as well, so broke out from request
     handling view'''
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
+    removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     dset = models.Dataset.objects.select_related('storageshare').get(pk=dset_id)
     tmpshare = filemodels.ServerShare.objects.get(name=settings.TMPSHARENAME)
     dsrawfn_ids = filemodels.RawFile.objects.filter(datasetrawfile__dataset=dset)
     switch_fileserver = dset.storageshare.server != tmpshare.server
     mvjobs = []
+    # First error check and collect jobs:
     if added_fnids:
         if not models.RawFile.objects.filter(pk__in=added_fnids,
                 storedfile__checked=True).exists():
             return {'error': 'Some files cannot be saved to dataset since they '
                     'are not confirmed to be stored yet'}, 403
+        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'dst_path': dset.storage_loc, 
+            'rawfn_ids': added_fnids}))
+    if removed_ids:
+        mvjobs.append(('move_stored_files_tmp', {'dset_id': dset_id, 'fn_ids': removed_ids}))
+
+    # Job error checking for moving the files (files already in tmp or in dset dir)
+    for mvjob in mvjobs:
+        if error := check_job_error(mvjob[0], **mvjob[1]):
+            return {'error': error}, 403
+    # Now move servershare if needed (dset is old and not on primary server)
+    # All tmp files will be on primary server, so if we move server first, there is no
+    # issue with them not being ok anymore
+    if switch_fileserver:
+        if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+            return {'error': error}, 403
+
+    # Errors checked, now store DB records and queue move jobs
+    if added_fnids:
         models.DatasetRawFile.objects.bulk_create([
             models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
             for fnid in added_fnids])
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
-        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'dst_path': dset.storage_loc, 
-            'rawfn_ids': added_fnids}))
-
-    removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
-        mvjobs.append(('move_stored_files_tmp', {'dset_id': dset_id, 'fn_ids': removed_ids}))
-
-    if switch_fileserver:
-        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
-    if mvjobs:
-        for mvjob in mvjobs:
-            create_job(mvjob[0], **mvjob[1])
+    [create_job_without_check(name, **kw) for name,kw in mvjobs]
 
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)
