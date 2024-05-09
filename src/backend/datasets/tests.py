@@ -197,9 +197,30 @@ class SaveUpdateDatasetTest(BaseIntegrationTest):
         self.assertTrue(os.path.exists(newtmpsf_path))
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
+    
 
-        # clean up
-        newdsr.delete()
+    def test_fail_storageloc_is_filename(self):
+        # Create file with dset storloc path/name
+        fpath, fname = os.path.join(self.p1.name, self.exp1.name, self.dtype.name), 'file_dirname'
+        raw = rm.RawFile.objects.create(name=fname, producer=self.prod,
+                source_md5='storloc_raw_fakemd5', size=100, date=timezone.now(), claimed=False)
+        sf = rm.StoredFile.objects.create(rawfile=raw, md5=raw.source_md5, path=fpath,
+                filename=raw.name, servershare=self.ssnewstore, checked=True, filetype=self.ft)
+        # Try to create new dset 
+        resp = self.post_json(data={'dataset_id': False, 'project_id': self.p1.pk,
+            'experiment_id': self.exp1.pk, 'runname': fname, 'datatype_id': self.dtype.pk,
+            'prefrac_id': False, 'ptype_id': self.ptype.pk, 'externalcontact': self.contact.email})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('storage location not unique, there is either a file', resp.json()['error'])
+
+        # Try to update existing dataset
+        dm.RunName.objects.filter(experiment=self.exp1, name=fname).delete()
+        resp = self.post_json(data={'dataset_id': self.ds.pk, 'project_id': self.p1.pk,
+            'experiment_id': self.exp1.pk, 'runname': fname, 'datatype_id': self.dtype.pk,
+            'prefrac_id': False, 'ptype_id': self.ptype.pk,
+            'externalcontact': self.contact.email})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('There is already a file with that exact path', resp.json()['error'])
 
 
 class UpdateFilesTest(BaseIntegrationTest):

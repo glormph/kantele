@@ -354,7 +354,13 @@ def update_dataset(data):
     hrrange_id = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
     new_storage_loc = set_storage_location(project, experiment, dset.runname,
                                            dtype, prefrac, hrrange_id)
-    if (new_storage_loc != dset.storage_loc and 
+    err_fpath, err_fname = os.path.split(new_storage_loc)
+    prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    if new_storage_loc != dset.storage_loc and filemodels.StoredFile.objects.filter(
+            servershare=prim_share, path=err_fpath, filename=err_fname).exists():
+        return JsonResponse({'error': 'There is already a file with that exact path '
+            f'{new_storage_loc}'}, status=403)
+    elif (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
         job = create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
         if job['error']: 
@@ -923,7 +929,8 @@ def save_dataset(request):
             dset = save_new_dataset(data, project, experiment, runname, request.user.id)
         except IntegrityError:
             return JsonResponse({'state': 'error', 'error': 'Cannot save dataset, storage location '
-                'not unique, there is either a file or an existing dataset on that location.'})
+                'not unique, there is either a file or an existing dataset on that location.'},
+                status=403)
     return JsonResponse({'dataset_id': dset.id})
 
 
