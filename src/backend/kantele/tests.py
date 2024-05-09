@@ -44,13 +44,15 @@ class BaseTest(TestCase):
         self.user.save() 
         login = self.cl.login(username=username, password=password)
         # storage backend
-        self.newfserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
-        self.sstmp = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.newfserver,
+        self.newfserver, _ = rm.FileServer.objects.get_or_create(name='server1', uri='s1.test')
+        self.sstmp, _ = rm.ServerShare.objects.get_or_create(name=settings.TMPSHARENAME, server=self.newfserver,
                 share='/home/testtmp')
-        self.ssnewstore = rm.ServerShare.objects.create(name=settings.PRIMARY_STORAGESHARENAME,
+        self.ssnewstore, _ = rm.ServerShare.objects.get_or_create(name=settings.PRIMARY_STORAGESHARENAME,
                 server=self.newfserver, share='/home/storage')
-        self.oldfserver = rm.FileServer.objects.create(name='oldserver', uri='s0.test')
-        self.ssoldstorage = rm.ServerShare.objects.create(name=settings.STORAGESHARENAMES[0],
+        self.archivestore, _ = rm.ServerShare.objects.get_or_create(name=settings.ARCHIVESHARENAME,
+                server=self.newfserver, share='/home/archive')
+        self.oldfserver, _ = rm.FileServer.objects.get_or_create(name='oldserver', uri='s0.test')
+        self.ssoldstorage, _ = rm.ServerShare.objects.get_or_create(name=settings.STORAGESHARENAMES[0],
                 server=self.oldfserver, share='/home/storage')
 
         # Species / sampletype fill
