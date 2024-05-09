@@ -147,6 +147,14 @@ class PurgeFiles(MultiFileJob):
                 'filetype__is_folder', 'servershare__name', 'pk') 
 
     def process(self, **kwargs):
+        # Safety check:
+        # First check if files have been archived if that is a demand
+        if kwargs.get('need_archive', False):
+            if models.PDCBackedupFile.objects.filter(storedfile_id__in=kwargs['sf_ids'],
+                    success=True, deleted=False).count() != len(kwargs['sf_ids']):
+                raise RuntimeError('Cannot purge these files which are dependent on an archive job '
+                        'to have occurred, cannot find records of archived files in DB')
+        # Do the actual purge
         for fn in self.getfiles_query(**kwargs):
             fullpath = os.path.join(fn['path'], fn['filename'])
             if fn['mzmlfile'] is not None:

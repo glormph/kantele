@@ -444,7 +444,9 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
     is_active_ms = is_ms and rfn.producer.internal and rfn.producer.msinstrument.active
     create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
     if archive_only:
-        create_job('purge_files', sf_ids=[sfn.pk])
+        sfn.deleted = True
+        sfn.save()
+        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
         rfn.claimed = True
@@ -515,7 +517,14 @@ def transfer_file(request):
         dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
     else:
         dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+
+    # Has the filename changed between register and transfer? Assume user has stopped the upload,
+    # corrected the name, and also change the rawname
+    if fname != rawfn.name:
+        rawfn.name = fname
+        rawfn.save()
     # FIXME Why do we want a file id to the name? Uniqueness because harder to control external files?
+    # should we also update the rawfn name? Weird to have its own pk in the name though.
     fname = fname if rawfn.producer.internal else f'{rawfn.pk}_{fname}'
     dstpath = settings.TMPPATH
     if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
@@ -869,5 +878,5 @@ def archive_file(request):
         return JsonResponse({'error': 'Derived mzML files are not archived, they can be regenerated from RAW data'}, status=403)
     create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)
     # File is set to deleted,purged=True,True in the post-job-view for purge
-    create_job('purge_files', sf_ids=[sfile.pk])
+    create_job('purge_files', sf_ids=[sfile.pk], need_archive=True)
     return JsonResponse({'state': 'ok'})

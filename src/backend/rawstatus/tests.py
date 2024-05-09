@@ -185,7 +185,8 @@ class TransferStateTest(BaseFilesTest):
         sf = self.doneraw.storedfile_set.get()
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': uploadtoken.token, 'fnid': sf.rawfile_id})
-        jobs = jm.Job.objects.filter(funcname='purge_files', kwargs={'sf_ids': [sf.pk]})
+        jobs = jm.Job.objects.filter(funcname='purge_files', kwargs={'sf_ids': [sf.pk],
+            'need_archive': True})
         self.assertEqual(jobs.count(), 1)
 
 
@@ -560,7 +561,6 @@ class TestDownloadUploadScripts(BaseFilesTest):
         for fn in ['transfer.bat', 'upload.py', 'setup.bat']:
             self.assertEqual(contents[fn], self.zipsizes[fn])
 
-# FIXME case for upload with archiving only
 
 class TestPurgeFilesJob(ProcessJobTest):
     jobclass = rjobs.PurgeFiles
