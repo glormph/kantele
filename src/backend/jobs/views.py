@@ -22,6 +22,7 @@ from dashboard import views as dashviews
 from datasets import views as dsviews
 from datasets.models import DatasetRawFile, Dataset
 from jobs.jobs import Jobstates
+from jobs.jobutil import create_job, jobmap
 from kantele import settings
 
 
@@ -334,7 +335,7 @@ def confirm_internal_file(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
     data =  json.loads(request.POST['json'])
-    upload = validate_token(data['token'])
+    upload = UploadToken.validate_token(data['token'])
     if not upload:
         return HttpResponseForbidden()
     dstshare = ServerShare.objects.get(name=data['dstsharename'])

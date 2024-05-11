@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from django.contrib.auth.models import User
 
 from jobs.models import Job
@@ -110,6 +111,27 @@ class UploadToken(models.Model):
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     archive_only = models.BooleanField(default=False)
     is_library = models.BooleanField(default=False)
+
+    @staticmethod
+    def validate_token(token):
+        try:
+            upload = UploadToken.objects.select_related('filetype', 'producer').get(
+                    token=token, expired=False)
+        except UploadToken.DoesNotExist as e:
+            print('Token for user upload does not exist')
+            return False
+        else:
+            if upload.expires < timezone.now():
+                print('Token expired')
+                upload.expired = True
+                upload.save()
+                return False
+            elif upload.expired:
+                print('Token expired')
+                return False
+            return upload
+
+
 
 
 class UserFile(models.Model):

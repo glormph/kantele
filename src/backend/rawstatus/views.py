@@ -116,7 +116,7 @@ def register_file(request):
         print('POST request to register_file with missing parameter, '
               '{}'.format(error))
         return JsonResponse({'error': 'Data passed to registration incorrect'}, status=400)
-    upload = validate_token(token)
+    upload = UploadToken.validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     try:
@@ -230,7 +230,7 @@ def instrument_check_in(request):
     elif taskid and not data.get('ftype', False):
         return JsonResponse({'error': 'Bad request'}, status=400)
 
-    upload = validate_token(token) if token else False
+    upload = UploadToken.validate_token(token) if token else False
     task = jm.Task.objects.filter(asyncid=taskid).exclude(state__in=jobutil.JOBSTATES_DONE)
 
     if upload and upload.producer.client_id != data['client_id']:
@@ -325,25 +325,6 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
             'remote_name': rawfn.name, 'msg': msg}
 
 
-def validate_token(token):
-    try:
-        upload = UploadToken.objects.select_related('filetype', 'producer').get(
-                token=token, expired=False)
-    except UploadToken.DoesNotExist as e:
-        print('Token for user upload does not exist')
-        return False
-    else:
-        if upload.expires < timezone.now():
-            print('Token expired')
-            upload.expired = True
-            upload.save()
-            return False
-        elif upload.expired:
-            print('Token expired')
-            return False
-        return upload
-
-
 # /files/transferstate
 @require_POST
 def get_files_transferstate(request):
@@ -354,7 +335,7 @@ def get_files_transferstate(request):
         print(f'Request to get transferstate with missing parameter, {error}')
         return JsonResponse({'error': 'Bad request'}, status=400)
 
-    upload = validate_token(token)
+    upload = UploadToken.validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     # Also do registration here? if MD5? prob not.
@@ -490,7 +471,7 @@ def transfer_file(request):
         return JsonResponse({'error': 'Bad request'}, status=400)
     libdesc = data.get('libdesc', False)
     userdesc = data.get('userdesc', False)
-    upload = validate_token(token)
+    upload = UploadToken.validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     elif upload.is_library and not libdesc:
