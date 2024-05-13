@@ -14,6 +14,7 @@ from kantele import settings
 from kantele.tests import BaseTest, ProcessJobTest, BaseIntegrationTest
 from rawstatus import models as rm
 from rawstatus import jobs as rjobs
+from datasets import models as dm
 from analysis import models as am
 from analysis import models as am
 from jobs import models as jm
@@ -57,7 +58,8 @@ class TransferStateTest(BaseFilesTest):
                 path='', md5=self.multifileraw.source_md5, filetype=self.ft)
         # ft2 = rm.StoredFileType.objects.create(name='testft2', filetype='tst')
         # FIXME multisf with two diff filenames shouldnt be a problem right?
-        multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw, filename=self.multifileraw.name, 
+        multisf2 = rm.StoredFile.objects.create(rawfile=self.multifileraw,
+                filename=f'{self.multifileraw.name}.mzML', 
                 servershare=self.sstmp, path='', md5='', filetype=self.ft)
 
     def test_transferstate_done(self):
@@ -74,13 +76,13 @@ class TransferStateTest(BaseFilesTest):
         '''Test if state done is correctly reported for uploaded library file,
         and that archiving and move jobs exist for it'''
         # Create lib file which is not claimed yet
-        libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone',
+        libraw = rm.RawFile.objects.create(name='another_libfiledone',
                 producer=self.prod, source_md5='test_trfstate_libfile',
-                size=100, defaults={'claimed': False, 'date': timezone.now()})
-        sflib, _ = rm.StoredFile.objects.update_or_create(rawfile=libraw, md5=libraw.source_md5,
-                filetype=self.ft, defaults={'checked': True, 'filename': libraw.name,
-                    'servershare': self.sstmp, 'path': ''})
-        lf, _ = am.LibraryFile.objects.get_or_create(sfile=sflib, description='This is a libfile')
+                size=100, claimed=False, date=timezone.now())
+        sflib = rm.StoredFile.objects.create(rawfile=libraw, md5=libraw.source_md5,
+                filetype=self.ft, checked=True, filename=libraw.name,
+                    servershare=self.sstmp, path='')
+        lf = am.LibraryFile.objects.create(sfile=sflib, description='This is a libfile')
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': self.token, 'fnid': libraw.id})
         rj = resp.json()
@@ -173,6 +175,20 @@ class TransferStateTest(BaseFilesTest):
         self.assertEqual(resp.status_code, 409)
         self.assertIn('there are multiple', resp.json()['error'])
 
+    def test_transfer_archive_only(self):
+        # Check if file is deleted directly after upload with a purge job
+        # TODO check if file goes to designated sensititve data storage from 
+        # where it is archived and purged (non-accessible)
+        uploadtoken = rm.UploadToken.objects.create(user=self.user, token='archiveonly',
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, archive_only=True)
+        sf = self.doneraw.storedfile_set.get()
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': uploadtoken.token, 'fnid': sf.rawfile_id})
+        jobs = jm.Job.objects.filter(funcname='purge_files', kwargs={'sf_ids': [sf.pk],
+            'need_archive': True})
+        self.assertEqual(jobs.count(), 1)
+
 
 class TestFileRegistered(BaseFilesTest):
     url = '/files/register/'
@@ -237,6 +253,47 @@ class TestFileRegistered(BaseFilesTest):
 class TestFileTransfer(BaseFilesTest):
     url = '/files/transfer/'
 
+    def do_check_okfile(self, resp, infile_contents):
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {'state': 'ok', 'fn_id': self.registered_raw.pk})
+        sfns = rm.StoredFile.objects.filter(rawfile=self.registered_raw)
+        self.assertEqual(sfns.count(), 1)
+        sf = sfns.get()
+        self.assertEqual(sf.md5, self.registered_raw.source_md5)
+        self.assertFalse(sf.checked)
+        upload_file = os.path.join(settings.TMP_UPLOADPATH,
+                f'{self.registered_raw.pk}.{self.uploadtoken.filetype.filetype}')
+        jobs = jm.Job.objects.filter(funcname='rsync_transfer', kwargs={
+            'src_path': upload_file, 'sf_id': sf.pk})
+        self.assertEqual(jobs.count(), 1)
+        job = jobs.get()
+        # this may fail occasionally
+        self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
+        upfile = f'{self.registered_raw.pk}.{sf.filetype.filetype}'
+        with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:
+            self.assertEqual(fp.read(), infile_contents)
+
+    def do_transfer_file(self, libdesc=False, userdesc=False, token=False, fname=False):
+        # FIXME maybe break up, function getting overloaded
+        '''Tries to upload file and checks if everything is OK'''
+        fn = 'test_upload.txt'
+        if not token:
+            token = self.token
+        if not fname:
+            fname = self.registered_raw.name
+        # FIXME rawstatus/ wrong place for uploads test files!
+        with open(f'rawstatus/{fn}') as fp:
+            stddata = {'fn_id': self.registered_raw.pk, 'token': token,
+                    'filename': fname, 'file': fp}
+            if libdesc:
+                stddata['libdesc'] = libdesc
+            elif userdesc:
+                stddata['userdesc'] = userdesc
+            resp = self.cl.post(self.url, data=stddata)
+            fp.seek(0)
+            uploaded_contents = fp.read()
+        return resp, uploaded_contents
+
     def test_fails_badreq_badauth(self):
         # GET
         resp = self.cl.get(self.url)
@@ -261,87 +318,73 @@ class TestFileTransfer(BaseFilesTest):
         self.assertEqual(resp.status_code, 403)
         self.assertIn('invalid or expired', resp.json()['error'])
         
-    def test_transfer_file(self, existing_file=False, libdesc=False, userdesc=False, token=False):
-        '''Tries to upload file and checks if everything is OK'''
-        fn = 'test_upload.txt'
-        if not token:
-            token = self.token
-        # FIXME rawstatus/ wrong place for uploads test files!
-        with open(f'rawstatus/{fn}') as fp:
-            stddata = {'fn_id': self.registered_raw.pk, 'token': token,
-                    'filename': self.registered_raw.name, 'file': fp}
-            if libdesc:
-                stddata['libdesc'] = libdesc
-            elif userdesc:
-                stddata['userdesc'] = userdesc
-            resp = self.cl.post(self.url, data=stddata)
-            fp.seek(0)
-            infile_contents = fp.read()
-        # Now do checks
-        if existing_file:
-            self.assertEqual(resp.status_code, 403)
-            self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
-            f'{self.registered_raw.name}, if you are re-uploading a previously '
-            'deleted file, consider reactivating from backup, or contact admin'})
-        elif not self.uploadtoken.filetype.is_rawdata and not self.uploadtoken.is_library and not userdesc:
-            self.assertEqual(resp.status_code, 403)
-            self.assertIn('User file needs a description', resp.json()['error'])
-        elif self.uploadtoken.is_library and not libdesc:
-            self.assertEqual(resp.status_code, 403)
-            self.assertIn('Library file needs a description', resp.json()['error'])
-        else:
-            self.assertEqual(resp.status_code, 200)
-            self.assertEqual(resp.json(), {'state': 'ok', 'fn_id': self.registered_raw.pk})
-            sfns = rm.StoredFile.objects.filter(rawfile=self.registered_raw)
-            self.assertEqual(sfns.count(), 1)
-            sf = sfns.get()
-            self.assertEqual(sf.md5, self.registered_raw.source_md5)
-            self.assertFalse(sf.checked)
-            upload_file = os.path.join(settings.TMP_UPLOADPATH,
-                    f'{self.registered_raw.pk}.{self.uploadtoken.filetype.filetype}')
-            jobs = jm.Job.objects.filter(funcname='rsync_transfer', kwargs={
-                'src_path': upload_file, 'sf_id': sf.pk})
-            self.assertEqual(jobs.count(), 1)
-            job = jobs.get()
-            # this may fail occasionally
-            self.assertTrue(sf.regdate + timedelta(milliseconds=10) > job.timestamp)
-            upfile = f'{self.registered_raw.pk}.{sf.filetype.filetype}'
-            with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:
-                self.assertEqual(fp.read(), infile_contents)
+    def test_transfer_file(self):
+        resp, upload_content = self.do_transfer_file()
+        self.do_check_okfile(resp, upload_content)
 
     def test_transfer_again(self):
         '''Transfer already existing file, e.g. overwrites of previously
         found to be corrupt file'''
-        # FIXME 403, not overwrite (need overwrite?)
-        sf = rm.StoredFile.objects.create(rawfile=self.registered_raw, filetype=self.ft,
+        # Create storedfile which is the existing file w same md5, to get 403:
+        rm.StoredFile.objects.create(rawfile=self.registered_raw, filetype=self.ft,
                 md5=self.registered_raw.source_md5, servershare=self.sstmp, path='',
                 filename=self.registered_raw.name)
-        self.test_transfer_file(existing_file=True)
+        resp, upload_content = self.do_transfer_file()
+        self.assertEqual(resp.status_code, 403)
+        try:
+            self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
+            f'{self.registered_raw.name}, if you are re-uploading a previously '
+            'deleted file, consider reactivating from backup, or contact admin'})
+        except AssertionError:
+            self.assertEqual(resp.json(), {'error': 'Another file in the system has the same name '
+        f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}. '
+        'Please investigate, possibly change the file name or location of this or the other '
+        'file to enable transfer without overwriting.'})
 
-    def transfer_archive_only(self):
-        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token='archiveonly',
-                expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft, archive_only=True)
-        self.test_transfer_file(token='archiveonly')
+    def test_transfer_same_name(self):
+        # Test trying to upload file with same name/path but diff MD5
+        other_raw = rm.RawFile.objects.create(name=self.registered_raw.name, producer=self.prod,
+                source_md5='fake_existing_md5', size=100, date=timezone.now(), claimed=False)
+        rm.StoredFile.objects.create(rawfile=other_raw, filetype=self.ft,
+                md5=other_raw.source_md5, servershare=self.sstmp, path=settings.TMPPATH,
+                filename=other_raw.name)
+        resp, upload_content = self.do_transfer_file()
+        self.assertEqual(resp.status_code, 403)
+        try:
+            self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
+            f'{self.registered_raw.name}, if you are re-uploading a previously '
+            'deleted file, consider reactivating from backup, or contact admin'})
+        except AssertionError:
+            self.assertEqual(resp.json(), {'error': 'Another file in the system has the same name '
+        f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}. '
+        'Please investigate, possibly change the file name or location of this or the other '
+        'file to enable transfer without overwriting.'})
+
+    def test_transfer_file_namechanged(self):
+        fname = 'newname'
+        resp, content = self.do_transfer_file(fname=fname)
+        self.do_check_okfile(resp, content)
         sf = rm.StoredFile.objects.get(rawfile=self.registered_raw)
-        jobs = jm.Job.objects.filter(funcname='purge_files', kwargs={'sf_ids': [sf.pk]})
-        self.assertEqual(jobs.count(), 1)
+        self.assertEqual(sf.filename, fname)
+        self.registered_raw.refresh_from_db()
+        self.assertEqual(self.registered_raw.name, fname)
 
     def test_libfile(self):
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token='libfile',
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft, is_library=True)
-        self.test_transfer_file(libdesc='This is a libfile', token='libfile')
+        resp, upload_content = self.do_transfer_file(libdesc='This is a libfile', token='libfile')
+        self.do_check_okfile(resp, upload_content)
         libs = am.LibraryFile.objects.filter(sfile__rawfile=self.registered_raw, description='This is a libfile')
         self.assertEqual(libs.count(), 1)
-        libs.delete()
     
     def test_userfile(self):
         token = 'userfile'
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.uft)
-        self.test_transfer_file(userdesc='This is a userfile', token=token)
+        resp, upload_content = self.do_transfer_file(userdesc='This is a userfile', token=token)
+        self.do_check_okfile(resp, upload_content)
         ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.registered_raw,
                 description='This is a userfile', upload__token=token)
         self.assertEqual(ufiles.count(), 1)
@@ -349,10 +392,16 @@ class TestFileTransfer(BaseFilesTest):
     
     def test_userlib_fail(self):
         token = 'userfilefail'
-        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
+        uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.uft)
-        self.test_transfer_file(token=token)
+        resp, upload_content = self.do_transfer_file(token=token)
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('User file needs a description', resp.json()['error'])
+
+#        elif self.uploadtoken.is_library and not libdesc:
+#            self.assertEqual(resp.status_code, 403)
+#            self.assertIn('Library file needs a description', resp.json()['error'])
 
 
 class TestArchiveFile(BaseFilesTest):
@@ -396,8 +445,10 @@ class TestArchiveFile(BaseFilesTest):
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp.json()['error'], 'File is currently marked as deleted, can not archive')
         # purged file to also test the check for it. Unrealistic to have it deleted but
-        # not purged obviously
-        sfile2 = rm.StoredFile.objects.create(rawfile=self.registered_raw, filename=self.registered_raw.name, 
+        # not purged obviously, as jobrunner shouldnt trigger that - except for when there is a delete job
+        # which is deleted before running (no post-job purge set), which is bad!
+        sfile2 = rm.StoredFile.objects.create(rawfile=self.registered_raw,
+                filename=f'{self.registered_raw.name}_purged', 
                 servershare_id=self.sstmp.id, path='', md5='deletedmd5_2',
                 filetype_id=self.ft.id, deleted=False, purged=True)
         resp = self.cl.post(self.url, content_type='application/json', data={'item_id': sfile2.pk})
@@ -510,7 +561,6 @@ class TestDownloadUploadScripts(BaseFilesTest):
         for fn in ['transfer.bat', 'upload.py', 'setup.bat']:
             self.assertEqual(contents[fn], self.zipsizes[fn])
 
-# FIXME case for upload with archiving only
 
 class TestPurgeFilesJob(ProcessJobTest):
     jobclass = rjobs.PurgeFiles
@@ -539,6 +589,96 @@ class TestPurgeFilesJob(ProcessJobTest):
                 ]
         self.check(exp_t)
 
+
+class TestMoveSingleFile(ProcessJobTest):
+    jobclass = rjobs.MoveSingleFile
+
+    def test_mv_fn(self):
+        newpath = os.path.split(self.f3sf.path)[0]
+        kwargs = {'sf_id': self.f3sf.pk, 'dst_path': newpath}
+        self.assertEqual(self.job.check_error(**kwargs), False)
+        self.job.process(**kwargs)
+        exp_t = [((self.f3sf.filename, self.f3sf.servershare.name, self.f3sf.path, newpath,
+            self.f3sf.pk, self.f3sf.servershare.name), {})]
+        self.check(exp_t)
+
+    def test_error_duplicatefn(self):
+        # Another fn exists w same name
+        oldraw = rm.RawFile.objects.create(name=self.f3sf.filename, producer=self.prod,
+                source_md5='rename_oldraw_fakemd5', size=10, date=timezone.now(), claimed=True)
+        sf = rm.StoredFile.objects.create(rawfile=oldraw, filename=self.f3sf.filename, md5=oldraw.source_md5,
+                filetype=self.ft, servershare=self.f3sf.servershare, path='oldpath', checked=True)
+        newpath = os.path.split(self.f3path)
+        kwargs = {'sf_id': sf.pk, 'dst_path': self.f3sf.path}
+        self.assertIn('A file in path', self.job.check_error(**kwargs))
+        self.assertIn('already exists. Please choose another', self.job.check_error(**kwargs))
+
+        # A dataset has the same name as the file
+        run = dm.RunName.objects.create(name='run1.raw', experiment=self.exp1)
+        storloc = os.path.join(self.p1.name, self.exp1.name, self.dtype.name, run.name)
+        ds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
+                datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=storloc)
+        newpath, newname = os.path.split(storloc)
+        kwargs = {'sf_id': sf.pk, 'dst_path': newpath, 'newname': newname}
+        self.assertIn('A dataset with the same directory name as your new', self.job.check_error(**kwargs))
+
+
+class TestRenameFile(BaseIntegrationTest):
+    url = '/files/rename/'
+
+    def test_renamefile(self):
+        # There is no mzML for this sfile:
+        self.f3sfmz.delete()
+        oldfn = self.f3sf.filename
+        oldname, ext = os.path.splitext(oldfn)
+        newname = f'renamed_{oldname}'
+        newfile_path = os.path.join(self.f3path, f'{newname}{ext}')
+        kwargs_postdata = {'sf_id': self.f3sf.pk, 'newname': newname}
+        # First call HTTP
+        resp = self.post_json(data=kwargs_postdata)
+        self.assertEqual(resp.status_code, 200)
+        file_path = os.path.join(self.f3path, self.f3sf.filename)
+        self.assertTrue(os.path.exists(file_path))
+        self.assertFalse(os.path.exists(newfile_path))
+        self.f3sf.refresh_from_db()
+        self.assertEqual(self.f3sf.filename, oldfn)
+        job = jm.Job.objects.last()
+        self.assertEqual(job.kwargs, kwargs_postdata)
+        # Now run job
+        self.run_job()
+        job.refresh_from_db()
+        self.assertEqual(job.state, jj.Jobstates.PROCESSING)
+        self.assertFalse(os.path.exists(file_path))
+        self.assertTrue(os.path.exists(newfile_path))
+
+    def test_cannot_create_job(self):
+        # Try with non-existing file
+        resp = self.post_json(data={'sf_id': -1000, 'newname': self.f3sf.filename})
+        self.assertEqual(resp.status_code, 403)
+        rj = resp.json()
+        self.assertEqual('File does not exist', rj['error'])
+
+        # Create file record
+        oldfn = 'rename_oldfn.raw'
+        oldraw = rm.RawFile.objects.create(name=oldfn, producer=self.prod,
+                source_md5='rename_oldraw_fakemd5', size=10, date=timezone.now(), claimed=True)
+        sf = rm.StoredFile.objects.create(rawfile=oldraw, filename=oldfn, md5=oldraw.source_md5,
+                filetype=self.ft, servershare=self.f3sf.servershare, path=self.f3sf.path, checked=True)
+        # Try with no file ownership 
+        resp = self.post_json(data={'sf_id': sf.pk, 'newname': self.f3sf.filename})
+        self.assertEqual(resp.status_code, 403)
+        rj = resp.json()
+        self.assertEqual('Not authorized to rename this file', rj['error'])
+
+        self.user.is_superuser = True
+        self.user.save()
+
+        # Try rename to existing file
+        resp = self.post_json(data={'sf_id': sf.pk, 'newname': self.f3sf.filename})
+        self.assertEqual(resp.status_code, 403)
+        rj = resp.json()
+        self.assertIn('A file in path', rj['error'])
+        self.assertIn('already exists. Please choose', rj['error'])
 
 
 class TestDeleteFile(BaseIntegrationTest):

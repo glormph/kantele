@@ -35,6 +35,7 @@ from datasets import models as dsmodels
 from dashboard import models as dashmodels
 from jobs import models as jm
 from jobs import jobs as jobutil
+from jobs.jobutil import create_job
 
 
 def inflow_page(request):
@@ -80,7 +81,7 @@ def import_external_data(request):
                         'path': os.path.join(req['dirname'], path), 'md5': fakemd5})
             sf_ids.append(sfile.pk)
         # Jobs to get MD5 etc
-        jobutil.create_job('register_external_raw', dset_id=dset.id, sf_ids=sf_ids, sharename=share.name)
+        create_job('register_external_raw', dset_id=dset.id, sf_ids=sf_ids, sharename=share.name)
     return JsonResponse({})
 
 
@@ -103,16 +104,6 @@ def scan_raws_tmp(request):
 
 @require_POST
 def register_file(request):
-    # TODO return scp address to transfer file to
-    # Find out something for SSH key rotation (client creates new key and uploads pubkey)
-    # But how to know the client is the real client?
-    # Strong secret needed, although if the client computer is used
-    # By someone else we are fucked anyway
-    # Rotate SSH keys to remove the danger of SSH key leaking,
-    # And automate to not give the "lab laptop uploads" an actual SSH 
-    # key (else theyd have to get it from admin all the time, PITA!)
-    # Auto-Rotate key every sunday night or something on client (stop transferring, fix keys)
-    # User file uploads get key per upload (have to wait until it is installed on the data/server
     """New files are registered in the system on this view, where producer 
     or user passes info on file (name, md5, date, etc). Auth is done 
     via a token either from web console or CLI script.
@@ -125,7 +116,7 @@ def register_file(request):
         print('POST request to register_file with missing parameter, '
               '{}'.format(error))
         return JsonResponse({'error': 'Data passed to registration incorrect'}, status=400)
-    upload = validate_token(token)
+    upload = UploadToken.validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     try:
@@ -191,6 +182,13 @@ def browser_userupload(request):
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)
+
+    # Unfortunately have to do checking after upload as we need the MD5 of the file
+    # NB not needed to test if file w identical name exists due to inclusion of ID
+    # in filename.
+    fname = f'{raw["file_id"]}_{upfile.name}'
+    dstpath = settings.USERFILEDIR
+    dstshare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
     sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
     if sfns.count() == 1:
         os.unlink(dst)
@@ -200,12 +198,10 @@ def browser_userupload(request):
         os.unlink(dst)
         return JsonResponse({'success': False, 'msg': 'Multiple files already found, this '
             'should not happen, please inform your administrator'}, status=403)
-    sfile = StoredFile.objects.create(rawfile_id=raw['file_id'],
-        filename=f'{raw["file_id"]}_{upfile.name}',
-        checked=True, filetype=upload.filetype,
-        md5=dighash, path=settings.USERFILEDIR,
-        servershare=ServerShare.objects.get(name=settings.ANALYSISSHARENAME))
-    jobutil.create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
+    # All good, get the file to storage
+    sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
+            filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
+    create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
     if not ftype.is_rawdata and upload.is_library:
         LibraryFile.objects.create(sfile=sfile, description=desc)
     elif not ftype.is_rawdata:
@@ -234,7 +230,7 @@ def instrument_check_in(request):
     elif taskid and not data.get('ftype', False):
         return JsonResponse({'error': 'Bad request'}, status=400)
 
-    upload = validate_token(token) if token else False
+    upload = UploadToken.validate_token(token) if token else False
     task = jm.Task.objects.filter(asyncid=taskid).exclude(state__in=jobutil.JOBSTATES_DONE)
 
     if upload and upload.producer.client_id != data['client_id']:
@@ -329,25 +325,6 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
             'remote_name': rawfn.name, 'msg': msg}
 
 
-def validate_token(token):
-    try:
-        upload = UploadToken.objects.select_related('filetype', 'producer').get(
-                token=token, expired=False)
-    except UploadToken.DoesNotExist as e:
-        print('Token for user upload does not exist')
-        return False
-    else:
-        if upload.expires < timezone.now():
-            print('Token expired')
-            upload.expired = True
-            upload.save()
-            return False
-        elif upload.expired:
-            print('Token expired')
-            return False
-        return upload
-
-
 # /files/transferstate
 @require_POST
 def get_files_transferstate(request):
@@ -358,7 +335,7 @@ def get_files_transferstate(request):
         print(f'Request to get transferstate with missing parameter, {error}')
         return JsonResponse({'error': 'Bad request'}, status=400)
 
-    upload = validate_token(token)
+    upload = UploadToken.validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     # Also do registration here? if MD5? prob not.
@@ -432,7 +409,7 @@ def get_files_transferstate(request):
 
         else:
             # There is an unlikely rsync job which is canceled, requeue it
-            jobutil.create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst)
+            create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst)
             tstate = 'wait'
     response = {'transferstate': tstate}
     return JsonResponse(response)
@@ -446,26 +423,28 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
     """
     is_ms = hasattr(rfn.producer, 'msinstrument')
     is_active_ms = is_ms and rfn.producer.internal and rfn.producer.msinstrument.active
-    jobutil.create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
+    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
     if archive_only:
-        jobutil.create_job('purge_files', sf_ids=[sfn.pk])
+        sfn.deleted = True
+        sfn.save()
+        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
         rfn.claimed = True
         rfn.save()
-        jobutil.create_job('move_single_file', sf_id=sfn.id,
+        create_job('move_single_file', sf_id=sfn.id,
                 dstsharename=settings.PRIMARY_STORAGESHARENAME,
                 dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
         run_singlefile_qc(sfn.rawfile, sfn)
         newname = fn
     elif hasattr(sfn, 'libraryfile'):
         newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
-        jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
+        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
                 newname=newname)
     elif hasattr(sfn, 'userfile'):
         newname = f'userfile_{rfn.id}_{rfn.name}'
         # FIXME can we move a folder!?
-        jobutil.create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
+        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
                 newname=newname)
     else:
         newname = sfn.filename
@@ -492,7 +471,7 @@ def transfer_file(request):
         return JsonResponse({'error': 'Bad request'}, status=400)
     libdesc = data.get('libdesc', False)
     userdesc = data.get('userdesc', False)
-    upload = validate_token(token)
+    upload = UploadToken.validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     elif upload.is_library and not libdesc:
@@ -512,8 +491,30 @@ def transfer_file(request):
         # TODO create exception for that if ever needed? data['overwrite'] = True?
         # Also look at below get_or_create call and checking created
         return JsonResponse({'error': 'This file is already in the '
-            f'system: {sfns.get().filename}, if you are re-uploading a previously '
+            f'system: {sfns.first().filename}, if you are re-uploading a previously '
             'deleted file, consider reactivating from backup, or contact admin'}, status=403)
+    # Now prepare file system info, check if duplicate name exists:
+    if upload.archive_only:
+        dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
+    else:
+        dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+
+    # Has the filename changed between register and transfer? Assume user has stopped the upload,
+    # corrected the name, and also change the rawname
+    if fname != rawfn.name:
+        rawfn.name = fname
+        rawfn.save()
+    # FIXME Why do we want a file id to the name? Uniqueness because harder to control external files?
+    # should we also update the rawfn name? Weird to have its own pk in the name though.
+    fname = fname if rawfn.producer.internal else f'{rawfn.pk}_{fname}'
+    dstpath = settings.TMPPATH
+    if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
+        return JsonResponse({'error': 'Another file in the system has the same name '
+            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+            'Please investigate, possibly change the file name or location of this or the other '
+            'file to enable transfer without overwriting.'}, status=403)
+
+    # All clear, do the upload storing:
     upfile = request.FILES['file']
     dighash = md5()
     upload_dst = rsjobs.create_upload_dst_web(rawfn.pk, upload.filetype.filetype)
@@ -540,16 +541,9 @@ def transfer_file(request):
             os.unlink(upload_dst)
             return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
     os.chmod(upload_dst, 0o644)
-    # Now prepare for move to proper destination
-    if upload.archive_only:
-        dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
-    else:
-        dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
-    fname = fname if rawfn.producer.internal else f'{rawfn.pk}_{fname}'
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
-            defaults={'servershare': dstshare, 'path': settings.TMPPATH,
-                'filename': fname})
+            defaults={'servershare': dstshare, 'path': dstpath, 'filename': fname})
     if not created:
         # This could happen in the future when there is some kind of bypass of the above
         # check sfns.count(). 
@@ -558,7 +552,7 @@ def transfer_file(request):
         LibraryFile.objects.create(sfile=file_trf, description=libdesc)
     elif not upload.filetype.is_rawdata:
         UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
-    jobutil.create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
+    create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
@@ -585,7 +579,7 @@ def run_singlefile_qc(rawfile, storedfile):
         user_op = dsmodels.Operator.objects.first()
     analysis = Analysis.objects.create(user_id=user_op.user_id,
             name=f'{rawfile.producer.name}_{rawfile.name}_{rawfile.date}')
-    jobutil.create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,
+    create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,
             dbfn_id=settings.LONGQC_FADB_ID, params=params)
 
 
@@ -620,8 +614,12 @@ def rename_file(request):
         return JsonResponse({'error': 'Files of this type cannot be renamed'}, status=403)
     elif re.match('^[a-zA-Z_0-9\-]*$', newfilename) is None:
         return JsonResponse({'error': 'Illegal characteres in new file name'}, status=403)
-    jobutil.create_job('rename_file', sf_id=sfile.id, newname=newfilename)
-    return JsonResponse({})
+    job = create_job('rename_file', sf_id=sfile.id, newname=newfilename)
+    print(job)
+    if job['error']:
+        return JsonResponse({'error': job['error']}, status=403)
+    else:
+        return JsonResponse({})
 
 
 def zip_instrument_upload_pkg(prod, runtransferfile):
@@ -761,7 +759,7 @@ def cleanup_old_files(request):
 
     if queue_job:
         for chunk in chunk_iter(all_old_mzmls, 500):
-            jobutil.create_job('purge_files', sf_ids=[x.id for x in chunk])
+            create_job('purge_files', sf_ids=[x.id for x in chunk])
         return JsonResponse({'ok': True})
     else:
         # cannot aggregate Sum on UNION
@@ -807,7 +805,7 @@ def download_px_project(request):
             StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'], filetype_id=ftid,
                     filename=fn, defaults={'servershare_id': tmpshare, 'path': '',
                         'md5': fakemd5})
-    rsjob = jobutil.create_job(
+    create_job(
         'download_px_data', dset_id=dset.id, pxacc=request.POST['px_acc'], sharename=settings.TMPSHARENAME, shasums=shasums)
     return HttpResponse()
 
@@ -833,7 +831,7 @@ def restore_file_from_cold(request):
     elif hasattr(sfile, 'mzmlfile'):
         return JsonResponse({'error': 'mzML derived files are not archived, please regenerate it from RAW data'}, status=403)
     # File is set to deleted, purged = False, False in the post-job-view
-    jobutil.create_job('restore_from_pdc_archive', sf_id=sfile.pk)
+    create_job('restore_from_pdc_archive', sf_id=sfile.pk)
     return JsonResponse({'state': 'ok'})
 
 
@@ -859,6 +857,7 @@ def archive_file(request):
         return JsonResponse({'error': 'File is already archived'}, status=403)
     elif hasattr(sfile, 'mzmlfile'):
         return JsonResponse({'error': 'Derived mzML files are not archived, they can be regenerated from RAW data'}, status=403)
-    # File is set to deleted,purged=True,True in the post-job-view
-    jobutil.create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)
+    create_job('create_pdc_archive', sf_id=sfile.pk, isdir=sfile.filetype.is_folder)
+    # File is set to deleted,purged=True,True in the post-job-view for purge
+    create_job('purge_files', sf_ids=[sfile.pk], need_archive=True)
     return JsonResponse({'state': 'ok'})

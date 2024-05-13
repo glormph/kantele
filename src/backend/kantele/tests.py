@@ -44,13 +44,15 @@ class BaseTest(TestCase):
         self.user.save() 
         login = self.cl.login(username=username, password=password)
         # storage backend
-        self.newfserver = rm.FileServer.objects.create(name='server1', uri='s1.test')
-        self.sstmp = rm.ServerShare.objects.create(name=settings.TMPSHARENAME, server=self.newfserver,
+        self.newfserver, _ = rm.FileServer.objects.get_or_create(name='server1', uri='s1.test')
+        self.sstmp, _ = rm.ServerShare.objects.get_or_create(name=settings.TMPSHARENAME, server=self.newfserver,
                 share='/home/testtmp')
-        self.ssnewstore = rm.ServerShare.objects.create(name=settings.PRIMARY_STORAGESHARENAME,
+        self.ssnewstore, _ = rm.ServerShare.objects.get_or_create(name=settings.PRIMARY_STORAGESHARENAME,
                 server=self.newfserver, share='/home/storage')
-        self.oldfserver = rm.FileServer.objects.create(name='oldserver', uri='s0.test')
-        self.ssoldstorage = rm.ServerShare.objects.create(name=settings.STORAGESHARENAMES[0],
+        self.archivestore, _ = rm.ServerShare.objects.get_or_create(name=settings.ARCHIVESHARENAME,
+                server=self.newfserver, share='/home/archive')
+        self.oldfserver, _ = rm.FileServer.objects.get_or_create(name='oldserver', uri='s0.test')
+        self.ssoldstorage, _ = rm.ServerShare.objects.get_or_create(name=settings.STORAGESHARENAMES[0],
                 server=self.oldfserver, share='/home/storage')
 
         # Species / sampletype fill
@@ -72,7 +74,7 @@ class BaseTest(TestCase):
         # File prep, producers etc
         self.ft, _ = rm.StoredFileType.objects.get_or_create(name='testft', filetype='tst',
                 is_rawdata=True)
-        self.prod, _ = rm.Producer.objects.get_or_create(name='prod1', client_id='abcdefg', shortname='p1')
+        self.prod, _ = rm.Producer.objects.get_or_create(name='prod1', client_id='abcdefg', shortname='p1', internal=True)
         msit, _ = rm.MSInstrumentType.objects.get_or_create(name='test')
         rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
                 filetype=self.ft)
@@ -99,7 +101,7 @@ class BaseTest(TestCase):
                 defaults={'email': 'contactname'})
         dm.DatasetOwner.objects.get_or_create(dataset=self.ds, user=self.user)
         self.f3path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
-        fn3 = 'raw3'
+        fn3 = 'raw3.raw'
         f3size = os.path.getsize(os.path.join(self.f3path, fn3))
         self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,
                 source_md5='f3_fakemd5',
@@ -207,7 +209,7 @@ class BaseTest(TestCase):
         self.ana_raw2, _ = rm.RawFile.objects.get_or_create(name='ana_file2', producer=self.anaprod,
                 source_md5='anarawabc1234', size=100, defaults={'date': timezone.now(), 'claimed': True})
         self.anasfile2, _ = rm.StoredFile.objects.get_or_create(rawfile=self.ana_raw2,
-                filetype_id=self.ft.id, defaults={'filename': self.ana_raw.name, 'filetype': self.ft,
+                filetype_id=self.ft.id, defaults={'filename': self.ana_raw2.name, 'filetype': self.ft,
                     'servershare_id': self.sstmp.id, 'path': '', 'md5': self.ana_raw2.source_md5})
 
 

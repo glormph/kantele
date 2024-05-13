@@ -12,10 +12,11 @@ from time import sleep
 
 from kantele import settings
 from jobs.models import Task, Job, JobError, TaskChain
-from jobs.jobs import Jobstates, send_slack_message
+from jobs.jobs import Jobstates
+from jobs.views import send_slack_message
 from jobs import jobs as jj
 from rawstatus.models import FileJob
-from jobs.views import jobmap
+from jobs.jobutil import jobmap
 
 
 class Command(BaseCommand):
@@ -121,18 +122,23 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 active_jobs.add(job.id)
                 job.state = Jobstates.PROCESSING
                 jwrapper = jobmap[job.funcname](job.id) 
-                try:
-                    jwrapper.run(**job.kwargs)
-                except RuntimeError as e:
-                    print('Error occurred, trying again automatically in next round')
+                if errmsg := jwrapper.check_error(**job.kwargs):
                     job.state = Jobstates.ERROR
-                    JobError.objects.create(job_id=job.id, message=e)
-                except Exception as e:
-                    print(f'Error occurred: {e} --- not executing this job')
-                    job.state = Jobstates.ERROR
-                    JobError.objects.create(job_id=job.id, message=e)
-                    if not settings.TESTING:
-                        send_slack_message('Job {} failed in job runner: {}'.format(job.id, job.funcname), 'kantele')
-                finally:
+                    JobError.objects.create(job_id=job.id, message=errmsg)
                     job.save()
+                else:
+                    try:
+                        jwrapper.run(**job.kwargs)
+                    except RuntimeError as e:
+                        print('Error occurred, trying again automatically in next round')
+                        job.state = Jobstates.ERROR
+                        JobError.objects.create(job_id=job.id, message=e)
+                    except Exception as e:
+                        print(f'Error occurred: {e} --- not executing this job')
+                        job.state = Jobstates.ERROR
+                        JobError.objects.create(job_id=job.id, message=e)
+                        if not settings.TESTING:
+                            send_slack_message('Job {} failed in job runner: {}'.format(job.id, job.funcname), 'kantele')
+                    finally:
+                        job.save()
     return job_fn_map, job_ds_map, active_jobs

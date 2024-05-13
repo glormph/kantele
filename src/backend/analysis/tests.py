@@ -153,7 +153,7 @@ class LoadBaseAnaTestIso(AnalysisTest):
                     'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
                     'samplegroups': {self.samples.samples[0][0]: self.samples.samples[0][3]}}},
                 },
-                'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfnlf.sfile.filename,
+                'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfn.sfile.filename,
                     'ana': f'{self.wftype.name}_{self.ana.name}',
                     'date': datetime.strftime(self.ana.date, '%Y-%m-%d')}],
                 'datasets': {f'{self.ds.pk}': {'fields': {'__regex': f'{self.ads1.value}'},
@@ -858,15 +858,15 @@ class TestStoreExistingLFAnalysis(AnalysisLabelfreeSamples):
                 'entry yet. Maybe the transferring hasnt been finished, or they are deleted.', err)
 
         # picked files fewer than raw files
-        sf = rm.StoredFile.objects.create(rawfile=raw, filename=fn, md5=raw.source_md5, 
+        sf = rm.StoredFile.objects.create(rawfile=raw, filename=raw.name, md5=raw.source_md5, 
                 filetype=self.ft, servershare=self.ssnewstore, path=path, checked=True)
-        raw2 = rm.RawFile.objects.create(name=fn, producer=self.prod,
+        raw2 = rm.RawFile.objects.create(name='second_rawfn', producer=self.prod,
                 source_md5='fewer_fakemd5',
                 size=100, date=timezone.now(), claimed=True)
         dsr = dm.DatasetRawFile.objects.create(dataset=newds, rawfile=raw2)
-        sf2 = rm.StoredFile.objects.create(rawfile=raw2, filename=fn, md5=raw2.source_md5, 
+        sf2 = rm.StoredFile.objects.create(rawfile=raw2, filename=raw2.name, md5=raw2.source_md5, 
                 filetype=self.ft, servershare=self.ssnewstore, path=path, checked=True)
-        sfmz = rm.StoredFile.objects.create(rawfile=raw2, filename=fn, md5='raw2mzml',
+        sfmz = rm.StoredFile.objects.create(rawfile=raw2, filename=f'{fn}_mzml', md5='raw2mzml',
                 filetype=self.ft, servershare=self.ssnewstore, path=path, checked=True)
         mzml = am.MzmlFile.objects.create(sfile=sfmz, pwiz=self.pwiz)
         picked_ft = f'mzML (pwiz {mzml.pwiz.version_description})'

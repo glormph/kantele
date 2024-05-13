@@ -30,6 +30,15 @@ class RenameProject(ProjectJob):
                 servershare__in=[x.storageshare for x in dsets.distinct('storageshare')],
                 path__in=[x.storage_loc for x in dsets.distinct('storage_loc')])
 
+    def check_error(self, **kwargs):
+        # Since proj name is unique, this wont do much, but its ok to check here instead of in view 
+        # just in case of weird race between view/job
+        '''Duplicate check'''
+        if Project.objects.filter(name=kwargs['newname']).exclude(pk=kwargs['proj_id']).exists():
+            return f'There is already a project by that name {kwargs["newname"]}'
+        else:
+            return False
+
     def process(self, **kwargs):
         """Fetch fresh project name here, then queue for move from there"""
         new_is_oldname = True
@@ -48,10 +57,19 @@ class RenameProject(ProjectJob):
 class RenameDatasetStorageLoc(DatasetJob):
     '''Renames dataset, then updates storage_loc of it and path of all dataset storedfiles
     which have same path as dataset.storage_loc, including any deleted files, but not newly
-    added files from tmp'''
+    added files from tmp.
+    Calling this job needs to be checked for forbidden duplicate storage locs
+    '''
     refname = 'rename_dset_storage_loc'
     task = tasks.rename_dset_storage_location
     retryable = False
+
+    def check_error(self, **kwargs):
+        '''Duplicate check, not only check other storage loc, but also any files with the same name'''
+        if Dataset.objects.filter(storage_loc=kwargs['dstpath']):
+            return f'There is already a dataset at the location {kwargs["dstpath"]} you are renaming to'
+        else:
+            return False
 
     def process(self, **kwargs):
         """Fetch fresh storage_loc src dir here, then queue for move from there"""
@@ -62,25 +80,42 @@ class RenameDatasetStorageLoc(DatasetJob):
 
 
 class MoveDatasetServershare(DatasetJob):
-    '''Moves all files associated to a dataset to another servershare'''
+    '''Moves all files associated to a dataset to another servershare, in one task.
+    After all the files are done, delete them from src, and update dset.storage_loc
+    '''
     refname = 'move_dset_servershare'
     task = tasks.rsync_dset_servershare
+
+    def check_error(self, **kwargs):
+        dset = Dataset.objects.values('pk', 'storage_loc').get(pk=kwargs['dset_id'])
+        sfs = self.getfiles_query(**kwargs).values('path', 'servershare__name', 'filename', 'pk')
+        paths = sfs.distinct('path')
+        if paths.count() > 1:
+            return (f'Dataset {dset["pk"]} live files are spread over multiple paths and cannot '
+                    f'be consolidated to {kwargs["dstsharename"]} under one path. '
+                    f'Please group files first, to dset storage location {dset["storage_loc"]}')
+        if paths.exists() and paths.get()['path'] != dset['storage_loc']:
+            return (f'Dataset {dset["pk"]} storage location is different from paths of dset live '
+                    'files. Please make sure files are in correct location, {dset["storage_loc"]}')
+        sharename = sfs.first()['servershare__name']
+        if sharename == kwargs['dstsharename']:
+            return f'Cannot move dataset {dset["pk"]} to same share as its files are on, using this job'
+        split_loc = os.path.split(dset['storage_loc'])
+        if StoredFile.objects.filter(path=split_loc[0], filename=split_loc[1],
+                servershare__name=kwargs['dstsharename']).exists():
+            return (f'Cannot move dataset {dset["pk"]} to {dset["storage_path"]} as there is already '
+                    'a file by that name there')
+        if StoredFile.objects.exclude(pk__in=[x['pk'] for x in sfs]).filter(
+                path=dset['storage_loc'], servershare__name=kwargs['dstsharename']).exists():
+            return (f'Cannot move dataset {dset["pk"]} to {dset["storage_path"]} as there is already '
+                    'file(s) stored in that exact directory. Please resolve first.')
+        return False
 
     def process(self, **kwargs):
         dset = Dataset.objects.values('storage_loc').get(pk=kwargs['dset_id'])
         sfs = self.getfiles_query(**kwargs).values('path', 'servershare__name', 'filename', 'pk')
         rsync_sf = sfs.filter(deleted=False, purged=False, checked=True)
-        paths = sfs.distinct('path')
-        if paths.count() > 1:
-            raise RuntimeError('Dataset live files are spread over multiple paths and cannot '
-                    f'be consolidated to {kwargs["dstsharename"]} under one path. '
-                    f'Please group files first, to dset storage location {dset.storage_loc}')
-        if paths.get()['path'] != dset['storage_loc']:
-            raise RuntimeError('Dataset storage location is different from paths of dset live files, '
-                    f'Please make sure files are in correct location, {dset.storage_loc}')
         sharename = sfs.first()['servershare__name']
-        if sharename == kwargs['dstsharename']:
-            raise RuntimeError('Cannot move dataset to same share as its files are on using this job')
         self.run_tasks.append(((kwargs['dset_id'], sharename, dset['storage_loc'],
             kwargs['dstsharename'], [x['filename'] for x in rsync_sf], [x['pk'] for x in sfs]), {}))
 
@@ -91,32 +126,52 @@ class MoveFilesToStorage(DatasetJob):
 
     def getfiles_query(self, **kwargs):
         '''Get all files going to dataset (passed ids), but only those with 
-        identical md5 as registered raw file (i.e. no mzMLs)'''
-        ds_files = StoredFile.objects.filter(rawfile__datasetrawfile__dataset_id=kwargs['dset_id'])
-        return ds_files.filter(rawfile__source_md5=F('md5'), rawfile_id__in=kwargs['rawfn_ids'],
-                checked=True)
+        identical md5 as registered raw file (i.e. no mzMLs).
+        Since these are pre-dataset files, we need to overwrite this getfiles method'''
+        dset = Dataset.objects.values('storage_loc', 'storageshare_id').get(pk=kwargs['dset_id'])
+        return StoredFile.objects.exclude(servershare_id=dset['storageshare_id'], path=dset['storage_loc']).filter(
+                rawfile__source_md5=F('md5'), rawfile_id__in=kwargs['rawfn_ids'], checked=True)
+
+    def check_error(self, **kwargs):
+        dset = Dataset.objects.values('storage_loc', 'storageshare_id').get(pk=kwargs['dset_id'])
+        dset_files = self.getfiles_query(**kwargs).values('filename')
+        # check if dset with name of file to be passed there already exists
+        # (e.g. dset run name ends in .raw)
+        fpaths = [os.path.join(dset['storage_loc'], sf['filename']) for sf in dset_files]
+        err_ds = Dataset.objects.filter(storage_loc__in=fpaths,
+                storageshare_id=dset['storageshare_id'])
+        if err_ds.exists():
+            err_ds = err_ds.get()
+            return (f'Cannot move selected files to path {dset["storage_loc"]} as there is an '
+                    f'actual dataset (id:{err_ds.pk}, path:{err_ds.storage_loc} on that path '
+                    'Consider renaming the dataset.')
+        split_loc = os.path.split(dset['storage_loc'])
+        if StoredFile.objects.filter(path=split_loc[0], filename=split_loc[1],
+                servershare_id=dset['storageshare_id']).exists():
+            return (f'Cannot create dataset with path {dset["storage_loc"]} as there is an actual file '
+                    'with that name there')
+#        # check if dset creation possible (no file there with path/name == storageloc)
+#        # FIXME this should be in the dsets basics storage
+#        split_loc = os.path.split(dset['storage_loc'])
+#        if StoredFile.objects.filter(path=split_loc[0], filename=split_loc[1],
+#                servershare_id=dset['storageshare_id']).exists():
+#            return (f'Cannot create dataset with path {dset["storage_loc"]} as there is an actual file '
+#                    'with that name there')
+        # check if already file in a dataset by that name:
+        if StoredFile.objects.filter(filename__in=[x['filename'] for x in dset_files],
+                path=dset['storage_loc'], servershare_id=dset['storageshare_id']).exists():
+            return (f'Cannot move files selected to dset {dset["storage_loc"]} as there is '
+                    'already a file with that name there')
+        return False
 
     def process(self, **kwargs):
-        dset_files = self.getfiles_query(**kwargs)
-        # if only half of the files have arrived on tmp yet? Try more later:
-        dset_registered_files = DatasetRawFile.objects.filter(
-            dataset_id=kwargs['dset_id'], rawfile_id__in=kwargs['rawfn_ids'])
-        if dset_files.count() != dset_registered_files.count():
-            # DEPRECATE, this should no longer happen?
-            raise RuntimeError(
-                'Not all files to move have been transferred or '
-                'registered as transferred yet, or have non-matching MD5 sums '
-                'between their registration and after transfer from input source. '
-                'Holding this job, you may retry it when files have arrived')
-        dstpath = Dataset.objects.get(pk=kwargs['dset_id']).storage_loc
-        for fn in dset_files:
+        dstpath = Dataset.objects.values('storage_loc').get(pk=kwargs['dset_id'])['storage_loc']
+        #dset_files = self.getfiles_query(**kwargs).exclude(path=dstpath)
+        for fn in self.getfiles_query(**kwargs):
             # TODO check for diff os.path.join(sevrershare, dst_path), not just
             # path? Only relevant in case of cross-share moves.
-            if fn.path != dstpath:
-                self.run_tasks.append(
-                        ((fn.rawfile.name, fn.servershare.name, fn.path, dstpath, 
-                            fn.id, settings.PRIMARY_STORAGESHARENAME), {})
-                        )
+            self.run_tasks.append(((fn.rawfile.name, fn.servershare.name, fn.path, dstpath, 
+                fn.id, settings.PRIMARY_STORAGESHARENAME), {}))
 
 
 class MoveFilesStorageTmp(DatasetJob):
@@ -129,6 +184,14 @@ class MoveFilesStorageTmp(DatasetJob):
         filter out passed rawfiles'''
         return super().getfiles_query(**kwargs).select_related('filetype').filter(purged=False,
             rawfile_id__in=kwargs['fn_ids'])
+
+    def check_error(self, **kwargs):
+        sfs = self.getfiles_query(**kwargs).values('pk', 'filename')
+        if StoredFile.objects.exclude(pk__in=[x['pk'] for x in sfs]).filter(
+                filename__in=[x['filename'] for x in sfs]):
+            return (f'Cannot move files from dataset {kwargs["dset_id"]} to tmp storage, as there '
+                    'exist file(s) with the same name there. Please resolve this before retrying')
+        return False
 
     def process(self, **kwargs):
         for fn in self.getfiles_query(**kwargs).select_related('mzmlfile', 'servershare'):

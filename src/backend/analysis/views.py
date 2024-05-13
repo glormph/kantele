@@ -22,6 +22,7 @@ from rawstatus import models as rm
 from home import views as hv
 from jobs import jobs as jj
 from jobs import views as jv
+from jobs.jobutil import create_job
 from jobs import models as jm
 
 
@@ -1017,13 +1018,14 @@ def store_analysis(request):
             'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
             'storagepath': analysis.storage_dir, **data_args}
     if req['analysis_id']:
-        job = analysis.nextflowsearch.job
-        job.kwargs = kwargs
-        job.state = jj.Jobstates.WAITING
-        job.save()
+        job_db = analysis.nextflowsearch.job
+        job_db.kwargs = kwargs
+        job_db.state = jj.Jobstates.WAITING
+        job_db.save()
+        job = {'id': job_db.pk, 'error': False}
     else:
-        job = jj.create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-    am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': job.id, 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
+        job = create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
+    am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': job['id'], 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id})
 
 
@@ -1118,8 +1120,8 @@ def purge_analysis(request):
     sfiles = rm.StoredFile.objects.filter(analysisresultfile__analysis__id=analysis.pk)
     sfiles.update(deleted=True)
     sf_ids = [x['pk'] for x in sfiles.values('pk')]
-    jj.create_job('purge_analysis', analysis_id=analysis.pk, sf_ids=sf_ids)
-    jj.create_job('delete_empty_directory', sf_ids=sf_ids)
+    create_job('purge_analysis', analysis_id=analysis.pk, sf_ids=sf_ids)
+    create_job('delete_empty_directory', sf_ids=sf_ids)
     return JsonResponse({})
 
 

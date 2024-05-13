@@ -14,7 +14,7 @@ from django.utils import timezone
 from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
-from jobs.jobs import create_job
+from jobs.jobutil import create_job, check_job_error, create_job_without_check
 
 
 INTERNAL_PI_PK = 1
@@ -354,9 +354,17 @@ def update_dataset(data):
     hrrange_id = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
     new_storage_loc = set_storage_location(project, experiment, dset.runname,
                                            dtype, prefrac, hrrange_id)
-    if (new_storage_loc != dset.storage_loc and 
+    err_fpath, err_fname = os.path.split(new_storage_loc)
+    prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    if new_storage_loc != dset.storage_loc and filemodels.StoredFile.objects.filter(
+            servershare=prim_share, path=err_fpath, filename=err_fname).exists():
+        return JsonResponse({'error': 'There is already a file with that exact path '
+            f'{new_storage_loc}'}, status=403)
+    elif (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
-        create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
+        job = create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
+        if job['error']: 
+            return JsonResponse({'error': job['error']}, status=403)
     dset.save()
     if data['ptype_id'] != settings.LOCAL_PTYPE_ID:
         try:
@@ -507,10 +515,13 @@ def save_new_dataset(data, project, experiment, runname, user_id):
     prefrac = models.Prefractionation.objects.get(pk=data['prefrac_id']) if data['prefrac_id'] else False
     hrrange_id = data['hiriefrange'] if 'hiriefrange' in data and data['hiriefrange'] else False
     prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
-    dset = models.Dataset.objects.create(date=timezone.now(),
-            runname_id=runname.id, storage_loc=set_storage_location(
-                project, experiment, runname, dtype, prefrac, hrrange_id),
-            storageshare=prim_share, datatype=dtype)
+    storloc = set_storage_location(project, experiment, runname, dtype, prefrac, hrrange_id)
+    err_fpath, err_fname = os.path.split(storloc)
+    if filemodels.StoredFile.objects.filter(servershare=prim_share, path=err_fpath,
+            filename=err_fname).exists():
+        raise IntegrityError(f'There is already a file with that exact path {storloc}')
+    dset = models.Dataset.objects.create(date=timezone.now(), runname_id=runname.id,
+            storage_loc=storloc, storageshare=prim_share, datatype=dtype)
     dsowner = models.DatasetOwner(dataset=dset, user_id=user_id)
     dsowner.save()
     if data['prefrac_id']:
@@ -614,11 +625,10 @@ def merge_projects(request):
                 prefrac = pfds.prefractionation if pfds else False
                 hrrange_id = pfds.hiriefdataset.hirief_id if hasattr(pfds, 'hiriefdataset') else False
                 new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange_id)
-                if models.Dataset.objects.filter(storage_loc=new_storage_loc):
-                    return JsonResponse({'error': 'You cannot change the dataset path to an '
-                        f'existing dataset path {new_storage_loc}'}, status=403)
-                create_job('rename_dset_storage_loc', dset_id=dset.id,
+                job = create_job('rename_dset_storage_loc', dset_id=dset.id,
                         dstpath=new_storage_loc)
+                if job['error']:
+                    return JsonResponse({'error': job['error']}, status=403)
             # Also, should we possibly NOT chaneg anything here but only check pre the job, then merge after job complete?
             # In case of waiting times, job problems, etc? Prob doesnt matter much.
         proj.delete()
@@ -637,19 +647,17 @@ def rename_project(request):
     except models.Project.DoesNotExist:
         return JsonResponse({'error': f'Project with that ID does not exist in DB'}, status=404)
     # check if new project not already exist, and user have permission for all dsets
-    proj_exist = models.Project.objects.filter(name=data['newname'])
-    if proj_exist.count():
-        if proj_exist.get().id == proj.id:
-            return JsonResponse({'error': f'Cannot change name to existing name for project {proj.name}'}, status=403)
-        else:
-            return JsonResponse({'error': f'There is already a project by that name {data["newname"]}'}, status=403)
-    if is_invalid_proj_exp_runnames(data['newname']):
+    if data['newname'] == proj.name:
+        return JsonResponse({'error': f'Cannot change name to existing name for project {proj.name}'}, status=403)
+    elif is_invalid_proj_exp_runnames(data['newname']):
         return JsonResponse({'error': f'Project name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
     dsets = models.Dataset.objects.filter(runname__experiment__project=proj)
     if not all(check_ownership(request.user, ds) for ds in dsets):
         return JsonResponse({'error': f'You do not have the rights to change all datasets in this project'}, status=403)
     # queue jobs to rename project, update project name after that since it is needed in job for path
-    create_job('rename_top_lvl_projectdir', newname=data['newname'], proj_id=data['projid'])
+    job = create_job('rename_top_lvl_projectdir', newname=data['newname'], proj_id=data['projid'])
+    if job['error']:
+        return JsonResponse({'error': job['error']}, status=403)
     proj.name = data['newname']
     proj.save()
     return JsonResponse({})
@@ -920,8 +928,9 @@ def save_dataset(request):
         try:
             dset = save_new_dataset(data, project, experiment, runname, request.user.id)
         except IntegrityError:
-            print('Cannot save dataset with non-unique location')
-            return JsonResponse({'state': 'error', 'error': 'Cannot save dataset, storage location not unique'})
+            return JsonResponse({'state': 'error', 'error': 'Cannot save dataset, storage location '
+                'not unique, there is either a file or an existing dataset on that location.'},
+                status=403)
     return JsonResponse({'dataset_id': dset.id})
 
 
@@ -1154,50 +1163,65 @@ def empty_files_json():
 def move_dset_project_servershare(dset, dstsharename):
     '''Takes a dataset and moves its entire project to a new
     servershare'''
-    create_job('move_dset_servershare', dset_id=dset.pk, srcsharename=dset.storageshare.name,
-                dstsharename=dstsharename)
+    kwargs = [{'dset_id': dset.pk, 'srcsharename': dset.storageshare.name, 'dstsharename': dstsharename}]
+    if error := check_job_error('move_dset_servershare', **kwargs[0]):
+        return error
     for other_ds in models.Dataset.objects.filter(deleted=False, purged=False,
             runname__experiment__project=dset.runname.experiment.project).exclude(pk=dset.pk):
-        create_job('move_dset_servershare', dset_id=other_ds.pk, srcsharename=other_ds.storageshare.name,
-                dstsharename=dstsharename)
+        kwargs.append({'dset_id': other_ds.pk, 'srcsharename': other_ds.storageshare.name,
+            'dstsharename': dstsharename})
+        if error := check_job_error('move_dset_servershare', **kwargs[-1]):
+            return error
+    [create_job_without_check('move_dset_servershare', **kw) for kw in kwargs]
+    return False
 
 
 def save_or_update_files(data):
-    '''Called from jobs, rawstatus as well, so broke out from request
+    '''Called from views in jobs, rawstatus as well, so broke out from request
     handling view'''
     dset_id = data['dataset_id']
     added_fnids = [x['id'] for x in data['added_files'].values()]
+    removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     dset = models.Dataset.objects.select_related('storageshare').get(pk=dset_id)
     tmpshare = filemodels.ServerShare.objects.get(name=settings.TMPSHARENAME)
     dsrawfn_ids = filemodels.RawFile.objects.filter(datasetrawfile__dataset=dset)
     switch_fileserver = dset.storageshare.server != tmpshare.server
     mvjobs = []
+    # First error check and collect jobs:
     if added_fnids:
         if not models.RawFile.objects.filter(pk__in=added_fnids,
                 storedfile__checked=True).exists():
             return {'error': 'Some files cannot be saved to dataset since they '
                     'are not confirmed to be stored yet'}, 403
+        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'dst_path': dset.storage_loc, 
+            'rawfn_ids': added_fnids}))
+    if removed_ids:
+        mvjobs.append(('move_stored_files_tmp', {'dset_id': dset_id, 'fn_ids': removed_ids}))
+
+    # Job error checking for moving the files (files already in tmp or in dset dir)
+    for mvjob in mvjobs:
+        if error := check_job_error(mvjob[0], **mvjob[1]):
+            return {'error': error}, 403
+    # Now move servershare if needed (dset is old and not on primary server)
+    # All tmp files will be on primary server, so if we move server first, there is no
+    # issue with them not being ok anymore
+    if switch_fileserver:
+        if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+            return {'error': error}, 403
+
+    # Errors checked, now store DB records and queue move jobs
+    if added_fnids:
         models.DatasetRawFile.objects.bulk_create([
             models.DatasetRawFile(dataset_id=dset_id, rawfile_id=fnid)
             for fnid in added_fnids])
         filemodels.RawFile.objects.filter(
             pk__in=added_fnids).update(claimed=True)
-        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'dst_path': dset.storage_loc, 
-            'rawfn_ids': added_fnids}))
-
-    removed_ids = [int(x['id']) for x in data['removed_files'].values()]
     if removed_ids:
         models.DatasetRawFile.objects.filter(
             dataset_id=dset_id, rawfile_id__in=removed_ids).delete()
         filemodels.RawFile.objects.filter(pk__in=removed_ids).update(
             claimed=False)
-        mvjobs.append(('move_stored_files_tmp', {'dset_id': dset_id, 'fn_ids': removed_ids}))
-
-    if switch_fileserver:
-        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
-    if mvjobs:
-        for mvjob in mvjobs:
-            create_job(mvjob[0], **mvjob[1])
+    [create_job_without_check(name, **kw) for name,kw in mvjobs]
 
     # If files changed and labelfree, set sampleprep component status
     # to not good. Which should update the tab colour (green to red)
