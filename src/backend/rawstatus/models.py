@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
+from django.db.models import Q
 
 from jobs.models import Job
 
@@ -93,7 +94,8 @@ class StoredFile(models.Model):
     class Meta:
         # Include the deleted field to allow for multi-version of a file 
         # as can be the case in mzML (though only one existing)
-        constraints = [models.UniqueConstraint(fields=['servershare', 'path', 'filename', 'deleted'], name='uni_storedfile')]
+        constraints = [models.UniqueConstraint(fields=['servershare', 'path', 'filename', 'deleted'],
+            name='uni_storedfile', condition=Q(deleted=False))]
 
     def __str__(self):
         return self.rawfile.name

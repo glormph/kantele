@@ -12,6 +12,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddConstraint(
             model_name='storedfile',
-            constraint=models.UniqueConstraint(fields=('servershare', 'path', 'filename', 'deleted'), name='uni_storedfile'),
+            constraint=models.UniqueConstraint(condition=models.Q(('deleted', False)), fields=('servershare', 'path', 'filename', 'deleted'), name='uni_storedfile'),
         ),
     ]
