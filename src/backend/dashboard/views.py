@@ -21,15 +21,11 @@ def dashboard(request):
                   'instrument_ids': [x.id for x in instruments]})
 
 
-def fail_longitudinal_qc(data):
-    """Called in case task detects QC run too bad to extract data from"""
-    AnalysisError.objects.create(message=data['errmsg'], 
-                                 analysis_id=data['analysis_id'])
-    
 def store_longitudinal_qc(data):
     '''Update or create new QC data'''
-    qcrun, _ = models.QCData.objects.get_or_create(rawfile_id=data['rf_id'],
-            defaults={'analysis_id': data['analysis_id']})
+    qcrun, _ = models.QCData.objects.update_or_create(rawfile_id=data['rf_id'],
+            defaults={'analysis_id': data['analysis_id'], 'is_ok': data['state'] == 'ok',
+                'message': data['msg']})
     # TODO migrate shortnames so we are in sync with QC pipeline
     plotnames = {
             'nrpsms': 'psms',
