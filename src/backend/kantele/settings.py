@@ -173,6 +173,7 @@ INSTALLED_APPS = [
     'corefac.apps.CorefacConfig',
     'analysis.apps.AnalysisConfig',
     'dashboard.apps.DashboardConfig',
+    'staffpage.apps.StaffPageConfig',
     #'mstulos.apps.MSResultConfig',
 ]
 

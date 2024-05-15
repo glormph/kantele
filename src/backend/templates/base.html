@@ -30,6 +30,9 @@
 		    <a class="navbar-item " href="{% url 'datasets:new' %}">NEW DATASET</a>
 		    <a class="navbar-item " href="{% url 'dashboard:dash' %}">DASHBOARD</a>
 		    <a class="navbar-item " href="{% url 'files:inflow' %}">DATA UPLOADS</a>
+	  	    {% if user.is_staff %}
+		    <a class="navbar-item " href="{% url 'staffpage:home' %}">ADMIN</a>
+		    {% endif %}
 		    <a class="navbar-item " href="{% url 'logout' %}">LOGOUT {{ user }}</a>
 	    </div>
     </div>
