@@ -564,7 +564,7 @@ def transfer_file(request):
 def query_all_qc_files():
     '''QC files are defined as not having a dataset, being claimed, and stored on the
     QC storage dir'''
-    return StoredFile.objects.filter(rawfile__claimed=True,
+    return StoredFile.objects.filter(rawfile__datasetrawfile__isnull=True, rawfile__claimed=True,
             path__startswith=settings.QC_STORAGE_DIR)
 
 

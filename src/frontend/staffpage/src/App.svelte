@@ -18,6 +18,9 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 
   let selectedSingle = false;
 
+  let ignoreObsolete = false;
+  let retrieveBackups = false;
+
 
   function getRerunFromDate() {
       showConfirm = false;
@@ -65,7 +68,9 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
       const rerun_ids = Object.entries(qc_reruns)
         .filter(([k,v]) => v)
         .map(([k,v]) => k);
-      const data = {days: rerunNumberDays, instruments: rerun_ids, confirm: confirm};
+      const data = {days: rerunNumberDays, instruments: rerun_ids, confirm: confirm,
+          ignore_obsolete: ignoreObsolete, retrieve_archive: retrieveBackups,
+        };
       const resp = await postJSON('/manage/qc/rerunmany/', data);
       if (resp.state === 'confirm') {
         showConfirm = true;
@@ -75,6 +80,8 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
       } else {
         showConfirm = false;
         serverMsg = resp.msg;
+        ignoreObsolete = false;
+        retrieveBackups = false;
       }
     }
 
@@ -83,7 +90,9 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 <div class="columns">
   <div class="column">
     <div class="box has-background-link-light">
-      <h5 class="title is-5">QC reruns</h5>
+      <h4 class="title is-4">QC reruns</h4>
+      <h5 class="title is-5">Run a batch of files with latest QC workflow</h5>
+      <h5 class="subtitle is-5">Excludes deleted </h5>
       <div class="columns">
         <div class="column">
           <div class="field">
@@ -115,9 +124,20 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
           {:else}
           <button on:click={confirmRerun} class="button" disabled>Confirm</button>
           {/if}
+          <div class="field mt-4">
+            <label class="checkbox">
+              <input checked={ignoreObsolete} type="checkbox"> Ignore obsolete warning
+            </label>
+          </div>
+          <div class="field mt-4">
+            <label class="checkbox">
+              <input checked={retrieveBackups} type="checkbox"> Retrieve archived files from backup 
+            </label>
+          </div>
+
         </div>
       </div>
-      <p class="has-text-weight-bold">Or select a single run</p>
+      <h5 class="title is-5">Or select a single run</h5>
       <DynamicSelect bind:selectval={selectedSingle} on:selectedvalue={e => console.log('hsaj')} niceName={x => x.name} fetchUrl="/manage/qc/searchfiles/" placeholder="instrument name, date" />
       {#if selectedSingle}
       <button on:click={runSingleFile} class="button">Run</button>
