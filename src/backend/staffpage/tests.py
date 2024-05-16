@@ -39,12 +39,11 @@ class RerunSingleQCTest(BaseTest):
         self.assertEqual(self.bup_jobs.count(), 0)
         self.assertEqual(self.qc_jobs.count(), 1)
         
-        # Run again, expect block since already have this run
+        # Run again, dont care about duplicate
         resp = self.cl.post(self.url, content_type='application/json', data={'sfid': self.oldsf.pk})
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()['msg'], f'Did not queue QC rerun for {self.oldsf.filename}, '
-                'this analysis already exists')
-        self.assertEqual(self.qc_jobs.count(), 1)
+        self.assertEqual(resp.json()['msg'], f'Queued {self.oldsf.filename} QC raw for rerun')
+        self.assertEqual(self.qc_jobs.count(), 2)
 
     def test_run_with_archived_file(self):
         self.oldsf.path = os.path.join(settings.QC_STORAGE_DIR, 'test')
