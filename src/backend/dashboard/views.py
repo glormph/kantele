@@ -54,7 +54,7 @@ def store_longitudinal_qc(data):
                 })
         elif name == 'missed_cleavages':
             for num_mc, num_psm in qcdata.items():
-                qcrun.lineplotdata_set.update_or_create(shortname=f'{miscleav{num_mc}', defaults={
+                qcrun.lineplotdata_set.update_or_create(shortname=f'miscleav{num_mc}', defaults={
                     'value': num_psm})
         else:
             qcrun.lineplotdata_set.update_or_create(shortname=name, defaults={'value': qcdata})
