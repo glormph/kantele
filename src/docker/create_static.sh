@@ -21,4 +21,5 @@ cd "${basepath}/src/frontend/dashboard" && npm install && npm run build
 cd "${basepath}/src/frontend/datasets" && npm install && npm run build
 cd "${basepath}/src/frontend/file-inflow" && npm install && npm run build
 cd "${basepath}/src/frontend/home" && npm install && npm run build
+cd "${basepath}/src/frontend/staffpage" && npm install && npm run build
 
