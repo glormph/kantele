@@ -97,7 +97,7 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
         <div class="column">
           <div class="field">
             <label class="checkbox">
-              <input on:click={toggleRerunAll} checked={rerunAllInstruments} type="checkbox"> All instruments
+              <input on:click={toggleRerunAll} bind:checked={rerunAllInstruments} type="checkbox"> All instruments
             </label>
           </div>
           {#each Object.entries(instruments) as [id, name]}
@@ -126,12 +126,12 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
           {/if}
           <div class="field mt-4">
             <label class="checkbox">
-              <input checked={ignoreObsolete} type="checkbox"> Ignore obsolete warning
+              <input bind:checked={ignoreObsolete} type="checkbox"> Ignore obsolete warning
             </label>
           </div>
           <div class="field mt-4">
             <label class="checkbox">
-              <input checked={retrieveBackups} type="checkbox"> Retrieve archived files from backup 
+              <input bind:checked={retrieveBackups} type="checkbox"> Retrieve archived files from backup 
             </label>
           </div>
 
