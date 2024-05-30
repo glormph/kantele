@@ -42,6 +42,7 @@ RUN cd /src/frontend/dashboard && npm install && npm run build
 RUN cd /src/frontend/datasets && npm install && npm run build
 RUN cd /src/frontend/file-inflow && npm install && npm run build
 RUN cd /src/frontend/home && npm install && npm run build
+RUN cd /src/frontend/staffpage && npm install && npm run build
 
 # Nginx to serve static stuff, uploads etc
 # also copy in the relevant config files
