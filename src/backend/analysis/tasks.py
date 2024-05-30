@@ -425,7 +425,7 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
 def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_version):
     print('Got message to run QC workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
-    postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
+    postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'], 'plots': {},
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'instrument': run['instrument'], 'filename': run['filename']}
     rundir = create_runname_dir(run)
@@ -441,20 +441,21 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_versio
             exitfield, namefield = header.index('exit'), header.index('name')
             for line in fp:
                 # exit code 3 -> not enough PSMs, but maybe
-                # CANT FIND THIS IN PIPELINE OR MSSTITCH!
+                # CANT FIND THIS IN PIPELINE OR MSSTITCH! FIXME
                 # it would be ok to have pipeline output
                 # this message instead
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
-                    postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
+                    postdata.update({'state': 'error', 'msg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
                     report_finished_run(reporturl, postdata, no_stagedir, rundir, run['analysis_id'])
-                    raise RuntimeError('QC file did not contain enough quality PSMs')
+                    return run
         taskfail_update_db(self.request.id, errmsg)
         raise RuntimeError('Error occurred running QC workflow {rundir}')
+    # FIXME state error can also happen here, if no CalledProcessError?
     with open(os.path.join(outdir, 'qc.json')) as fp:
         qcreport = json.load(fp)
     log_analysis(run['analysis_id'], 'QC Workflow finished')
-    postdata.update({'state': 'ok', 'plots': qcreport})
+    postdata.update({'state': 'ok', 'plots': qcreport, 'msg': 'QC run OK'})
     report_finished_run(reporturl, postdata, no_stagedir, rundir, run['analysis_id'])
     return run
 

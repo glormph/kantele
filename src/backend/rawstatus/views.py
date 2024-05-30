@@ -435,7 +435,12 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
         create_job('move_single_file', sf_id=sfn.id,
                 dstsharename=settings.PRIMARY_STORAGESHARENAME,
                 dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
-        run_singlefile_qc(sfn.rawfile, sfn)
+        staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
+        if staff_ops.exists():
+            user_op = staff_ops.first()
+        else:
+            user_op = dsmodels.Operator.objects.first()
+        run_singlefile_qc(sfn.rawfile, sfn, user_op)
         newname = fn
     elif hasattr(sfn, 'libraryfile'):
         newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
@@ -556,7 +561,14 @@ def transfer_file(request):
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
 
-def run_singlefile_qc(rawfile, storedfile):
+def query_all_qc_files():
+    '''QC files are defined as not having a dataset, being claimed, and stored on the
+    QC storage dir'''
+    return StoredFile.objects.filter(rawfile__datasetrawfile__isnull=True, rawfile__claimed=True,
+            path__startswith=settings.QC_STORAGE_DIR)
+
+
+def run_singlefile_qc(rawfile, storedfile, user_op):
     """This method is only run for detecting new incoming QC files"""
     filters = ['"peakPicking true 2"', '"precursorRefine"']
     params = ['--instrument', rawfile.producer.msinstrument.instrumenttype.name]
@@ -571,12 +583,6 @@ def run_singlefile_qc(rawfile, storedfile):
         params.extend(['--filters', ';'.join(filters)])
     if len(options):
         params.extend(['--options', ';'.join([x[2:] for x in options])])
-    wf_id = NextflowWfVersionParamset.objects.filter(userworkflow__wftype=UserWorkflow.WFTypeChoices.QC).latest('pk').id
-    staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
-    if staff_ops.exists():
-        user_op = staff_ops.first()
-    else:
-        user_op = dsmodels.Operator.objects.first()
     analysis = Analysis.objects.create(user_id=user_op.user_id,
             name=f'{rawfile.producer.name}_{rawfile.name}_{rawfile.date}')
     create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,

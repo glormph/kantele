@@ -320,8 +320,6 @@ def store_longitudinal_qc(request):
     if ('client_id' not in data or
             data['client_id'] not in settings.CLIENT_APIKEYS):
         return HttpResponseForbidden()
-    elif data['state'] == 'error':
-        dashviews.fail_longitudinal_qc(data)
     else:
         dashviews.store_longitudinal_qc(data)
         send_slack_message('QC run for {} is now finished: {}'.format(data['instrument'], data['filename']), 'lab')
