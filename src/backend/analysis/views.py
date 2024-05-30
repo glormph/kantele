@@ -229,8 +229,10 @@ def get_analysis(request, anid):
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == PTypes.MULTI:
             analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
+        elif ap.param.ptype == PTypes.SELECT:
+            analysis['inputparams'][ap.param_id] = str(ap.value)
         else:
-            # For NUMBER, TEXT, SELECT
+            # For NUMBER, TEXT
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfwfversionparamset.paramset
 
