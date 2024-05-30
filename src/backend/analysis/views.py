@@ -1131,6 +1131,7 @@ def start_analysis(request):
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
+        job = False
         if 'item_id' in req:
             # home app
             job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
@@ -1138,6 +1139,8 @@ def start_analysis(request):
             # analysis start app
             job = jm.Job.objects.get(nextflowsearch__analysis_id=req['analysis_id'])
     except jm.Job.DoesNotExist:
+        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
+    if not job:
         return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
     ownership = jv.get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:

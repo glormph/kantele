@@ -808,6 +808,7 @@ def fetch_dset_details(dset):
             mzmlfile__sfile__rawfile__datasetrawfile__dataset=dset,
             mzmlfile__sfile__deleted=False, mzmlfile__sfile__checked=True), 'existing')
         for pwsid, pws in pw_sets.items():
+            state = False
             pwpk, refined = pwsid.split('_')
             refined = refined == 'True'
             if (not refined and pws['id'] in info['convert_dataset_mzml']) or (refined and pws['id'] in info['refine_mzmls']):
@@ -834,6 +835,8 @@ def fetch_dset_details(dset):
                     state = 'Incomplete'
             elif refined:
                 state = 'No mzmls'
+            if not state:
+                raise RuntimeError('Something went wrong getting mzMLs')
             pws['state'] = state
         info['pwiz_sets'] = [x for x in pw_sets.values()]
         info['pwiz_versions'] =  {x.id: x.version_description for x in anmodels.Proteowizard.objects.exclude(
