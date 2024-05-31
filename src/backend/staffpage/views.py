@@ -89,8 +89,8 @@ def rerun_qcs(request):
         return JsonResponse({'state': 'error', 'msg': 'Something went wrong, contact admin'}, status=400)
     lastdate = (timezone.now() - timezone.timedelta(days_back)).date()
     # Filter QC files (in path, no dataset, claimed, date)
-    sfs = query_all_qc_files().filter(rawfile__date__gte=lastdate).select_related(
-            'rawfile__producer__msinstrument__instrumenttype')
+    sfs = query_all_qc_files().filter(rawfile__producer__pk__in=instruments, rawfile__date__gte=lastdate
+            ).select_related('rawfile__producer__msinstrument__instrumenttype')
     latest_qcwf = am.NextflowWfVersionParamset.objects.filter(
             userworkflow__wftype=am.UserWorkflow.WFTypeChoices.QC).last()
     qcjobs = [x.kwargs['sf_id'] for x in jm.Job.objects.filter(funcname='run_longit_qc_workflow',
