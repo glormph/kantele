@@ -97,13 +97,11 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
     def process(self, **kwargs):
         """Assumes one file, one analysis"""
         analysis = models.Analysis.objects.get(pk=kwargs['analysis_id'])
-        dbfn = models.LibraryFile.objects.get(pk=kwargs['dbfn_id']).sfile
-        mzml = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
+        raw = rm.StoredFile.objects.select_related('rawfile__producer', 'filetype').get(pk=kwargs['sf_id'])
         wf = models.UserWorkflow.objects.filter(wftype=models.UserWorkflow.WFTypeChoices.QC).last()
         nfwf = wf.nfwfversionparamsets.last()
         params = kwargs.get('params', [])
-        stagefiles = {'--raw': [(mzml.servershare.name, mzml.path, mzml.filename)],
-                      '--db': [(dbfn.servershare.name, dbfn.path, dbfn.filename)]}
+        stagefiles = {'--raw': [(raw.servershare.name, raw.path, raw.filename)]}
         timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         models.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': nfwf.id, 
             'job_id': self.job_id, 'workflow_id': wf.id, 'token': f'nf-{uuid4()}'},
@@ -111,19 +109,17 @@ class RunLongitudinalQCWorkflow(SingleFileJob):
         run = {'timestamp': timestamp,
                'analysis_id': analysis.id,
                'token': analysis.nextflowsearch.token,
-               'rf_id': mzml.rawfile_id,
+               'rf_id': raw.rawfile_id,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'runname': f'{analysis.id}_longqc_{mzml.rawfile.producer.name}_rawfile{mzml.rawfile_id}_{timestamp}',
-               'filename': mzml.filename,
-               'instrument': mzml.rawfile.producer.name,
+               'runname': f'{analysis.id}_longqc_{raw.rawfile.producer.name}_rawfile{raw.rawfile_id}_{timestamp}',
+               'filename': raw.filename,
+               'instrument': raw.rawfile.producer.name,
                }
         self.run_tasks.append(((run, params, stagefiles, ','.join(nfwf.profiles), nfwf.nfversion), {}))
         analysis.log.append('[{}] Job queued'.format(datetime.strftime(timezone.now(), '%Y-%m-%d %H:%M:%S')))
         analysis.save()
-
-
 
 
 def recurse_nrdsets_baseanalysis(aba):
