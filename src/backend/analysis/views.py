@@ -112,8 +112,10 @@ def load_base_analysis(request, wfversion_id, baseanid):
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == am.Param.PTypes.MULTI:
             analysis['multicheck'].extend([f'{ap.param.id}___{x}' for x in ap.value])
+        elif ap.param.ptype == am.Param.PTypes.SELECT:
+            analysis['inputparams'][ap.param_id] = str(ap.value)
         else:
-            # For NUMBER, TEXT, SELECT params
+            # For NUMBER, TEXT
             analysis['inputparams'][ap.param_id] = ap.value
     #pset = ana.nextflowsearch.nfwfversionparamset.paramset
     for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
