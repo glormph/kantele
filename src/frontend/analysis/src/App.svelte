@@ -109,6 +109,12 @@ function validate() {
       }
     })
   })
+
+  wf.selectparams.forEach(selp => {
+    if (!config.inputparams[selp.id]) {
+      notif.errors[`Must select a value for ${selp.name}`] = 1;
+      }
+  });
   return Object.keys(notif.errors).length === 0;
 }
 
