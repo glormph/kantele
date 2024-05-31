@@ -136,7 +136,7 @@ class RerunManyQCsTest(BaseTest):
         nr_archived = 1
         cur_nr_queued = 0
         confirm_msg = f'You have selected {nr_files} QC raw files.'
-        dup_msg = (f'{nr_duplicates} seem to be obsolete reruns ran with the same workflow '
+        dup_msg = (f'{nr_duplicates} seem to be obsolete reruns ran with the same workflow'
                 ' version as the current latest (Tick the ignore box '
                 'to include these in the analysis.')
         del_msg = (f'{nr_deleted} seem to be deleted, of which {nr_archived} are '
