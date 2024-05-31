@@ -410,6 +410,17 @@ async function loadBaseAnalysis() {
       config[key] = result.base_analysis[key];
     }
     Object.assign(config.multifileparams, result.base_analysis.multifileparams);
+    let base_ana_contains_new_added_ana = false;
+    Object.entries(result.base_analysis.added_results).forEach(([aid, base_add_res]) => {
+      if (added_analyses_order.indexOf(aid) < 0) {
+        base_ana_contains_new_added_ana = true;
+        added_analyses_order.push(aid);
+        added_results[aid] = base_add_res;
+      }
+    });
+    if (base_ana_contains_new_added_ana) {
+      updateResultfiles();
+    }
     config = config;
     // svelte reactivity, this updates object so the options of the file params are updated
     // which triggers the select to update its intext via inputdone()
