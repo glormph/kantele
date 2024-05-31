@@ -133,6 +133,22 @@ class TestNewAnalysis(BaseTest):
 class LoadBaseAnaTestIso(AnalysisTest):
     url = '/analysis/baseanalysis/load/'
 
+    def setUp(self):
+        super().setUp()
+        # create "added_results", i.e. a param in analysis which uses results from another ana
+        self.newana = am.Analysis.objects.create(user=self.user, name='testana_iso', storage_dir='testdir_iso')
+        job = jm.Job.objects.create(funcname='testjob', kwargs={}, state=jj.Jobstates.WAITING,
+                timestamp=timezone.now())
+        am.NextflowSearch.objects.create(analysis=self.newana, nfwfversionparamset=self.nfwf,
+                workflow=self.wf, token='addedres_ana', job=job)
+        raw = rm.RawFile.objects.create(name='new_ana_file', producer=self.anaprod,
+                source_md5='added_ana.result', size=100, date=timezone.now(), claimed=True)
+        self.newanasfile = rm.StoredFile.objects.create(rawfile=raw, filetype_id=self.ft.id,
+            filename=raw.name, servershare=self.sstmp, path='', md5=raw.source_md5)
+        new_resultfn = am.AnalysisResultFile.objects.create(analysis=self.newana, sfile=self.newanasfile)
+        self.anafparam.sfile = self.newanasfile
+        self.anafparam.save()
+
     def test_diff_dsets(self):
         '''Base analysis requested has a single dataset connected, this one asks for two, so we 
         need to get resultfiles from the base analysis as they will not be included in the 
@@ -141,17 +157,24 @@ class LoadBaseAnaTestIso(AnalysisTest):
         resp = self.cl.get(url, data={'dsids': f'{self.ds.pk},{self.oldds.pk}', 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
+        newana_date = datetime.strftime(self.newana.date, '%Y-%m-%d')
+        newana_name = f'STD_{self.newana.name}'
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': False,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value,
-                    f'{self.param4.pk}': self.anaselectparam.value},
+                    f'{self.param4.pk}': f'{self.anaselectparam.value}'},
                 'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
-                'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
+                'fileparams': {f'{self.pfn2.pk}': self.newanasfile.pk},
                 'isoquants': {self.ads1.setname.setname: {**self.isoqvals,
                     'chemistry': self.ds.quantdataset.quanttype.shortname,
                     'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
                     'samplegroups': {self.samples.samples[0][0]: self.samples.samples[0][3]}}},
+                'added_results': {self.newana.pk: {'analysisname': newana_name,
+                    'date': newana_date, 'fns': [{'id': x.sfile.pk, 'fn': x.sfile.filename,
+                        'ana': newana_name, 'date': newana_date}
+                        for x in self.newana.analysisresultfile_set.all()]}
+                    },
                 },
                 'resultfiles': [{'id': self.resultfn.sfile.pk, 'fn': self.resultfn.sfile.filename,
                     'ana': f'{self.wftype.name}_{self.ana.name}',
@@ -171,24 +194,31 @@ class LoadBaseAnaTestIso(AnalysisTest):
         resp = self.cl.get(url, data={'dsids': self.ds.pk, 'added_ana_ids': ''})
         self.assertEqual(resp.status_code, 200)
         rj = resp.json()
+        newana_date = datetime.strftime(self.newana.date, '%Y-%m-%d')
+        newana_name = f'STD_{self.newana.name}'
         checkjson = {'base_analysis': {'analysis_id': self.ana.pk, 'dsets_identical': True,
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparam.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value,
-                    f'{self.param4.pk}': self.anaselectparam.value},
+                    f'{self.param4.pk}': f'{self.anaselectparam.value}'},
                 'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
-                'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
+                'fileparams': {f'{self.pfn2.pk}': self.newanasfile.pk},
                 'isoquants': {self.ads1.setname.setname: {**self.isoqvals,
                     'chemistry': self.ds.quantdataset.quanttype.shortname,
                     'channels': {self.qch.name: [self.projsam1.sample, self.qch.pk]},
                     'samplegroups': {self.samples.samples[0][0]: self.samples.samples[0][3]}}},
+                'added_results': {self.newana.pk: {'analysisname': newana_name,
+                    'date': newana_date, 'fns': [{'id': x.sfile.pk, 'fn': x.sfile.filename,
+                        'ana': newana_name, 'date': newana_date}
+                        for x in self.newana.analysisresultfile_set.all()]}
+                    },
                 },
                 'resultfiles': [],
                 'datasets': {f'{self.ds.pk}': {'fields': {'__regex': f'{self.ads1.value}'},
                     'setname': f'{self.ads1.setname.setname}',
                     'picked_ftype': f'mzML (pwiz {self.f3sfmz.mzmlfile.pwiz.version_description})',
                     'allfilessamesample': True, 'files': {}},
-                    }
+                    },
                 }
         self.assertJSONEqual(resp.content.decode('utf-8'), json.dumps(checkjson))
 
@@ -215,10 +245,11 @@ class LoadBaseAnaTestLF(AnalysisLabelfreeSamples):
                 'flags': [self.param1.pk],
                 'multicheck': [f'{self.param2.pk}___{self.anamcparamlf.value[0]}'],
                 'inputparams': {f'{self.param3.pk}': self.ananormparam.value,
-                    f'{self.param4.pk}': self.anaselectparamlf.value},
+                    f'{self.param4.pk}': f'{self.anaselectparamlf.value}'},
                 'multifileparams': {f'{self.pfn1.pk}': {'0': self.tmpsf.pk}},
                 'fileparams': {f'{self.pfn2.pk}': self.txtsf.pk},
                 'isoquants': {},
+                'added_results': {},
                 },
                 'resultfiles': [{'id': self.resultfnlf.sfile.pk, 'fn': self.resultfnlf.sfile.filename,
                     'ana': f'{self.wftype.name}_{self.analf.name}',
@@ -275,7 +306,7 @@ class TestGetAnalysis(AnalysisTest):
         self.assertInHTML(html_dsids, resphtml)
         self.isoqvals = {'denoms': [self.qch.pk], 'sweep': False, 'report_intensity': False}
         html_ana = f'''<script id="analysis_data" type="application/json">
-        {{"analysis_id": {self.ana.pk}, "editable": true, "wfversion_id": {self.nfwf.pk}, "wfid": {self.wf.pk}, "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}, "{self.param4.pk}": {self.anaselectparam.value}}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": {{"{self.qch.pk}": true}}, "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
+        {{"analysis_id": {self.ana.pk}, "editable": true, "wfversion_id": {self.nfwf.pk}, "wfid": {self.wf.pk}, "analysisname": "{self.ana.name}", "flags": [{self.param1.pk}], "multicheck": ["{self.param2.pk}___{self.anamcparam.value[0]}"], "inputparams": {{"{self.param3.pk}": {self.ananormparam.value}, "{self.param4.pk}": "{self.anaselectparam.value}"}}, "multifileparams": {{"{self.pfn1.pk}": {{"0": {self.tmpsf.pk}}}}}, "fileparams": {{"{self.pfn2.pk}": {self.txtsf.pk}}}, "isoquants": {{"{self.anaset.setname}": {{"chemistry": "{self.ds.quantdataset.quanttype.shortname}", "channels": {{"{self.qch.name}": ["{self.projsam1.sample}", {self.qch.pk}]}}, "samplegroups": {{"{self.samples.samples[0][0]}": "{self.samples.samples[0][3]}"}}, "denoms": {{"{self.qch.pk}": true}}, "report_intensity": false, "sweep": false}}}}, "added_results": {{}}, "base_analysis": false}}
         </script>
         '''
         self.assertInHTML(html_ana, resphtml)

@@ -50,6 +50,10 @@ if (existing_analysis && existing_analysis.added_results) {
 
 
 function updateResultfiles() {
+  /* Adds result files that are fetched, also loads them from
+  any resultfiles (prev_resultfiles) that are implicit to the analysis
+  since they are from an analysis with the same datasets
+  */
   fetched_resultfiles = added_analyses_order.flatMap(x => added_results[x].fns);
   resfn_arr = fetched_resultfiles.concat(base_analysis.resultfiles).concat(prev_resultfiles);
   resultfiles = Object.fromEntries(resfn_arr.map(x=> [x.id, {id: x.id,
@@ -109,6 +113,12 @@ function validate() {
       }
     })
   })
+
+  wf.selectparams.forEach(selp => {
+    if (!config.inputparams[selp.id]) {
+      notif.errors[`Must select a value for ${selp.name}`] = 1;
+      }
+  });
   return Object.keys(notif.errors).length === 0;
 }
 
@@ -262,9 +272,23 @@ async function fetchWorkflow() {
     prev_resultfiles = result.wf.prev_resultfiles;
     wf = result.wf;
   }
+  if (wf.fileparams.length) {
+    Object.keys(wf.fileparams).forEach(k => {
+      wf.fileparams[k].component = false;
+    });
+  }
   if (wf.multifileparams.length) {
+    Object.keys(wf.multifileparams).forEach(k => {
+      wf.multifileparams[k].components = [];
+    });
     config.multifileparams = Object.assign(config.multifileparams, Object.fromEntries(wf.multifileparams.filter(x => !(x.id in config.multifileparams)).map(x => [x.id, {0: ''}])));
   }
+  if (wf.selectparams.length) {
+    wf.selectparams.forEach(x => {
+      config.inputparams[x.id] = false;
+    });
+  }
+  updateResultfiles();
   await fetchDatasetDetails(false);
 }
 
@@ -397,13 +421,23 @@ async function loadBaseAnalysis() {
       config[key] = result.base_analysis[key];
     }
     Object.assign(config.multifileparams, result.base_analysis.multifileparams);
+    let base_ana_contains_new_added_ana = false;
+    Object.entries(result.base_analysis.added_results).forEach(([aid, base_add_res]) => {
+      if (added_analyses_order.indexOf(aid) < 0) {
+        base_ana_contains_new_added_ana = true;
+        added_analyses_order.push(aid);
+        added_results[aid] = base_add_res;
+      }
+    });
+    if (base_ana_contains_new_added_ana) {
+      updateResultfiles();
+    }
     config = config;
     // svelte reactivity, this updates object so the options of the file params are updated
     // which triggers the select to update its intext via inputdone()
     libfiles = libfiles;
   }
 }
-
 
 function removeMultifile(fparam_id, key) {
   delete(config.multifileparams[fparam_id][key]);
@@ -498,15 +532,15 @@ function updateIsoquant(dsid_changed) {
 }
 
 
-async function populate_analysis() {
+async function populate_analysis_and_fetch_wf() {
   config.wfid = existing_analysis.wfid;
   config.wfversion_id = existing_analysis.wfversion_id;
   config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
+  await fetchWorkflow();
   for (const key of ['analysisname', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
     config[key] = existing_analysis[key];
   }
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
-  await fetchWorkflow();
   base_analysis = existing_analysis.base_analysis || base_analysis;
   // FIXME now repopulate files with sample names if any
 }
@@ -519,7 +553,21 @@ onMount(async() => {
     });
   } else {
     if (existing_analysis) {
-      await populate_analysis();
+      await populate_analysis_and_fetch_wf();
+      // Populate dynamic select components by calling .inputdone()
+      // Does not work if it is in populate_analysis, possibly is too fast
+      // and values havent made it to selectval in the components yet
+      Object.keys(wf.fileparams).forEach(x => {
+        wf.fileparams[x].component.inputdone();
+      });
+      // wf.mfp: [{id: 1, components: []}, ]
+      // cfg.mfp: {1: {0: 3, 1: 4}, ...}
+      Object.entries(config.multifileparams).forEach(([paramid, ix_val]) => {
+        let mfp = wf.multifileparams.filter(mfp => mfp.id === parseInt(paramid))[0];
+        Object.keys(ix_val).forEach(ix => {
+          mfp.components[ix].inputdone();
+        });
+      });
     }
   }
 })
@@ -696,8 +744,10 @@ onMount(async() => {
           </div>
         </div>
 			  <div class="subtitle is-6">
-				  <span>{ds.qtype.name}</span>
-		      <span> // {ds.nrstoredfiles[0]} {ds.nrstoredfiles[1]} files </span>
+          {#if (ds.qtype)}
+				    <span>{ds.qtype.name} // </span>
+          {/if}
+		      <span>{ds.nrstoredfiles[0]} {ds.nrstoredfiles[1]} files </span>
 				  <span>// {ds.instruments.join(', ')} </span>
 			  </div>
 
@@ -849,7 +899,7 @@ onMount(async() => {
       </label> 
       <div class="select">
         <select bind:value={config.inputparams[id]}>
-          <option disabled value={false}>None</option>
+          <option disabled value={false}>-</option>
           {#each Object.entries(opts) as opt}
           <option value={opt[0]}>{opt[1]} </option>
           {/each}
@@ -926,9 +976,9 @@ onMount(async() => {
       </label>
         <div class="field">
           {#if !filep.allow_resultfile}
-          <DynamicSelect bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
+          <DynamicSelect bind:this={filep.components[mfpkey]} bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
           {:else}
-          <DynamicSelect bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
+          <DynamicSelect bind:this={filep.components[mfpkey]} bind:selectval={config.multifileparams[filep.id][mfpkey]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
           {/if}
         </div>
       {/each}
@@ -943,9 +993,9 @@ onMount(async() => {
         {/if}
       </label>
       {#if !filep.allow_resultfile}
-      <DynamicSelect bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
+      <DynamicSelect bind:this={filep.component} bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={libfiles[filep.ftype]} fixedorder={libfnorder[filep.ftype]} />
       {:else}
-      <DynamicSelect bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
+      <DynamicSelect bind:this={filep.component} bind:selectval={config.fileparams[filep.id]} niceName={x => x.name} fixedoptions={Object.assign(resultfiles, libfiles[filep.ftype])} fixedorder={resultfnorder.concat(libfnorder[filep.ftype])} />
       {/if}
     </div>
     {/each}

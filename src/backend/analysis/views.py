@@ -97,25 +97,31 @@ def load_base_analysis(request, wfversion_id, baseanid):
         ana = am.Analysis.objects.select_related('nextflowsearch').get(pk=baseanid)
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
+    baseana_dsids = [dss.dataset_id for dss in ana.datasetanalysis_set.all()]
     analysis = {
             'analysis_id': ana.pk,
-            'dsets_identical': set(dss.dataset_id for dss in ana.datasetanalysis_set.all()) == set(new_ana_dsids),
+            'dsets_identical': set(baseana_dsids) == set(new_ana_dsids),
             'flags': [],
             'multicheck': [],
             'inputparams': {},
             'multifileparams': {},
             'fileparams': {},
             'isoquants': {},
+            'added_results': {},
             }
     for ap in ana.analysisparam_set.filter(param__psetparam__pset_id=new_pset_id):
         if ap.param.ptype == am.Param.PTypes.FLAG and ap.value:
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == am.Param.PTypes.MULTI:
             analysis['multicheck'].extend([f'{ap.param.id}___{x}' for x in ap.value])
+        elif ap.param.ptype == am.Param.PTypes.SELECT:
+            analysis['inputparams'][ap.param_id] = str(ap.value)
         else:
-            # For NUMBER, TEXT, SELECT params
+            # For NUMBER, TEXT
             analysis['inputparams'][ap.param_id] = ap.value
-    #pset = ana.nextflowsearch.nfwfversionparamset.paramset
+    # Collect files used in base analysis, determine if they are multifile or not,
+    # and if they're from an added analysis
+    prev_resultfiles_ids = get_prev_resultfiles(baseana_dsids, only_ids=True)
     for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
         try:
             fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
@@ -123,8 +129,10 @@ def load_base_analysis(request, wfversion_id, baseanid):
             fnr = 0
             analysis['multifileparams'][afp.param_id] = {}
         analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
+        get_added_analysis_contents(afp, prev_resultfiles_ids, analysis['added_results'])
     for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
-            analysis['fileparams'][afp.param_id] = afp.sfile_id
+        analysis['fileparams'][afp.param_id] = afp.sfile_id
+        get_added_analysis_contents(afp, prev_resultfiles_ids, analysis['added_results'])
 
     # Get datasets from base analysis for their setnames/filesamples etc
     # Only overlapping datasets are fetched here (empty dsets are popped at the end)
@@ -229,8 +237,10 @@ def get_analysis(request, anid):
             analysis['flags'].append(ap.param.id)
         elif ap.param.ptype == PTypes.MULTI:
             analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
+        elif ap.param.ptype == PTypes.SELECT:
+            analysis['inputparams'][ap.param_id] = str(ap.value)
         else:
-            # For NUMBER, TEXT, SELECT
+            # For NUMBER, TEXT
             analysis['inputparams'][ap.param_id] = ap.value
     pset = ana.nextflowsearch.nfwfversionparamset.paramset
 
@@ -262,21 +272,12 @@ def get_analysis(request, anid):
         analysis['base_analysis'] = False
         ana_base_resfiles = set()
 
-    ananame = aj.get_ana_fullname(ana)
-    anadate = datetime.strftime(ana.date, '%Y-%m-%d')
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
+    non_added_results_fnids = set(prev_resultfiles_ids).union(ana_base_resfiles)
     for afp in ana.analysisfileparam_set.all():
-        # Looping input files, to find added results analysis
-        if (hasattr(afp.sfile, 'analysisresultfile') and not hasattr(afp.sfile, 'libraryfile')
-                and not afp.sfile_id in prev_resultfiles_ids and not afp.sfile_id in ana_base_resfiles
-                and afp.sfile.analysisresultfile.analysis_id not in analysis['added_results']):
-            arf = afp.sfile.analysisresultfile
-            arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
-            arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
-                for x in arf.analysis.analysisresultfile_set.all()]
-            analysis['added_results'][arf.analysis_id] = {'analysisname': aj.get_ana_fullname(arf.analysis), 'date': arf_date, 'fns': arf_fns}
-
-        # Looping input files, multifile params need enumeration
+        # determine if adp to load is from an added analysis,
+        # then populate either multifile or single file params
+        get_added_analysis_contents(afp, non_added_results_fnids, analysis['added_results'])
         if afp.param_id in multifiles:
             try:
                 fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
@@ -284,8 +285,8 @@ def get_analysis(request, anid):
                 fnr = 0
                 analysis['multifileparams'][afp.param_id] = {}
             analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
-        # Looping input files, put in normal params
         else:
+            # not multi, put in normal file params
             analysis['fileparams'][afp.param_id] = afp.sfile_id
 
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
@@ -650,6 +651,18 @@ def get_prev_resultfiles(dsids, only_ids=False):
             'date': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
         for x in qset_arf.select_related('analysis')]
     return prev_resultfiles
+
+
+def get_added_analysis_contents(afp, prev_or_base_resultfns, added_results):
+    if (hasattr(afp.sfile, 'analysisresultfile') and not hasattr(afp.sfile, 'libraryfile')
+            and not afp.sfile_id in prev_or_base_resultfns
+            and afp.sfile.analysisresultfile.analysis_id not in added_results):
+        arf = afp.sfile.analysisresultfile
+        arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
+        arf_ananame = aj.get_ana_fullname(arf.analysis)
+        arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': arf_ananame,
+            'date': arf_date} for x in arf.analysis.analysisresultfile_set.all()]
+        added_results[arf.analysis_id] = {'analysisname': arf_ananame, 'date': arf_date, 'fns': arf_fns}
 
 
 @login_required
