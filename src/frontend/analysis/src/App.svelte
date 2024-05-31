@@ -284,6 +284,7 @@ async function fetchWorkflow() {
       config.inputparams[x.id] = false;
     });
   }
+  updateResultfiles();
   await fetchDatasetDetails(false);
 }
 
