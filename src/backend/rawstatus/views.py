@@ -570,23 +570,10 @@ def query_all_qc_files():
 
 def run_singlefile_qc(rawfile, storedfile, user_op):
     """This method is only run for detecting new incoming QC files"""
-    filters = ['"peakPicking true 2"', '"precursorRefine"']
     params = ['--instrument', rawfile.producer.msinstrument.instrumenttype.name]
-    options = []
-    if rawfile.producer.msinstrument.instrumenttype.name == 'timstof':
-        params.extend(['--prectol', '20ppm'])
-        filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
-        options.append('--combineIonMobilitySpectra')
-        # FIXME until dinosaur can do MS1 on TIMS spectra we have to specify noquant, remove later I hope
-        params.append('--noquant')
-    if len(filters):
-        params.extend(['--filters', ';'.join(filters)])
-    if len(options):
-        params.extend(['--options', ';'.join([x[2:] for x in options])])
     analysis = Analysis.objects.create(user_id=user_op.user_id,
             name=f'{rawfile.producer.name}_{rawfile.name}_{rawfile.date}')
-    create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id,
-            dbfn_id=settings.LONGQC_FADB_ID, params=params)
+    create_job('run_longit_qc_workflow', sf_id=storedfile.id, analysis_id=analysis.id, params=params)
 
 
 def get_file_owners(sfile):

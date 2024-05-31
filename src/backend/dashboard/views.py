@@ -34,7 +34,7 @@ def store_longitudinal_qc(data):
             'nr_unique_peptides': 'unique_peptides',
             'nrproteins': 'proteins',
             'precursor_errors': 'perror',
-            'msgfscores': 'msgfscore',
+            'sagescores': 'msgfscore',
             'retention_times': 'rt',
             'peptide_areas': 'peparea',
             'ionmobilities': 'ionmob',
