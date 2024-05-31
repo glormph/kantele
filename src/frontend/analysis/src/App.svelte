@@ -50,6 +50,10 @@ if (existing_analysis && existing_analysis.added_results) {
 
 
 function updateResultfiles() {
+  /* Adds result files that are fetched, also loads them from
+  any resultfiles (prev_resultfiles) that are implicit to the analysis
+  since they are from an analysis with the same datasets
+  */
   fetched_resultfiles = added_analyses_order.flatMap(x => added_results[x].fns);
   resfn_arr = fetched_resultfiles.concat(base_analysis.resultfiles).concat(prev_resultfiles);
   resultfiles = Object.fromEntries(resfn_arr.map(x=> [x.id, {id: x.id,
@@ -435,7 +439,6 @@ async function loadBaseAnalysis() {
   }
 }
 
-
 function removeMultifile(fparam_id, key) {
   delete(config.multifileparams[fparam_id][key]);
   let newmfp = {}
@@ -529,7 +532,7 @@ function updateIsoquant(dsid_changed) {
 }
 
 
-async function populate_analysis() {
+async function populate_analysis_and_fetch_wf() {
   config.wfid = existing_analysis.wfid;
   config.wfversion_id = existing_analysis.wfversion_id;
   config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
@@ -550,7 +553,7 @@ onMount(async() => {
     });
   } else {
     if (existing_analysis) {
-      await populate_analysis();
+      await populate_analysis_and_fetch_wf();
       // Populate dynamic select components by calling .inputdone()
       // Does not work if it is in populate_analysis, possibly is too fast
       // and values havent made it to selectval in the components yet
@@ -741,8 +744,10 @@ onMount(async() => {
           </div>
         </div>
 			  <div class="subtitle is-6">
-				  <span>{ds.qtype.name}</span>
-		      <span> // {ds.nrstoredfiles[0]} {ds.nrstoredfiles[1]} files </span>
+          {#if (ds.qtype)}
+				    <span>{ds.qtype.name} // </span>
+          {/if}
+		      <span>{ds.nrstoredfiles[0]} {ds.nrstoredfiles[1]} files </span>
 				  <span>// {ds.instruments.join(', ')} </span>
 			  </div>
 

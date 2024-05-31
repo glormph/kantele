@@ -127,7 +127,7 @@ def rerun_qcs(request):
         msg = f'You have selected {sfs.count()} QC raw files.'
         if nr_duplicates := sfs.count() - without_duplicates.count():
             msg = (f'{msg} Of these, {nr_duplicates} seem to'
-            ' be obsolete reruns ran with the same workflow version the current '
+            ' be obsolete reruns ran with the same workflow version as the current '
             'latest (Tick the ignore box to include these in the analysis.')
         if nr_deleted := sfs.count() - not_deleted_files.count():
             msg = (f'{msg} {nr_deleted} seem to be deleted, of which {archived.count()} are '
