@@ -266,8 +266,6 @@ def get_analysis(request, anid):
         analysis['base_analysis'] = False
         ana_base_resfiles = set()
 
-    ananame = aj.get_ana_fullname(ana)
-    anadate = datetime.strftime(ana.date, '%Y-%m-%d')
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
     for afp in ana.analysisfileparam_set.all():
         # Looping input files, to find added results analysis
@@ -276,9 +274,10 @@ def get_analysis(request, anid):
                 and afp.sfile.analysisresultfile.analysis_id not in analysis['added_results']):
             arf = afp.sfile.analysisresultfile
             arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
-            arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
-                for x in arf.analysis.analysisresultfile_set.all()]
-            analysis['added_results'][arf.analysis_id] = {'analysisname': aj.get_ana_fullname(arf.analysis), 'date': arf_date, 'fns': arf_fns}
+            arf_ananame = aj.get_ana_fullname(arf.analysis)
+            arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': arf_ananame,
+                'date': arf_date} for x in arf.analysis.analysisresultfile_set.all()]
+            analysis['added_results'][arf.analysis_id] = {'analysisname': arf_ananame, 'date': arf_date, 'fns': arf_fns}
 
         # Looping input files, multifile params need enumeration
         if afp.param_id in multifiles:
