@@ -88,6 +88,61 @@ class TestUpdateStorageLocDset(BaseJobTest):
         self.assertEqual(self.task.state, cstates.SUCCESS)
 
 
+class TestDownloadedFile(BaseJobTest):
+    url = '/jobs/set/downloaded/'
+    jobname = 'rsync_transfer'
+
+    def setUp(self):
+        super().setUp()
+        self.fn = 'testrf.zip' 
+        self.rf = rm.RawFile.objects.create(name=self.fn, producer=self.prod,
+                source_md5='testdownloaded', size=10, date=datetime.now(), claimed=True)
+        self.sf = rm.StoredFile.objects.create(rawfile=self.rf, filename=self.rf.name,
+            servershare=self.sstmp, path='', md5=self.rf.source_md5, checked=False, filetype=self.ft)
+        self.fpath = f'{self.rf.pk}.{self.sf.filetype.filetype}'
+
+    def test_wrong_client(self):
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'client_id': settings.ANALYSISCLIENT_APIKEY})
+        self.assertEqual(resp.status_code, 403)
+        resp = self.cl.post(self.url, content_type='application/json',
+            data={'no_client_id': 1})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_md5_but_not_unzip(self):
+        with open(self.fpath, 'w') as fp:
+            # touch a file
+            pass
+        resp = self.cl.post(self.url, content_type='application/json', data={
+            'task': self.task.asyncid, 'client_id': settings.STORAGECLIENT_APIKEY,
+            'sf_id': self.sf.pk, 'do_md5check': True, 'md5': self.rf.source_md5, 'unzipped': False})
+        self.assertEqual(resp.status_code, 200)
+        self.sf.refresh_from_db()
+        self.rf.refresh_from_db()
+        self.assertTrue(self.sf.checked)
+        self.assertEqual(self.sf.filename, self.fn)
+        self.assertEqual(self.rf.name, self.fn)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.state, cstates.SUCCESS)
+
+
+    def test_no_md5_but_unzip(self):
+        with open(self.fpath, 'w') as fp:
+            # touch a file
+            pass
+        resp = self.cl.post(self.url, content_type='application/json', data={
+            'task': self.task.asyncid, 'client_id': settings.STORAGECLIENT_APIKEY,
+            'sf_id': self.sf.pk, 'do_md5check': False, 'md5': self.rf.source_md5, 'unzipped': True})
+        self.assertEqual(resp.status_code, 200)
+        self.sf.refresh_from_db()
+        self.rf.refresh_from_db()
+        self.assertTrue(self.sf.checked)
+        self.assertEqual(self.sf.filename, self.fn.rstrip('.zip'))
+        self.assertEqual(self.rf.name, self.fn.rstrip('.zip'))
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.state, cstates.SUCCESS)
+
+
 class TestUpdateStorageLocFile(BaseJobTest):
     url = '/jobs/set/storagepath/'
     # multiple jobs use this, but take this job

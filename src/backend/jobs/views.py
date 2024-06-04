@@ -16,6 +16,7 @@ from jobs import models
 
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
         SwestoreBackedupFile, PDCBackedupFile, Producer, UploadToken)
+from rawstatus import jobs as rj
 from analysis import models as am
 from analysis.views import write_analysis_log
 from dashboard import views as dashviews
@@ -248,7 +249,7 @@ def downloaded_file(request):
         sfile.rawfile.name = sfile.rawfile.name.rstrip('.zip')
         sfile.rawfile.save()
     sfile.save()
-    fpath = os.path.join(settings.TMP_UPLOADPATH, f'{sfile.rawfile.pk}.{sfile.filetype.filetype}')
+    fpath = rj.create_upload_dst_web(sfile.rawfile.pk, sfile.filetype.filetype)
     os.unlink(fpath)
     if 'task' in data:
         set_task_done(data['task'])
