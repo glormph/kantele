@@ -1,0 +1,65 @@
+---
+# Tasks for updating analysis and storage
+
+- name: Create credential path
+  become: yes
+  file:
+      path: "{{ mount_cred | dirname }}"
+      state: directory
+      owner: root
+      group: root
+
+- name: Deploy cifs credentials
+  become: yes
+  template:
+      src: cifs_credentials.j2
+      dest: "{{ mount_cred }}"
+      mode: 0400
+
+- name: Update kantele code
+  become: yes
+  become_user: "{{ kanteleuser }}"
+  git:
+      repo: '{{ kantele_repo }}'
+      dest: "{{ kanteledir }}"
+      version: master
+
+- name: Update virtualenv
+  become: yes
+  become_user: "{{ kanteleuser }}"
+  pip:
+      requirements: "{{ kanteledir }}/src/backend/requirements.txt"
+      virtualenv_command: "/usr/bin/python3 -m venv"
+      virtualenv: "{{ kantelevenv }}"
+
+- name: Kantele celery env file
+  become: yes
+  become_user: "{{ kanteleuser }}"
+  template:
+      src: celery_analysis_env.j2
+      dest: "{{ celeryenv_file }}"
+      mode: 0400
+
+- name: Kantele celery analysis systemd script 
+  become: yes
+  template:
+      src: celery_systemd.j2
+      dest: /etc/systemd/system/kantele.service
+      mode: 0644
+
+- name: Kantele log dir
+  become: yes
+  become_user: "{{ kanteleuser }}"
+  file:
+      path: "{{ kantelelogdir }}"
+      state: directory
+      owner: "{{ kanteleuser }}"
+      group: "{{ kanteleuser }}"
+
+- name: Start celery
+  become: yes
+  systemd:
+      state: started 
+      enabled: true
+      daemon_reload: yes
+      name: kantele

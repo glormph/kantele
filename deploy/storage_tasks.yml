@@ -1,0 +1,56 @@
+---
+# Tasks for storage node
+
+- name: Mount storages
+  become: yes
+  mount:
+      path: "{{ item.0 }}"
+      src: "{{ item.1 }}"
+      state: mounted
+      fstype: cifs
+      opts: "credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}"
+  loop: "{{ storagedirs | zip(storageservers) | list }}"
+
+- name: create folder for .ssh
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+    path: "{{ homedir }}/.ssh"
+    state: directory
+    owner: '{{ kanteleuser }}'
+    group: '{{ kantelegroup }}'
+    mode: '700'
+
+- name: Deploy passwordless SSH key for rsyncing backups from from web server
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.copy:
+    src: files/ssh_key_rsync.secret
+    dest: "{{ rsync_ssh_key_file }}"
+    owner: "{{ kanteleuser }}"
+    group: "{{ kanteleuser }}"
+    mode: '400'
+
+- name: Backup download -- create folder for backups
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+      path: "{{ storage_backup_path }}"
+      state: directory
+
+- name: Backup download -- template out backup script
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.template:
+      src: "download_backup.j2"
+      dest: "{{ kanteledir }}/download_backup.sh"
+
+- name: Backup download -- crontab setup 
+  # FIXME how to error report?
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.cron:
+      name: Download kantele DB dump backup
+      hour: "3"
+      minute: "*/5"
+      job: "bash {{ kanteledir }}/download_backup.sh"

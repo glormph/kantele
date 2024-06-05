@@ -37,24 +37,7 @@ backup_dl_url: "https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupf
 
 storagesharenames: "storage,s3storage"
 
-storage_env:
-    SECRET_KEY: "{{ secret_key }}"
-    PROTOCOL: https
-    KANTELEHOST: "{{ kantele_host }}"
-    RABBITHOST: "{{ kantele_host }}"
-    RABBIT_VHOST: '{{ mq_vhost }}'
-    RABBITPASS: "{{ amqppass }}"
-    RABBITUSER: "{{ rabbituser }}"
-    APIKEY: "{{ storage_apikey }}"
-    ADMIN_APIKEY: "{{ admin_apikey }}"
-    STORAGESHARENAMES: "{{ storagesharenames }}"
-    STORAGESHARES: "{{ storage_shares }}"
-    ANALYSISSHARE: "{{ analysis_share }}"
-    TMPSHARE: "{{ tmp_share }}"
-    MZMLINSHARE: "{{ mzml_in_share }}"
-    DSM_DIR: "{{ dsm_dir }}"
-    DATABASE_FTID: "{{ database_ftid }}" # for download/register ensembl
-    RSYNC_SSHPORT: 22 # ssh port on upload
-    RSYNC_SSHUSER: '{{ web_user }}'
-    RSYNC_SSHKEY: '{{ rsync_ssh_key }}'
-    PRIMARY_STORAGE: '{{ primary_storagename }}'
+queue_local: mv_md5_storage
+queue_dl: file_download
+queue_backup: backup_archive
+queue_scan: scaninbox

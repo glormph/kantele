@@ -2,8 +2,8 @@
 # Put this file on all nodes of your cluster.
 # See the slurm.conf man page for more information.
 #
-ClusterName=analysis
-SlurmctldHost=analysis
+ClusterName=analysis1
+SlurmctldHost={{ analysis_host_slurm }}
 #SlurmctldHost=
 #
 #DisableRootJobs=NO
@@ -25,7 +25,7 @@ SlurmctldHost=analysis
 #MaxJobCount=10000
 #MaxStepCount=40000
 #MaxTasksPerNode=512
-MpiDefault=none
+#MpiDefault=
 #MpiParams=ports=#-#
 #PluginDir=
 #PlugStackConfig=
@@ -39,19 +39,19 @@ ProctrackType=proctrack/cgroup
 #PropagateResourceLimitsExcept=
 #RebootProgram=
 ReturnToService=1
-SlurmctldPidFile=/var/run/slurmctld.pid
+SlurmctldPidFile=/var/run/slurm/slurmctld.pid
 SlurmctldPort=6817
-SlurmdPidFile=/var/run/slurmd.pid
+SlurmdPidFile=/var/run/slurm/slurmd.pid
 SlurmdPort=6818
-SlurmdSpoolDir=/var/spool/slurmd
+SlurmdSpoolDir=/var/spool/slurm/slurmd
 SlurmUser=slurm
 #SlurmdUser=root
 #SrunEpilog=
 #SrunProlog=
-StateSaveLocation=/var/spool/slurmctld
-SwitchType=switch/none
+StateSaveLocation=/var/spool/slurm/slurmctld
+#SwitchType=
 #TaskEpilog=
-TaskPlugin=task/affinity
+TaskPlugin=task/affinity,task/cgroup
 #TaskProlog=
 #TopologyPlugin=topology/tree
 #TmpFS=/tmp
@@ -87,12 +87,11 @@ Waittime=0
 #SchedulerTimeSlice=30
 SchedulerType=sched/backfill
 SelectType=select/cons_tres
-#SelectTypeParameters=
 #
 #
 # JOB PRIORITY
 #PriorityFlags=
-#PriorityType=priority/basic
+PriorityType=priority/multifactor
 #PriorityDecayHalfLife=
 #PriorityCalcPeriod=
 #PriorityFavorSmall=
@@ -102,7 +101,7 @@ SelectType=select/cons_tres
 #PriorityWeightFairshare=
 #PriorityWeightJobSize=
 #PriorityWeightPartition=
-#PriorityWeightQOS=
+PriorityWeightQOS=1000
 #
 #
 # LOGGING AND ACCOUNTING
@@ -110,22 +109,23 @@ SelectType=select/cons_tres
 #AccountingStorageHost=
 #AccountingStoragePass=
 #AccountingStoragePort=
-AccountingStorageType=accounting_storage/none
+AccountingStorageType=accounting_storage/slurmdbd
 #AccountingStorageUser=
 #AccountingStoreFlags=
 #JobCompHost=
 #JobCompLoc=
+#JobCompParams=
 #JobCompPass=
 #JobCompPort=
 JobCompType=jobcomp/none
 #JobCompUser=
-#JobContainerType=job_container/none
+#JobContainerType=
 JobAcctGatherFrequency=30
-JobAcctGatherType=jobacct_gather/none
+#JobAcctGatherType=
 SlurmctldDebug=info
-SlurmctldLogFile=/var/log/slurmctld.log
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
 SlurmdDebug=info
-SlurmdLogFile=/var/log/slurmd.log
+SlurmdLogFile=/var/log/slurm/slurmd.log
 #SlurmSchedLogFile=
 #SlurmSchedLogLevel=
 #DebugFlags=
@@ -144,5 +144,5 @@ SlurmdLogFile=/var/log/slurmd.log
 #
 #
 # COMPUTE NODES
-NodeName=analysis CPUs=4 State=UNKNOWN
-PartitionName=debug Nodes=ALL Default=YES MaxTime=INFINITE State=UP
+NodeName=lehtio-production CPUs={{ analysis_cpus }} RealMemory=125 State=UNKNOWN
+PartitionName=analysis1 Nodes=ALL Default=YES MaxTime=INFINITE State=UP

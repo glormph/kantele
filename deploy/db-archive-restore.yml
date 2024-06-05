@@ -3,7 +3,7 @@
 
 - hosts: kantele
   become: yes
-  become_user: '{{ web_user }}'
+  become_user: '{{ kanteleuser }}'
   tasks:
       - name: Remove running docker containers
         community.docker.docker_compose:

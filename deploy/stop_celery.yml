@@ -1,0 +1,15 @@
+# Task to stop celery workers
+#
+- name: Is celery running
+  become: yes
+  systemd:
+      name: kantele
+  register: systemd_kantele
+  
+- name: Stop celery
+  become: yes
+  systemd:
+      state: stopped 
+      daemon_reload: yes
+      name: kantele
+  when: '"LoadError" not in systemd_kantele.status or "Unit kantele.service not found" not in systemd_kantele.status.LoadError'

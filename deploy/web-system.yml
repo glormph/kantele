@@ -59,7 +59,7 @@
 
       - name: Create user
         ansible.builtin.user:
-            name: '{{ web_user }}'
+            name: '{{ kanteleuser }}'
             shell: /bin/bash
             append: yes
             groups:
@@ -68,8 +68,9 @@
 
       - name: Put SSH pubkey in place
         ansible.posix.authorized_key:
-            user: '{{ web_user }}'
+            user: '{{ kanteleuser }}'
             state: present
+            # read content of file
             key: "{{ lookup('file', 'ssh_key_rsync.pub') }}"
 
       - name: TLS certificate directory exists
@@ -117,7 +118,7 @@
         ansible.builtin.file:
             path: "{{ item }}"
             state: directory
-            owner: "{{ web_user }}"
+            owner: "{{ kanteleuser }}"
             group: "{{ kantelegroup }}"
         loop:
             - "{{ host_uploadpath }}"

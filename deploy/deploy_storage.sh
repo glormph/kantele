@@ -22,11 +22,5 @@ pip install "ansible >2.9"
 
 source .ansible-env
 
-echo Stopping storage workers
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER}" storage_stop.yml
+ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${ANALYSIS_USER}" storage_deploy.yml -K
 
-echo Update storage code
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER}" storage_update.yml
-
-echo Start storage
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER}" storage_start.yml

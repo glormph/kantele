@@ -3,12 +3,13 @@
 
 - hosts: kantele
   become: yes
-  become_user: '{{ web_user }}'
+  become_user: '{{ kanteleuser }}'
   tasks:
       - name: Clone repo
         ansible.builtin.git:
             repo: '{{ kantele_repo }}'
             dest: '{{ kanteledir }}'
+            version: master
 
       - name: Deploy templates with env variables for compose script and container insides
         ansible.builtin.template:

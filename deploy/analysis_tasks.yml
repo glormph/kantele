@@ -1,0 +1,104 @@
+---
+# Tasks for analysis node
+#
+- name: Create scratch dir for running
+  become: yes
+  ansible.builtin.file: 
+      path: "{{ baserun_dir }}"
+      state: directory
+      owner: "{{ kanteleuser }}"
+      group: "{{ kanteleuser }}"
+
+- name: Mount storages
+  become: yes
+  mount:
+      path: "{{ item.0 }}"
+      src: "{{ item.1 }}"
+      state: mounted
+      fstype: cifs
+      opts: "credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}"
+  loop: "{{ storagedirs | zip(storageservers) | list }}"
+
+- name: Set mariaDB root password
+  become: yes
+  community.mysql.mysql_user:
+    name: root
+    host: "{{ item }}"
+    password: "{{ slurm_mysql_root_passwd }}"
+  with_items:
+    - localhost
+    # Default is no remote access, so do not set root password for below interfaces
+    #- 127.0.0.1
+    #- ::1
+
+- name: Set ~/.my.cnf file with root pass so prev task does not error on idempotent multiple runs
+  become: yes
+  template:
+    src: slurm_mariadb_my.cnf.j2
+    dest: /root/.my.cnf
+    mode: 0600
+
+- name: Slurm config file
+  become: yes
+  ansible.builtin.template:
+    src: slurm_conf.j2
+    dest: /etc/slurm/slurm.conf
+    mode: '755'
+    owner: slurm
+        
+- name: Slurm DBD config file
+  become: yes
+  ansible.builtin.template:
+    src: slurmdbd.conf.j2
+    dest: /etc/slurm/slurmdbd.conf
+    mode: '600'
+    owner: slurm
+        
+- name: Create Slurm dir in spool
+  become: yes
+  ansible.builtin.file: 
+      path: /var/spool/slurm
+      state: directory
+      owner: slurm
+      group: slurm
+
+- name: Set Slurm user in mariaDB
+  become: yes
+  community.mysql.mysql_user:
+    login_user: root
+    login_password: "{{ slurm_mysql_root_passwd }}"
+    host: localhost
+    name: slurm
+    password: "{{ slurm_mysql_user_passwd }}"
+    priv: 'slurm_acct.*:ALL'
+
+- name: Start Slurm
+  become: yes
+  systemd:
+      state: started 
+      enabled: true
+      daemon_reload: yes
+      name: "{{ item }}"
+  with_items:
+    - munge
+    - slurmctld
+    - slurmd
+    - slurmdbd
+
+- name: Get QOS in slurm
+  ansible.builtin.shell:
+    cmd: "sacctmgr show qos filter name=qc"
+  register: qos_qc
+
+- name: Set QOS in slurm if not set
+  become: yes
+  become_user: slurm
+  ansible.builtin.shell:
+    cmd: "{{ item }}"
+  # 3 lines if exists: headerfields, header-separator-horizontal-line, row-with-qc-qos
+  # so only run if 2 lines (no row-with-qc-qos)
+  when: qos_qc.stdout_lines | length == 2
+  # -i is for immediate (no prompt y/n)
+  with_items:
+    -  "sacctmgr -i add qos qc"
+    -  "sacctmgr -i modify qos qc set priority=100"

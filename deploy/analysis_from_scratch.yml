@@ -1,0 +1,56 @@
+---
+# Tasks to only run once when you get a provisioned VM
+# Installs packages, nextflow and prepares directories.
+#
+# Upgrading of these can later be done in another playbook (or in code)
+
+- hosts: analysis
+  remote_user: '{{ analysis_connect_user }}'
+  become: yes
+  tasks:
+    - name: Install packages
+      ansible.builtin.apt:
+        pkg:
+          - git
+          - docker.io
+          - docker-compose-v2
+          - default-jre-headless
+          - python3-venv
+          - libpq-dev
+          - python3-dev
+          - build-essential
+          - cifs-utils
+          - slurm-wlm
+          - slurm-client
+          - slurmdbd
+          - munge
+          - mariadb-server
+          - python3-mysqldb
+        state: present
+        update_cache: yes
+            
+    - name: Create kantele group
+      ansible.builtin.group:
+        name: "{{ kantelegroup }}"
+        state: present
+
+    - name: Create kantele user
+      ansible.builtin.user:
+        name: "{{ kanteleuser }}"
+        group: "{{ kantelegroup }}"
+        create_home: yes
+     
+    - name: Download nextflow
+      become_user: "{{ kanteleuser }}"
+      ansible.builtin.shell: 
+        cmd: "curl -s https://get.nextflow.io | bash"
+        chdir: "/home/{{ kanteleuser }}"
+
+    - name: Put NF in path
+      ansible.builtin.copy:
+        src: "/home/{{ kanteleuser }}/nextflow"
+        dest: /usr/local/bin/nextflow
+        mode: u=rwx,g=rx,a=rx
+        owner: kanteleadmin
+        group: kanteleadmin
+        remote_src: yes
