@@ -30,14 +30,14 @@ STORAGECLIENT_APIKEY = os.environ.get('STORAGECLIENT_APIKEY')
 ANALYSISCLIENT_APIKEY = os.environ.get('ANALYSISCLIENT_APIKEY')
 ADMIN_APIKEY = os.environ.get('ADMIN_APIKEY')
 CLIENT_APIKEYS = [STORAGECLIENT_APIKEY, ANALYSISCLIENT_APIKEY, ADMIN_APIKEY]
-QUEUE_STORAGE = 'mv_md5_storage'
-QUEUE_FILE_DOWNLOAD = 'file_download'
-QUEUE_PDC = 'pdc_archive'
-QUEUE_NXF = 'nextflow'
-QUEUE_QC_NXF = 'qc_nextflow'
-QUEUE_SEARCH_INBOX = 'scaninbox'
+QUEUE_STORAGE = os.environ.get('QUEUE_STORAGE', 'mv_md5_storage')
+QUEUE_FILE_DOWNLOAD = os.environ.get('QUEUE_FILE_DOWNLOAD', 'file_download')
+QUEUE_BACKUP = os.environ.get('QUEUE_BACKUP', 'backup_archive')
+QUEUE_NXF = os.environ.get('QUEUE_NXF', 'nextflow')
+QUEUE_QC_NXF = os.environ.get('QUEUE_QC_NXF', 'qc_nextflow')
+QUEUE_SEARCH_INBOX = os.environ.get('QUEUE_SEARCH_INBOX', 'scaninbox')
 
-PROTOCOL = os.environ.get('PROTOCOL')
+PROTOCOL = os.environ.get('PROTOCOL', 'https')
 KANTELEHOST = '{}://{}'.format(PROTOCOL, os.environ.get('KANTELEHOST'))
 RSYNC_HOST = os.environ.get('RSYNC_HOST', urlsplit(KANTELEHOST).netloc)
 RSYNC_SSHUSER = os.environ.get('RSYNC_SSHUSER')
@@ -82,9 +82,6 @@ CELERY_RESULT_BACKEND = 'rpc'
 CELERY_WORKER_PREFETCH_MULTIPLIER = os.environ.get('CELERY_PREFETCH', 4)
 
 JOBRUNNER_INTERVAL = 5
-
-# DB FTID also used in worker, make sure it exists
-DATABASE_FTID = int(os.environ.get('DATABASE_FTID', -1))
 
 # Lifespan for mzMLs and Instrument-QC RAW files, in days
 MAX_MZML_STORAGE_TIME_POST_ANALYSIS = int(os.environ.get('MAX_MZML_STORAGE_TIME_POST_ANALYSIS', -1))
