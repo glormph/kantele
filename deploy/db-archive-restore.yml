@@ -1,7 +1,7 @@
 --- 
 # DB restoring on production from backup
 
-- hosts: kantele
+- hosts: web
   become: yes
   become_user: '{{ kanteleuser }}'
   tasks:

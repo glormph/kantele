@@ -6,36 +6,19 @@ mq_vhost: kantele_vhost
 rabbituser: kantele
 
 kanteledir: '{{ homedir }}/kantele'
+kantelevenv: "{{ kanteledir }}/venv"
 
+# DB accessed also from storage node for DB dumping
 kanteledb: kanteledb
 kanteledbuser: kanteleuser
-pgdatadir: "{{ homedir }}/pgdata"
-web_homedir: "/home/{{ web_user }}"
-host_pgbackup_path: "{{ web_homedir }}/pgbackups"
 
-compose_env_file: '{{ web_homedir }}/kantele/.compose.prod.env'
-
-tls_cert: server.crt
-tls_cert_key: server.key
-
-# DB backups in web container
-container_backuppath: /pgbackups
-
-# Upload paths in nginx container
-container_uploadpath: /uploads
-host_uploadpath: "{{ kanteledir }}/uploads"
-upload_path_url: /uploads
-
-# Analysis paths in nginx container
-container_analysispath: /analysisfiles
-host_analysispath: "{{ kanteledir }}/srv_analysis"
-analysis_path_url: /analysisfiles
-
-# DEPRECATE if not used in backup DL script
-web_backupfolder: backups
-backup_dl_url: "https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupfolder }}"
+# DB dumping needs dir to dump in
+host_pgbackup_path: "{{ homedir }}/pgbackups"
 
 storagesharenames: "storage,s3storage"
+
+celeryenv_file: "{{ kanteledir }}/celery.env"
+kantelelogdir: "{{ kanteledir }}/log"
 
 queue_local: mv_md5_storage
 queue_dl: file_download

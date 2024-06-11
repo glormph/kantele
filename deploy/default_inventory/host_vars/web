@@ -1,0 +1,21 @@
+compose_env_file: '{{ homedir }}/kantele/.compose.prod.env'
+
+tls_cert: server.crt
+tls_cert_key: server.key
+
+# Upload paths in nginx container
+container_uploadpath: /uploads
+host_uploadpath: "{{ kanteledir }}/uploads"
+upload_path_url: /uploads
+
+# Analysis paths in nginx container
+container_analysispath: /analysisfiles
+host_analysispath: "{{ kanteledir }}/srv_analysis"
+analysis_path_url: /analysisfiles
+
+
+
+# For restoring backups
+pgdatadir: "{{ homedir }}/pgdata"
+container_backuppath: /pgbackups
+

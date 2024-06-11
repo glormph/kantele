@@ -36,7 +36,7 @@
   become: yes
   become_user: "{{ kanteleuser }}"
   template:
-      src: celery_analysis_env.j2
+      src: "{{ celery_env_template_file }}"
       dest: "{{ celeryenv_file }}"
       mode: 0400
 

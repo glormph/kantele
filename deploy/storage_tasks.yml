@@ -31,6 +31,24 @@
     group: "{{ kanteleuser }}"
     mode: '400'
 
+- name: Get tivoli backup client from IBM
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.unarchive:
+    src: "{{ tivoli_client_url }}"
+    dest: "{{ homedir }}"
+    remote_src: yes
+
+- name: Install tivoli backup client
+  become: yes
+  ansible.builtin.apt:
+    deb: "{{ homedir }}/{{ item }}"
+  with_items:
+    - gskcrypt64_8.0-55.31.linux.x86_64.deb
+    - gskssl64_8.0-55.31.linux.x86_64.deb
+    - tivsm-api64.amd64.deb
+    - tivsm-ba.amd64.deb
+
 - name: Backup download -- create folder for backups
   become: yes
   become_user: '{{ kanteleuser }}'
@@ -43,7 +61,7 @@
   become_user: '{{ kanteleuser }}'
   ansible.builtin.template:
       src: "download_backup.j2"
-      dest: "{{ kanteledir }}/download_backup.sh"
+      dest: "{{ homedir }}/download_backup.sh"
 
 - name: Backup download -- crontab setup 
   # FIXME how to error report?
@@ -53,4 +71,4 @@
       name: Download kantele DB dump backup
       hour: "3"
       minute: "*/5"
-      job: "bash {{ kanteledir }}/download_backup.sh"
+      job: "bash {{ homedir }}/download_backup.sh"
