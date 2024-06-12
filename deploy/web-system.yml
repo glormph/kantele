@@ -1,7 +1,7 @@
 --- 
-
-# Prepare server for Kantele on Ubuntu 20.04 LTS
-# TODO: 22.04.1 is out in Aug 2022, then we can use docker-compose 1.29 and better spec of compose.yml
+# Prepare server for Kantele on Ubuntu 22.04 LTS
+# All things to install but not the actually system which gets regular updates
+# Run again when e.g. SSH key rotate
 # TODO: configure rsyslog to listen on TCP/UDP
 
 - hosts: production

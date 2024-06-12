@@ -20,18 +20,6 @@
             - ['container_env_vars.j2', '{{ kanteledir }}/src/docker/prod-container.env']
             - ['nginx_prod.conf.j2', '{{ kanteledir }}/src/docker/nginx.conf']
 
-      - name: Remove running docker containers
-        community.docker.docker_compose:
-            project_src: '{{ kanteledir }}'
-            files:
-                - '{{ kanteledir }}/src/docker/docker-compose-base.yml'
-                - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
-            state: absent
-            env_file: '{{ compose_env_file }}'
-        environment:
-            - USER_ID: '{{ kanteleuid }}'
-            - GROUP_ID: '{{ kantelegid }}'
-
       - name: Build and start production docker containers
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
