@@ -45,13 +45,11 @@ def inflow_page(request):
                 'isfolder': x.is_folder} for x in StoredFileType.objects.filter(user_uploadable=True)]})
 
 
-@login_required
 @staff_member_required
+@require_POST
 def import_external_data(request):
     # Input like so: {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'files': [(path/to/file.raw', ],
     # FIXME thermo files are .raw, but how do we handle bruker raws? they are folders!
-    if request.method != 'POST':
-         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     share = ServerShare.objects.get(pk=req['share_id'])
     proj = dsmodels.Project.objects.get(pk=settings.PX_PROJECT_ID)
@@ -85,7 +83,6 @@ def import_external_data(request):
     return JsonResponse({})
 
 
-@login_required
 @staff_member_required
 @require_GET
 def scan_raws_tmp(request):
@@ -608,7 +605,6 @@ def rename_file(request):
     elif re.match('^[a-zA-Z_0-9\-]*$', newfilename) is None:
         return JsonResponse({'error': 'Illegal characteres in new file name'}, status=403)
     job = create_job('rename_file', sf_id=sfile.id, newname=newfilename)
-    print(job)
     if job['error']:
         return JsonResponse({'error': job['error']}, status=403)
     else:

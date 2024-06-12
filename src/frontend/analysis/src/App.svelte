@@ -267,6 +267,7 @@ async function fetchWorkflow() {
     notif.errors[msg] = 1;
     setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
   } else {
+// FIXME cant this be done in backend?
     libfiles = Object.fromEntries(Object.entries(result.wf.libfiles).map(([ft, lf]) => [ft, Object.fromEntries(lf.map(x => [x.id, x]))]));
     libfnorder = Object.fromEntries(Object.entries(result.wf.libfiles).map(([ft, lf]) => [ft, lf.map(x => x.id)]));
     prev_resultfiles = result.wf.prev_resultfiles;

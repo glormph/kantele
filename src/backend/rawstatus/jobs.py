@@ -42,6 +42,8 @@ class RsyncFileTransfer(SingleFileJob):
 
 
 class CreatePDCArchive(SingleFileJob):
+    '''Archiving of newly arrived files - full datasets can also be archived if they
+    are not - then we use the BackupDataset job instead'''
     refname = 'create_pdc_archive'
     task = tasks.pdc_archive
 
@@ -53,6 +55,7 @@ class CreatePDCArchive(SingleFileJob):
 
 
 class RestoreFromPDC(SingleFileJob):
+    '''For restoring files which are not in a dataset'''
     refname = 'restore_from_pdc_archive'
     task = tasks.pdc_restore
 
@@ -203,6 +206,7 @@ class RegisterExternalFile(MultiFileJob):
 
 
 class DownloadPXProject(DatasetJob):
+    # FIXME dupe check?
     refname = 'download_px_data'
     task = tasks.download_px_file_raw
     """gets sf_ids, of non-checked non-downloaded PX files.

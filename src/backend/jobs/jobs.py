@@ -10,6 +10,7 @@ from datasets import models as dm
 
 
 class Jobstates:
+    # FIXME make in DB integer choices
     WAITING = 'wait'
     PENDING = 'pending'
     QUEUED = 'queued'

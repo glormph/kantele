@@ -83,7 +83,7 @@ class Dataset(models.Model):
     date = models.DateTimeField('date created')
     runname = models.OneToOneField(RunName, on_delete=models.CASCADE)
     datatype = models.ForeignKey(Datatype, on_delete=models.CASCADE)
-    # storage_loc/share should only ever be updated in jobs' post-run (after moves)
+    # NB! storage_loc/share should only ever be updated in jobs' post-run (after moves)
     # because it is source of truth for where to/from move files
     storage_loc = models.TextField(max_length=200, unique=True)
     storageshare = models.ForeignKey(ServerShare, on_delete=models.CASCADE)

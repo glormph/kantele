@@ -314,26 +314,6 @@ def show_jobs(request):
             dsets = [dsets]
         items[job.id]['dset_ids'] = dsets
     stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING, jj.Jobstates.WAITING]
-    #####/tasks
-    #analysis = jv.get_job_analysis(job)
-    #if analysis:
-    #    analysis = analysis.name
-    #errors = []
-    #try:
-    #    errormsg = job.joberror.message
-    #except jm.JobError.DoesNotExist:
-    #    errormsg = False
-    #return JsonResponse({'files': fj.count(), 'dsets': 0, 
-    #                     'analysis': analysis, 
-    #                     'time': datetime.strftime(job.timestamp, '%Y-%m-%d %H:%M'),
-    #                     'errmsg': errormsg,
-    #                     'tasks': {'error': tasks.filter(state=tstates.FAILURE).count(),
-    #                               'procpen': tasks.filter(state=tstates.PENDING).count(),
-    #                               'done': tasks.filter(state=tstates.SUCCESS).count()},
-    #                     'errors': errors,
-    #                    })
-#####
-
     return JsonResponse({'items': items, 'order': 
                          [x for u in ['user', 'admin'] for s in stateorder 
                           for x in order[u][s]]})
@@ -876,9 +856,6 @@ def create_mzmls(request):
     if ds_instype.filter(rawfile__producer__msinstrument__instrumenttype__name='timstof').exists():
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('combineIonMobilitySpectra')
-        # FIXME deprecate is_docker, since is always docker
-        if not pwiz.is_docker:
-            return JsonResponse({'error': 'Cannot process mzML timstof/pasef data with that version'}, status=403)
     num_rawfns = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=data['dsid']).count()
     mzmls_exist = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset,
             deleted=False, purged=False, checked=True, mzmlfile__isnull=False)

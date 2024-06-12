@@ -263,4 +263,3 @@ class TestRefineMzmls(MzmlTests):
         self.do_refine(ds)
         self.assertEqual(jm.Job.objects.filter(funcname='move_dset_servershare',
             kwargs__dset_id=ds.pk).count(), 1)
-        # moverun.delete()

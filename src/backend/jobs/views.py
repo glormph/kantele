@@ -220,6 +220,8 @@ def register_external_file(request):
         return HttpResponseForbidden()
     dataset = {'dataset_id': data['dset_id'], 'removed_files': {},
                'added_files': {1: {'id': data['raw_id']}}}
+    # FIXME dont let just any job change the file state!
+    # FIXME handle errors in save_or_up
     StoredFile.objects.filter(pk=data['sf_id']).update(md5=data['md5'], checked=True)
     RawFile.objects.filter(pk=data['raw_id']).update(source_md5=data['md5'])
     dsviews.save_or_update_files(dataset)

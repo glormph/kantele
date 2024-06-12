@@ -195,6 +195,7 @@ class UpdateFilesTest(BaseIntegrationTest):
             self.ds.storage_loc, self.tmpsf.filename)))
     
     def test_add_fails(self):
+        # Fail because there is no storedfile
         fn = 'raw_no_sf'
         raw = rm.RawFile.objects.create(name=fn, producer=self.prod, claimed=False,
                 source_md5='raw_no_sf_fakemd5', size=1024, date=timezone.now())
@@ -312,6 +313,7 @@ class RenameProjectTest(BaseIntegrationTest):
             self.ds.storage_loc, self.f3sf.filename)))
 
     def test_if_added_removed_files_ok(self):
+        # first rename job http request, then add files, then jobs run:
         newname = 'testnewname'
         self.assertEqual(dm.Project.objects.filter(name=newname).count(), 0)
         resp = self.cl.post(self.url, content_type='application/json',
@@ -363,9 +365,6 @@ class RenameProjectTest(BaseIntegrationTest):
         self.assertTrue(os.path.exists(newtmpsf_path))
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
-
-        # clean up
-        newdsr.delete()
 
 
 class SaveSamples(BaseTest):

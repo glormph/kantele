@@ -1,7 +1,7 @@
 """
-These tasks are to be run by the celery beat automatic task runner every 10 seconds or so.
-It contains a VERY SIMPLE job scheduler. The more advanced job scheduling is to be done by
-celery chains etc, Nextflow, or Galaxy or whatever one likes.
+This management task contains a VERY SIMPLE job scheduler.
+More advanced job scheduling is to be done by celery chains etc,
+Nextflow, or Galaxy or whatever one likes.
 
 Scheduler runs sequential and waits for each job that contains files running in another job
 """

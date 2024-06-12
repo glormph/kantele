@@ -260,6 +260,14 @@ def get_admin_params_for_dset(response, dset_id, category):
 
 
 def update_dataset(data):
+    # FIXME it is v annoying to do all the hierarchical creations in multiple steps
+    # in a single method, as this generates a lot of error checking, and things like
+    # saves that are done when an error pops up later (storage loc is checked last, but a
+    # proj is saved in the start. Easier to run
+    # one method per update (exp, proj, dset) - but that will create unneccessary move
+    # operations. But since it's a rename, it will be short, and usually not all of them
+    # change at the same time.
+    # Thus: its time to do "new dset", "new proj" in the excel table view!
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related(
         'runname__experiment', 'datatype').get()
     if 'newprojectname' in data:
@@ -303,17 +311,16 @@ def update_dataset(data):
             return JsonResponse({'error': f'Experiment name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
         experiment = models.Experiment(name=data['newexperimentname'],
                                        project=project)
-        experiment.save()
         dset.runname.experiment = experiment
         newexp = True
     else:
         experiment = models.Experiment.objects.get(pk=data['experiment_id'])
         experiment.project_id = project.id
-        experiment.save()
         if data['experiment_id'] != dset.runname.experiment_id:
             # another experiment was selected
             newexp = True
             dset.runname.experiment = experiment
+    experiment.save()
     if data['runname'] != dset.runname.name or newexp:
         if is_invalid_proj_exp_runnames(data['runname']):
             return JsonResponse({'error': f'Run name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
@@ -1461,9 +1468,6 @@ def save_samples(request):
                     dataset=dset):
                 # proj sample w name already in this dataset (no ID passed), but not in any other, so 
                 # eg new species/sampletype, need to update those
-
-                # FIXME make sure when input conflicting sample in dset (same name,
-                # diff types), that this doesnt override an error!
                 continue
             elif not psam.datasetsample_set.count():
                 # Sample is up for grabs, already registered but not in dataset

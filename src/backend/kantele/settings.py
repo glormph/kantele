@@ -134,8 +134,6 @@ NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
 
 # hardcoded name for fasta DBs
 DBFA_FT_NAME = 'database'
-# FIXME let QC pipe use its own DB (downloadable or in lehtio server)
-LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 
 # django

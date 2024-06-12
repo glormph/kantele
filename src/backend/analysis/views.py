@@ -1208,6 +1208,7 @@ def write_analysis_log(logline, analysis_id):
     analysis.save()
 
 
+# FIXME need auth on this view
 def nextflow_analysis_log(request):
     req = json.loads(request.body.decode('utf-8'))
     if 'runName' not in req or not req['runName']:

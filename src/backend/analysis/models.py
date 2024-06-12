@@ -283,8 +283,6 @@ class AnalysisDatasetSetValue(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'dataset', 'field'], name='uni_anadsetsfields')]
 
-# FIXME how should we do with pgt DBGEN input? Are those sets, or are they something else?
-# they def have sample names, and can be multiple per sample (BAMs merged, VCFs indel/snv etc)
 
 class AnalysisDSInputFile(models.Model):
     '''Input files for set-based analysis (isobaric and prefraction-datasets)'''
@@ -310,7 +308,6 @@ class AnalysisFileValue(models.Model):
     value = models.TextField()
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
 
-    # FIXME this should maybe FK to infile above here?
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'sfile', 'field'], name='uni_anassamplefile')]
 

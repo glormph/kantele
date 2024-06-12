@@ -42,5 +42,3 @@ def task_finished(task_id):
 def taskfail_update_db(task_id, msg=False):
     update_db(urljoin(settings.KANTELEHOST, reverse('jobs:settask')), json={'task_id': task_id,
         'client_id': settings.APIKEY, 'msg': msg, 'state': states.FAILURE})
-
-

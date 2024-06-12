@@ -74,7 +74,7 @@ class BaseTest(TestCase):
         # File prep, producers etc
         self.ft, _ = rm.StoredFileType.objects.get_or_create(name='testft', filetype='tst',
                 is_rawdata=True)
-        self.prod, _ = rm.Producer.objects.get_or_create(name='prod1', client_id='abcdefg', shortname='p1', internal=True)
+        self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1', internal=True)
         msit, _ = rm.MSInstrumentType.objects.get_or_create(name='test')
         rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
                 filetype=self.ft)
@@ -106,14 +106,13 @@ class BaseTest(TestCase):
         self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,
                 source_md5='f3_fakemd5',
                 size=f3size, date=timezone.now(), claimed=True)
-        self.f3dsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=self.ds, rawfile=self.f3raw)
-        self.f3sf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.f3raw, filename=fn3,
-                    md5=self.f3raw.source_md5, filetype=self.ft,
-                    defaults={'servershare': self.ssnewstore, 'path': self.storloc, 
-                        'checked': True})
-        self.qcs, _  = dm.QuantChannelSample.objects.get_or_create(dataset=self.ds, channel=self.qtch,
+        self.f3dsr = dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=self.f3raw)
+        self.f3sf = rm.StoredFile.objects.create(rawfile=self.f3raw, filename=fn3,
+                md5=self.f3raw.source_md5, filetype=self.ft, servershare=self.ssnewstore,
+                path=self.storloc, checked=True)
+        self.qcs = dm.QuantChannelSample.objects.create(dataset=self.ds, channel=self.qtch,
                 projsample=self.projsam1)
-        dm.QuantDataset.objects.get_or_create(dataset=self.ds, quanttype=self.qt)
+        dm.QuantDataset.objects.create(dataset=self.ds, quanttype=self.qt)
         dm.DatasetSample.objects.create(dataset=self.ds, projsample=self.projsam1)
 
         # Pwiz/mzml
@@ -151,42 +150,34 @@ class BaseTest(TestCase):
         dm.DatasetOwner.objects.get_or_create(dataset=self.oldds, user=self.user)
         self.oldfpath = os.path.join(settings.SHAREMAP[self.ssoldstorage.name], self.oldstorloc)
         oldsize = os.path.getsize(os.path.join(self.oldfpath, oldfn))
-        self.oldraw, _ = rm.RawFile.objects.get_or_create(name=oldfn, producer=self.prod,
-                source_md5='old_to_new_fakemd5', size=oldsize, defaults={'date': timezone.now(),
-                    'claimed': True})
-        self.olddsr, _ = dm.DatasetRawFile.objects.get_or_create(dataset=self.oldds, rawfile=self.oldraw)
-        self.oldsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.oldraw, filename=oldfn,
-                    md5=self.oldraw.source_md5, filetype=self.ft,
-                    defaults={'servershare': self.ssoldstorage, 'path': self.oldstorloc, 
-                        'checked': True})
+        self.oldraw = rm.RawFile.objects.create(name=oldfn, producer=self.prod,
+                source_md5='old_to_new_fakemd5', size=oldsize, date=timezone.now(), claimed=True)
+        self.olddsr = dm.DatasetRawFile.objects.create(dataset=self.oldds, rawfile=self.oldraw)
+        self.oldsf = rm.StoredFile.objects.create(rawfile=self.oldraw, filename=oldfn,
+                    md5=self.oldraw.source_md5, filetype=self.ft, servershare=self.ssoldstorage,
+                    path=self.oldstorloc, checked=True)
         self.oldqsf = dm.QuantSampleFile.objects.create(rawfile=self.olddsr, projsample=self.projsam2)
 
         # Tmp rawfile
         tmpfn = 'raw2'
         tmpfpathfn = os.path.join(settings.SHAREMAP[self.sstmp.name], tmpfn)
         tmpsize = os.path.getsize(tmpfpathfn)
-        self.tmpraw, _ = rm.RawFile.objects.get_or_create(name=tmpfn, producer=self.prod,
-                source_md5='tmpraw_fakemd5', size=tmpsize, defaults={'date': timezone.now(),
-                    'claimed': False})
-        self.tmpsf, _ = rm.StoredFile.objects.update_or_create(rawfile=self.tmpraw,
-                md5=self.tmpraw.source_md5, defaults={'filename': tmpfn, 'servershare': self.sstmp,
-                    'path': '', 'checked': True, 'filetype': self.ft})
+        self.tmpraw = rm.RawFile.objects.create(name=tmpfn, producer=self.prod,
+                source_md5='tmpraw_fakemd5', size=tmpsize, date=timezone.now(), claimed=False)
+        self.tmpsf = rm.StoredFile.objects.create(rawfile=self.tmpraw, md5=self.tmpraw.source_md5,
+                filename=tmpfn, servershare=self.sstmp, path='', checked=True, filetype=self.ft)
 
-        # FIXME should go to analysis? Maybe reuse in home etc views
         # Library files, for use as input, so claimed and ready
-        self.libraw, _ = rm.RawFile.objects.update_or_create(name='libfiledone',
-                producer=self.prod, source_md5='libfilemd5',
-                size=100, defaults={'claimed': True, 'date': timezone.now()})
+        self.libraw = rm.RawFile.objects.create(name='libfiledone', producer=self.prod,
+                source_md5='libfilemd5', size=100, claimed=True, date=timezone.now())
 
-        self.sflib, _ = rm.StoredFile.objects.update_or_create(rawfile=self.libraw,
-                md5=self.libraw.source_md5, filetype=self.ft, defaults={'checked': True, 
-                    'filename': self.libraw.name, 'servershare': self.sstmp, 'path': ''})
-        self.lf, _ = am.LibraryFile.objects.get_or_create(sfile=self.sflib, description='This is a libfile')
+        self.sflib = rm.StoredFile.objects.create(rawfile=self.libraw, md5=self.libraw.source_md5,
+        filetype=self.ft, checked=True, filename=self.libraw.name, servershare=self.sstmp, path='')
+        self.lf = am.LibraryFile.objects.create(sfile=self.sflib, description='This is a libfile')
 
         # User files for input
-        self.usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone',
-                producer=self.prod, source_md5='usrfmd5', size=100, 
-                defaults={'claimed': True, 'date': timezone.now()})
+        self.usrfraw = rm.RawFile.objects.create(name='usrfiledone', producer=self.prod, 
+                source_md5='usrfmd5', size=100, claimed=True, date=timezone.now())
         self.uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
                 is_rawdata=False)
         self.sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=self.usrfraw,
@@ -243,6 +234,7 @@ class BaseIntegrationTest(LiveServerTestCase):
 
 
 class TestMultiStorageServers(BaseIntegrationTest):
+    # FIXME add test for moving servershare fail on check_error!
 
     def test_add_newtmp_files_to_old_dset(self):
         # Fresh start in case multiple tests
@@ -274,6 +266,3 @@ class TestMultiStorageServers(BaseIntegrationTest):
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.servershare_id, self.ssnewstore.pk)
         self.assertEqual(self.tmpsf.path, self.oldds.storage_loc)
-        
-        # Clean up
-        newdsr.delete()

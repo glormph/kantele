@@ -106,9 +106,11 @@ async function handleKeyInput(event) {
     options = Object.fromEntries(Object.entries(fixedoptions));
     optorder = fixedorder.length ? fixedorder : Object.keys(options);
     selectval = initval;
+
   } else if (event.key.length > 1 && !(event.keyCode === 8 || event.keyCode === 46)) {
     // special key without modification effect (e.g. alt), not backspace/delete
     return
+
   } else if (intext.length > 2 && fetchUrl) {
     selectval = '';
     options = await getJSON(`${fetchUrl}?q=${intext}`);
@@ -116,6 +118,7 @@ async function handleKeyInput(event) {
     delete(options.ok);
     optorder = Object.keys(options);
     typing = true;
+
   } else if (!fetchUrl && fixedoptions && intext) {
     selectval = '';
     options = Object.fromEntries(Object.entries(fixedoptions).filter(x => x[1].name.toLowerCase().indexOf(intext.toLowerCase()) > -1));
