@@ -24,3 +24,5 @@ source .ansible-env
 
 ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${ANALYSIS_USER}" storage_deploy.yml -K
 
+echo Finished setting up storage server - please make sure that you have set the Tivoli DSMC backup client password,
+echo which is a one-time procedure and has to be received from the backup server administrator

@@ -12,10 +12,11 @@ kantelevenv: "{{ kanteledir }}/venv"
 kanteledb: kanteledb
 kanteledbuser: kanteleuser
 
-# DB dumping needs dir to dump in
+# DB dumping needs dir to dump in and uses compose so needs the env file
 host_pgbackup_path: "{{ homedir }}/pgbackups"
+container_backuppath: /pgbackups
+compose_env_file: '{{ homedir }}/kantele/.compose.prod.env'
 
-storagesharenames: "storage,s3storage"
 
 celeryenv_file: "{{ kanteledir }}/celery.env"
 kantelelogdir: "{{ kanteledir }}/log"

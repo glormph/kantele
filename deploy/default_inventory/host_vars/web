@@ -1,5 +1,3 @@
-compose_env_file: '{{ homedir }}/kantele/.compose.prod.env'
-
 tls_cert: server.crt
 tls_cert_key: server.key
 
@@ -17,5 +15,3 @@ analysis_path_url: /analysisfiles
 
 # For restoring backups
 pgdatadir: "{{ homedir }}/pgdata"
-container_backuppath: /pgbackups
-

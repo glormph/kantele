@@ -39,6 +39,33 @@
     dest: "{{ homedir }}"
     remote_src: yes
 
+- name: Create folder for tivoli backup config
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+    path: "{{ dsm_dir }}"
+    state: directory
+    owner: '{{ kanteleuser }}'
+    group: '{{ kantelegroup }}'
+    mode: '755'
+
+- name: Create password folder for tivoli backup
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+    path: "{{ dsm_dir }}/etc/adsm"
+    state: directory
+    owner: '{{ kanteleuser }}'
+    group: '{{ kantelegroup }}'
+    mode: '700'
+
+- name: Deploy tivoli backup config
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.template:
+      src: "dsm.sys.j2"
+      dest: "{{ dsm_dir }}/dsm.sys"
+
 - name: Install tivoli backup client
   become: yes
   ansible.builtin.apt:
