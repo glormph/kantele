@@ -29,8 +29,6 @@ services:
         user: "${DBUID:-0}:${DBGID:-0}"
         environment:
             POSTGRES_PASSWORD: "${PG_SUPERUSER_PASSWORD}"
-        volumes:
-            - "${PG_DATA_PATH:-./false_pg_data}:/var/lib/postgresql/data"
 
     mq:
         image: rabbitmq:3.10

@@ -7,6 +7,8 @@ from analysis import models as analysismodels
 class QCData(models.Model):
     rawfile = models.ForeignKey(filemodels.RawFile, on_delete=models.CASCADE)
     analysis = models.ForeignKey(analysismodels.Analysis, on_delete=models.CASCADE)
+    is_ok = models.BooleanField(default=True)
+    message = models.TextField()
 
 
 class LineplotData(models.Model):

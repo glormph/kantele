@@ -10,6 +10,7 @@ from kantele import settings
 
 def update_db(url, form=False, json=False, files=False, msg=False):
     try:
+        r = False
         if form:
             r = requests.post(url=url, data=form)
         elif json:
@@ -26,7 +27,11 @@ def update_db(url, form=False, json=False, files=False, msg=False):
         print(msg)
         raise RuntimeError(msg)
     else:
-        return r
+        if r:
+            return r
+        else:
+            raise RuntimeError('Something went wrong')
+
 
 
 def task_finished(task_id):
@@ -37,5 +42,3 @@ def task_finished(task_id):
 def taskfail_update_db(task_id, msg=False):
     update_db(urljoin(settings.KANTELEHOST, reverse('jobs:settask')), json={'task_id': task_id,
         'client_id': settings.APIKEY, 'msg': msg, 'state': states.FAILURE})
-
-

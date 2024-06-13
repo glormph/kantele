@@ -83,9 +83,6 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = os.environ.get('CELERY_PREFETCH', 4)
 
 JOBRUNNER_INTERVAL = 5
 
-# datatypes
-RAW_SFGROUP_ID = int(os.environ.get('RAW_SF_GROUP_ID', -1))
-
 # DB FTID also used in worker, make sure it exists
 DATABASE_FTID = int(os.environ.get('DATABASE_FTID', -1))
 
@@ -102,6 +99,9 @@ TOKEN_RENEWAL_WINDOW_DAYS = 7
 # Labelcheck experiment name
 LCEXPNAME = '__labelchecks'
 LC_DTYPE_IDS = [int(x) for x in os.environ.get('LC_DTYPE_ID', '-1').split(',')]
+
+# QC files storage
+QC_STORAGE_DIR = 'Instrument QC'
 
 # local datasets 
 LOCAL_PTYPE_ID = int(os.environ.get('LOCAL_PTYPE_ID', -1))
@@ -122,26 +122,19 @@ PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 EXTERNAL_PRODUCER_IDS = [int(x) for x in os.environ.get('EXTERNAL_PRODUCER_IDS', '-1').split(',')]
 USERFILEDIR = 'uploadfiles'
 
-# qc datasets
-QC_USER_ID = os.environ.get('QC_USER_ID')
-QC_DATATYPE = int(os.environ.get('QC_DATATYPE', -1))
-QC_ORGANISM = os.environ.get('QC_ORGANISM')
-INSTRUMENT_QC_PROJECT = os.environ.get('INSTRUMENT_QC_PROJECT')
-INSTRUMENT_QC_EXP = os.environ.get('INSTRUMENT_QC_EXP')
-INSTRUMENT_QC_RUNNAME = os.environ.get('INSTRUMENT_QC_RUNNAME')
-
 # nextflow
 NXF_COMMAND = os.environ.get('NXF_COMMAND', 'nextflow')
 LIBRARY_FILE_PATH = 'databases'
-ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE')
+ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE', False)
 SMALL_NFRUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 LARGER_NFRUNDIR = os.environ.get('LARGER_NFRUNDIR')
 NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
               'larger': LARGER_NFRUNDIR,
             }
-LONGQC_FADB_ID = os.environ.get('LONGQC_DBID')
+
+# hardcoded name for fasta DBs
+DBFA_FT_NAME = 'database'
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
-MZREFINER_FADB_ID = os.environ.get('REFINE_MZML_DBID')
 
 # django
 ALLOWED_HOSTS = os.environ.get('HOST_DOMAIN', KANTELEHOST).split(',')
@@ -178,6 +171,7 @@ INSTALLED_APPS = [
     'corefac.apps.CorefacConfig',
     'analysis.apps.AnalysisConfig',
     'dashboard.apps.DashboardConfig',
+    'staffpage.apps.StaffPageConfig',
     'mstulos.apps.MSTulosConfig',
 ]
 
@@ -232,6 +226,17 @@ DATABASES = {
     }
 }
 
+if os.environ.get('CLEAN_DB_INIT'):
+    MIGRATION_MODULES = {
+            'analysis': None,
+            'corefac': None,
+            'dashboard': None,
+            'datasets': None,
+            'home': None,
+            'jobs': None,
+            'mstulos': None,
+            'rawstatus': None,
+            }
 
 # Password validation
 # https://docs.djangoproject.com/en/1.11/ref/settings/#auth-password-validators

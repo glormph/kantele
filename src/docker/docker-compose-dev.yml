@@ -25,6 +25,5 @@ services:
             RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
-            STORAGESHARENAMES: "storage,s3storage"
             STORAGESHARES: '/storage/storage,/s3storage/storage'
             PRIMARY_STORAGE: s3storage

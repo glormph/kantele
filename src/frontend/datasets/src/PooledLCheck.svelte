@@ -8,8 +8,9 @@ export let errors;
 
 let preperrors = [];
 let edited = false;
+let saved = false;
 
-$: stored = $dataset_id && !edited;
+$: stored = $dataset_id && !edited && saved;
 
 
 function editMade() { 
@@ -37,21 +38,25 @@ export async function save() {
   }
   if (errors.length === 0 && preperrors.length === 0) { 
     let postdata = {
+      pooled: true,
       dataset_id: $dataset_id,
       quanttype: prepdata.quanttype,
     };
-    let url = '/datasets/save/pooledlc/';
+    let url = '/datasets/save/labelcheck/';
     await postJSON(url, postdata);
     fetchData();
   }
 }
 
 async function fetchData() {
-  let url = '/datasets/show/pooledlc/';
+  let url = '/datasets/show/labelcheck/';
   url = $dataset_id ? url + $dataset_id : url;
-	const response = await getJSON(url);
+  const response = await getJSON(`${url}?lctype=pooled`);
   for (let [key, val] of Object.entries(response)) { prepdata[key] = val; }
   edited = false;
+  if (prepdata.quanttype) {
+    saved = true;
+  }
 }
 
 onMount(async() => {
@@ -64,10 +69,10 @@ onMount(async() => {
 <h5 id="sampleprep" class="has-text-primary title is-5">
   {#if stored}
   <i class="icon fas fa-check-circle"></i>
-  {:else if edited}
+  {:else}
   <i class="icon fas fa-edit"></i>
   {/if}
-  Sample prep
+  Label check
   <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
   <button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>
 </h5>
@@ -87,3 +92,6 @@ onMount(async() => {
     </div>
   </div>
 </div>
+
+<button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
+<button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>

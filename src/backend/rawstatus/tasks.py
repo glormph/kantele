@@ -192,20 +192,31 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
-def delete_file(self, servershare, filepath, fn_id):
+def delete_file(self, servershare, filepath, fn_id, is_dir=False):
+    print(settings.SHAREMAP)
     print('Deleting file {} on {}'.format(filepath, servershare))
     fileloc = os.path.join(settings.SHAREMAP[servershare], filepath)
     try:
-        os.remove(fileloc)
+        if is_dir:
+            shutil.rmtree(fileloc)
+        else:
+            os.remove(fileloc)
     except FileNotFoundError:
         # File is already deleted or just not where it is, pass for now,
         # will be registered as deleted
         pass
-    except Exception:
-        taskfail_update_db(self.request.id)
+    except (IsADirectoryError, NotADirectoryError):
+        # FIXME proper feedback on error!
+        fn_or_dir = ['directory', 'file']
+        fn_or_dir = fn_or_dir if is_dir else fn_or_dir[::-1]
+        msg = (f'When trying to delete file {filepath}, expected a {fn_or_dir[0]}, but encountered '
+                f'a {fn_or_dir[1]}')
+        taskfail_update_db(self.request.id, msg)
         raise
-    msg = ('Could not update database with deletion of fn {} :'
-           '{}'.format(filepath, '{}'))
+    except Exception:
+        taskfail_update_db(self.request.id, msg=f'Something went wrong trying to delete {filepath}')
+        raise
+    msg = f'after succesful deletion of fn {filepath}. {{}}'
     url = urljoin(settings.KANTELEHOST, reverse('jobs:deletefile'))
     postdata = {'sfid': fn_id, 'task': self.request.id,
                 'client_id': settings.APIKEY}

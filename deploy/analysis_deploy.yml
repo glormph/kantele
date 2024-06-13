@@ -1,0 +1,4 @@
+---
+- import_playbook: analysis_stop.yml
+- import_playbook: analysis_update.yml
+- import_playbook: analysis_start.yml

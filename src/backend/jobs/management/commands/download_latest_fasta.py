@@ -6,6 +6,7 @@ from analysis.models import UniProtFasta, EnsemblFasta
 
 from jobs import models as jm
 from jobs import jobs as jj
+from jobs.jobutil import create_job
 
 
 class Command(BaseCommand):
@@ -38,12 +39,12 @@ class Command(BaseCommand):
             ens_jobs = dljobs.filter(kwargs__db='ensembl', kwargs__version=ens_version,
                     kwargs__organism=org)
             if not ens_jobs.count():
-                jj.create_job('download_fasta_repos', db='ensembl', version=ens_version,
+                create_job('download_fasta_repos', db='ensembl', version=ens_version,
                         organism=org)
         for dbtype, orgs in to_download['uniprot'].items():
             for org in orgs:
                 up_jobs = dljobs.filter(kwargs__db='uniprot', kwargs__version=up_version,
                         kwargs__dbtype=dbtype, kwargs__organism=org)
                 if not up_jobs.count():
-                    jj.create_job('download_fasta_repos', db='uniprot', version=up_version,
+                    create_job('download_fasta_repos', db='uniprot', version=up_version,
                             dbtype=dbtype, organism=org)

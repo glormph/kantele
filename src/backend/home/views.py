@@ -22,6 +22,7 @@ from rawstatus import models as filemodels
 from rawstatus import views as rv
 from jobs import jobs as jj
 from jobs import views as jv
+from jobs.jobutil import create_job
 from jobs import models as jm
 
 
@@ -107,13 +108,15 @@ def find_analysis(request):
     """Loop through comma-separated q-param in GET, do a lot of OR queries on
     analysis to find matches. String GET-derived q-params by AND."""
     searchterms = [x for x in request.GET['q'].split(',') if x != '']
-    query = Q(analysis__name__icontains=searchterms[0])
-    query |= Q(workflow__name__icontains=searchterms[0])
-    query |= Q(analysis__user__username__icontains=searchterms[0])
-    for term in searchterms[1:]:
+    query = Q()
+    wftypes = zip(anmodels.UserWorkflow.WFTypeChoices.choices, anmodels.UserWorkflow.WFTypeChoices.names)
+    for term in searchterms:
         subquery = Q(analysis__name__icontains=term)
         subquery |= Q(workflow__name__icontains=term)
         subquery |= Q(analysis__user__username__icontains=term)
+        # WF types is integerchoice, search as such
+        match_wftypes = [x[0][0] for x in wftypes if term in x[0][1] or term in x[1]]
+        subquery |= Q(workflow__wftype__in=match_wftypes)
         query &= subquery
     dbanalyses = anmodels.NextflowSearch.objects.filter(query)
     if request.GET['deleted'] == 'false':
@@ -311,26 +314,6 @@ def show_jobs(request):
             dsets = [dsets]
         items[job.id]['dset_ids'] = dsets
     stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING, jj.Jobstates.WAITING]
-    #####/tasks
-    #analysis = jv.get_job_analysis(job)
-    #if analysis:
-    #    analysis = analysis.name
-    #errors = []
-    #try:
-    #    errormsg = job.joberror.message
-    #except jm.JobError.DoesNotExist:
-    #    errormsg = False
-    #return JsonResponse({'files': fj.count(), 'dsets': 0, 
-    #                     'analysis': analysis, 
-    #                     'time': datetime.strftime(job.timestamp, '%Y-%m-%d %H:%M'),
-    #                     'errmsg': errormsg,
-    #                     'tasks': {'error': tasks.filter(state=tstates.FAILURE).count(),
-    #                               'procpen': tasks.filter(state=tstates.PENDING).count(),
-    #                               'done': tasks.filter(state=tstates.SUCCESS).count()},
-    #                     'errors': errors,
-    #                    })
-#####
-
     return JsonResponse({'items': items, 'order': 
                          [x for u in ['user', 'admin'] for s in stateorder 
                           for x in order[u][s]]})
@@ -369,7 +352,7 @@ def get_ana_actions(nfs, user):
 
 def populate_analysis(nfsearches, user):
     ana_out, order = {}, []
-    nfsearches = nfsearches.select_related('analysis', 'job', 'workflow', 'nfworkflow')
+    nfsearches = nfsearches.select_related('analysis', 'job', 'workflow', 'nfwfversionparamset')
     for nfs in nfsearches:
         fjobs = nfs.job.filejob_set.all().select_related(
             'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
@@ -383,8 +366,8 @@ def populate_analysis(nfsearches, user):
                 'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
                 'jobstate': nfs.job.state,
                 'jobid': nfs.job_id,
-                'wf': f'{nfs.workflow.name} - {nfs.nfworkflow.update}',
-                'wflink': nfs.nfworkflow.nfworkflow.repo,
+                'wf': f'{nfs.workflow.name} - {nfs.nfwfversionparamset.update}',
+                'wflink': nfs.nfwfversionparamset.nfworkflow.repo,
                 'deleted': nfs.analysis.deleted,
                 'purged': nfs.analysis.purged,
                 'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets
@@ -432,7 +415,7 @@ def get_proj_info(request, proj_id):
 def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
     projs, order = {}, []
     dbprojs = dbprojs.annotate(dsmax=Max('experiment__runname__dataset__date'),
-            anamax=Max('experiment__runname__dataset__datasetsearch__analysis__date')).annotate(
+            anamax=Max('experiment__runname__dataset__datasetanalysis__analysis__date')).annotate(
             greatdate=Greatest('dsmax', 'anamax'))
     for proj in dbprojs.order_by('-greatdate'): # latest first
         order.append(proj.id)
@@ -450,13 +433,13 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
     return projs, order
 
 
-def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
+def populate_dset(dbdsets, user):
     dsets = OrderedDict()
     for dataset in dbdsets.select_related('runname__experiment__project__projtype__ptype',
             'prefractionationdataset'):
         dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dataset)
         storestate = get_dset_storestate(dataset, dsfiles)
-        ana_ids = [x.id for x in anmodels.NextflowSearch.objects.filter(analysis__datasetsearch__dataset_id=dataset.id)]
+        ana_ids = [x.id for x in anmodels.NextflowSearch.objects.filter(analysis__datasetanalysis__dataset_id=dataset.id)]
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': check_ownership(user, dataset),
@@ -490,18 +473,16 @@ def populate_dset(dbdsets, user, showjobs=True, include_db_entry=False):
                 state = mzmlgroups[ftype]
                 text = f'({ftype})' if state == 'deleted' else ftype
                 dsets[dataset.id]['smallstatus'].append({'text': text, 'state': state})
+
         # Add job states
-        if showjobs:
-            jobmap = get_ds_jobs(dbdsets)
-            dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
-            dsets[dataset.id]['jobids'] = ','.join(list(jobmap[dataset.id].keys())) if dataset.id in jobmap else []
+        jobmap = get_ds_jobs(dbdsets)
+        dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
+        dsets[dataset.id]['jobids'] = ','.join(list(jobmap[dataset.id].keys())) if dataset.id in jobmap else []
         if hasattr(dataset, 'prefractionationdataset'):
             pf = dataset.prefractionationdataset
             dsets[dataset.id]['prefrac'] = str(pf.prefractionation.name)
             if 'hirief' in pf.prefractionation.name.lower():
                 dsets[dataset.id]['hr'] = '{} {}'.format('HiRIEF', str(pf.hiriefdataset.hirief))
-        if include_db_entry:
-            dsets[dataset.id]['dbentry'] = dataset
     return dsets
 
 
@@ -538,7 +519,7 @@ def get_analysis_invocation(ana):
     for param, fninfos in fnmap.items():
         invoc['files'].append({'param': param, 'multif': fninfos})
     allp_options = {}
-    for x in anmodels.Param.objects.filter(ptype='multi'):
+    for x in anmodels.Param.objects.filter(ptype=anmodels.Param.PTypes.MULTI):
         for opt in x.paramoption_set.all():
             try:
                 allp_options[x.nfparam][opt.id] = opt.value
@@ -546,18 +527,18 @@ def get_analysis_invocation(ana):
                 allp_options[x.nfparam] = {opt.id: opt.value}
     params = []
     for ap in anmodels.AnalysisParam.objects.select_related('param').filter(analysis=ana):
-        if ap.param.ptype == 'multi':
+        if ap.param.ptype == anmodels.Param.PTypes.MULTI:
             vals = [allp_options[ap.param.nfparam][x] for x in ap.value]
             params.extend([ap.param.nfparam, *vals])
-        elif ap.param.ptype == 'flag' and ap.value:
+        elif ap.param.ptype == anmodels.Param.PTypes.FLAG and ap.value:
             params.append(ap.param.nfparam)
         else:
             params.extend([ap.param.nfparam, ap.value])
 
     iqparams = []
     for aiq in anmodels.AnalysisIsoquant.objects.select_related('setname').filter(analysis=ana):
-        set_dsets = aiq.setname.analysisdatasetsetname_set.all()
-        qtypename = set_dsets.values('dataset__quantdataset__quanttype__shortname').distinct().get()['dataset__quantdataset__quanttype__shortname']
+        set_dsas = aiq.setname.analysisdsinputfile_set.distinct('dsanalysis').values('dsanalysis')
+        qtypename = set_dsas.values('dsanalysis__dataset__quantdataset__quanttype__shortname').distinct().get()['dsanalysis__dataset__quantdataset__quanttype__shortname']
         if aiq.value['sweep']:
             calc_psm = 'sweep'
         elif aiq.value['report_intensity']:
@@ -579,11 +560,11 @@ def get_analysis_invocation(ana):
 @login_required
 def get_analysis_info(request, nfs_id):
     nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
-        'analysis', 'workflow', 'nfworkflow').get()
+        'analysis', 'workflow', 'nfwfversionparamset').get()
     ana = nfs.analysis
     storeloc = filemodels.StoredFile.objects.select_related('servershare__server').filter(
             analysisresultfile__analysis=ana)
-    dsets = {x.dataset for x in ana.datasetsearch_set.all()}
+    dsets = {x.dataset for x in ana.datasetanalysis_set.all()}
     #projs = {x.runname.experiment.project for x in dsets}
     if not nfs.analysis.log:
         logentry = ['Analysis without logging or not yet queued']
@@ -601,14 +582,16 @@ def get_analysis_info(request, nfs_id):
         # This means we have to check for taskerror__isnull here
         if task.taskerror.message:
             errors.append(task.taskerror.message)
+    dsicount = anmodels.AnalysisDSInputFile.objects.filter(analysisset__analysis=ana).count()
+    afscount = ana.analysisfilevalue_set.count()
     resp = {'name': aj.get_ana_fullname(ana),
-            'wf': {'fn': nfs.nfworkflow.filename, 
-                   'name': nfs.nfworkflow.nfworkflow.description,
-                   'update': nfs.nfworkflow.update,
-                   'repo': nfs.nfworkflow.nfworkflow.repo},
+            'wf': {'fn': nfs.nfwfversionparamset.filename, 
+                   'name': nfs.nfwfversionparamset.nfworkflow.description,
+                   'update': nfs.nfwfversionparamset.update,
+                   'repo': nfs.nfwfversionparamset.nfworkflow.repo},
 ##             'proj': [{'name': x.name, 'id': x.id} for x in projs],
             'nrdsets': len(dsets),
-            'nrfiles': ana.analysisdsinputfile_set.count(),
+            'nrfiles': dsicount + afscount,
             'storage_locs': [{'server': x.servershare.server.uri, 'share': x.servershare.name, 'path': x.path}
                 for x in storeloc],
             'log': logentry, 
@@ -651,8 +634,8 @@ def refresh_analysis(request, nfs_id):
     fjobs = nfs.job.filejob_set.all().select_related(
             'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     return JsonResponse({
-        'wf': f'{nfs.workflow.name} - {nfs.nfworkflow.update}',
-        'wflink': nfs.nfworkflow.nfworkflow.repo,
+        'wf': f'{nfs.workflow.name} - {nfs.nfwfversionparamset.update}',
+        'wflink': nfs.nfwfversionparamset.nfworkflow.repo,
         'jobstate': nfs.job.state,
         'name': aj.get_ana_fullname(nfs.analysis),
         'jobid': nfs.job_id,
@@ -766,6 +749,7 @@ def fetch_dset_details(dset):
                          'short': dset.quantdataset.quanttype.shortname}
     except dsmodels.QuantDataset.DoesNotExist:
         info['qtype'] = False
+    # FIXME Hardcoded microscopy!
     nonms_dtypes = {x.id: x.name for x in dsmodels.Datatype.objects.all()
                     if x.name in ['microscopy']}
     files = filemodels.StoredFile.objects.select_related('rawfile__producer', 'servershare', 'filetype').filter(
@@ -775,10 +759,16 @@ def fetch_dset_details(dset):
     info['instruments'] = list(set([x.rawfile.producer.name for x in files]))
     info['instrument_types'] = list(set([x.rawfile.producer.shortname for x in files]))
     rawfiles = files.filter(mzmlfile__isnull=True)
+    # Show mzML/refine things for MS data:
+    refine_dbs = filemodels.StoredFile.objects.filter(filetype__name=settings.DBFA_FT_NAME)
     if dset.datatype_id not in nonms_dtypes:
         nrstoredfiles = {'raw': rawfiles.count()}
-        info.update({'refine_mzmls': [], 'convert_dataset_mzml': []})
-        info['refine_versions'] = [{'id': 15, 'name': 'v1.0'}]
+        info.update({'refine_mzmls': [], 'convert_dataset_mzml': [], 'refine_dbs': []})
+        info['refine_versions'] = [{'id': x.pk, 'name': x.update} for x in
+                anmodels.NextflowWfVersionParamset.objects.filter(active=True,
+                userworkflow__name__icontains='refine',
+                userworkflow__wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC)]
+        # go through all filejobs that are not done to find current jobs and get pwiz id
         for mzj in filemodels.FileJob.objects.exclude(job__state__in=jj.JOBSTATES_DONE).filter(
                 storedfile__in=files, job__funcname__in=['refine_mzmls', 'convert_dataset_mzml']).distinct(
                         'job').values('job__funcname', 'job__kwargs'):
@@ -798,23 +788,35 @@ def fetch_dset_details(dset):
             mzmlfile__sfile__rawfile__datasetrawfile__dataset=dset,
             mzmlfile__sfile__deleted=False, mzmlfile__sfile__checked=True), 'existing')
         for pwsid, pws in pw_sets.items():
+            state = False
             pwpk, refined = pwsid.split('_')
             refined = refined == 'True'
             if (not refined and pws['id'] in info['convert_dataset_mzml']) or (refined and pws['id'] in info['refine_mzmls']):
+                # there are jobs for this pw/refine block, either of convert or refine
                 state = 'Processing'
             elif pws['existing'] == nrstoredfiles['raw']:
+                # this pw/refine block is complete
                 state = 'Ready'
-                if not refined and '{}_True'.format(pwpk) not in pw_sets:
+                if not refined and f'{pwpk}_True' not in pw_sets:
+                    # it's not refined and does not have another refined of same pw,
+                    # so we can refine it
                     pws['refineready'] = True
-            elif not refined or pw_sets['{}_False'.format(pwpk)]['existing'] == nrstoredfiles['raw']:
-                if refined and pws['existing'] == 0:
-                    state = 'Incomplete'
-                elif pws['existing'] == 0:
+                    if not len(info['refine_dbs']):
+                        info['refine_dbs'] = {x.id: {'name': x.filename, 'id': x.id} for x in refine_dbs}
+            elif not refined or pw_sets[f'{pwpk}_False']['existing'] == nrstoredfiles['raw']:
+                # either non-refined or refined but with ok non-refined mzml
+                if not refined and pws['existing'] == 0:
+                    # so not refined at all
                     state = 'No mzmls'
                 else:
+                    # Can be either refined or not but with non-complete mzML
+                    if refined and not len(info['refine_dbs']):
+                        info['refine_dbs'] = {x.id: {'name': x.filename, 'id': x.id} for x in refine_dbs}
                     state = 'Incomplete'
             elif refined:
                 state = 'No mzmls'
+            if not state:
+                raise RuntimeError('Something went wrong getting mzMLs')
             pws['state'] = state
         info['pwiz_sets'] = [x for x in pw_sets.values()]
         info['pwiz_versions'] =  {x.id: x.version_description for x in anmodels.Proteowizard.objects.exclude(
@@ -824,10 +826,10 @@ def fetch_dset_details(dset):
     info['nrstoredfiles'] = nrstoredfiles
     info['nrbackupfiles'] = filemodels.PDCBackedupFile.objects.filter(
         storedfile__rawfile__datasetrawfile__dataset_id=dset.id).count()
-    info['compstates'] = {x.dtcomp.component.name: x.state for x in
+    info['compstates'] = {
+dsmodels.DatasetUIComponent(x.dtcomp.component).name: x.state for x in
                           dsmodels.DatasetComponentState.objects.filter(
-                              dataset_id=dset.id).select_related(
-                                  'dtcomp__component')}
+                              dataset_id=dset.id).select_related('dtcomp')}
     return info
 
 
@@ -854,26 +856,27 @@ def create_mzmls(request):
     if ds_instype.filter(rawfile__producer__msinstrument__instrumenttype__name='timstof').exists():
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('combineIonMobilitySpectra')
-        # FIXME deprecate is_docker, since is always docker
-        if not pwiz.is_docker:
-            return JsonResponse({'error': 'Cannot process mzML timstof/pasef data with that version'}, status=403)
     num_rawfns = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=data['dsid']).count()
     mzmls_exist = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset,
             deleted=False, purged=False, checked=True, mzmlfile__isnull=False)
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
         return JsonResponse({'error': 'This dataset already has existing mzML files of that '
             'proteowizard version'}, status=403)
+
+    # Saving starts here, except for the move_dset_project_servershare which checks errors
+    # before saving, allowing to return a 403 here.
+    # Move entire project if not on same file server
+    res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
+    if dset.storageshare.server != res_share.server:
+        if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+            return JsonResponse({'error': error}, status=403)
     # Remove other pwiz mzMLs
     other_pwiz_mz = mzmls_exist.exclude(mzmlfile__pwiz=pwiz)
     if other_pwiz_mz.count():
         for sf in other_pwiz_mz.distinct('mzmlfile__pwiz_id').values('mzmlfile__pwiz_id'):
-            jj.create_job('delete_mzmls_dataset', dset_id=dset.pk, pwiz_id=sf['mzmlfile__pwiz_id'])
+            create_job('delete_mzmls_dataset', dset_id=dset.pk, pwiz_id=sf['mzmlfile__pwiz_id'])
         other_pwiz_mz.update(deleted=True)
-    res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
-    # Move entire project if not on same file server
-    if dset.storageshare.server != res_share.server:
-        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
-    jj.create_job('convert_dataset_mzml', options=options, filters=filters,
+    create_job('convert_dataset_mzml', options=options, filters=filters,
             dset_id=data['dsid'], dstshare_id=res_share.pk, pwiz_id=pwiz.pk,
             timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
     return JsonResponse({})
@@ -911,18 +914,31 @@ def refine_mzmls(request):
         return JsonResponse({'error': 'Refined data already exists'}, status=403)
     elif not nr_exist_mzml or nr_exist_mzml < nr_dsrs:
         return JsonResponse({'error': 'Need to create normal mzMLs before refining'}, status=403)
-    
-    # Move entire project if not on same file server
+    # Check DB
+    if filemodels.StoredFile.objects.filter(pk=data['dbid'],
+            filetype__name=settings.DBFA_FT_NAME).count() != 1:
+        return JsonResponse({'error': 'Wrong database to refine with'}, status=403)
+    # Check WF
+    if anmodels.NextflowWfVersionParamset.objects.filter(pk=data['wfid'],
+           userworkflow__name__icontains='refine',
+           userworkflow__wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC).count() != 1:
+        return JsonResponse({'error': 'Wrong workflow to refine with'}, status=403)
+
+    # Checks done, refine data, now we can start storing POST data
+    # Move entire project if not on same file server (403 is checked before saving anything
+    # or queueing jobs)
     res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
     if dset.storageshare.server != res_share.server:
-        move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME)
-
-    # Refine data
+        if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+            return JsonResponse({'error': error}, status=403)
     # FIXME get analysis if it does exist, in case someone reruns?
     analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}')
-    jj.create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=settings.MZREFINER_NXFWFV_ID,
-            dstshare_id=res_share.pk, dbfn_id=settings.MZREFINER_FADB_ID,
-            qtype=dset.quantdataset.quanttype.shortname)
+    job = create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=data['wfid'],
+            dstshare_id=res_share.pk, dbfn_id=data['dbid'], qtype=dset.quantdataset.quanttype.shortname)
+    uwf = anmodels.UserWorkflow.objects.get(nfwfversionparamsets=data['wfid'],
+            wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC)
+    anmodels.NextflowSearch.objects.update_or_create(analysis=analysis, defaults={
+        'nfwfversionparamset_id': data['wfid'], 'job_id': job['id'], 'workflow_id': uwf.pk, 'token': ''})
     return JsonResponse({})
 
 

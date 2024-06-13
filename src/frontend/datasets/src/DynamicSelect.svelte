@@ -5,6 +5,9 @@ import { createEventDispatcher } from 'svelte';
 
 const dispatch = createEventDispatcher();
 
+// intext only exported for initial value if no options (e.g. base analysis needs options fetched)
+export let intext = '';
+
 export let selectval = '';
 export let fixedoptions = {};
 export let fixedorder = [];
@@ -12,15 +15,16 @@ export let fetchUrl = false;
 export let fetchedData;
 export let niceName = function(text) { return text; }
 export let unknowninput = '__ILLEGAL_PLACEHOLDER__';
+export let placeholder = 'Filter by typing';
 
-let intext;
-let options;
+let options = {};
 $: {
   // When options change (e.g. loaded from base analysis during first page load),
   // also call inputdone to populate the thing
   options = Object.fromEntries(Object.entries(fixedoptions));
   inputdone();
 }
+
 let optorder = [];
 let optorderindex;
 $: optorderindex = Object.fromEntries(optorder.map((x, ix) => [x, ix]));
@@ -34,12 +38,17 @@ let typing = false;
 // only when mouseSelect==false we can be done with input
 let mouseSelect = false;
 
-let placeholder = 'Filter by typing';
+// Fall back initval in case user backs out from selection
 const initval = selectval;
 
 // options change -> Input done -> newvalue -> setNewProj -> ptype_id='' fuckat
 
-function inputdone() {
+export function inputdone() {
+  /* This only does something if mouseSelect is false, but 
+  then it is called when the input is received (e.g. esc, enter, mouse selectvalue).
+  The intext is then set if there is a slected value, 
+  
+  */
   if (!mouseSelect) {
     typing = false;
     if (selectval && selectval in options) {
@@ -97,9 +106,11 @@ async function handleKeyInput(event) {
     options = Object.fromEntries(Object.entries(fixedoptions));
     optorder = fixedorder.length ? fixedorder : Object.keys(options);
     selectval = initval;
+
   } else if (event.key.length > 1 && !(event.keyCode === 8 || event.keyCode === 46)) {
     // special key without modification effect (e.g. alt), not backspace/delete
     return
+
   } else if (intext.length > 2 && fetchUrl) {
     selectval = '';
     options = await getJSON(`${fetchUrl}?q=${intext}`);
@@ -107,6 +118,7 @@ async function handleKeyInput(event) {
     delete(options.ok);
     optorder = Object.keys(options);
     typing = true;
+
   } else if (!fetchUrl && fixedoptions && intext) {
     selectval = '';
     options = Object.fromEntries(Object.entries(fixedoptions).filter(x => x[1].name.toLowerCase().indexOf(intext.toLowerCase()) > -1));

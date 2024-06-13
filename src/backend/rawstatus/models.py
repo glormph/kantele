@@ -1,12 +1,14 @@
 from django.db import models
+from django.utils import timezone
 from django.contrib.auth.models import User
+from django.db.models import Q
 
 from jobs.models import Job
 
 
 class StoredFileType(models.Model):
     name = models.TextField(unique=True) 
-    filetype = models.TextField() # fasta, tabular, mzml, raw, analysisoutput
+    filetype = models.TextField() # fasta, tabular, raw, analysisoutput
     is_folder = models.BooleanField(default=False)
     user_uploadable = models.BooleanField(default=False)
     is_rawdata = models.BooleanField(default=False)
@@ -89,6 +91,12 @@ class StoredFile(models.Model):
     deleted = models.BooleanField(default=False) # marked for deletion by user, only UI
     purged = models.BooleanField(default=False) # deleted from active storage filesystem
 
+    class Meta:
+        # Include the deleted field to allow for multi-version of a file 
+        # as can be the case in mzML (though only one existing)
+        constraints = [models.UniqueConstraint(fields=['servershare', 'path', 'filename', 'deleted'],
+            name='uni_storedfile', condition=Q(deleted=False))]
+
     def __str__(self):
         return self.rawfile.name
 
@@ -105,6 +113,27 @@ class UploadToken(models.Model):
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     archive_only = models.BooleanField(default=False)
     is_library = models.BooleanField(default=False)
+
+    @staticmethod
+    def validate_token(token):
+        try:
+            upload = UploadToken.objects.select_related('filetype', 'producer').get(
+                    token=token, expired=False)
+        except UploadToken.DoesNotExist as e:
+            print('Token for user upload does not exist')
+            return False
+        else:
+            if upload.expires < timezone.now():
+                print('Token expired')
+                upload.expired = True
+                upload.save()
+                return False
+            elif upload.expired:
+                print('Token expired')
+                return False
+            return upload
+
+
 
 
 class UserFile(models.Model):

@@ -3,6 +3,9 @@
 import { onMount } from 'svelte';
 import { getJSON, postJSON } from './funcJSON.js'
 import { dataset_id, datasetFiles } from './stores.js';
+import ErrorNotif from './ErrorNotif.svelte';
+
+let errors = [];
 
 let files = {
   newFiles: {},
@@ -92,7 +95,10 @@ async function save() {
     added_files: addedFiles,
     removed_files: removed_files,
   };
-  await postJSON(url, postdata);
+  const response = await postJSON(url, postdata);
+  if (response.error) {
+    errors = [...errors, response.error];
+  }
   fetchFiles();
 }
 
@@ -112,6 +118,8 @@ onMount(async() => {
 });
 
 </script>
+
+<ErrorNotif errors={Object.values(errors).flat()} />
 
 <div class="content is-small">
   <input class="input is-small" on:keyup={findFiles} bind:value={findQuery} type="text" placeholder="Type a query and press enter to find analyses">

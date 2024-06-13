@@ -121,48 +121,6 @@ def get_dir_content_size(fpath):
     return sum([os.path.getsize(f) for f in os.listdir(fpath) if os.path.isfile(f)])
 
 
-def stage_files(stagedir, stagefiles, params=False):
-    for flag, files in stagefiles.items():
-        stagefiledir = os.path.join(stagedir, flag.replace('--', ''))
-        os.makedirs(stagefiledir, exist_ok=True)
-        not_needed_files = set(os.listdir(stagefiledir))
-        if len(files) > 1:
-            dst = os.path.join(stagefiledir, '*')
-        else:
-            dst = os.path.join(stagefiledir, files[0][2])
-        if params:
-            params.extend([flag, dst])
-        # now actually copy
-        for fdata in files:
-            fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
-            fdst = os.path.join(stagefiledir, fdata[2])
-            try:
-                not_needed_files.remove(fdata[2])
-            except KeyError:
-                pass
-            if os.path.exists(fdst) and not os.path.isdir(fpath) and os.path.getsize(fdst) == os.path.getsize(fpath):
-                # file already there
-                continue
-            elif os.path.exists(fdst) and os.path.isdir(fpath) and get_dir_content_size(fpath) == get_dir_content_size(fdst):
-                # file is a dir but also ready
-                continue
-            elif os.path.exists(fdst):
-                # file/dir exists but is not correct, delete first
-                os.remove(fdst)
-            if os.path.isdir(fpath):
-                shutil.copytree(fpath, fdst)
-            else:
-                shutil.copy(fpath, fdst)
-        # Remove obsolete files from stage-file-dir
-        for fn in not_needed_files:
-            fpath = os.path.join(stagefiledir, fn)
-            if os.path.isdir(fpath):
-                shutil.rmtree(fpath)
-            else:
-                os.remove(fpath)
-    return params
-
-
 def log_analysis(analysis_id, message):
     logurl = urljoin(settings.KANTELEHOST, reverse('analysis:appendlog'))
     update_db(logurl, json={'analysis_id': analysis_id, 'message': message})
@@ -171,43 +129,45 @@ def log_analysis(analysis_id, message):
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
     print('Got message to run nextflow workflow, preparing')
+    # Init
     postdata = {'client_id': settings.APIKEY,
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
-                'name': run['name'], 'user': run['outdir']}
-    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
-    # write sampletable if it is present
-    sampletable = False
-    try:
-        st_ix = params.index('SAMPLETABLE')
-    except ValueError:
-        pass
-    else:
-        sampletable = params[st_ix + 1]
-        params = params[0:st_ix] + params[st_ix + 2:]
-        print('Sampletable found')
+                'name': run['runname'], 'user': run['outdir']}
+    rundir = create_runname_dir(run)
+
     # stage files, create dirs etc
-    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles,
-            run['mzmls'], params)
-    if sampletable:
+    params, gitwfdir, infiledir_or_nostage = prepare_nextflow_run(run, self.request.id, rundir,
+            stagefiles, run['infiles'], params)
+    if infiledir_or_nostage:
+        stagedir_to_rm = os.path.split(infiledir_or_nostage)[0]
+    else:
+        stagedir_to_rm = False
+    if sampletable := run['components']['ISOQUANT_SAMPLETABLE']:
         sampletable_fn = os.path.join(rundir, 'sampletable.txt')
         with open(sampletable_fn, 'w') as fp:
             for sample in sampletable:
-                # FIXME remove the replace after dda pipeline is updated to 2.7 (added FS to awk in commit Nov.15 2021)
-                fp.write('\t'.join(sample).replace(' ', '_'))
+                fp.write('\t'.join(sample))
                 fp.write('\n')
         params.extend(['--sampletable', sampletable_fn])
+
     # create input file of filenames
-    # depends on mzmldef component, which is always in our dda but maybe not in other pipelines
-    if len(run['mzmls']):
-        with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
-            for fn in run['mzmls']:
-                fnpath = os.path.join(stagedir, 'mzmls', fn['fn'])
-                mzstr = '{}\t{}\n'.format(fnpath, fn['mzmldef'])
-                fp.write(mzstr)
-        params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
-    if run['old_mzmls']:
-        with open(os.path.join(rundir, 'oldmzmldef.txt'), 'w') as fp:
-            for fn in run['old_mzmls']:
+    # depends on inputdef component, which is always in ours but maybe not in other pipelines
+    if run['components']['INPUTDEF'] and len(run['infiles']):
+        with open(os.path.join(rundir, 'inputdef.txt'), 'w') as fp:
+            fp.write('\t'.join(run['components']['INPUTDEF']))
+            for fn in run['infiles']:
+                if infiledir_or_nostage:
+                    fndir = infiledir_or_nostage
+                else:
+                    fndir = os.path.join(settings.SHAREMAP[fn['servershare']], fn['path'])
+                fnpath = os.path.join(fndir, fn['fn'])
+                fn_metadata = '\t'.join(fn[x] or '' for x in run['components']['INPUTDEF'][1:])
+                fp.write(f'\n{fnpath}\t{fn_metadata}')
+        params.extend(['--input', os.path.join(rundir, 'inputdef.txt')])
+
+    if 'COMPLEMENT_ANALYSIS' in run['components'] and run['old_infiles']:
+        with open(os.path.join(rundir, 'oldinputdef.txt'), 'w') as fp:
+            for fn in run['old_infiles']:
                 mzstr = '{}\n'.format(fn)
                 fp.write(mzstr)
         params.extend(['--oldmzmldef', os.path.join(rundir, 'oldmzmldef.txt')])
@@ -234,29 +194,56 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
             continue
         transfer_resultfile(outdir, outpath, ofile, run['dstsharename'], regfile, fileurl, token, 
                 self.request.id, analysis_id=run['analysis_id'], checksrvurl=checksrvurl)
-    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
+    report_finished_run(reporturl, postdata, stagedir_to_rm, rundir, run['analysis_id'])
     return run
 
 
 @shared_task(bind=True, queue=settings.QUEUE_NXF)
 def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
     print('Got message to run mzRefine workflow, preparing')
-    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
-    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
+    rundir = create_runname_dir(run)
+    params, gitwfdir, infiledir_or_nostage = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, mzmls, params)
+    if infiledir_or_nostage:
+        stagedir_to_rm = os.path.split(infiledir_or_nostage)[0]
+        infile_target_dir = infiledir_or_nostage
+    else:
+        stagedir_to_rm = False
+        # No stageing on system -> we need to copy mzml to rundir, symlinks made below
+        # will not be accessible to container. We could also change the names
+        # of the actual mzML files temporarily in a pre-refine-job
+        infile_target_dir = os.path.join(rundir, 'infile_links')
+        os.makedirs(infile_target_dir, exist_ok=True)
     with open(os.path.join(rundir, 'mzmldef.txt'), 'w') as fp:
         for fn in mzmls:
-            # FIXME not have set, etc, pass rawfnid here!
-            mzstr = '{fpath}\t{refined_sfid}\n'.format(fpath=os.path.join(stagedir, 'mzmls', fn['fn']), refined_sfid=fn['sfid'])
-            fp.write(mzstr)
-    params.extend(['--mzmldef', os.path.join(rundir, 'mzmldef.txt')])
+            fntarget = os.path.join(infile_target_dir, f'{fn["sfid"]}___{fn["fn"]}')
+            fp.write(f'{fntarget}\n')
+            # Create link or staged mzML:
+            if infiledir_or_nostage:
+                fnpath = os.path.join(infiledir_or_nostage, fn['fn'])
+                if not os.path.exists(fntarget):
+                    os.symlink(fnpath, fntarget)
+            else:
+                # if not stageing but direct pulling from server, files will not
+                # be accessible to container if we make links to the rundir, so we 
+                # will copy them here, "stage them anyway"
+                fnpath = os.path.join(settings.SHAREMAP[fn['servershare']], fn['path'], fn['fn'])
+                if os.path.exists(fntarget) and os.path.getsize(fntarget) != os.path.getsize(fnpath):
+                    # file exists but is not correct, delete first
+                    os.remove(fntarget)
+                if not os.path.exists(fntarget):
+                    try:
+                        shutil.copy(fnpath, fntarget)
+                    except FileNotFoundError:
+                        taskfail_update_db(self.request.id, f'Could not stage mzML files for refine, '
+                                'file {fn["fn"]} does not exist with path {fnpath}')
+                    except Exception:
+                        taskfail_update_db(self.request.id, f'Unknown error, could not stage mzML files '
+                                'for refine')
+    params.extend(['--input', os.path.join(rundir, 'mzmldef.txt')])
     outfiles = execute_normal_nf(run, params, rundir, gitwfdir, self.request.id, nf_version, profiles)
-    # TODO ideally do this:
-    # stage mzML with {dbid}___{filename}.mzML
-    # This keeps dbid / ___ split out of the NF workflow 
     outfiles_db = {}
     fileurl = urljoin(settings.KANTELEHOST, reverse('jobs:mzmlfiledone'))
-    outpath = os.path.join(run['outdir'], os.path.split(rundir)[-1])
-    outfullpath = os.path.join(settings.SHAREMAP[run['dstsharename']], outpath)
+    outfullpath = os.path.join(settings.SHAREMAP[run['dstsharename']], run['runname'])
     try:
         os.makedirs(outfullpath, exist_ok=True)
     except (OSError, PermissionError):
@@ -267,44 +254,107 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
         token = check_in_transfer_client(self.request.id, token, 'analysis_output')
         sf_id, newname = os.path.basename(fn).split('___')
         fdata = {'file_id': sf_id, 'newname': newname, 'md5': calc_md5(fn)}
-        transfer_resultfile(outfullpath, outpath, fn, run['dstsharename'], fdata, fileurl, token,
+        transfer_resultfile(outfullpath, run['runname'], fn, run['dstsharename'], fdata, fileurl, token,
                 self.request.id)
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY, 'analysis_id': run['analysis_id'],
-            'task': self.request.id, 'name': run['name'], 'user': run['outdir'], 'state': 'ok'}
-    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
+            'task': self.request.id, 'name': run['runname'], 'user': run['user'], 'state': 'ok'}
+    report_finished_run(reporturl, postdata, stagedir_to_rm, rundir, run['analysis_id'])
     return run
 
 
-def create_runname_dir(run, run_id, in_name, timestamp):
-    runname = f'{run_id}_{in_name}_{timestamp}'
-    run['runname'] = runname
+def create_runname_dir(run):
     rundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
-    return os.path.join(rundir, runname).replace(' ', '_')
+    return os.path.join(rundir, run['runname']).replace(' ', '_')
 
 
-def prepare_nextflow_run(run, taskid, rundir, stagefiles, mzmls, params):
+def prepare_nextflow_run(run, taskid, rundir, stagefiles, infiles, params):
+    '''Creates run dirs, stage dir if needed, and stages files to either of those.
+    '''
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Got message to run workflow, preparing')
-    # runname is set in task so timestamp corresponds to execution start and not job queue
     gitwfdir = os.path.join(rundir, 'gitwfs')
     try:
         os.makedirs(rundir, exist_ok=True)
     except (OSError, PermissionError):
         taskfail_update_db(taskid, 'Could not create workdir on analysis server')
         raise
-    stagedir = os.path.join(settings.ANALYSIS_STAGESHARE, run['runname'])
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
-    print('Staging files to {}'.format(stagedir))
-    try:
-        params = stage_files(stagedir, stagefiles, params)
-        if len(mzmls):
-            stage_files(stagedir, {'mzmls': [(x['servershare'], x['path'], x['fn']) for x in mzmls]})
-    except Exception:
-        taskfail_update_db(taskid, 'Could not stage files for analysis')
-        raise
-    return params, gitwfdir, stagedir
+    print(f'Staging parameter files to {rundir}')
+    for flag, files in stagefiles.items():
+        stagefiledir = os.path.join(rundir, flag.replace('--', ''))
+        if len(files) > 1:
+            dst = os.path.join(stagefiledir, '*')
+        else:
+            dst = os.path.join(stagefiledir, files[0][2])
+        params.extend([flag, dst])
+        try:
+            os.makedirs(stagefiledir, exist_ok=True)
+        except Exception:
+            taskfail_update_db(taskid, f'Could not create dir to stage files for {flag}')
+            raise
+        try:
+            copy_stage_files(stagefiledir, files)
+        except Exception:
+            taskfail_update_db(taskid, f'Could not stage files for {flag} for analysis')
+            raise
+
+    if len(infiles) and settings.ANALYSIS_STAGESHARE:
+        # If we run with a stageing disk, use it for all files, else
+        # only stage the "small files", i.e. non --input files (no mzML, BAM etc)
+        infilestagedir = os.path.join(settings.ANALYSIS_STAGESHARE, run['runname'])
+        # Files which will be defined in some kind of input.txt file (no --param filename)
+        infiledir = os.path.join(infilestagedir, 'infiles')
+        try:
+            os.makedirs(infiledir, exist_ok=True)
+        except Exception:
+            taskfail_update_db(taskid, f'Could not create dir to stage files for input')
+            raise
+        try:
+            copy_stage_files(infiledir, [(x['servershare'], x['path'], x['fn']) for x in infiles])
+        except Exception:
+            taskfail_update_db(taskid, f'Could not stage files for {flag} for analysis')
+            raise
+    else:
+        # No infiles or no stage disk used, no need to remove later
+        infiledir = False
+    return params, gitwfdir, infiledir 
+
+
+def copy_stage_files(stagefiledir, files):
+    '''
+    '''
+    not_needed_files = set(os.listdir(stagefiledir))
+    # now actually copy
+    for fdata in files:
+        fpath = os.path.join(settings.SHAREMAP[fdata[0]], fdata[1], fdata[2])
+        fdst = os.path.join(stagefiledir, fdata[2])
+        try:
+            not_needed_files.remove(fdata[2])
+        except KeyError:
+            pass
+        if os.path.exists(fdst) and not os.path.isdir(fpath) and os.path.getsize(fdst) == os.path.getsize(fpath):
+            # file already there
+            continue
+        elif os.path.exists(fdst) and os.path.isdir(fpath) and get_dir_content_size(fpath) == get_dir_content_size(fdst):
+            # file is a dir but also ready
+            continue
+        elif os.path.exists(fdst):
+            # file/dir exists but is not correct, delete first
+            os.remove(fdst)
+        if os.path.isdir(fpath):
+            shutil.copytree(fpath, fdst)
+        else:
+            shutil.copy(fpath, fdst)
+    # Remove obsolete files from stage-file-dir
+    for fn in not_needed_files:
+        fpath = os.path.join(stagefiledir, fn)
+        # Defensive checking if exist, they come from a listdir op above
+        if os.path.exists(fpath) and os.path.isdir(fpath):
+            shutil.rmtree(fpath)
+        elif os.path.exists(fpath):
+            os.remove(fpath)
 
 
 def process_error_from_nf_log(logfile):
@@ -354,11 +404,15 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
     # Revoked jobs do not need DB-updating, but need just to be stopped, 
     # so do not catch SoftTimeLimit exception
 
-    #TODO use nextflows -weblog functionality to do logging
-    with open(os.path.join(gitwfdir, 'trace.txt')) as fp:
-        nflog = fp.read()
+    # Get log
+    env = os.environ
+    env['NXF_VER'] = nf_version
+    logfields = ('task_id,hash,native_id,name,status,exit,submit,duration,realtime,pcpu,peak_rss'
+            ',peak_vmem,rchar,wchar')
+    cmd = [settings.NXF_COMMAND, 'log', run['token'], '-f', logfields]
+    nxf_log = subprocess.run(cmd, capture_output=True, text=True, cwd=gitwfdir, env=env)
     log_analysis(run['analysis_id'], 'Workflow finished, transferring result and'
-                 ' cleaning. Full NF trace log: \n{}'.format(nflog))
+                 f' cleaning. Full NF trace log: \n{nxf_log.stdout}')
     outfiles = [os.path.join(outdir, x) for x in os.listdir(outdir)]
     outfiles = [x for x in outfiles if not os.path.isdir(x)]
     reportfile = os.path.join(rundir, 'output', 'Documentation', 'pipeline_report.html')
@@ -371,11 +425,12 @@ def execute_normal_nf(run, params, rundir, gitwfdir, taskid, nf_version, profile
 def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_version):
     print('Got message to run QC workflow, preparing')
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:storelongqc'))
-    postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'],
+    postdata = {'client_id': settings.APIKEY, 'rf_id': run['rf_id'], 'plots': {},
                 'analysis_id': run['analysis_id'], 'task': self.request.id,
                 'instrument': run['instrument'], 'filename': run['filename']}
-    rundir = create_runname_dir(run, run['analysis_id'], run['name'], run['timestamp'])
-    params, gitwfdir, stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
+    rundir = create_runname_dir(run)
+    params, gitwfdir, no_stagedir = prepare_nextflow_run(run, self.request.id, rundir, stagefiles, [], params)
+    # QC has no stagedir, we put the raw in rundir to stage
     try:
         outdir = run_nextflow(run, params, rundir, gitwfdir, profiles, nf_version)
     except subprocess.CalledProcessError:
@@ -386,22 +441,22 @@ def run_nextflow_longitude_qc(self, run, params, stagefiles, profiles, nf_versio
             exitfield, namefield = header.index('exit'), header.index('name')
             for line in fp:
                 # exit code 3 -> not enough PSMs, but maybe
-                # CANT FIND THIS IN PIPELINE OR MSSTITCH!
+                # CANT FIND THIS IN PIPELINE OR MSSTITCH! FIXME
                 # it would be ok to have pipeline output
                 # this message instead
                 line = line.strip('\n').split('\t')
                 if line[namefield] == 'createPSMPeptideTable' and line[exitfield] == '3':
-                    postdata.update({'state': 'error', 'errmsg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
-                    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
-                    raise RuntimeError('QC file did not contain enough quality PSMs')
+                    postdata.update({'state': 'error', 'msg': 'Not enough PSM data found in file to extract QC from, possibly bad run'})
+                    report_finished_run(reporturl, postdata, no_stagedir, rundir, run['analysis_id'])
+                    return run
         taskfail_update_db(self.request.id, errmsg)
-        raise RuntimeError('Error occurred running QC workflow '
-                           '{}'.format(rundir))
+        raise RuntimeError('Error occurred running QC workflow {rundir}')
+    # FIXME state error can also happen here, if no CalledProcessError?
     with open(os.path.join(outdir, 'qc.json')) as fp:
         qcreport = json.load(fp)
     log_analysis(run['analysis_id'], 'QC Workflow finished')
-    postdata.update({'state': 'ok', 'plots': qcreport})
-    report_finished_run(reporturl, postdata, stagedir, rundir, run['analysis_id'])
+    postdata.update({'state': 'ok', 'plots': qcreport, 'msg': 'QC run OK'})
+    report_finished_run(reporturl, postdata, no_stagedir, rundir, run['analysis_id'])
     return run
 
 
@@ -411,7 +466,7 @@ def report_finished_run(url, postdata, stagedir, rundir, analysis_id):
     postdata.update({'log': 'Analysis task completed.', 'analysis_id': analysis_id})
     update_db(url, json=postdata)
     shutil.rmtree(rundir)
-    if os.path.exists(stagedir):
+    if stagedir and os.path.exists(stagedir):
         shutil.rmtree(stagedir)
 
 

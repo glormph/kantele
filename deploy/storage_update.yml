@@ -2,6 +2,7 @@
 # Playbook for starting services on storage servers
 
 - hosts: storage
+  remote_user: '{{ storage_connect_user }}'
   become: yes
   become_user: '{{ storage_user }}'
   tasks:
@@ -33,46 +34,10 @@
       - name: Update virtualenv on storage (SCL, so use shell script)
         shell:
             cmd: "scl enable rh-python36 rh-postgresql12 -- {{ kantelevenv }}/bin/pip install -r {{ kanteledir }}/src/backend/requirements.txt"
-
-      - name: Get celery processes running
-        shell: "ps x | grep -v grep | grep -w celery | awk '{print $1}'"
-        register: running_celery
-
-      - name: Kill running celery
-        command: "kill {{ item }}"
-        register: result
-        failed_when:
-            - result.rc != 0
-            - "'no process killed' not in result.stderr"
-            - "'No such process' not in result.stderr"
-        loop: "{{ running_celery.stdout_lines }}"
-
-      - wait_for:
-          path: "/proc/{{ item }}/status"
-          state: absent
-          timeout: 300
-        loop: "{{ running_celery.stdout_lines }}"
-        ignore_errors: yes
-        register: killed_processes
-         
-      - name: Kill -9 celery that doesnt die
-        shell: "kill -9 {{ item }}"
-        loop: "{{ killed_processes.results | select('failed') | map(attribute='item') | list }}"
-
       - name: Transfer start script
         template:
             src: "{{ item }}.j2"
             dest: "{{ kanteledir }}/{{ item }}.sh"
-        loop:
-            - "storage_dl"
-            - "storage_pdc"
-            - "storage_local"
-
-      - name: Start file management (storage, MD5)
-        command: "scl enable rh-python36 rh-postgresql12 -- bash {{ kanteledir }}/{{ item }}.sh"
-        args:
-            chdir: "{{ kanteledir }}/src/backend"
-        environment: "{{ storage_env }}"
         loop:
             - "storage_dl"
             - "storage_pdc"

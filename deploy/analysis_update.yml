@@ -1,55 +1,24 @@
 ---
-# Playbook for starting analysis (monte)
+# Playbook for updating analysis
 
 - hosts: analysis
   remote_user: jorrit
   tasks:
-      - name: Mount storages
+      - name: Update kantele code
         become: yes
-        mount:
-            path: "{{ item.0 }}"
-            src: "{{ item.1 }}"
-            state: mounted
-            fstype: cifs
-            opts: credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}
-        loop: "{{ storagedirs | zip(storageservers) | list }}"
-        
-      - name: Mount analysis
+        become_user: "{{ kanteleuser }}"
+        git:
+            repo: '{{ kantele_repo }}'
+            dest: "{{ kanteledir }}"
+            version: master
+  
+      - name: Update virtualenv
         become: yes
-        mount:
-            path: "{{ item.0 }}"
-            src: "{{ item.1 }}"
-            state: mounted
-            fstype: cifs
-            opts: rw,credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}
-        loop: "{{ analysisdirs | zip(analysisservers) | list }}"
-
-      - name: Mount work and stage disks
-        become: yes
-        mount:
-            path: "{{ item[0] }}"
-            src: "{{ item[1] }}"
-            state: mounted
-            fstype: ext4
-            opts: rw
-        loop:
-            - "{{ [ stage_mount, stage_device] }}"
-            - "{{ [ baserun_mount, baserun_device] }}"
-
-            ### DOCKER UP
-            ### SLURM UP
-            ### SLURM MYSQL>???
-      - name: Create work and stage dirs
-        become: yes
-        file: 
-            path: "{{ item }}"
-            state: directory
-            owner: "{{ kanteleuser }}"
-            group: "{{ kanteleuser }}"
-        loop:
-            - "{{ stage_dir }}"
-            - "{{ baserun_dir }}"
-            - "{{ larger_rundir }}"
+        become_user: "{{ kanteleuser }}"
+        pip:
+            requirements: "{{ kanteledir }}/src/backend/requirements.txt"
+            virtualenv_python: "/usr/bin/python3"
+            virtualenv: "{{ kantelevenv }}"
 
       - name: Kantele celery env file
         become: yes
@@ -65,17 +34,3 @@
             src: analysis_celery_systemd.j2
             dest: /etc/systemd/system/kantele_analysis.service
             mode: 0644
-        
-      - name: Kantele log dir
-        file:
-            path: "{{ kantelelogdir }}"
-            state: directory
-            owner: "{{ kanteleuser }}"
-            group: "{{ kanteleuser }}"
-
-      - name: Start celery
-        become: yes
-        systemd:
-            state: restarted
-            daemon_reload: yes
-            name: kantele_analysis

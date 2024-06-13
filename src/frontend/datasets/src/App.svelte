@@ -2,8 +2,9 @@
 import { getJSON, postJSON } from './funcJSON.js'
 import { dataset_id, datatype_id, datasetFiles, projsamples } from './stores.js';
 import { onMount } from 'svelte';
-import Acquicomp from './Acquicomp.svelte';
-import Prepcomp from './Prepcomp.svelte';
+import MSDataComp from './MScomp.svelte';
+import Samplesheet from './Samplesheet.svelte';
+// FIXME msdata should be folded into the MScomponent now we dont have acquisition only anymore
 import Msdata from './Msdata.svelte';
 import LCheck from './LCheck.svelte';
 import PooledLCheck from './PooledLCheck.svelte';
@@ -11,22 +12,19 @@ import Files from './Files.svelte';
 import ErrorNotif from './ErrorNotif.svelte';
 import DynamicSelect from './DynamicSelect.svelte';
   
-// FIXME dataset_id is global on django template and not updated on save, change that!, FIXED???
-// FIXME files do not get updated
 if (init_dataset_id) { dataset_id.set(init_dataset_id) };
 
-
 let mssubcomp;
-let acquicomp;
-let prepcomp;
+let msdatacomp;
+let samplesheet;
 let lccomp;
 let pooledlc;
 let filescomp;
 let edited = false;
 let errors = {
   basics: [],
-  sprep: [],
-  acqui: [],
+  samples: [],
+  msdata: [],
   lc: [],
 };
 let saveerrors = Object.assign({}, errors);
@@ -70,18 +68,19 @@ let isExternal = false;
 let isNewExperiment = false;
 let isNewPI = false;
 let experiments = []
-let stored = true;
 let tabshow = 'meta';
 let tabcolor = 'has-text-grey-lighter';
   // Yes, for microscopy/genomics, we need separation between samples/prep
   // files is given, and possibly samples as well, check it out but samples is needed for:
   // - QMS, LCheck, IP, TPP, microscopy QC?, genomics
 
-$: showMsdata = components.indexOf('acquisition') > -1;
+$: showMsdata = components.indexOf('ACQUISITION') > -1;
 $: isExternal = Boolean(dsinfo.ptype_id && dsinfo.ptype_id !== local_ptype_id);
 $: isLabelcheck = datasettypes.filter(x => x.id === dsinfo.datatype_id).filter(x => x.name.indexOf('abelcheck') > -1).length;
+$: stored = $dataset_id && !edited;
 
 async function getcomponents() {
+  // FIXME can get these in single shot? Need not network trip.
   const result = await getJSON(`/datasets/show/components/${dsinfo.datatype_id}`);
   components = result.components;
 }
@@ -222,7 +221,8 @@ async function save() {
     if ('error' in response) {
       saveerrors.basics = [response.error, ...saveerrors.basics];
     } else {
-  	  dataset_id.set(response.dataset_id);
+      dataset_id.set(response.dataset_id);
+      history.pushState({}, '', `/datasets/show/${response.dataset_id}/`);
       fetchDataset();
     }
   }
@@ -286,6 +286,8 @@ function showFiles() {
       <h5 class="has-text-primary title is-5">
         {#if stored}
         <i class="icon fas fa-check-circle"></i>
+        {:else}
+        <i class="icon fas fa-edit"></i>
         {/if}
         Basics
         <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
@@ -378,18 +380,13 @@ function showFiles() {
       </div>
       {/if}
   
+
       {#if showMsdata}
+      <!-- storage location depends on prefractionation, so put it here -->
       <Msdata bind:this={mssubcomp} on:edited={editMade} bind:dsinfo={dsinfo} prefracs={prefracs} hirief_ranges={hirief_ranges} />
+      {/if}
 
-      <div class="field">
-        <label class="label">Run name</label>
-        <div class="control">
-          <input class="input" bind:value={dsinfo.runname} on:change={editMade} type="text" placeholder="E.g set1, lc3, rerun5b, etc">
-        </div>
-      </div>
-
-      <Acquicomp bind:this={acquicomp} bind:errors={errors.acqui} />
-      {:else if dsinfo.datatype_id}
+      {#if showMsdata || dsinfo.datatype_id}
       <div class="field">
         <label class="label">Run name</label>
         <div class="control">
@@ -397,13 +394,24 @@ function showFiles() {
         </div>
       </div>
       {/if}
-      {#if (components.indexOf('sampleprep')> -1)}
-      <Prepcomp bind:this={prepcomp} bind:errors={errors.sprep} />
+
+      <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
+      <button class="button is-small is-info has-text-weight-bold" disabled={!edited || !dsinfo.datatype_id} on:click={fetchDataset}>Revert</button>
+
+      <hr>
+
+      {#if showMsdata}
+      <!-- acquisition and MS data -->
+      <MSDataComp bind:this={msdatacomp} bind:errors={errors.msdata} />
+      <hr>
       {/if}
-      {#if (Object.keys($datasetFiles).length && components.indexOf('labelchecksamples')>-1)}
+
+      {#if (Object.keys($datasetFiles).length && components.indexOf('LCSAMPLES')>-1)}
       <LCheck bind:this={lccomp} bind:errors={errors.lc} />
-      {:else if (Object.keys($datasetFiles).length && components.indexOf('pooledlabelchecksamples')>-1)}
+      {:else if (Object.keys($datasetFiles).length && components.indexOf('POOLEDLCSAMPLES')>-1)}
       <PooledLCheck bind:this={pooledlc} bind:errors={errors.lc} />
+      {:else}
+      <Samplesheet bind:this={samplesheet} bind:errors={errors.samples} />
       {/if}
     </div>
 </div>

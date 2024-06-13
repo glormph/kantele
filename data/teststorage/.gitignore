@@ -1,4 +1,4 @@
-# fakestorage/ shared tmpdir between containers for testing storage
+# teststorage/ shared tmpdir between containers for testing storage
 # can be wiped, contents should not be in repo
 # ignore everything except this file in the folder
 *

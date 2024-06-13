@@ -15,7 +15,7 @@ let instruments = [];
 let view = 'rawfiles';
 
 async function initUserUpload() {
-  let resp = await getJSON('/files/external/scan');
+  let resp = await getJSON('/files/external/scan/');
   allshares = resp.shares;
   shareId = allshares[0].id;
 }
@@ -36,7 +36,7 @@ async function queueImport() {
     dsets: Object.values(dsets),
   };
   console.log(data);
-  let resp = await postJSON('/files/external/import', data);
+  let resp = await postJSON('/files/external/import/', data);
   // API wants:
   // {share_id: int, dirname: top_lvl_dir, dsets: [{'instrument_id': int, 'name': str, 'files': [(path/to/file.raw', ], 
 }

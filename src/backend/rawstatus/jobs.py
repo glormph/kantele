@@ -6,8 +6,9 @@ from datetime import datetime
 
 from rawstatus import tasks, models
 from datasets import tasks as dstasks
+from datasets import models as dm
 from kantele import settings
-from jobs.jobs import BaseJob, SingleFileJob
+from jobs.jobs import SingleFileJob, MultiFileJob, DatasetJob
 
 
 def create_upload_dst_web(rfid, ftype):
@@ -23,6 +24,15 @@ class RsyncFileTransfer(SingleFileJob):
     refname = 'rsync_transfer'
     task = tasks.rsync_transfer_file
 
+    def check_error(self, **kwargs):
+        src_sf = self.getfiles_query(**kwargs)
+        if models.StoredFile.objects.exclude(pk=src_sf.pk).filter(filename=src_sf.filename,
+                path=src_sf.path, servershare_id=src_sf.servershare_id).exists():
+            return (f'Cannot rsync file {src_sf.pk} to location {src_sf.servershare.name} / '
+                    f'{src_sf.path} as another file with the same name is already there')
+        else:
+            return False
+
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         dstpath = os.path.join(sfile.path, sfile.filename)
@@ -32,6 +42,8 @@ class RsyncFileTransfer(SingleFileJob):
 
 
 class CreatePDCArchive(SingleFileJob):
+    '''Archiving of newly arrived files - full datasets can also be archived if they
+    are not - then we use the BackupDataset job instead'''
     refname = 'create_pdc_archive'
     task = tasks.pdc_archive
 
@@ -43,6 +55,7 @@ class CreatePDCArchive(SingleFileJob):
 
 
 class RestoreFromPDC(SingleFileJob):
+    '''For restoring files which are not in a dataset'''
     refname = 'restore_from_pdc_archive'
     task = tasks.pdc_restore
 
@@ -58,23 +71,31 @@ class RenameFile(SingleFileJob):
     refname = 'rename_file'
     task = dstasks.move_file_storage
     retryable = False
-    """Only renames file inside same path/server. Does not move cross directories.
-    This job checks if there is a RawFile entry with the same name in the same folder
-    to avoid possible renaming collisions. Updates RawFile in job instead of view 
-    since jobs are processed in a single queue.
-    Since it only expects raw files it will also rename all mzML attached converted
-    files. newname should NOT contain the file extension, only name.
-    FIXME: make impossible to overwrite using move jobs at all (also moving etc)
+    """Only renames file inside same path/server. Does not move cross directories. Does not change extensions.
+    Updates RawFile in job instead of view since jobs are processed in a single queue. StoredFile names are
+    updated in the post job view.
+    It will also rename all mzML attached converted files.
     """
 
+    def check_error(self, **kwargs):
+        '''Check for file name collisions, also with directories'''
+        src_sf = self.getfiles_query(**kwargs)
+        fn_ext = os.path.splitext(src_sf.filename)[1]
+        fullnewname = f'{kwargs["newname"]}{fn_ext}'
+        fullnewpath = os.path.join(src_sf.path, f'{kwargs["newname"]}{fn_ext}')
+        if models.StoredFile.objects.filter(filename=fullnewname, path=src_sf.path,
+                servershare_id=src_sf.servershare_id).exists():
+            return f'A file in path {src_sf.path} with name {fullnewname} already exists. Please choose another name.'
+        elif dm.Dataset.objects.filter(storage_loc=fullnewpath,
+                storageshare_id=src_sf.servershare_id).exists():
+            return f'A dataset with the same directory name as your new file name {fullnewpath} already exists'
+        else:
+            return False
+        
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
         newname = kwargs['newname']
         fn_ext = os.path.splitext(sfile.filename)[1]
-        if models.StoredFile.objects.exclude(pk=sfile.id).filter(
-                rawfile__name=newname + fn_ext, path=sfile.path,
-                servershare_id=sfile.servershare_id).exists():
-            raise RuntimeError('A file in path {} with name {} already exists or will soon be created. Please choose another name'.format(sfile.path, newname))
         sfile.rawfile.name = newname + fn_ext
         sfile.rawfile.save()
         for changefn in sfile.rawfile.storedfile_set.select_related('mzmlfile'):
@@ -87,34 +108,66 @@ class RenameFile(SingleFileJob):
 
 
 class MoveSingleFile(SingleFileJob):
+    '''Move file from one share/path to another. Technically the same as rename, as you can
+    also specify a new filename, but this job is not exposed to the user, and only used
+    internally for moving files to a predestined path (i.e. incoming mzML, QC raw files, library etc'''
     refname = 'move_single_file'
     task = dstasks.move_file_storage
 
+    def check_error(self, **kwargs):
+        '''Check for file name collisions'''
+        src_sf = self.getfiles_query(**kwargs)
+        if dstsharename := kwargs.get('dstsharename'):
+            sshare = models.ServerShare.objects.filter(name=dstsharename).get()
+        else:
+            sshare = src_sf.servershare
+        newfn = kwargs.get('newname', src_sf.filename)
+        fullnewpath = os.path.join(kwargs['dst_path'], newfn)
+        if models.StoredFile.objects.filter(filename=newfn, path=kwargs['dst_path'],
+                servershare=sshare).exists():
+            return f'A file in path {kwargs["dst_path"]} with name {src_sf.filename} already exists. Please choose another name.'
+        elif dm.Dataset.objects.filter(storage_loc=fullnewpath, storageshare=sshare).exists():
+            return f'A dataset with the same directory name as your new file location {fullnewpath} already exists'
+        else:
+            return False
+
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
-        oldname = sfile.filename if not 'oldname' in kwargs or not kwargs['oldname'] else kwargs['oldname']
         taskkwargs = {x: kwargs[x] for x in ['newname'] if x in kwargs}
         dstsharename = kwargs.get('dstsharename') or sfile.servershare.name
         self.run_tasks.append(((
-            oldname, sfile.servershare.name,
+            sfile.filename, sfile.servershare.name,
             sfile.path, kwargs['dst_path'], sfile.id, dstsharename), taskkwargs))
 
 
-class PurgeFiles(BaseJob):
+class PurgeFiles(MultiFileJob):
     """Removes a number of files from active storage"""
     refname = 'purge_files'
     task = tasks.delete_file
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related('servershare')
+        return super().getfiles_query(**kwargs).values('mzmlfile', 'path', 'filename',
+                'filetype__is_folder', 'servershare__name', 'pk') 
 
     def process(self, **kwargs):
+        # Safety check:
+        # First check if files have been archived if that is a demand
+        if kwargs.get('need_archive', False):
+            if models.PDCBackedupFile.objects.filter(storedfile_id__in=kwargs['sf_ids'],
+                    success=True, deleted=False).count() != len(kwargs['sf_ids']):
+                raise RuntimeError('Cannot purge these files which are dependent on an archive job '
+                        'to have occurred, cannot find records of archived files in DB')
+        # Do the actual purge
         for fn in self.getfiles_query(**kwargs):
-            fullpath = os.path.join(fn.path, fn.filename)
-            self.run_tasks.append(((fn.servershare.name, fullpath, fn.id), {}))
+            fullpath = os.path.join(fn['path'], fn['filename'])
+            if fn['mzmlfile'] is not None:
+                is_folder = False
+            else:
+                is_folder = fn['filetype__is_folder']
+            self.run_tasks.append(((fn['servershare__name'], fullpath, fn['pk'], is_folder), {}))
 
 
-class DeleteEmptyDirectory(BaseJob):
+class DeleteEmptyDirectory(MultiFileJob):
     """Check first if all the sfids are set to purged, indicating the dir is actually empty.
     Then queue a task. The sfids also make this job dependent on other jobs on those, as in
     the file-purging tasks before this directory deletion"""
@@ -122,14 +175,13 @@ class DeleteEmptyDirectory(BaseJob):
     task = tasks.delete_empty_dir
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(pk__in=kwargs['sf_ids']).select_related(
-                'servershare', 'rawfile')
+        return super().getfiles_query(**kwargs).values('servershare__name', 'path')
     
     def process(self, **kwargs):
         sfiles = self.getfiles_query(**kwargs)
         if sfiles.count() and sfiles.count() == sfiles.filter(purged=True).count():
             fn = sfiles.last()
-            self.run_tasks.append(((fn.servershare.name, fn.path), {}))
+            self.run_tasks.append(((fn['servershare__name'], fn['path']), {}))
         elif not sfiles.count():
             pass
         else:
@@ -137,7 +189,7 @@ class DeleteEmptyDirectory(BaseJob):
                 'have not been purged yet in the directory')
 
 
-class RegisterExternalFile(BaseJob):
+class RegisterExternalFile(MultiFileJob):
     refname = 'register_external_raw'
     task = tasks.register_downloaded_external_raw
     """gets sf_ids, of non-checked downloaded external RAW files in tmp., checks MD5 and 
@@ -145,20 +197,26 @@ class RegisterExternalFile(BaseJob):
     """
 
     def getfiles_query(self, **kwargs):
-        return models.StoredFile.objects.filter(rawfile_id__in=kwargs['rawfnids'], checked=False)
+        return super().getfiles_query(**kwargs).filter(checked=False).values('path', 'filename', 'pk', 'rawfile_id')
     
     def process(self, **kwargs):
         for fn in self.getfiles_query(**kwargs):
-            self.run_tasks.append(((os.path.join(fn.path, fn.filename), fn.id,
-                fn.rawfile_id, kwargs['sharename'], kwargs['dset_id']), {}))
+            self.run_tasks.append(((os.path.join(fn['path'], fn['filename']), fn['pk'],
+                fn['rawfile_id'], kwargs['sharename'], kwargs['dset_id']), {}))
 
 
-class DownloadPXProject(BaseJob):
+class DownloadPXProject(DatasetJob):
+    # FIXME dupe check?
     refname = 'download_px_data'
     task = tasks.download_px_file_raw
     """gets sf_ids, of non-checked non-downloaded PX files.
     checks pride, fires tasks for files not yet downloaded. 
     """
+
+    def get_sf_ids_jobrunner(self, **kwargs):
+        """This is run before running job, to define files used by
+        the job (so it cant run if if files are in use by other job)"""
+        return [x.pk for x in self.getfiles_query(**kwargs)]
 
     def getfiles_query(self, **kwargs):
         return models.StoredFile.objects.filter(rawfile_id__in=kwargs['shasums'], 

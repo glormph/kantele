@@ -44,6 +44,12 @@
             - USER_ID: '{{ kanteleuid }}'
             - GROUP_ID: '{{ kantelegid }}'
 
+      - name: Perform any outstanding migrations
+        ansible.builtin.command:
+            cmd: "docker-compose --env-file {{ compose_env_file }} -f src/docker/docker-compose-base.yml -f src/docker/docker-compose-prod.yml exec web python manage.py migrate"
+            chdir: "{{ kanteledir }}"
+        
+         
       - name: Cron job for downloading ENSEMBL/swiss fasta
         ansible.builtin.cron:
             name: Schedule job to download new FASTA 

@@ -15,23 +15,15 @@ services:
             DB_HOST: db
             #DB_HOST: "${HOST_FQDN}"
             RABBITHOST: mq
-            STORAGESHARENAMES: "storage,s3storage"
-            PRIMARY_STORAGE: s3storage
             ANALYSISSHARE: '/analysisfiles' # test only, remove
         volumes:
             - ./src/backend:/kantele
+            - ./static:/kantele/static
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
             - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
     
     nginx:
-        image: nginx_stage
-        build:
-            context: ./src
-            dockerfile: ./docker/Dockerfile
-            target: nginx_stage
-            args:
-                USER_ID: "${USER_ID:-You must run export USER_ID}"
-                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
+        image: "nginx:1.21"
         depends_on:
             - web
         ports:
@@ -53,8 +45,8 @@ services:
             KANTELE_ROLE: "${PG_KANTELE_USER}"
         volumes:
             - "./src/docker/create_kantele_db.sh:/docker-entrypoint-initdb.d/create_kantele_db.sh"
-              #- "/mnt/newstorage/backups:/pgbackups"
-            - "./tmp/backups:/pgbackups"
+            - "${PG_DATA_PATH:-./false_pg_data}:/var/lib/postgresql/data"
+            - "${BACKUP_PATH}:/pgbackups"
 
     mq:
         extends:
@@ -75,8 +67,6 @@ services:
             DB_HOST: db
             RABBITHOST: mq
             HOST_UPLOADDIR: "${CONTAINER_UPLOADPATH}"
-            STORAGESHARENAMES: "storage,oldstorage"
-
 
     storage_mvfiles:
         depends_on:
@@ -100,12 +90,12 @@ services:
 
         command: celery -A kantele worker -Q file_download -n storage_downloads.%h --concurrency=1
         volumes:
-            - "./src/docker/test_rsync_sshkey:${RSYNC_SSHKEY}"
+            - "./src/docker/test_rsync_sshkey:/home/kantele/.ssh/rsync_key"
         environment:
             RSYNC_HOST: upload_bay_rsync
-            RSYNC_SSHUSER: "${RSYNC_SSHUSER}"
+            RSYNC_SSHUSER: kantele
             RSYNC_SSHPORT: 22
-            RSYNC_SSHKEY: "${RSYNC_SSHKEY}"
+            RSYNC_SSHKEY: "/home/kantele/.ssh/rsync_key"
 
 
     upload_bay_rsync:
@@ -156,4 +146,4 @@ services:
             #            RABBITPASS: "${RABBITPASS:-guest}"
             #            STAGESHARE: /nxf/stage
             #            NEXTFLOW_RUNDIR: /nxf/runs
-            #            NXF_COMMAND: "${NXF_COMMAND}"
+            #            NXF_COMMAND: "/nxf/nextflow"

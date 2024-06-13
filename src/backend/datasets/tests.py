@@ -1,21 +1,40 @@
 import os
 import json
-from time import sleep
 from datetime import datetime
+from django.utils import timezone
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
-from django.core.management import call_command
 
 from kantele import settings
-from kantele.tests import BaseTest, BaseIntegrationTest
+from kantele.tests import BaseTest, BaseIntegrationTest, ProcessJobTest
 from datasets import models as dm
+from datasets import jobs as dj
 from jobs import models as jm
 from jobs.jobs import Jobstates
 from rawstatus import models as rm
 
 
-class UpdateDatasetTest(BaseIntegrationTest):
+class SaveUpdateDatasetTest(BaseIntegrationTest):
     url = '/datasets/save/dataset/'
+
+    def test_new_dset(self):
+        resp = self.post_json(data={'dataset_id': False, 'project_id': self.p1.pk,
+            'experiment_id': self.exp1.pk, 'runname': 'newrunname',
+            'datatype_id': self.dtype.pk, 
+            'prefrac_id': False, 'ptype_id': self.ptype.pk,
+            'externalcontact': self.contact.email})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(dm.RunName.objects.filter(name='newrunname').count(), 1)
+        ds = dm.Dataset.objects.get(runname__name='newrunname', runname__experiment=self.exp1)
+        self.assertEqual(ds.datatype_id, self.dtype.pk)
+        self.assertEqual(ds.storage_loc, os.path.join(self.p1.name, self.exp1.name, self.dtype.name, 'newrunname'))
+        self.assertEqual(ds.datasetowner_set.count(), 1)
+        self.assertEqual(ds.datasetowner_set.get().user, self.user)
+        dsc = ds.datasetcomponentstate_set
+        self.assertEqual(dsc.count(), self.dtype.datatypecomponent_set.count())
+        self.assertEqual(dsc.filter(state=dm.DCStates.OK).count(), 1)
+        self.assertTrue(dsc.filter(state=dm.DCStates.OK, dtcomp=self.dtcompdef).exists())
+        self.assertEqual(dsc.filter(state=dm.DCStates.NEW).count(), self.dtype.datatypecomponent_set.count() - 1)
 
     def test_update_dset_newexp_location(self):
         newexpname = 'edited_exp'
@@ -29,8 +48,7 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertTrue(os.path.exists(self.f3path))
         rename_job = jm.Job.objects.filter(funcname='rename_dset_storage_loc').last()
         self.assertEqual(rename_job.state, Jobstates.PENDING)
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.f3path))
         new_ds_loc = os.path.join(self.p1.name, newexpname, self.dtype.name, self.run1.name)
         self.assertNotEqual(self.ds.storage_loc, new_ds_loc)
@@ -40,6 +58,9 @@ class UpdateDatasetTest(BaseIntegrationTest):
             self.ds.storage_loc, self.f3sf.filename)))
 
     def test_remove_files_wait_for_rename(self):
+        '''First queue a move dataset job, to new experiment name. Then queue a remove
+        files job from dataset. The second job should wait for the first one, so the removed
+        file should first be moved to the new dset location'''
         newexpname = 'edited_exp1'
         # move dataset
         mvdsresp = self.post_json({'dataset_id': self.ds.pk, 'project_id': self.p1.pk,
@@ -61,8 +82,7 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertFalse(self.f3raw.claimed)
         # execute dataset move on disk, should also move the removed files and update their DB
         # the move job should be in waiting state still
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         mvjob = jm.Job.objects.filter(funcname='move_stored_files_tmp').last()
         self.assertEqual(mvjob.state, Jobstates.PENDING)
         self.ds.refresh_from_db()
@@ -71,12 +91,9 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertEqual(self.f3sf.path, self.ds.storage_loc)
         newf3sf_path = os.path.join(settings.SHAREMAP[self.sstmp.name], self.f3sf.filename)
         self.assertFalse(os.path.exists(newf3sf_path))
-        # call twice to execute tmp-move files on disk, first call only resolves rename dset job
-        call_command('runjobs')
+        self.run_job()
         rename_job.refresh_from_db()
         self.assertEqual(rename_job.state, Jobstates.DONE)
-        call_command('runjobs')
-        sleep(3)
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
         # f3 file should now exist in tmp
@@ -111,8 +128,7 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.tmpraw.refresh_from_db()
         self.assertTrue(self.tmpraw.claimed)
         # execute dataset move on disk, should not move the added files on tmp (nor update their DB)
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         mvjob = jm.Job.objects.filter(funcname='move_files_storage').last()
         self.assertEqual(mvjob.state, Jobstates.PENDING)
         self.ds.refresh_from_db()
@@ -122,10 +138,7 @@ class UpdateDatasetTest(BaseIntegrationTest):
         newtmpsf_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.ds.storage_loc,
                 self.tmpsf.filename)
         self.assertFalse(os.path.exists(newtmpsf_path))
-        # call twice to execute add files on disk, first call only resolves rename dset job
-        call_command('runjobs')
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
         # tmp file should now exist in dset folder
@@ -133,17 +146,37 @@ class UpdateDatasetTest(BaseIntegrationTest):
         self.assertTrue(os.path.exists(newtmpsf_path))
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
+    
 
-        # clean up
-        newdsr.delete()
+    def test_fail_storageloc_is_filename(self):
+        # Create file with dset storloc path/name
+        fpath, fname = os.path.join(self.p1.name, self.exp1.name, self.dtype.name), 'file_dirname'
+        raw = rm.RawFile.objects.create(name=fname, producer=self.prod,
+                source_md5='storloc_raw_fakemd5', size=100, date=timezone.now(), claimed=False)
+        sf = rm.StoredFile.objects.create(rawfile=raw, md5=raw.source_md5, path=fpath,
+                filename=raw.name, servershare=self.ssnewstore, checked=True, filetype=self.ft)
+        # Try to create new dset 
+        resp = self.post_json(data={'dataset_id': False, 'project_id': self.p1.pk,
+            'experiment_id': self.exp1.pk, 'runname': fname, 'datatype_id': self.dtype.pk,
+            'prefrac_id': False, 'ptype_id': self.ptype.pk, 'externalcontact': self.contact.email})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('storage location not unique, there is either a file', resp.json()['error'])
+
+        # Try to update existing dataset
+        dm.RunName.objects.filter(experiment=self.exp1, name=fname).delete()
+        resp = self.post_json(data={'dataset_id': self.ds.pk, 'project_id': self.p1.pk,
+            'experiment_id': self.exp1.pk, 'runname': fname, 'datatype_id': self.dtype.pk,
+            'prefrac_id': False, 'ptype_id': self.ptype.pk,
+            'externalcontact': self.contact.email})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('There is already a file with that exact path', resp.json()['error'])
 
 
 class UpdateFilesTest(BaseIntegrationTest):
     url = '/datasets/save/files/'
 
     def test_add_files(self):
-        # Add files, check if added, also check if the job waits for another job on
-        # the dataset
+        '''Add files, check if added, also check if the job waits for another job on the dataset'''
         resp = self.post_json({'dataset_id': self.ds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
             'removed_files': {}})
         self.assertEqual(resp.status_code, 200)
@@ -154,28 +187,87 @@ class UpdateFilesTest(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, '')
         self.tmpraw.refresh_from_db()
         self.assertTrue(self.tmpraw.claimed)
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.tmpsf.refresh_from_db()
         self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
             self.ds.storage_loc, self.tmpsf.filename)))
+    
+    def test_add_fails(self):
+        # Fail because there is no storedfile
+        fn = 'raw_no_sf'
+        raw = rm.RawFile.objects.create(name=fn, producer=self.prod, claimed=False,
+                source_md5='raw_no_sf_fakemd5', size=1024, date=timezone.now())
+        resp = self.post_json({'dataset_id': self.ds.pk, 'added_files': {raw.pk: {'id': raw.pk}},
+            'removed_files': {}})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('cannot be saved to dataset', json.loads(resp.content)['error'])
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=raw)
+        self.assertEqual(newdsr.count(), 0)
+        self.assertFalse(raw.claimed)
 
-        # clean up
-        newdsr.delete()
+    def test_trigger_movejob_errors(self):
+        # add files are already in dset
+        dupe_raw = rm.RawFile.objects.create(name=self.f3raw.name, producer=self.prod,
+                source_md5='tmpraw_dupe_fakemd5', size=100, date=timezone.now(), claimed=False)
+        dupe_sf = rm.StoredFile.objects.create(rawfile=dupe_raw, md5=dupe_raw.source_md5, path='',
+                filename=dupe_raw.name, servershare=self.sstmp, checked=True, filetype=self.ft)
+        resp = self.cl.post(self.url, content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'added_files': {dupe_raw.pk: {'id': dupe_raw.pk}},
+            'removed_files': {}})
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=dupe_raw)
+        self.assertEqual(newdsr.count(), 0)
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(dupe_raw.claimed)
+        self.assertIn(f'Cannot move files selected to dset {self.ds.storage_loc}', resp.json()['error'])
+        self.assertEqual(dupe_sf.servershare, self.sstmp)
+        self.assertEqual(dupe_sf.path, '')
+
+        # remove files results in a job and claimed files still on tmp
+        # dupe_raw above is needed!
+        resp = self.cl.post(self.url, content_type='application/json', data={
+            'dataset_id': self.ds.pk, 'added_files': {},
+            'removed_files': {self.f3raw.pk: {'id': self.f3raw.pk}}})
+        self.f3sf.refresh_from_db()
+        dsr = dm.DatasetRawFile.objects.get(rawfile=self.f3raw, dataset=self.ds)
+        self.assertEqual(dsr.pk, self.f3dsr.pk)
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(self.f3raw.claimed)
+        self.assertIn(f'Cannot move files from dataset {self.ds.pk}', resp.json()['error'])
+        self.assertEqual(self.f3sf.servershare, self.ds.storageshare)
+        self.assertEqual(self.f3sf.path, self.ds.storage_loc)
+
+    def test_dset_is_filename_job_error(self):
+        # new file is dir w same name as dset storage dir
+        run = dm.RunName.objects.create(name='newrun', experiment=self.exp1)
+        newpath, newfn = os.path.split(self.ds.storage_loc)
+        self.tmpsf.filename = newfn
+        self.tmpsf.save()
+        newds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
+                datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=newpath)
+        dm.DatasetOwner.objects.get_or_create(dataset=newds, user=self.user)
+        resp = self.cl.post(self.url, content_type='application/json', data={
+            'dataset_id': newds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
+            'removed_files': {}})
+        dsr = dm.DatasetRawFile.objects.filter(rawfile=self.tmpraw, dataset=self.ds)
+        self.assertEqual(dsr.count(), 0)
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(self.tmpraw.claimed)
+        self.assertIn(f'Cannot move selected files to path {newds.storage_loc}', resp.json()['error'])
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
 
 
 class RenameProjectTest(BaseIntegrationTest):
     url = '/datasets/rename/project/'
 
     def test_no_ownership_fail(self):
-        ####
         run = dm.RunName.objects.create(name='someoneelsesrun', experiment=self.exp1)
         ds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
                 datatype=self.dtype, storage_loc='test', storageshare=self.ssnewstore)
         otheruser = User.objects.create(username='test', password='test')
-        own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
+        dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projid': self.p1.pk, 'newname': 'testnewp'})
         self.assertEqual(resp.status_code, 403)
@@ -192,7 +284,11 @@ class RenameProjectTest(BaseIntegrationTest):
         self.assertEqual(resp.status_code, 403)
         self.assertIn(f'cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}',
                 json.loads(resp.content)['error'])
-        # existing proj name? proj name identical to old projname
+        oldp = dm.Project.objects.create(name='project to rename', pi=self.pi)
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'projid': oldp.pk, 'newname': self.p1.name})
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('There is already a project by that name', resp.json()['error'])
 
     def test_rename_ok(self):
         newname = 'testnewname'
@@ -207,8 +303,7 @@ class RenameProjectTest(BaseIntegrationTest):
         self.assertEqual(self.p1.name, newname)
         self.assertTrue(os.path.exists(self.f3path))
         old_loc = self.ds.storage_loc
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.f3path))
         new_loc = os.path.join(newname, self.exp1.name, self.dtype.name, self.run1.name)
         self.assertEqual(self.ds.storage_loc, old_loc)
@@ -218,6 +313,7 @@ class RenameProjectTest(BaseIntegrationTest):
             self.ds.storage_loc, self.f3sf.filename)))
 
     def test_if_added_removed_files_ok(self):
+        # first rename job http request, then add files, then jobs run:
         newname = 'testnewname'
         self.assertEqual(dm.Project.objects.filter(name=newname).count(), 0)
         resp = self.cl.post(self.url, content_type='application/json',
@@ -241,8 +337,7 @@ class RenameProjectTest(BaseIntegrationTest):
         # Now test rename project job
         self.assertTrue(os.path.exists(self.f3path))
         old_loc = self.ds.storage_loc
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         self.assertFalse(os.path.exists(self.f3path))
         new_loc = os.path.join(newname, self.exp1.name, self.dtype.name, self.run1.name)
         self.assertEqual(self.ds.storage_loc, old_loc)
@@ -262,10 +357,7 @@ class RenameProjectTest(BaseIntegrationTest):
         newtmpsf_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.ds.storage_loc,
                 self.tmpsf.filename)
         self.assertFalse(os.path.exists(newtmpsf_path))
-        # call twice to execute add files on disk, first call only resolves rename dset job
-        call_command('runjobs')
-        call_command('runjobs')
-        sleep(3)
+        self.run_job()
         mvjob.refresh_from_db()
         self.assertEqual(mvjob.state, Jobstates.PROCESSING)
         # tmp file should now exist in dset folder
@@ -274,8 +366,360 @@ class RenameProjectTest(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
 
-        # clean up
-        newdsr.delete()
+
+class SaveSamples(BaseTest):
+    url = '/datasets/save/samples/'
+
+    def test_fails(self):
+        newrun = dm.RunName.objects.create(name='failrun', experiment=self.exp1)
+        newds = dm.Dataset.objects.create(date=self.p1.registered, runname=newrun,
+                datatype=self.dtype, storage_loc=newrun.name, storageshare=self.ssnewstore)
+        otheruser = User.objects.create(username='test', password='test')
+        dm.DatasetOwner.objects.create(dataset=newds, user=otheruser)
+
+        resp = self.cl.post(self.url, content_type='application/json', data={'dataset_id': newds.pk})
+        self.assertEqual(resp.status_code, 403)
+        resp = self.cl.get(self.url)
+        self.assertEqual(resp.status_code, 405)
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': 'blah',
+                        'sampletypes': [{'id': self.samtype1.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 400)
+        self.assertJSONEqual(resp.content.decode('utf-8'),
+                {'error': 'Samples and species need to be specified for all files or channels'})
+
+    def test_save_new_samples_multiplex(self):
+        newrun = dm.RunName.objects.create(name='newds_nosamples_plex', experiment=self.exp1)
+        newds = dm.Dataset.objects.create(date=self.p1.registered, runname=newrun,
+                datatype=self.dtype, storage_loc=newrun.name, storageshare=self.ssnewstore)
+        dm.DatasetOwner.objects.create(dataset=newds, user=self.user)
+        samplename = 'new proj sample A'
+        dm.DatasetComponentState.objects.get_or_create(dataset=newds,
+                defaults={'state': dm.DCStates.NEW, 'dtcomp': self.dtcompsamples})
+
+        psam = dm.ProjectSample.objects.filter(sample=samplename, project=newrun.experiment.project)
+        self.assertEqual(psam.count(), 0)
+
+        req = {'dataset_id': newds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(psam.count(), 1)
+        psam = psam.get()
+        self.assertEqual(psam.samplematerial_set.count(), 2)
+        self.assertEqual(psam.samplespecies_set.count(), 1)
+        self.assertEqual(psam.datasetsample_set.filter(dataset=newds).count(), 1)
+
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=newds, channel=self.qtch).count(), 1)
+        self.assertFalse(hasattr(psam, 'quantsamplefile'))
+
+    def test_save_new_samples_files(self):
+        # Create dset
+        newrun = dm.RunName.objects.create(name='newds_nosamples_fns', experiment=self.exp1)
+        newds = dm.Dataset.objects.create(date=self.p1.registered, runname=newrun,
+                datatype=self.dtype, storage_loc=newrun.name, storageshare=self.ssnewstore)
+        dm.DatasetOwner.objects.create(dataset=newds, user=self.user)
+        dm.DatasetComponentState.objects.get_or_create(dataset=newds,
+                defaults={'state': dm.DCStates.NEW, 'dtcomp': self.dtcompsamples})
+
+        # Add file to dset
+        fn = 'raw_lf_dset'
+        raw = rm.RawFile.objects.create(name=fn, producer=self.prod,
+                source_md5='rawlf_ds_fakemd5', size=2024, date=timezone.now(),
+                claimed=True)
+        dsr = dm.DatasetRawFile.objects.create(dataset=newds, rawfile=raw)
+
+        samplename = 'new proj sample B'
+        psam = dm.ProjectSample.objects.filter(sample=samplename, project=newrun.experiment.project)
+        self.assertEqual(psam.count(), 0)
+
+        req = {'dataset_id': newds.pk,
+                'qtype': self.lfqt.pk,
+                'multiplex': False,
+                'samples': {dsr.pk: {
+                    'model': False,
+                    'samplename': samplename,
+                    'sampletypes': [{'id': self.samtype2.pk}],
+                    'species': [{'id': self.spec1.pk}, {'id': self.spec2.pk}],
+                    }},
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(psam.count(), 1)
+        psam = psam.get()
+        self.assertEqual(psam.samplematerial_set.count(), 1)
+        self.assertEqual(psam.samplespecies_set.count(), 2)
+        self.assertEqual(psam.datasetsample_set.filter(dataset=newds).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.count(), 0)
+        self.assertEqual(psam.quantsamplefile_set.filter(rawfile=dsr).count(), 1)
+
+    # FIXME LF -> Plex? etc?
+    def test_update_samples_multiplex_newsample(self):
+        # New sample on existing multiplex dset
+        samplename = 'upd_sam plex new projsample'
+        psam = dm.ProjectSample.objects.filter(sample=samplename, project=self.ds.runname.experiment.project)
+        self.assertEqual(psam.count(), 0)
+
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(psam.count(), 1)
+        psam = psam.get()
+        self.assertEqual(psam.samplematerial_set.count(), 2)
+        self.assertEqual(psam.samplespecies_set.count(), 1)
+        self.assertEqual(psam.datasetsample_set.filter(dataset=self.ds).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertFalse(hasattr(psam, 'quantsamplefile'))
+
+    def test_update_samples_multiplex_samplechange_fail_mixedinput(self):
+        # Changed sample info (organism, type) on existing multiplex dset, 
+        # FAILS since two samples should be identical in type/species
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec2.pk}]},
+                        {'id': qtch2.pk,
+                            'model': False,
+                            'samplename': self.projsam1.sample,
+                            'sampletypes': [{'id': self.samtype1.pk}],
+                            'species': [{'id': self.spec2.pk}],
+                            }
+                        ],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 400)
+        self.assertJSONEqual(resp.content.decode('utf-8'),
+                {'error': 'Sampletypes need to be identical for identical sample IDs, '
+                f'check {self.projsam1.sample}'})
+
+    def test_update_samples_multiplex_samplechange_onedset(self):
+        # New sample info (organism, type) on existing multiplex dset, 
+        # updates since sample is NOT in use in another dataset 
+        # (otherwise one would change both dataset's samples)
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec2.pk}]},
+                        ],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.projsam1.refresh_from_db()
+        self.assertEqual(self.projsam1.samplematerial_set.get().sampletype, self.samtype2)
+        self.assertEqual(self.projsam1.samplespecies_set.get().species, self.spec2)
+        self.assertEqual(self.projsam1.datasetsample_set.filter(dataset=self.ds).count(), 1)
+        self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
+
+    def test_update_samples_multiplex_samplechange_alreadyinuse_multidset(self):
+        # New sample info (organism, type) on existing multiplex dset, 
+        # will not update since sample is in use in another dataset
+        newrun = dm.RunName.objects.create(name='newds_samples_plex', experiment=self.ds.runname.experiment)
+        newds = dm.Dataset.objects.create(date=self.p1.registered, runname=newrun,
+                datatype=self.dtype, storage_loc=newrun.name, storageshare=self.ssnewstore)
+        dm.DatasetOwner.objects.create(dataset=newds, user=self.user)
+        dm.DatasetSample.objects.create(dataset=newds, projsample=self.projsam1)
+        dm.QuantChannelSample.objects.create(dataset=newds, channel=self.qtch, projsample=self.projsam1)
+        dm.DatasetComponentState.objects.get_or_create(dataset=newds,
+                defaults={'state': dm.DCStates.NEW, 'dtcomp': self.dtcompsamples})
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec2.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 400)
+        errjson = json.loads(resp.content)
+        self.assertEqual(errjson['error'],
+                'Project samples exist in database, please validate the sample IDs')
+        projsam_err = {self.qtch.pk : {'id': self.projsam1.pk,
+            'duprun_example': f'{newrun.experiment.name} - {newrun.name}',
+            'sampletypes_error': [
+                {'id': self.samtype1.pk, 'name': self.samtype1.name, 'add': True, 'remove': False},
+                {'id': self.samtype2.pk, 'name': self.samtype2.name, 'add': False, 'remove': True}],
+            'species_error': [
+                {'id': self.spec1.pk, 'name': self.spec1.popname,
+                'linnean': self.spec1.linnean, 'add': True, 'remove': False},
+                {'id': self.spec2.pk, 'name': self.spec2.popname,
+                'linnean': self.spec2.linnean, 'add': False, 'remove': True}],
+            }}
+        self.assertEqual(errjson['sample_dups'], json.loads(json.dumps(projsam_err)))
+        self.projsam1.refresh_from_db()
+        self.assertEqual(self.projsam1.samplematerial_set.get().sampletype, self.samtype1)
+        self.assertEqual(self.projsam1.samplespecies_set.get().species, self.spec1)
+        self.assertEqual(self.projsam1.datasetsample_set.count(), 2)
+        self.assertEqual(self.projsam1.quantchannelsample_set.count(), 2)
+        self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
+
+    def test_update_samples_multiplex_already_exist_identical(self):
+        # Test case for sample that exists already in the project but not dataset
+        # Samples passed have identical species/sampletype as existing ones
+        projsam = dm.ProjectSample.objects.create(sample='sample test yoyo', project=self.p1)
+        dm.SampleMaterial.objects.create(sample=projsam, sampletype=self.samtype2)
+        dm.SampleSpecies.objects.create(sample=projsam, species=self.spec2)
+
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': projsam.sample,
+                        'sampletypes': [{'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec2.pk}]},
+                        ],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 400)
+        errjson = json.loads(resp.content)
+        self.assertEqual(errjson['error'],
+                'Project samples exist in database, please validate the sample IDs')
+        projsam_err = {self.qtch.pk : {'id': projsam.pk,
+            'duprun_example': 'not used in dataset, only registered',
+            'sampletypes_error': [],
+            'species_error': []}}
+        self.assertEqual(errjson['sample_dups'], json.loads(json.dumps(projsam_err)))
+
+    def test_update_samples_files_newsample(self):
+        # Change proj sample for existing datasetrawfile to another sample
+        samplename = 'new proj sample update_files'
+        psam = dm.ProjectSample.objects.filter(sample=samplename, project=self.oldds.runname.experiment.project)
+        self.assertEqual(psam.count(), 0)
+
+        req = {'dataset_id': self.oldds.pk,
+                'qtype': self.lfqt.pk,
+                'multiplex': False,
+                'samples': {self.olddsr.pk: {
+                    'model': False,
+                    'samplename': samplename,
+                    'sampletypes': [{'id': self.samtype2.pk}],
+                    'species': [{'id': self.spec1.pk}]
+                    }},
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(psam.count(), 1)
+        psam = psam.get()
+        self.assertEqual(psam.samplematerial_set.count(), 1)
+        self.assertEqual(psam.samplespecies_set.count(), 1)
+        self.assertEqual(psam.datasetsample_set.filter(dataset=self.oldds).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.count(), 0)
+        self.assertEqual(psam.quantsamplefile_set.filter(rawfile=self.olddsr).count(), 1)
+
+    def test_update_samples_multiplex_two_identical_new_samples(self):
+        # Multiple identical new samples on existing multiplex dset
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        samplename = 'upd_sam plex new projsample twosamples'
+        psam = dm.ProjectSample.objects.filter(sample=samplename, project=self.ds.runname.experiment.project)
+        self.assertEqual(psam.count(), 0)
+
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        },
+                        {'id': qtch2.pk,
+                        'model': False,
+                        'samplename': samplename,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(psam.count(), 1)
+        psam = psam.get()
+        self.assertEqual(psam.samplematerial_set.count(), 2)
+        self.assertEqual(psam.samplespecies_set.count(), 1)
+        self.assertEqual(psam.datasetsample_set.filter(dataset=self.ds).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertEqual(psam.quantchannelsample_set.filter(dataset=self.ds, channel=qtch2).count(), 1)
+        self.assertFalse(hasattr(psam, 'quantsamplefile'))
+
+    def test_update_samples_multiplex_two_identical_existing_samples(self):
+        # Multiple identical existing samples on existing multiplex dset
+        qch2 = dm.QuantChannel.objects.create(name='thech2')
+        qtch2 = dm.QuantTypeChannel.objects.create(quanttype=self.qt, channel=qch2) 
+        # EXISTING samples on existing multiplex dset, update sampletype
+        req = {'dataset_id': self.ds.pk,
+                'qtype': self.qt.pk,
+                'multiplex': {
+                    'chans': [{'id': self.qtch.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        },
+                        {'id': qtch2.pk,
+                        'model': False,
+                        'samplename': self.projsam1.sample,
+                        'sampletypes': [{'id': self.samtype1.pk}, {'id': self.samtype2.pk}],
+                        'species': [{'id': self.spec1.pk}],
+                        }],
+                    },
+                }
+        resp = self.cl.post(self.url, content_type='application/json', data=req)
+        self.assertEqual(resp.status_code, 200)
+        self.projsam1.refresh_from_db()
+        self.assertEqual(self.projsam1.samplematerial_set.count(), 2)
+        self.assertEqual(self.projsam1.samplespecies_set.count(), 1)
+        self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=self.qtch).count(), 1)
+        self.assertEqual(self.projsam1.quantchannelsample_set.filter(dataset=self.ds, channel=qtch2).count(), 1)
+        self.assertFalse(hasattr(self.projsam1, 'quantsamplefile'))
 
 
 class MergeProjectsTest(BaseTest):
@@ -306,7 +750,7 @@ class MergeProjectsTest(BaseTest):
         ds = dm.Dataset.objects.create(date=self.p2.registered, runname=run,
                 datatype=self.dtype, storage_loc='test', storageshare=self.ssnewstore)
         otheruser = User.objects.create(username='test', password='test')
-        own = dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
+        dm.DatasetOwner.objects.create(dataset=ds, user=otheruser)
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'projids': [self.p1.pk, self.p2.pk]})
         self.assertEqual(resp.status_code, 403)
@@ -377,3 +821,33 @@ class MergeProjectsTest(BaseTest):
         self.assertEqual(ds3jobs.count(), 1)
         self.assertEqual(renamejobs.count(), 1)
         self.assertEqual(dm.Project.objects.filter(pk=self.p2.pk).count(), 0)
+
+
+class TestDeleteDataset(ProcessJobTest):
+    jobclass = dj.DeleteActiveDataset
+
+    def test_files(self):
+        # Delete both raw and mzML file
+        kwargs = {'dset_id': self.ds.pk}
+        self.job.process(**kwargs)
+        exp_t = [
+                ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
+                    self.f3sf.pk, self.f3sf.filetype.is_folder), {}),
+                ((self.f3sfmz.servershare.name, os.path.join(self.f3sfmz.path, self.f3sfmz.filename),
+                    self.f3sfmz.pk, self.f3sfmz.filetype.is_folder), {})
+                ]
+        self.check(exp_t)
+
+    def test_is_dir(self):
+        # Delete both raw and mzML file, where raw is a folder
+        self.ft.is_folder = True
+        self.ft.save()
+        kwargs = {'dset_id': self.ds.pk}
+        self.job.process(**kwargs)
+        exp_t = [
+                ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
+                    self.f3sf.pk, True), {}),
+                ((self.f3sfmz.servershare.name, os.path.join(self.f3sfmz.path, self.f3sfmz.filename),
+                    self.f3sfmz.pk, False), {})
+                ]
+        self.check(exp_t)

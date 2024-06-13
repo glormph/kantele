@@ -3,6 +3,7 @@ import json
 import requests
 import shutil
 from datetime import datetime 
+from urllib.parse import urljoin
 from tempfile import NamedTemporaryFile
 
 from celery import states
@@ -12,52 +13,17 @@ from django.views.decorators.http import require_POST
 from django.db.models import F
 
 from jobs import models
-from jobs.jobs import Jobstates, create_job, send_slack_message
+
 from rawstatus.models import (RawFile, StoredFile, ServerShare, StoredFileType,
-        SwestoreBackedupFile, PDCBackedupFile, Producer)
-from rawstatus.views import validate_token
+        SwestoreBackedupFile, PDCBackedupFile, Producer, UploadToken)
 from analysis import models as am
 from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
 from datasets.models import DatasetRawFile, Dataset
+from jobs.jobs import Jobstates
+from jobs.jobutil import create_job, jobmap
 from kantele import settings
-
-from datasets import jobs as dsjobs
-from rawstatus import jobs as rsjobs
-from analysis import jobs as anjobs
-from mstulos import jobs as mtjobs
-
-alljobs = [
-        dsjobs.RenameDatasetStorageLoc,
-        dsjobs.MoveFilesToStorage,
-        dsjobs.MoveFilesStorageTmp,
-        dsjobs.ConvertDatasetMzml,
-        dsjobs.ConvertFileMzml,
-        dsjobs.DeleteActiveDataset,
-        dsjobs.DeleteDatasetMzml,
-        dsjobs.BackupPDCDataset,
-        dsjobs.ReactivateDeletedDataset,
-        dsjobs.DeleteDatasetPDCBackup,
-        dsjobs.RenameProject,
-        dsjobs.MoveDatasetServershare,
-        rsjobs.RsyncFileTransfer,
-        rsjobs.CreatePDCArchive,
-        rsjobs.RestoreFromPDC,
-        rsjobs.RenameFile,
-        rsjobs.MoveSingleFile,
-        rsjobs.DeleteEmptyDirectory,
-        rsjobs.PurgeFiles,
-        rsjobs.DownloadPXProject,
-        rsjobs.RegisterExternalFile,
-        anjobs.RunLongitudinalQCWorkflow,
-        anjobs.RunNextflowWorkflow,
-        anjobs.RefineMzmls,
-        anjobs.PurgeAnalysis,
-        anjobs.DownloadFastaFromRepos,
-        mtjobs.ProcessAnalysis,
-        ]
-jobmap = {job.refname: job for job in alljobs}
 
 
 def set_task_done(task_id):
@@ -222,9 +188,8 @@ def purge_storedfile(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], [settings.STORAGECLIENT_APIKEY]):
         return HttpResponseForbidden()
-    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').get()
-    sfile.purged, sfile.deleted = True, True
-    sfile.save()
+    sfile = StoredFile.objects.filter(pk=data['sfid']).select_related('filetype').update(
+            deleted=True, purged=True)
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
@@ -255,6 +220,8 @@ def register_external_file(request):
         return HttpResponseForbidden()
     dataset = {'dataset_id': data['dset_id'], 'removed_files': {},
                'added_files': {1: {'id': data['raw_id']}}}
+    # FIXME dont let just any job change the file state!
+    # FIXME handle errors in save_or_up
     StoredFile.objects.filter(pk=data['sf_id']).update(md5=data['md5'], checked=True)
     RawFile.objects.filter(pk=data['raw_id']).update(source_md5=data['md5'])
     dsviews.save_or_update_files(dataset)
@@ -340,8 +307,6 @@ def mzml_convert_or_refine_file_done(request):
             data['client_id'] != settings.ANALYSISCLIENT_APIKEY):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.select_related('rawfile__datasetrawfile__dataset').get(pk=data['fn_id'])
-    sfile.path = data['outdir']
-    sfile.filename = data['filename']
     sfile.md5 = data['md5']
     sfile.checked = True
     sfile.deleted = False
@@ -357,8 +322,6 @@ def store_longitudinal_qc(request):
     if ('client_id' not in data or
             data['client_id'] not in settings.CLIENT_APIKEYS):
         return HttpResponseForbidden()
-    elif data['state'] == 'error':
-        dashviews.fail_longitudinal_qc(data)
     else:
         dashviews.store_longitudinal_qc(data)
         send_slack_message('QC run for {} is now finished: {}'.format(data['instrument'], data['filename']), 'lab')
@@ -372,7 +335,7 @@ def confirm_internal_file(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
     data =  json.loads(request.POST['json'])
-    upload = validate_token(data['token'])
+    upload = UploadToken.validate_token(data['token'])
     if not upload:
         return HttpResponseForbidden()
     dstshare = ServerShare.objects.get(name=data['dstsharename'])
@@ -503,3 +466,18 @@ def do_retry_job(job, force=False):
         pass
     job.state = Jobstates.PENDING
     job.save()
+
+
+def send_slack_message(text, channel):
+    try:
+        channelpath = settings.SLACK_HOOKS[channel.upper()]
+    except KeyError:
+        print('Kantele cant send slack message to channel {}, please check configuration'.format(channel))
+        return
+    url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, channelpath] for x in y.split('/')]))
+    req = requests.post(url, json={'text': text})
+    # FIXME need to fix network outage (no raise_for_status
+    try:
+        req.raise_for_status()
+    except Exception as error:
+        print('Kantele cant send slack message to channel {}, please check configuration. Error was {}'.format(channel, error))

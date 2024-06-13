@@ -57,3 +57,4 @@ storage_env:
     RSYNC_SSHPORT: 22 # ssh port on upload
     RSYNC_SSHUSER: '{{ web_user }}'
     RSYNC_SSHKEY: '{{ rsync_ssh_key }}'
+    PRIMARY_STORAGE: '{{ primary_storagename }}'

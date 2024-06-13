@@ -6,13 +6,6 @@ from datasets import models as dsmodels
 from jobs import models as jmodels
 
 
-class WorkflowType(models.Model):
-    name = models.TextField()
-
-    def __str__(self):
-        return self.name
-
-
 class LibraryFile(models.Model):
     description = models.TextField()
     sfile = models.OneToOneField(filemodels.StoredFile, on_delete=models.CASCADE)
@@ -31,20 +24,17 @@ class FileParam(models.Model):
         return self.name
 
 
-class WFInputComponent(models.Model):
-    name = models.TextField()
-    value = models.JSONField() 
-    # JSON in value if any, eg mzmldef: {'lc': [path,ch,sample], 'lcp': [path,set,ch,sam], hirief: [path,inst,set,pl,fr]}
-    # FIXME future also setnames, sampletables, fractions, etc which is not a param
-    # to be included in parameterset
-    def __str__(self):
-        return self.name
-
-
 class Param(models.Model):
+    class PTypes(models.IntegerChoices):
+        FLAG = 1, 'Flag'
+        MULTI = 2, 'Multiple choice checkbox'
+        TEXT = 3, 'Text'
+        NUMBER = 4, 'Numbers, integers, floats'
+        SELECT = 5, 'Single choice select'
+
     name = models.TextField()
     nfparam = models.TextField()
-    ptype = models.TextField()  # multi (options), number, flag or ...
+    ptype = models.IntegerField(choices=PTypes.choices)
     visible = models.BooleanField(default=True)
     help = models.TextField()
 
@@ -68,7 +58,7 @@ class ParameterSet(models.Model):
         return self.name
 
 
-class NextflowWorkflow(models.Model):
+class NextflowWorkflowRepo(models.Model):
     description = models.TextField(help_text='Description of workflow')
     repo = models.TextField()
     
@@ -76,29 +66,40 @@ class NextflowWorkflow(models.Model):
         return self.description
 
 
-class Workflow(models.Model):
+class NextflowWfVersionParamset(models.Model):
+    update = models.TextField(help_text='Description of workflow update')
+    # NB commit cannot be unique, in case of multiple paramsets
+    commit = models.CharField(max_length=50)
+    filename = models.TextField()
+    profiles = models.JSONField(default=list)
+    nfworkflow = models.ForeignKey(NextflowWorkflowRepo, on_delete=models.CASCADE)
+    paramset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
+    date = models.DateTimeField(auto_now=True)
+    nfversion = models.TextField()
+    active = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return '{} - {}'.format(self.nfworkflow.description, self.update)
+
+
+class UserWorkflow(models.Model):
+
+    class WFTypeChoices(models.IntegerChoices):
+        STD = 1, 'Quantitative proteomics'
+        QC = 2, 'Instrument quality control'
+        VARDB = 3, 'Other proteomics, special DB'
+        DBGEN = 4, 'Proteogenomics DB generation'
+        PISEP = 5, 'pI-separated identification'
+        SPEC = 6, 'Special internal'
+        LC = 7, 'Labelcheck'
+
     name = models.TextField()
-    shortname = models.ForeignKey(WorkflowType, on_delete=models.CASCADE)
-    nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
+    wftype = models.IntegerField(choices=WFTypeChoices.choices)
+    nfwfversionparamsets = models.ManyToManyField(NextflowWfVersionParamset)
     public = models.BooleanField()
 
     def __str__(self):
         return self.name
-
-
-class NextflowWfVersion(models.Model):
-    update = models.TextField(help_text='Description of workflow update')
-    commit = models.CharField(max_length=50)
-    filename = models.TextField()
-    profiles = models.JSONField(default=list)
-    nfworkflow = models.ForeignKey(NextflowWorkflow, on_delete=models.CASCADE)
-    paramset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
-    date = models.DateTimeField(auto_now=True)
-    kanteleanalysis_version = models.IntegerField() # TODO remove this when noone uses v1 anymore
-    nfversion = models.TextField()
-
-    def __str__(self):
-        return '{} - {}'.format(self.nfworkflow.description, self.update)
 
 
 class WfOutput(models.Model):
@@ -119,11 +120,31 @@ class WfOutput(models.Model):
 
 
 class PsetComponent(models.Model):
+    '''Special components for a parameter set. Components are such elements for a workflow
+    that require special, non generalized code written for it. They can be in multiple workflows
+    but are not as generalized as e.g. parameters'''
+
+    class ComponentChoices(models.IntegerChoices):
+        ISOQUANT = 1, 'Isobaric quant summarizing with denominators, median sweep, or intensity'
+        INPUTDEF = 2, 'Input file definition of specific type, value eg [path, instrument, sample]'
+        ISOQUANT_SAMPLETABLE = 3, 'Sampletable for isobaric quant'
+        LABELCHECK_ISO = 4, 'Labelcheck isoquant'
+        COMPLEMENT_ANALYSIS = 5, 'MS search complementing earlier run or rerun from PSMs'
+        PREFRAC = 6, 'Prefractionated MS data'
+        HIRIEF_STRIP_TOLERANCE = 7, 'HiRIEF strip tolerance'
+        # DSET_NAMES ?
+
     pset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
-    component = models.ForeignKey(WFInputComponent, on_delete=models.CASCADE)
+    component = models.IntegerField(choices=ComponentChoices.choices)
+    value = models.JSONField(default=dict) 
+    # JSON in value: if needed eg mzmldef: [path, instrument, set, plate, fr]
+    # else {}
+    # FIXME future also setnames, sampletables, fractions, etc which is not a param
+    # to be included in parameterset
+    # prefrac '.*fr([0-9]+).*mzML$'
 
     def __str__(self):
-        return '{} - {}'.format(self.pset.name, self.component.name)
+        return '{} - {}'.format(self.pset.name, self.ComponentChoices(self.component).label)
 
 
 class PsetFileParam(models.Model):
@@ -142,15 +163,6 @@ class PsetMultiFileParam(models.Model):
 
     def __str__(self):
         return '{} -- {}'.format(self.pset.name, self.param.name)
-
-# TODO get rid of predefined files, put them in some workflow config file instead
-class PsetPredefFileParam(models.Model):
-    param = models.ForeignKey(FileParam, on_delete=models.CASCADE)
-    libfile = models.ForeignKey(LibraryFile, on_delete=models.CASCADE)
-    pset = models.ForeignKey(ParameterSet, on_delete=models.CASCADE)
-
-    def __str__(self):
-        return '{} -- {} -- {}'.format(self.pset.name, self.param.name, self.libfile.description)
 
 
 class PsetParam(models.Model):
@@ -183,8 +195,8 @@ class AnalysisError(models.Model):
 
 
 class NextflowSearch(models.Model):
-    nfworkflow = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
-    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE)
+    nfwfversionparamset = models.ForeignKey(NextflowWfVersionParamset, on_delete=models.CASCADE)
+    workflow = models.ForeignKey(UserWorkflow, on_delete=models.CASCADE)
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
     # token is for authentication of NF with-weblog
     token = models.TextField()
@@ -201,7 +213,7 @@ class Proteowizard(models.Model):
     container_version = models.TextField() # chambm/i-agree-blabla:3.0.1234
     date_added = models.DateTimeField(auto_now_add=True)
     is_docker = models.BooleanField(default=False)
-    nf_version = models.ForeignKey(NextflowWfVersion, on_delete=models.CASCADE)
+    nf_version = models.ForeignKey(NextflowWfVersionParamset, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
 
@@ -248,18 +260,15 @@ class AnalysisParam(models.Model):
 class AnalysisSampletable(models.Model):
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
     samples = models.JSONField()
-    # could we instead do: four columns channel - set - sample - group ?
+    # FIXME could we instead do: four columns channel - set - sample - group ?
     # Doesnt give a big improvement, if wf sampletable format will change, this DB table will change
     # But then we can keep representation correct instead of leaving the JSON intact
     # I don't see the JSON benefit except somewhat easier because it's passed around as JSON a lot
-
-
-class AnalysisMzmldef(models.Model):
-    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
-    mzmldef = models.TextField()
+    # Added benefit: clearer DB representation, stricter
 
 
 class AnalysisSetname(models.Model):
+    '''All set or sample names in an analysis that are per dataset'''
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     setname = models.TextField()
 
@@ -267,36 +276,57 @@ class AnalysisSetname(models.Model):
         constraints = [models.UniqueConstraint(fields=['analysis', 'setname'], name='uni_anasets')]
 
 
-class AnalysisDatasetSetname(models.Model):
+class DatasetAnalysis(models.Model):
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
+    # cannot put setname here because of searches without dset/setname
+    # model used in reporting, and also for finding datasets for base analysis etc
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_dsa_anadsets')]
+
+
+class AnalysisDatasetSetValue(models.Model):
+    '''Dataset mapping to setnames (multiple dataset can have the same setname)'''
     # Note that datasets can be deleted, or have their file contents changed
     # That means this is not to be trusted for future bookkeeping of what was in the analysis
     # For that, you should combine it with using the below AnalysisDSInputFile model
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE, null=True)
-    regex = models.TextField() # optional
+    field = models.TextField()
+    value = models.TextField()
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_anadsets')]
+        constraints = [models.UniqueConstraint(fields=['analysis', 'dataset', 'field'], name='uni_anadsetsfields')]
 
 
 class AnalysisDSInputFile(models.Model):
-    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    '''Input files for set-based analysis (isobaric and prefraction-datasets)'''
+    dsanalysis = models.ForeignKey(DatasetAnalysis, on_delete=models.CASCADE)
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
-    analysisdset = models.ForeignKey(AnalysisDatasetSetname, on_delete=models.CASCADE)
+    analysisset = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anainfile')]
+        constraints = [models.UniqueConstraint(fields=['analysisset', 'sfile'], name='uni_anaset_infile')]
 
 
-class AnalysisFileSample(models.Model):
+class AnalysisFileValue(models.Model):
+    '''If one sample per file is used in labelfree analyses, the samples are stored
+    here'''
+    # this assumes at least one entry of this model per file/analysis
+    # (for non-set data), so samplename is a field. This is the only mapping of
+    # file/analysis we have currently for non-set data. If there's ever need
+    # of mapping files WITHOUT field/value for an analysis, we can break out
+    # to an extra model, alternatively null the fields
+
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
-    sample = models.TextField()
+    field = models.TextField()
+    value = models.TextField()
     sfile = models.ForeignKey(filemodels.StoredFile, on_delete=models.CASCADE)
 
-    # FIXME this should maybe FK to infile above here?
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile'], name='uni_anassamplefile')]
+        constraints = [models.UniqueConstraint(fields=['analysis', 'sfile', 'field'], name='uni_anassamplefile')]
 
 
 class DatasetSearch(models.Model):
@@ -308,9 +338,10 @@ class DatasetSearch(models.Model):
 
 
 class AnalysisIsoquant(models.Model):
+    # FIXME can we not split the JSON field into denoms -JSON, 2x boolean, default=False?
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
     setname = models.ForeignKey(AnalysisSetname, on_delete=models.CASCADE)
-    #{denoms: [ch_id, ch_id], sweep: false, intensity: false}
+    #{denoms: [ch_id, ch_id], sweep: false, report_intensity: false}
     value = models.JSONField() 
 
     class Meta:
