@@ -31,24 +31,4 @@ class Migration(migrations.Migration):
         ),
 
         migrations.RunPython(add_storage_field, remove_storage_field),
-
-        migrations.CreateModel(
-            name='WfOutput',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('psmfile', models.TextField()),
-                ('pepfile', models.TextField()),
-                ('lookup', models.TextField()),
-                ('peppeptide', models.TextField()),
-                ('psmcountfield', models.TextField()),
-                ('pepfdrfield', models.TextField()),
-                ('psmfdrfield', models.TextField()),
-                ('pepqval', models.TextField()),
-                ('psmfnfield', models.TextField()),
-                ('scanfield', models.TextField()),
-                ('psmsetname', models.TextField()),
-                ('psmpeptide', models.TextField()),
-                ('nfwfversion', models.OneToOneField(on_delete=models.deletion.CASCADE, to='analysis.nextflowwfversion')),
-            ],
-        ),
     ]

@@ -103,7 +103,7 @@ class UserWorkflow(models.Model):
 
 
 class WfOutput(models.Model):
-    nfwfversion = models.OneToOneField(NextflowWfVersion, on_delete=models.CASCADE)
+    nfwfversion = models.OneToOneField(NextflowWfVersionParamset, on_delete=models.CASCADE)
     psmfile = models.TextField()
     pepfile = models.TextField()
     lookup = models.TextField()
@@ -281,6 +281,7 @@ class DatasetAnalysis(models.Model):
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     # cannot put setname here because of searches without dset/setname
     # model used in reporting, and also for finding datasets for base analysis etc
+    # and in mstulos for coupling dset/analysis
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_dsa_anadsets')]
@@ -327,14 +328,6 @@ class AnalysisFileValue(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'sfile', 'field'], name='uni_anassamplefile')]
-
-
-class DatasetSearch(models.Model):
-    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
-    dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
-    # cannot put setname here because of searches without dset/setname
-    # purely a reporting model this is
-    # Also used in e.g. mstulos finding datasets to an analysis
 
 
 class AnalysisIsoquant(models.Model):
