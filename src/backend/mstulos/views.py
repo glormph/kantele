@@ -266,29 +266,9 @@ def upload_proteins(request):
     return JsonResponse({'error': False, 'protein_ids': stored_prots, 'gene_ids': stored_genes})
 
 
-@require_POST
-def upload_pepprots(request):
-    data = json.loads(request.body.decode('utf-8'))
-    try:
-        exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
-    except m.Experiment.DoesNotExist:
-        return JsonResponse({'error': 'Not allowed to access'}, status=403)
-    except KeyError:
-        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
-    stored_peps = {}
-    for pep, bareseq, prot_id, gene_id in data['pepprots']:
-        pepseq, _cr = m.PeptideSeq.objects.get_or_create(seq=bareseq)
-        if _cr:
-            #m.PeptideProtein.objects.create(peptide=pepseq, protein_id=prot_id, experiment=exp)
-            mol = m.PeptideMolecule.objects.create(sequence=pepseq, encoded_pep=pep)
-        else:
-            mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq, encoded_pep=pep)
-        pepprot, _cr = m.PeptideProtein.objects.get_or_create(peptide=pepseq, protein_id=prot_id, experiment=exp)
-        if gene_id:
-            m.ProteinGene.objects.get_or_create(pepprot=pepprot, gene_id=gene_id)
-            
-        stored_peps[pep] = mol.pk
-    return JsonResponse({'error': False, 'pep_ids': stored_peps})
+def encode_resultseq(resultmolecule, mod_ids_table):
+    # FIXME make unified result mol seq string to store? Or store as mod etc in db?
+    return resultmolecule
 
 
 @require_POST
@@ -301,12 +281,27 @@ def upload_peptides(request):
     except KeyError:
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_peps = {}
+    # FIXME
+    # e.g. {304.1234: 3, 79.1234: 1}
+    mod_ids = {}
     for pep in data['peptides']:
-        # FIXME think of encodign for peptide to be created from e.g. MSGF or other SE
+        bareseq = re.sub('[^A-Z]', '', pep['pep'])
+        pepseq, _cr = m.PeptideSeq.objects.get_or_create(seq=bareseq)
+        encoded_pepmol = encode_resultseq(pep['pep'], mod_ids)
+        if _cr:
+            mol = m.PeptideMolecule.objects.create(sequence=pepseq, encoded_pep=encoded_pepmol)
+        else:
+            mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq,
+                    encoded_pep=encoded_pepmol)
+        pepprot, _cr = m.PeptideProtein.objects.get_or_create(peptide=pepseq, protein_id=prot_id,
+                experiment=exp)
+        if gene_id:
+            m.ProteinGene.objects.get_or_create(pepprot=pepprot, gene_id=gene_id)
+        stored_peps[pep['resultseq']] = mol.pk
         idpeps = {}
-        # TODO go over condistions!
+        # TODO go over conditions!
         for cond_id, fdr in pep['qval']:
-            idpep = m.IdentifiedPeptide.objects.create(peptide_id=pep['pep_id'], setorsample_id=cond_id)
+            idpep = m.IdentifiedPeptide.objects.create(peptide_id=mol, setorsample_id=cond_id)
             idpeps[cond_id] = idpep
             m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
         for cond_id, nrpsms in pep['psmcount']:

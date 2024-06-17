@@ -1,6 +1,5 @@
 import os
 import re
-import sqlite3
 from urllib.parse import urljoin
 
 from django.urls import reverse
@@ -23,36 +22,35 @@ from jobs.post import update_db
 
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
-def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file, psm_file, outheaders, 
+def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, outheaders, 
         samplesets, isobaric):
     # FIXME 
     settings.KANTELEHOST = 'http://nginx'
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
+    # FIXME isobaric has not been fone yet!
 
-    con = sqlite3.Connection(os.path.join(settings.ANALYSISSHARE, lookupfile))
-    # TODO SQL depends on pipeline input and msstitch DB structure
-    # we should specify other methods on wf if not mssttich
-    # FIXME if genes:
-    # last JOIN protein_psm is to limit proteins to only those with PSMs in experiment
-    sql = ('SELECT DISTINCT p.protein_acc, ai.assoc_id FROM genename_proteins AS gp '
-            'JOIN proteins AS p ON p.pacc_id=gp.pacc_id '
-            'JOIN associated_ids AS ai ON ai.gn_id=gp.gn_id '
-            'JOIN protein_psm AS pp ON pp.protein_acc=p.protein_acc'
-            )
     protgenes = []
     storedproteins, storedgenes = {}, {}
     protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
-    for prot, gene in con.execute(sql):
-        protgenes.append((prot, gene))
-        if len(protgenes) == 1000:
-            resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
-                'organism_id': organism_id})
-            resp.raise_for_status()
-            storedproteins.update(resp.json()['protein_ids'])
-            storedgenes.update(resp.json()['gene_ids'])
-            protgenes = []
+    pepheader = outheaders['pep']
+    with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
+        header = next(fp).strip('\n').split('\t')
+        protfield = header.index(pepheader['protein'])
+        genefield = header.index(pepheader['gene'])
+        for line in fp:
+            line = line.strip('\n').split('\t')
+            # FIXME if genes:
+            if protein not in storedproteins:
+                protgenes.append([line[protfield], line[genefield])
+            if len(protgenes) == 1000:
+                resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
+                    'organism_id': organism_id})
+                resp.raise_for_status()
+                storedproteins.update(resp.json()['protein_ids'])
+                storedgenes.update(resp.json()['gene_ids'])
+                protgenes = []
     if len(protgenes):
         resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
                 'organism_id': organism_id})
@@ -60,43 +58,15 @@ def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file
         storedproteins.update(resp.json()['protein_ids'])
         storedgenes.update(resp.json()['gene_ids'])
 
-    # Now store all peptide sequences found with proteins association (easiest from SQL)
-    # Not in same join as above since that would make more lines to iterate: a protein
-    # can have many peptides
-    pepprots = []
-    pepprot_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_pepprots'))
-    sql = ('SELECT DISTINCT ps.sequence, p.protein_acc, ai.assoc_id FROM psms '
-            'JOIN peptide_sequences AS ps ON ps.pep_id=psms.pep_id '
-            'JOIN protein_psm AS pp ON pp.psm_id=psms.psm_id '
-            'JOIN proteins AS p on p.protein_acc=pp.protein_acc '
-            'JOIN genename_proteins AS gp on p.pacc_id=gp.pacc_id '
-            'JOIN associated_ids AS ai on ai.gn_id=gp.gn_id'
-            )
-    storedpeps = {} # for ID tracking
-    for pep, prot, gene in con.execute(sql):
-        # TODO MSGF-encoded, maybe do differently
-        bareseq = re.sub('[0-9\+\.]+', '', pep)
-        pepprots.append((pep, bareseq, storedproteins[prot], storedgenes[gene]))
-        if len(pepprots) == 1000:
-            resp = update_db(pepprot_url, json={'pepprots': pepprots, 'token': token})
-            resp.raise_for_status()
-            storedpeps.update(resp.json()['pep_ids'])
-            pepprots = []
-    if len(pepprots):
-        resp = update_db(pepprot_url, json={'pepprots': pepprots, 'token': token})
-        resp.raise_for_status()
-        storedpeps.update(resp.json()['pep_ids'])
-
-    # we could instead use SQLite (if ddamsproteomics pipeline) as source 
-    # for storing peptides: it contains isoq, fdr, amount_psms and all other
-    # per-set data. But you get quite a complex SQL query with count(disticnt psms) 
-    # join sets etc. IIRC quite slow in pipeline also, esp for many set-experiments
+    # Now store all peptide sequences found with proteins/genes association, and
+    # any conditions used
     pepurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_peptides'))
+    storedpeps = {} # for ID tracking
     with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
         header = next(fp).strip('\n').split('\t')
         conditions = {'psmcount': [], 'qval': [], 'isobaric': []}
-        pepheader = outheaders['pep']
         # find header fields and match with conditions by setname/sample/channel
+        # FIXME do bareseq thing on backend
         pepfield = header.index(pepheader['peptide'])
         for ix, field in enumerate(header):
             # bit strict handling with f'_PSM count' to avoid Quanted PSM count fields..
@@ -111,28 +81,19 @@ def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file
             elif pepheader['isobaric'] and any(plex in field for plex in pepheader['isobaric']):
                 plex_re = '(.*)_[a-z0-9]+plex_([0-9NC])'
                 # Need to remove e.g. plex_126 - Quanted PSMs
+                # FIXME isobaric lookup is not done in jobs yet!
                 if re.match(f'{plex_re}$', field):
                     sample_set_ch = re.sub(plex_re, '\\1___\\2', field)
                     conditions['isobaric'].append((ix, isobaric[sample_set_ch]))
 
+        # conditions is now e.g. {'qval': [(header_ix, set_id), ...],
+        #                       'isobaric': [(header_ix, sample_set_ch
         # parse peptide table and upload
         pep_values = []
         for line in fp:
             line = line.strip('\n').split('\t')
-            #peptide = {k: v for k,v in zip(header, line)}
-            # TODO encoded_pep is likely for searching stuff, not sure how this was
-            # thought out! Or if the MSGF+ format is the one we're using, but here we go
-            # get frontend to search peptides to decide on how to store
-            # mods need parsing etc, but nice with cut/paste from PSM table
-            # NO! encoded pep should be possible to store without MSGF also
-            # just easy to calculate!!!
-            # so we need MSGF->encoded pep and other SE -> encoded pep
-            # on storing and on looking up!! A hash would be good of peptide
-            # with mods 
-            msgf_pep = line[pepfield]
-            storepep = {'pep_id': storedpeps[msgf_pep]}
-            # TODO get mods from pep
-            #mods... analysis['mods'] = {residue: mass: db_id, ...}
+            storepep = {'pep': line[pepfield], 'prot': storedproteins[line[protfield]],
+                'gene': storedgenes.get(line[genefield], False)}
             for datatype, col_conds in conditions.items():
                 storepep[datatype] = []
                 for col, cond_id in col_conds:
@@ -142,9 +103,21 @@ def summarize_result_peptable(self, token, organism_id, lookupfile, peptide_file
                 resp = update_db(pepurl, json={'peptides': pep_values, 'token': token})
                 resp.raise_for_status()
                 pep_values = []
+                storedpeps.update(resp.json()['pep_ids'])
         if len(pep_values):
             resp = update_db(pepurl, json={'peptides': pep_values, 'token': token})
             resp.raise_for_status()
+            storedpeps.update(resp.json()['pep_ids'])
+
+            # TODO encoded_pep is likely for searching stuff, not sure how this was
+            # thought out! Or if the MSGF+ format is the one we're using, but here we go
+            # get frontend to search peptides to decide on how to store
+            # mods need parsing etc, but nice with cut/paste from PSM table
+            # NO! encoded pep should be possible to store without MSGF also
+            # just easy to calculate!!!
+            # so we need MSGF->encoded pep and other SE -> encoded pep
+            # on storing and on looking up!! A hash would be good of peptide
+            # with mods 
 
     # Go through PSM table with peptide_ids as map
     psm_header = outheaders['psm']
