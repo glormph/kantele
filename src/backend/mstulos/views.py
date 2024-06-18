@@ -1,5 +1,7 @@
+import re
 import json
 from base64 import b64decode
+from uuid import uuid4
 
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -12,7 +14,9 @@ from django.core.paginator import Paginator
 
 from mstulos import models as m
 from jobs import views as jv
+from jobs.jobutil import create_job
 from datasets import models as dm
+from analysis import models as am
 
 
 # FIXME:
@@ -33,6 +37,92 @@ def paginate(qset, pnr):
             'first_res_nr': page.start_index(), 'page_nr': pnr,
             'pagerange': [x for x in pages.get_elided_page_range(pnr, on_each_side=2, on_ends=1)]}
     return page, page_context
+
+
+@login_required
+@require_POST
+def add_analysis(request, nfs_id):
+    analysis = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__wfoutput').get(
+            nextflowsearch__pk=nfs_id)
+    # First do checks:
+    organisms = set()
+    for dsa in analysis.datasetanalysis_set.all():
+        dsorganisms = set()
+        for dss in dsa.dataset.datasetsample_set.all():
+            dsorganisms.update(x.species_id for x in dss.projsample.samplespecies_set.all())
+        # FIXME also check DIA/DDA here
+        if not len(dsorganisms):
+            return JsonResponse({'error': True, 'message': 'Must enter organism in dataset metadata in order to load results'})
+        organisms.update(dsorganisms)
+    if len(organisms) > 1:
+        return JsonResponse({'error': True, 'message': 'Multiple organism-datasets are not possible to load in result service'})
+
+    exp, _cr = m.Experiment.objects.get_or_create(analysis=analysis, defaults={'token': str(uuid4())})
+    if not _cr and exp.upload_complete:
+        return JsonResponse({'error': True, 'message': 'This analysis is already in the results database'})
+#        # TODO currently only recent and isobaric data, as  a start
+#        # figure out how we store one file/sample -> analysisfilesample
+#        # and labelfree fractions?  -> analysisdset probbaly
+#        if not hasattr(analysis, 'analysissampletable'):
+#            raise RuntimeError('Cannot process analysis without sampletable as conditions currently')
+
+    # Delete all conditions before rerunning again, since it is not possible to only
+    # get_or_create on name/exp, as there are duplicates in the DB e.g. multiple sets with
+    # TMT channel 126
+    m.Condition.objects.filter(experiment=exp).delete()
+    samplesets = {}
+    # FIXME non-set searches (have analysisdsinputfile), also non-sampletable (same?)
+    for asn in analysis.analysissetname_set.all():
+        c_setn = m.Condition.objects.create(name=asn.setname,
+                cond_type=m.Condition.Condtype['SAMPLESET'], experiment=exp)
+        sampleset = {'set_id': c_setn.pk, 'files': {}}
+        regex_db = asn.analysisdatasetsetvalue_set.filter(field='__regex')
+        regex = regex_db.get().value if regex_db.exists() else False
+        for dsf in asn.analysisdsinputfile_set.all():
+            c_fn = m.Condition.objects.create(name=dsf.sfile.filename,
+                    cond_type=m.Condition.Condtype['FILE'], experiment=exp)
+            sampleset['files'][dsf.sfile.filename] = c_fn.pk
+            if regex:
+                frnum = re.match(regex, dsf.sfile.filename).group(1)
+                c_fr = m.Condition.objects.create(name=frnum,
+                        cond_type=m.Condition.Condtype['FRACTION'], experiment=exp)
+                c_fn.parent_conds.add(c_fr)
+            c_fn.parent_conds.add(c_setn)
+        clean_set = re.sub('[^a-zA-Z0-9_]', '_', asn.setname)
+        samplesets[clean_set] = sampleset
+
+    # Sample name and group name are repeated in sampletable so they use get_or_create
+    # Can also do that because they cant be duplicate in experiment, like e.g.
+    # fractions or channels over multiple sets
+    # TODO exempt them from deletion above?
+    samples = {'groups': {}, 'samples': {}, }
+    for ch, setn, sample, sgroup in analysis.analysissampletable.samples:
+        clean_group = re.sub('[^a-zA-Z0-9_]', '_', sgroup)
+        clean_sample = re.sub('[^a-zA-Z0-9_]', '_', sample)
+        clean_set = re.sub('[^a-zA-Z0-9_]', '_', setn)
+        if sgroup != '':
+            gss = f'{clean_group}_{clean_sample}_{clean_set}___{ch}'
+            c_group, _cr = m.Condition.objects.get_or_create(name=sgroup,
+                    cond_type=m.Condition.Condtype['SAMPLEGROUP'], experiment=exp)
+            samples['groups'][gss] = c_group.pk
+        else:
+            gss = f'{clean_sample}_{clean_set}___{ch}'
+        c_sample, _cr = m.Condition.objects.get_or_create(name=sample,
+                cond_type=m.Condition.Condtype['SAMPLE'], experiment=exp)
+        #samples['samples'][gss] = c_sample.pk
+        c_ch = m.Condition.objects.create(name=ch, cond_type=m.Condition.Condtype['CHANNEL'],
+                experiment=exp)
+        samples[gss] = c_ch.pk
+        # Now add hierarchy:
+        c_ch.parent_conds.add(samplesets[clean_set]['set_id'])
+        c_ch.parent_conds.add(c_sample)
+        # TODO how to treat non-grouped sample? currently this is X__POOL
+        if sgroup != '':
+            c_sample.parent_conds.add(c_group)
+
+    create_job('ingest_search_results', analysis_id=analysis.pk, token=exp.token,
+            organism_id=organisms.pop(), samplesets=samplesets, samples=samples)
+    return JsonResponse({})
 
 
 # peptide centric:

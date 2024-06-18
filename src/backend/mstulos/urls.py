@@ -4,6 +4,7 @@ from mstulos import views
 app_name = 'mstulos'
 urlpatterns = [
         path('', views.frontpage, name='front'),
+        path('add/<int:nfs_id>/', views.add_analysis),
         path('peptides/', views.peptide_table),
         path('psms/', views.psm_table),
         path('upload/proteins/', views.upload_proteins, name='upload_proteins'),
