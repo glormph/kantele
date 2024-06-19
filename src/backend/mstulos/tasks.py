@@ -22,15 +22,19 @@ from jobs.post import update_db
 
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
-def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, outheaders, 
-        samplesets, isobaric):
-    # FIXME 
-    settings.KANTELEHOST = 'http://nginx'
+def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, outheaders):
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
     # FIXME isobaric has not been fone yet!
 
+    # Create conditions etc
+    init_url = urljoin(settings.KANTELEHOST, reverse('mstulos:init_store'))
+    resp = update_db(init_url, json={'token': token})
+    resp.raise_for_status()
+    samplesets, samples = resp.json()['samplesets'], resp.json()['samples']
+
+    # Store proteins, genes found
     protgenes = []
     storedproteins, storedgenes = {}, {}
     protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
@@ -80,12 +84,12 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
                 setname = re.sub(f'_{pepheader["fdr"]}', '', field)
                 conditions['qval'].append((ix, samplesets[setname]['set_id']))
             elif pepheader['isobaric'] and any(plex in field for plex in pepheader['isobaric']):
-                plex_re = '(.*)_[a-z0-9]+plex_([0-9NC])'
-                # Need to remove e.g. plex_126 - Quanted PSMs
+                plex_re = '(.*)_[a-z0-9]+plex_([0-9NC]+)'
                 # FIXME isobaric lookup is not done in jobs yet!
+                # Need to remove e.g. plex_126 - Quanted PSMs, with $
                 if re.match(f'{plex_re}$', field):
                     sample_set_ch = re.sub(plex_re, '\\1___\\2', field)
-                    conditions['isobaric'].append((ix, isobaric[sample_set_ch]))
+                    conditions['isobaric'].append((ix, samples[sample_set_ch]))
 
         # conditions is now e.g. {'qval': [(header_ix, set_id), ...],
         #                       'isobaric': [(header_ix, sample_set_ch
@@ -100,7 +104,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
                 for col, cond_id in col_conds:
                     storepep[datatype].append((cond_id, line[col]))
             pep_values.append(storepep)
-            if len(pep_values) == 10000:
+            if len(pep_values) == 1000:
                 resp = update_db(pepurl, json={'peptides': pep_values, 'token': token})
                 resp.raise_for_status()
                 pep_values = []

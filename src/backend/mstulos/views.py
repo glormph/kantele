@@ -66,13 +66,24 @@ def add_analysis(request, nfs_id):
 #        if not hasattr(analysis, 'analysissampletable'):
 #            raise RuntimeError('Cannot process analysis without sampletable as conditions currently')
 
-    # Delete all conditions before rerunning again, since it is not possible to only
+    create_job('ingest_search_results', analysis_id=analysis.pk, token=exp.token,
+            organism_id=organisms.pop())
+    return JsonResponse({})
+
+
+@require_POST
+def init_store_experiment(request):
+    # Delete all conditions before rerunning task, both because since it is not possible to only
     # get_or_create on name/exp, as there are duplicates in the DB e.g. multiple sets with
-    # TMT channel 126
-    m.Condition.objects.filter(experiment=exp).delete()
+    # TMT channel 126 and:
+    # It also obviates the need to do get_or_create on a lot of fields running the task
+    # storing the data -> only create is faster since it skips the get query
+    data = json.loads(request.body.decode('utf-8'))
+    exp = m.Experiment.objects.get(token=data['token'])
+    m.Condition.objects.filter(experiment_id=exp).delete()
     samplesets = {}
     # FIXME non-set searches (have analysisdsinputfile), also non-sampletable (same?)
-    for asn in analysis.analysissetname_set.all():
+    for asn in exp.analysis.analysissetname_set.all():
         c_setn = m.Condition.objects.create(name=asn.setname,
                 cond_type=m.Condition.Condtype['SAMPLESET'], experiment=exp)
         sampleset = {'set_id': c_setn.pk, 'files': {}}
@@ -96,7 +107,7 @@ def add_analysis(request, nfs_id):
     # fractions or channels over multiple sets
     # TODO exempt them from deletion above?
     samples = {'groups': {}, 'samples': {}, }
-    for ch, setn, sample, sgroup in analysis.analysissampletable.samples:
+    for ch, setn, sample, sgroup in exp.analysis.analysissampletable.samples:
         clean_group = re.sub('[^a-zA-Z0-9_]', '_', sgroup)
         clean_sample = re.sub('[^a-zA-Z0-9_]', '_', sample)
         clean_set = re.sub('[^a-zA-Z0-9_]', '_', setn)
@@ -119,10 +130,7 @@ def add_analysis(request, nfs_id):
         # TODO how to treat non-grouped sample? currently this is X__POOL
         if sgroup != '':
             c_sample.parent_conds.add(c_group)
-
-    create_job('ingest_search_results', analysis_id=analysis.pk, token=exp.token,
-            organism_id=organisms.pop(), samplesets=samplesets, samples=samples)
-    return JsonResponse({})
+    return JsonResponse({'samplesets': samplesets, 'samples': samples})
 
 
 # peptide centric:
@@ -411,13 +419,14 @@ def upload_peptides(request):
         idpeps = {}
         # TODO go over conditions!
         for cond_id, fdr in pep['qval']:
-            idpep, _cr = m.IdentifiedPeptide.objects.get_or_create(peptide=mol, setorsample_id=cond_id)
+            idpep = m.IdentifiedPeptide.objects.create(peptide=mol, setorsample_id=cond_id)
             idpeps[cond_id] = idpep
-            m.PeptideFDR.objects.get_or_create(fdr=fdr, idpep=idpep)
+            m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
         for cond_id, nrpsms in pep['psmcount']:
-            m.AmountPSMsPeptide.objects.get_or_create(value=nrpsms, idpep=idpeps[cond_id])
+            m.AmountPSMsPeptide.objects.create(value=nrpsms, idpep=idpeps[cond_id])
         for cond_id, quant in pep['isobaric']:
-            m.PeptideIsoQuant.objects.get_or_create(peptide_id=pep['pep_id'], value=quant, channel_id=cond_id)
+            if quant != 'NA':
+                m.PeptideIsoQuant.objects.create(peptide=mol, value=quant, channel_id=cond_id)
     return JsonResponse({'error': False, 'pep_ids': stored_peps})
 
 

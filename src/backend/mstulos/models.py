@@ -104,8 +104,13 @@ class IdentifiedPeptide(models.Model):
 
 class PeptideIsoQuant(models.Model):
     value = models.FloatField()
-    channel = models.OneToOneField(Condition, on_delete=models.CASCADE)
+    channel = models.ForeignKey(Condition, on_delete=models.CASCADE)
+    # We can use molecule here instead of identified peptide since we have coupled
+    # to a condition which contains the experiment etc
     peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['channel', 'peptide'], name='uni_isochpep')]
 
 
 class PeptideFDR(models.Model):
