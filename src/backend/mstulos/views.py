@@ -356,9 +356,26 @@ def upload_proteins(request):
     return JsonResponse({'error': False, 'protein_ids': stored_prots, 'gene_ids': stored_genes})
 
 
-def encode_resultseq(resultmolecule, mod_ids_table):
-    # FIXME make unified result mol seq string to store? Or store as mod etc in db?
-    return resultmolecule
+def get_mods_from_seq(seq, mods=False, pos=0):
+    '''Recursive, finds mods at positions in peptide'''
+    if not mods:
+        mods = {}
+    if m := re.search('[+-][0-9]+\.[0-9]+', seq):
+        pos = pos + m.start()
+        mods[pos] = m.group()
+        nextseq = seq[m.end():]
+        mods, pos = get_mods_from_seq(nextseq, mods, pos)
+    return mods, pos
+
+
+def encode_mods(resultmolecule, barepep, mod_ids_table):
+    # FIXME what if there is a negative mod (ie fixed plus another)?
+    '''Turn any PSM sequence (from sage or MSGF) into a barepep with a map
+    of where the mods and their IDs in our DB are'''
+    resultmol_strip = re.sub('[\[\]]', '', resultmolecule)
+    modpos, _ = get_mods_from_seq(resultmol_strip)
+    encodings = [f'{pos}:{mod_ids_table[mod]}' for pos, mod in modpos.items()]
+    return f'{barepep}[{",".join(encodings)}]'
 
 
 @require_POST
@@ -371,33 +388,36 @@ def upload_peptides(request):
     except KeyError:
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_peps = {}
-    # FIXME
-    # e.g. {304.1234: 3, 79.1234: 1}
+    # Get mods in dict with both sage format (rounded to 4 dec) and MSGF (rounded to 3 dec)
+    # e.g. {304.1234: 3, 304.123: 3, 79.1234: 1, 79.123: 1}
+    # TODO maybe centralize table so its same in other views etc?
     mod_ids = {}
+    [mod_ids.update({f'+{round(x.mass, 3)}': x.id, f'+{round(x.mass, 4)}': x.id})
+        for x in m.Modification.objects.all()]
     for pep in data['peptides']:
         bareseq = re.sub('[^A-Z]', '', pep['pep'])
         pepseq, _cr = m.PeptideSeq.objects.get_or_create(seq=bareseq)
-        encoded_pepmol = encode_resultseq(pep['pep'], mod_ids)
+        encoded_pepmol = encode_mods(pep['pep'], bareseq, mod_ids)
         if _cr:
             mol = m.PeptideMolecule.objects.create(sequence=pepseq, encoded_pep=encoded_pepmol)
         else:
             mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq,
                     encoded_pep=encoded_pepmol)
-        pepprot, _cr = m.PeptideProtein.objects.get_or_create(peptide=pepseq, protein_id=prot_id,
+        pepprot, _cr = m.PeptideProtein.objects.get_or_create(peptide=pepseq, protein_id=pep['prot'],
                 experiment=exp)
-        if gene_id:
-            m.ProteinGene.objects.get_or_create(pepprot=pepprot, gene_id=gene_id)
-        stored_peps[pep['resultseq']] = mol.pk
+        if pep['gene']:
+            m.ProteinGene.objects.get_or_create(pepprot=pepprot, gene_id=pep['gene'])
+        stored_peps[pep['pep']] = mol.pk
         idpeps = {}
         # TODO go over conditions!
         for cond_id, fdr in pep['qval']:
-            idpep = m.IdentifiedPeptide.objects.create(peptide_id=mol, setorsample_id=cond_id)
+            idpep, _cr = m.IdentifiedPeptide.objects.get_or_create(peptide=mol, setorsample_id=cond_id)
             idpeps[cond_id] = idpep
-            m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
+            m.PeptideFDR.objects.get_or_create(fdr=fdr, idpep=idpep)
         for cond_id, nrpsms in pep['psmcount']:
-            m.AmountPSMsPeptide.objects.create(value=nrpsms, idpep=idpeps[cond_id])
+            m.AmountPSMsPeptide.objects.get_or_create(value=nrpsms, idpep=idpeps[cond_id])
         for cond_id, quant in pep['isobaric']:
-            m.PeptideIsoQuant.objects.create(peptide_id=pep['pep_id'], value=quant, channel_id=cond_id)
+            m.PeptideIsoQuant.objects.get_or_create(peptide_id=pep['pep_id'], value=quant, channel_id=cond_id)
     return JsonResponse({'error': False, 'pep_ids': stored_peps})
 
 
@@ -412,7 +432,7 @@ def upload_psms(request):
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     for psm in data['psms']:
         m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], scan=psm['scan'],
-                filecond=psm['fncond'], score=psm['score'])
+                filecond_id=psm['fncond'], score=psm['score'])
     return JsonResponse({'error': False})
 
 

@@ -42,8 +42,9 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         for line in fp:
             line = line.strip('\n').split('\t')
             # FIXME if genes:
+            protein = line[protfield]
             if protein not in storedproteins:
-                protgenes.append([line[protfield], line[genefield])
+                protgenes.append([protein, line[genefield]])
             if len(protgenes) == 1000:
                 resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
                     'organism_id': organism_id})
@@ -99,7 +100,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
                 for col, cond_id in col_conds:
                     storepep[datatype].append((cond_id, line[col]))
             pep_values.append(storepep)
-            if len(pep_values) == 1000:
+            if len(pep_values) == 10000:
                 resp = update_db(pepurl, json={'peptides': pep_values, 'token': token})
                 resp.raise_for_status()
                 pep_values = []
