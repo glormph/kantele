@@ -198,9 +198,9 @@ def frontpage(request):
         qset = qset.filter(exp_t_q)
         #(eupp__in=[x.upper() for x in q['experiments_text'].split('\n')])
     if q['proteins_id']:
-        qset = qset.filter(peptideprotein__protein__in=[x[0] for x in q['proteins_id']])
+        qset = qset.filter(peptideprotein__proteinfa__protein__in=[x[0] for x in q['proteins_id']])
     if q['proteins_text']:
-        qset = qset.annotate(pupp=Upper('peptideprotein__protein__name'))
+        qset = qset.annotate(pupp=Upper('peptideprotein__proteinfa__protein__name'))
         if q['proteins_text_exact']:
             qset = qset.filter(pupp__in=[x.upper() for x in q['proteins_text'].split('\n')])
         else:
@@ -220,9 +220,9 @@ def frontpage(request):
         qset = qset.filter(dt_q)
 
     if q['genes_id']:
-        qset = qset.filter(peptideprotein__proteingene__gene__in=[x[0] for x in q['genes_id']])
+        qset = qset.filter(peptideprotein__proteinfa__proteingene__gene__in=[x[0] for x in q['genes_id']])
     if q['genes_text']:
-        qset = qset.annotate(gupp=Upper('peptideprotein__proteingene__gene__name'))
+        qset = qset.annotate(gupp=Upper('peptideprotein__proteinfa__proteingene__gene__name'))
         if q['genes_text_exact']:
             qset = qset.filter(gupp__in=[x.upper() for x in q['genes_text'].split('\n')])
         else:
@@ -232,11 +232,11 @@ def frontpage(request):
             qset = qset.filter(gtxtq)
     
     fields = {'seq', 'id', 
-            'peptideprotein__protein__name', 'peptideprotein__protein_id',
-            'peptideprotein__proteingene__gene__name', 'peptideprotein__proteingene__gene_id', 'peptideprotein__experiment__analysis__name', 'peptideprotein__experiment_id'}
+            'peptideprotein__proteinfa__protein__name', 'peptideprotein__proteinfa__protein_id',
+            'peptideprotein__proteinfa__proteingene__gene__name', 'peptideprotein__proteinfa__proteingene__gene_id', 'peptideprotein__experiment__analysis__name', 'peptideprotein__experiment_id'}
     agg_fields = {
-            'proteins': ('peptideprotein__protein__name', 'peptideprotein__protein_id'),
-            'genes': ('peptideprotein__proteingene__gene__name', 'peptideprotein__proteingene__gene_id'),
+            'proteins': ('peptideprotein__proteinfa__protein__name', 'peptideprotein__proteinfa__protein_id'),
+            'genes': ('peptideprotein__proteinfa__proteingene__gene__name', 'peptideprotein__proteinfa__proteingene__gene_id'),
             'experiments': ('peptideprotein__experiment__analysis__name', 'peptideprotein__experiment_id'),
             }
     for aggr_col in featfields[1:]:
@@ -255,10 +255,10 @@ def frontpage(request):
         agg_prots = pep.get('proteins', False)
         agg_genes = pep.get('genes', False)
         agg_exps = pep.get('experiments', False)
-        prot = pep.get('peptideprotein__protein__name', False)
-        pid = pep.get('peptideprotein__protein_id', False)
-        gene = pep.get('peptideprotein__proteingene__gene__name', False)
-        gid = pep.get('peptideprotein__proteingene__gene_id', False)
+        prot = pep.get('peptideprotein__proteinfa__protein__name', False)
+        pid = pep.get('peptideprotein__proteinfa__protein_id', False)
+        gene = pep.get('peptideprotein__proteinfa__proteingene__gene__name', False)
+        gid = pep.get('peptideprotein__proteinfa__proteingene__gene_id', False)
         exp = pep.get('peptideprotein__experiment__analysis__name', False)
         eid = pep.get('peptideprotein__experiment_id', False)
         row = {'id': pep['id'], 'seq': pep['seq']}
@@ -346,22 +346,27 @@ def upload_proteins(request):
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     stored_prots, stored_genes = {}, {}
     organism_genes = m.Gene.objects.filter(organism_id=data['organism_id'])
-    organism_proteins = m.Protein.objects.filter(peptideprotein__proteingene__gene__in=organism_genes)
+    # organism_proteins = m.Protein.objects.filter(peptideprotein__proteingene__gene__in=organism_genes)
     existing_genes = {x.name: x.pk for x in organism_genes}
-    existing_prots = {x.name: x.pk for x in organism_proteins}
-    for prot, gene in data['protgenes']:
+    # Usually fasta duplicates dont work in analyses, but be defensive and include
+    # the fa fn ID here at least - still assumes no duplicates in the single files
+    # To defend against that wed have to include the sequence
+    existing_prots = {f'{x.fafn_id}__{x.protein.name}': x.pk for x in 
+            m.ProteinFasta.objects.filter(fafn_id__in=data['fa_ids'])}
+    for fa_id, prot, gene, seq in data['protgenes']:
         if gene in existing_genes:
             store_gid = existing_genes[gene]
-        else:
+        elif gene:
             store_gid = m.Gene.objects.get_or_create(name=gene, organism_id=data['organism_id'])[0].pk
-        if prot in existing_prots:
-            store_pid = existing_prots[prot]
-        else:
-            # cannot get_or_create here, we only have name field
-            store_pid = m.Protein.objects.create(name=prot).pk
-        stored_prots[prot] = store_pid
-        stored_genes[gene] = store_gid
-    return JsonResponse({'error': False, 'protein_ids': stored_prots, 'gene_ids': stored_genes})
+        fa_prot = f'{fa_id}__{prot}'
+        if fa_prot not in existing_prots:
+            dbprot, _ = m.Protein.objects.get_or_create(name=prot)
+            protfa = m.ProteinFasta.objects.create(protein=store_prot, fafn_id=fa_id, sequence=seq)
+            existing_prots[fa_prot] = protfa.pk
+            if gene:
+                m.ProteinGene.objects.get_or_create(proteinfa=protfa, gene_id=store_gid)
+        stored_prots[prot] = existing_prots[fa_prot]
+    return JsonResponse({'error': False, 'protein_ids': stored_prots})
 
 
 def get_mods_from_seq(seq, mods=False, pos=0):
@@ -411,19 +416,21 @@ def upload_peptides(request):
         else:
             mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq,
                     encoded_pep=encoded_pepmol)
-        pepprot, _cr = m.PeptideProtein.objects.get_or_create(peptide=pepseq, protein_id=pep['prot'],
-                experiment=exp)
-        if pep['gene']:
-            m.ProteinGene.objects.get_or_create(pepprot=pepprot, gene_id=pep['gene'])
+
+        for prot_id in pep['prots']:
+            m.PeptideProtein.objects.get_or_create(peptide=pepseq, proteinfa_id=prot_id,
+                    experiment=exp)
         stored_peps[pep['pep']] = mol.pk
         idpeps = {}
-        # TODO go over conditions!
         for cond_id, fdr in pep['qval']:
             idpep = m.IdentifiedPeptide.objects.create(peptide=mol, setorsample_id=cond_id)
             idpeps[cond_id] = idpep
             m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
         for cond_id, nrpsms in pep['psmcount']:
             m.AmountPSMsPeptide.objects.create(value=nrpsms, idpep=idpeps[cond_id])
+        for cond_id, ms1area in pep['ms1']:
+            if ms1area != 'NA':
+                m.PeptideMS1.objects.create(ms1=ms1area, idpep=idpeps[cond_id])
         for cond_id, quant in pep['isobaric']:
             if quant != 'NA':
                 m.PeptideIsoQuant.objects.create(peptide=mol, value=quant, channel_id=cond_id)

@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 
 from django.urls import reverse
 from celery import shared_task
+from Bio import SeqIO
 
 from kantele import settings
 from jobs.post import update_db
@@ -22,7 +23,6 @@ from jobs.post import update_db
 
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
-def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, outheaders):
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
@@ -39,29 +39,42 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     storedproteins, storedgenes = {}, {}
     protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
     pepheader = outheaders['pep']
+    all_seq = {}
+    for fa_id, fa_server, fafn in fafns:
+        fa_path = os.path.join(settings.SHAREMAP[fa_server], fafn)
+        all_seq[fa_id] = SeqIO.index(fa_path, 'fasta')
     with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
         header = next(fp).strip('\n').split('\t')
         protfield = header.index(pepheader['protein'])
-        genefield = header.index(pepheader['gene'])
         for line in fp:
             line = line.strip('\n').split('\t')
             # FIXME if genes:
-            protein = line[protfield]
-            if protein not in storedproteins:
-                protgenes.append([protein, line[genefield]])
-            if len(protgenes) == 1000:
-                resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
-                    'organism_id': organism_id})
-                resp.raise_for_status()
-                storedproteins.update(resp.json()['protein_ids'])
-                storedgenes.update(resp.json()['gene_ids'])
-                protgenes = []
+            # This assumes proteins are in a field separated by semicolons, which is
+            # the case for MSGF, Sage, msstitch PSM tables (and msstitch peptide table)
+            for protein in line[protfield].split(';'):
+                if protein not in storedproteins:
+                    gene = False
+                    for fa_id, acc_seqs in all_seq.items():
+                        if protein in acc_seqs:
+                            fahead = acc_seqs[protein].description.split()
+                            seq = str(acc_seqs[protein].seq)
+                        ens = [x for x  in [x.split(':') for x in fahead] if x[0] == 'gene_symbol']
+                        sp = [x for x  in [x.split('=') for x in fahead] if x[0] == 'GN']
+                        if rec_gene := ens or sp:
+                            gene = rec_gene[0][1]
+                    protgenes.append([fa_id, protein, gene, seq])
+                    storedproteins[protein] = False
+                if len(protgenes) == 1000:
+                    resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
+                        'organism_id': organism_id, 'fa_ids': [x[0] for x in fafns]})
+                    resp.raise_for_status()
+                    storedproteins.update(resp.json()['protein_ids'])
+                    protgenes = []
     if len(protgenes):
         resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
-                'organism_id': organism_id})
+            'organism_id': organism_id, 'fa_ids': [x[0] for x in fafns]})
         resp.raise_for_status()
         storedproteins.update(resp.json()['protein_ids'])
-        storedgenes.update(resp.json()['gene_ids'])
 
     # Now store all peptide sequences found with proteins/genes association, and
     # any conditions used
@@ -69,23 +82,24 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     storedpeps = {} # for ID tracking
     with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
         header = next(fp).strip('\n').split('\t')
-        conditions = {'psmcount': [], 'qval': [], 'isobaric': []}
+        conditions = {'psmcount': [], 'ms1': [], 'qval': [], 'isobaric': []}
         # find header fields and match with conditions by setname/sample/channel
-        # FIXME do bareseq thing on backend
         pepfield = header.index(pepheader['peptide'])
         for ix, field in enumerate(header):
             # bit strict handling with f'_PSM count' to avoid Quanted PSM count fields..
             # Text parsing is not always super clean. We may need to think about that in
             # the pipeline itself, to make sure it is parseable, or encode somehow
             if pepheader['psmcount'] and f'_{pepheader["psmcount"]}' in field:
-                setname = re.sub(f'_{pepheader["psmcount"]}', '', field)
+                setname = field.replace(f'_{pepheader["psmcount"]}', '')
                 conditions['psmcount'].append((ix, samplesets[setname]['set_id']))
             elif pepheader['fdr'] and pepheader['fdr'] in field:
-                setname = re.sub(f'_{pepheader["fdr"]}', '', field)
+                setname = field.replace(f'_{pepheader["fdr"]}', '')
                 conditions['qval'].append((ix, samplesets[setname]['set_id']))
+            elif pepheader['ms1'] and pepheader['ms1'] in field:
+                setname = field.replace(f'_{pepheader["ms1"]}', '')
+                conditions['ms1'].append((ix, samplesets[setname]['set_id']))
             elif pepheader['isobaric'] and any(plex in field for plex in pepheader['isobaric']):
                 plex_re = '(.*)_[a-z0-9]+plex_([0-9NC]+)'
-                # FIXME isobaric lookup is not done in jobs yet!
                 # Need to remove e.g. plex_126 - Quanted PSMs, with $
                 if re.match(f'{plex_re}$', field):
                     sample_set_ch = re.sub(plex_re, '\\1___\\2', field)
@@ -97,8 +111,8 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         pep_values = []
         for line in fp:
             line = line.strip('\n').split('\t')
-            storepep = {'pep': line[pepfield], 'prot': storedproteins[line[protfield]],
-                'gene': storedgenes.get(line[genefield], False)}
+            storepep = {'pep': line[pepfield],
+                    'prots': [storedproteins[x] for x in line[protfield].split(';')]}
             for datatype, col_conds in conditions.items():
                 storepep[datatype] = []
                 for col, cond_id in col_conds:

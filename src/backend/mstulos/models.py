@@ -2,6 +2,7 @@ from django.db import models
 
 from analysis import models as am
 from datasets import models as dm
+from rawstatus import models as rm
 
 
 class Experiment(models.Model):
@@ -51,16 +52,22 @@ class Protein(models.Model):
     '''A protein name can in theory map to different gene names in 
     different experiments, depending on which input protein data is
     used (e.g.  uniprot/ensembl versions, although not ENSP/ENSG).
-    Therefore we have protein/organism and gene/organism, a
+    Therefore we have protein/fasta/seq, protein/organism and gene/organism, a
     protein/gene/experiment table, and a peptide/protein/experiment table
-    Ideally we keep track of protein fasta releases somewhere, like
-    we do for Uniprot/ENSEMBL mouse/human, but then we'd still miss 
-    a lot of other databases.
-    It is also not directly parseable from the pipeline which protein 
-    comes from which fasta file, and parsing full fasta files would
-    possibly make this table very full in case of proteogenomics
     '''
     name = models.TextField()
+
+
+class ProteinFasta(models.Model):
+    '''Tracking protein sequences here. For perf reasons we keep track of which
+    fasta they came from, so we wont have to look up the sequence for each insert
+    '''
+    protein = models.ForeignKey(Protein, on_delete=models.CASCADE)
+    fafn = models.ForeignKey(rm.StoredFile, on_delete=models.PROTECT)
+    sequence = models.TextField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['protein', 'fafn'], name='uni_prot_fa')]
 
 
 class PeptideSeq(models.Model):
@@ -73,7 +80,7 @@ class PeptideProtein(models.Model):
     table referencing the experiment. Also takes care of changed protein
     names caused by different protein input db versions'''
     peptide = models.ForeignKey(PeptideSeq, on_delete=models.CASCADE)
-    protein = models.ForeignKey(Protein, on_delete=models.CASCADE)
+    proteinfa = models.ForeignKey(ProteinFasta, on_delete=models.CASCADE)
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
 
 
@@ -82,7 +89,7 @@ class ProteinGene(models.Model):
     may not be the same over multiple protein data versions (e.g. 
     ENSEMBL, uniprot), and not all experiments have genes included.
     Also, two species can share a protein or gene name, etc'''
-    pepprot = models.OneToOneField(PeptideProtein, on_delete=models.CASCADE)
+    proteinfa = models.OneToOneField(ProteinFasta, on_delete=models.CASCADE)
     gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
 
 
@@ -111,6 +118,11 @@ class PeptideIsoQuant(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['channel', 'peptide'], name='uni_isochpep')]
+
+
+class PeptideMS1(models.Model):
+    ms1 = models.FloatField()
+    idpep = models.OneToOneField(IdentifiedPeptide, on_delete=models.CASCADE)
 
 
 class PeptideFDR(models.Model):
