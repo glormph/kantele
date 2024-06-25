@@ -706,7 +706,10 @@ def store_analysis(request):
         return JsonResponse({'error': 'Something went wrong, contact admin concerning a bad request'}, status=400)
     except KeyError:
         return JsonResponse({'error': 'Something went wrong, contact admin concerning missing data'}, status=400)
-    dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related('prefractionationdataset__prefractionation')
+    dsetquery = dm.Dataset.objects.filter(pk__in=req['dsids']).select_related(
+            'prefractionationdataset__prefractionation',
+            'storageshare__server',
+            )
     if dsetquery.filter(deleted=True).exists():
         return JsonResponse({'error': 'Deleted datasets cannot be analyzed'})
     if req['analysis_id']:
@@ -756,6 +759,13 @@ def store_analysis(request):
         if dsfiles[dsid].count() < nrrawfiles:
             response_errors.append(f'Files of type {req["picked_ftypes"][dsid]} are fewer than '
                     f'raw files, please fix - for dataset {dsname}')
+
+    # Already here, queue migration servershare job
+    primary_share = rm.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    for dset in dsets.values():
+        if dset.storageshare.server != primary_share.server:
+            if error := move_dset_project_servershare(dsa.dataset, settings.PRIMARY_STORAGESHARENAME):
+                return JsonResponse({'error': error}, status=403)
 
     for dsid in req['dsids']:
         for sf in dsfiles[dsid]:
@@ -1160,14 +1170,8 @@ def start_analysis(request):
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can start this job'}, status=403)
     elif job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
-        return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, this job is {}'.format(job.state)}, status=403)
-
-    primary_share = rm.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
-    for dsa in am.DatasetAnalysis.objects.filter(analysis_id=job.nextflowsearch.analysis_id): 
-        if dsa.dataset.storageshare.server != primary_share.server:
-            if error := move_dset_project_servershare(dsa.dataset, settings.PRIMARY_STORAGESHARENAME):
-                return JsonResponse({'error': error}, status=403)
-
+        return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, '
+            f'this job is {job.state}'}, status=403)
     jv.do_retry_job(job)
     return JsonResponse({}) 
 
