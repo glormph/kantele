@@ -111,7 +111,7 @@ def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, srcserver_url,
                 f'{srcserver_url}:{os.path.join(srcshare_path_controller, srcpath, srcfn)}', dstdir])
         else:
             # same controller on src and dst -> rsync over mounts
-            srcfpath = os.path.join(settings.SHAREMAP[srcsharename], srcpath)
+            srcfpath = os.path.join(settings.SHAREMAP[srcsharename], srcpath, srcfn)
             cmd.extend([srcfpath, dstdir])
         try:
             subprocess.run(cmd, check=True)
