@@ -1177,9 +1177,9 @@ def move_dset_project_servershare(dset, dstsharename):
     if not jm.Job.objects.filter(funcname='move_dset_servershare',
             kwargs__dset_id=kw['dset_id'], kwargs__srcsharename=kw['srcsharename'],
             kwargs__dstsharename=kw['dstsharename']).exclude(state__in=jj.JOBSTATES_DONE).exists():
+        if error := check_job_error('move_dset_servershare', **kw):
+            return error
         kwargs = [kw]
-    if error := check_job_error('move_dset_servershare', **kwargs[0]):
-        return error
     for other_ds in models.Dataset.objects.filter(deleted=False, purged=False,
             runname__experiment__project=dset.runname.experiment.project).exclude(pk=dset.pk):
         kw = {'dset_id': other_ds.pk, 'srcsharename': other_ds.storageshare.name,
