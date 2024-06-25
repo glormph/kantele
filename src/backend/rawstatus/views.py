@@ -375,9 +375,8 @@ def get_files_transferstate(request):
         if sfn.checked:
             # File transfer and check finished
             tstate = 'done'
-            if (not AnalysisResultFile.objects.filter(sfile_id=sfn) and not
-                    PDCBackedupFile.objects.filter(storedfile_id=sfn.id)):
-                # No analysis result or PDC file, then do some processing work
+            if not PDCBackedupFile.objects.filter(storedfile_id=sfn.id):
+                # No already-backedup PDC file, then do some processing work
                 process_file_confirmed_ready(rfn, sfn, upload.archive_only)
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
@@ -838,8 +837,6 @@ def archive_file(request):
         return JsonResponse({'error': 'Bad request'}, status=400)
     if sfile.purged or sfile.deleted:
         return JsonResponse({'error': 'File is currently marked as deleted, can not archive'}, status=403)
-    elif sfile.rawfile.producer.client_id in [settings.ANALYSISCLIENT_APIKEY]:
-        return JsonResponse({'error': 'Analysis result files are not archived, they can be regenerated from RAW data'}, status=403)
     elif sfile.rawfile.claimed or hasattr(sfile.rawfile, 'datasetrawfile'):
         return JsonResponse({'error': 'File is in a dataset, please archive entire set or remove it from dataset first'}, status=403)
     elif hasattr(sfile, 'pdcbackedupfile') and sfile.pdcbackedupfile.success == True and sfile.pdcbackedupfile.deleted == False:

@@ -272,7 +272,7 @@ def delete_empty_dir(self, servershare, directory):
             raise
 
 
-@shared_task(bind=True, queue=settings.QUEUE_BACKUP)
+#@shared_task(bind=True, queue=settings.QUEUE_BACKUP)
 def pdc_archive(self, md5, yearmonth, servershare, filepath, fn_id, isdir):
     print('Archiving file {} to PDC tape'.format(filepath))
     basedir = settings.SHAREMAP[servershare]
