@@ -1,0 +1,104 @@
+---
+# Tasks for storage node
+
+- name: Mount storages
+  become: yes
+  mount:
+      path: "{{ item.0 }}"
+      src: "{{ item.1 }}"
+      state: mounted
+      fstype: cifs
+      opts: "credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}"
+  loop: "{{ storagedirs | zip(storageservers) | list }}"
+
+- name: create folder for .ssh
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+    path: "{{ homedir }}/.ssh"
+    state: directory
+    owner: '{{ kanteleuser }}'
+    group: '{{ kantelegroup }}'
+    mode: '700'
+
+- name: Deploy passwordless SSH key for rsyncing backups from from web server
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.copy:
+    src: files/ssh_key_rsync.secret
+    dest: "{{ rsync_ssh_key_file }}"
+    owner: "{{ kanteleuser }}"
+    group: "{{ kanteleuser }}"
+    mode: '400'
+  loop:
+    - [files/ssh_key_rsync.secret, "{{ rsync_ssh_key_file }}"]
+    - [files/ssh_key_secondaryserver.secret, "{{ secondary_storage_sshkey }}"]
+
+- name: Get tivoli backup client from IBM
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.unarchive:
+    src: "{{ tivoli_client_url }}"
+    dest: "{{ homedir }}"
+    remote_src: yes
+
+- name: Create folder for tivoli backup config
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+    path: "{{ dsm_dir }}"
+    state: directory
+    owner: '{{ kanteleuser }}'
+    group: '{{ kantelegroup }}'
+    mode: '755'
+
+- name: Create password folder for tivoli backup
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+    path: "{{ dsm_dir }}/etc/adsm"
+    state: directory
+    owner: '{{ kanteleuser }}'
+    group: '{{ kantelegroup }}'
+    mode: '700'
+
+- name: Deploy tivoli backup config
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.template:
+      src: "dsm.sys.j2"
+      dest: "{{ dsm_dir }}/dsm.sys"
+
+- name: Install tivoli backup client
+  become: yes
+  ansible.builtin.apt:
+    deb: "{{ homedir }}/{{ item }}"
+  with_items:
+    - gskcrypt64_8.0-55.31.linux.x86_64.deb
+    - gskssl64_8.0-55.31.linux.x86_64.deb
+    - tivsm-api64.amd64.deb
+    - tivsm-ba.amd64.deb
+
+- name: Backup download -- create folder for backups
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.file:
+      path: "{{ storage_backup_path }}"
+      state: directory
+
+- name: Backup download -- template out backup script
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.template:
+      src: "download_backup.j2"
+      dest: "{{ homedir }}/download_backup.sh"
+
+- name: Backup download -- crontab setup 
+  # FIXME how to error report?
+  become: yes
+  become_user: '{{ kanteleuser }}'
+  ansible.builtin.cron:
+      name: Download kantele DB dump backup
+      hour: "3"
+      minute: "*/5"
+      job: "bash {{ homedir }}/download_backup.sh"

@@ -4,19 +4,12 @@ SECRET_KEY={{ secret_key }}
 
 NGINX_ANALYSIS_REDIRECT={{ analysis_path_url }}
 
-# DB IDs
-# FIXME File types (are int(x) in settings so need to be everywhere, fix that
-DATABASE_FTID={{ database_ftid }}
-
 # Webserver only file types
 LC_DTYPE_ID={{ lc_dtype_id }}
 LOCAL_PTYPE_ID={{ local_ptype_id }}
 ## external datasets
 PX_PROJECT_ID={{ px_proj_id }}
 EXTERNAL_PRODUCER_IDS={{ external_producer_ids }}
-
-# long QC IDs in DB, user_id corefac user, also for transfer etc
-LONGQC_DBID={{ qc_dbfa_id }}
 
 ## nextflow DB IDs
 REFINE_MZML_WFVID={{ refine_mzml_wfv_id }}

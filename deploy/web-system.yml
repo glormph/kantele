@@ -1,7 +1,7 @@
 --- 
-
-# Prepare server for Kantele on Ubuntu 20.04 LTS
-# TODO: 22.04.1 is out in Aug 2022, then we can use docker-compose 1.29 and better spec of compose.yml
+# Prepare server for Kantele on Ubuntu 22.04 LTS
+# All things to install but not the actually system which gets regular updates
+# Run again when e.g. SSH key rotate
 # TODO: configure rsyslog to listen on TCP/UDP
 
 - hosts: production
@@ -59,7 +59,7 @@
 
       - name: Create user
         ansible.builtin.user:
-            name: '{{ web_user }}'
+            name: '{{ kanteleuser }}'
             shell: /bin/bash
             append: yes
             groups:
@@ -68,8 +68,9 @@
 
       - name: Put SSH pubkey in place
         ansible.posix.authorized_key:
-            user: '{{ web_user }}'
+            user: '{{ kanteleuser }}'
             state: present
+            # read content of file
             key: "{{ lookup('file', 'ssh_key_rsync.pub') }}"
 
       - name: TLS certificate directory exists
@@ -117,7 +118,7 @@
         ansible.builtin.file:
             path: "{{ item }}"
             state: directory
-            owner: "{{ web_user }}"
+            owner: "{{ kanteleuser }}"
             group: "{{ kantelegroup }}"
         loop:
             - "{{ host_uploadpath }}"

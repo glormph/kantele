@@ -1,14 +1,14 @@
 ---
-- hosts: analysis
-  remote_user: "{{ analysis_connect_user }}"
+- hosts: storage
+  remote_user: "{{ storage_connect_user }}"
   tasks:
     - name: Stop running workers
       ansible.builtin.import_tasks:
         file: stop_celery.yml
 
-    - name: Specific analysis tasks
+    - name: Specific storage tasks
       ansible.builtin.import_tasks:
-        file: analysis_tasks.yml
+        file: storage_tasks.yml
 
     - name: General kantele/celery updates
       ansible.builtin.import_tasks:

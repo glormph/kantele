@@ -1,9 +1,9 @@
 --- 
 # DB restoring on production from backup
 
-- hosts: kantele
+- hosts: web
   become: yes
-  become_user: '{{ web_user }}'
+  become_user: '{{ kanteleuser }}'
   tasks:
       - name: Remove running docker containers
         community.docker.docker_compose:

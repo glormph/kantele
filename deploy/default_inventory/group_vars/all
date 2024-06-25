@@ -6,55 +6,22 @@ mq_vhost: kantele_vhost
 rabbituser: kantele
 
 kanteledir: '{{ homedir }}/kantele'
+kantelevenv: "{{ kanteledir }}/venv"
 
+# DB accessed also from storage node for DB dumping
 kanteledb: kanteledb
 kanteledbuser: kanteleuser
-pgdatadir: "{{ homedir }}/pgdata"
-web_homedir: "/home/{{ web_user }}"
-host_pgbackup_path: "{{ web_homedir }}/pgbackups"
 
-compose_env_file: '{{ web_homedir }}/kantele/.compose.prod.env'
-
-tls_cert: server.crt
-tls_cert_key: server.key
-
-# DB backups in web container
+# DB dumping needs dir to dump in and uses compose so needs the env file
+host_pgbackup_path: "{{ homedir }}/pgbackups"
 container_backuppath: /pgbackups
+compose_env_file: '{{ homedir }}/kantele/.compose.prod.env'
 
-# Upload paths in nginx container
-container_uploadpath: /uploads
-host_uploadpath: "{{ kanteledir }}/uploads"
-upload_path_url: /uploads
 
-# Analysis paths in nginx container
-container_analysispath: /analysisfiles
-host_analysispath: "{{ kanteledir }}/srv_analysis"
-analysis_path_url: /analysisfiles
+celeryenv_file: "{{ kanteledir }}/celery.env"
+kantelelogdir: "{{ kanteledir }}/log"
 
-# DEPRECATE if not used in backup DL script
-web_backupfolder: backups
-backup_dl_url: "https://{{ kantele_host }}{{ analysis_path_url }}/{{ web_backupfolder }}"
-
-storagesharenames: "storage,s3storage"
-
-storage_env:
-    SECRET_KEY: "{{ secret_key }}"
-    PROTOCOL: https
-    KANTELEHOST: "{{ kantele_host }}"
-    RABBITHOST: "{{ kantele_host }}"
-    RABBIT_VHOST: '{{ mq_vhost }}'
-    RABBITPASS: "{{ amqppass }}"
-    RABBITUSER: "{{ rabbituser }}"
-    APIKEY: "{{ storage_apikey }}"
-    ADMIN_APIKEY: "{{ admin_apikey }}"
-    STORAGESHARENAMES: "{{ storagesharenames }}"
-    STORAGESHARES: "{{ storage_shares }}"
-    ANALYSISSHARE: "{{ analysis_share }}"
-    TMPSHARE: "{{ tmp_share }}"
-    MZMLINSHARE: "{{ mzml_in_share }}"
-    DSM_DIR: "{{ dsm_dir }}"
-    DATABASE_FTID: "{{ database_ftid }}" # for download/register ensembl
-    RSYNC_SSHPORT: 22 # ssh port on upload
-    RSYNC_SSHUSER: '{{ web_user }}'
-    RSYNC_SSHKEY: '{{ rsync_ssh_key }}'
-    PRIMARY_STORAGE: '{{ primary_storagename }}'
+queue_local: mv_md5_storage
+queue_dl: file_download
+queue_backup: backup_archive
+queue_scan: scaninbox

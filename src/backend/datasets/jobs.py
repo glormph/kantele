@@ -113,10 +113,16 @@ class MoveDatasetServershare(DatasetJob):
 
     def process(self, **kwargs):
         dset = Dataset.objects.values('storage_loc').get(pk=kwargs['dset_id'])
-        sfs = self.getfiles_query(**kwargs).values('path', 'servershare__name', 'filename', 'pk')
+        sfs = self.getfiles_query(**kwargs).values('path', 'servershare__name', 
+                'servershare__share', 'servershare__server__fqdn', 'filename', 'pk')
         rsync_sf = sfs.filter(deleted=False, purged=False, checked=True)
-        sharename = sfs.first()['servershare__name']
+        firstsf = sfs.first()
+        sharename = firstsf['servershare__name']
+        src_controller_url = firstsf['servershare__server__fqdn']
+        src_controller_share = firstsf['servershare__share']
+        dst_controller_url = ServerShare.objects.get(name=kwargs['dstsharename']).server.fqdn
         self.run_tasks.append(((kwargs['dset_id'], sharename, dset['storage_loc'],
+            src_controller_url, src_controller_share, dst_controller_url,
             kwargs['dstsharename'], [x['filename'] for x in rsync_sf], [x['pk'] for x in sfs]), {}))
 
 

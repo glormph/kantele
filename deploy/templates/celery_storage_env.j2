@@ -1,0 +1,39 @@
+CELERYD_NODES="local download backup scaninbox"
+CELERY_BIN="{{ kanteledir }}/venv/bin/celery"
+CELERYD_MULTI="multi"
+CELERY_APP="kantele"
+CELERYD_OPTS="-c:local 4 -c:download 1 -c:backup 2 -c:scaninbox 1 -Q:local {{ queue_local }} -Q:download {{ queue_dl }} -Q:backup {{ queue_backup }} -Q:scaninbox {{ queue_scan }} --statedb={{ kantelelogdir }}/%n%I.state"
+CELERYD_LOG_LEVEL="INFO"
+CELERYD_LOG_FILE="{{ kantelelogdir }}/%n%I.log"
+CELERYD_PID_FILE="{{ kantelelogdir }}/%n%I.pid"
+CELERYD_USER="{{ kanteleuser }}"
+CELERYD_GROUP="{{ kantelegroup }}"
+CELERY_CREATE_DIRS=1
+KANTELEHOST="{{ kantele_host }}"
+RABBITHOST={{ rabbithost }}
+RABBIT_VHOST={{ mq_vhost }}
+RABBITPASS={{ amqppass }}
+RABBITUSER={{ rabbituser }}
+
+CELERY_PREFETCH=1
+SECRET_KEY={{ secret_key }}
+APIKEY={{ storage_apikey }}
+STORAGESHARENAMES="{{ storagesharenames }}"
+STORAGESHARES={{ storage_shares }}
+ANALYSISSHARE={{ analysis_share }}
+MZMLINSHARE={{ mzml_in_share }}
+TMPSHARE="{{ tmp_share }}"
+
+DSM_DIR="{{ dsm_dir }}"
+RSYNC_SSHPORT=22
+RSYNC_SSHUSER='{{ web_user }}'
+RSYNC_SSHKEY='{{ rsync_ssh_key_file }}'
+PRIMARY_STORAGE='{{ primary_storagename }}'
+
+SECONDARY_STORAGE_RSYNC_USER='{{ secondary_storage_user }}'
+SECONDARY_STORAGE_RSYNC_KEY='{{ secondary_storage_sshkey }}'
+
+QUEUE_STORAGE="{{ queue_local }}"
+QUEUE_FILE_DOWNLOAD="{{ queue_dl }}"
+QUEUE_BACKUP="{{ queue_backup }}"
+QUEUE_SEARCH_INBOX="{{ queue_scan }}"

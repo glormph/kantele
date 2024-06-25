@@ -1,0 +1,28 @@
+* This file should be named /opt/tivoli/tsm/client/ba/bin/dsm.sys
+
+Servername {{ backup_servername }}
+ COMMmethod         TCPip
+ TCPPort            1542
+ SSL                YES
+ SSLFIPSMODE        YES
+ TCPServeraddress   {{ backup_url }}
+ TCPWindowsize      0
+ Tcpbuffsize        500
+ txnb               25600
+ PASSWORDDIR        {{ dsm_dir }}/etc
+ PASSWORDACC        GENERATE
+ compression        yes
+ * COMPRESSALWAYS     yes
+ NODENAME           {{ backup_nodename }}
+ ASNODENAME         {{ backup_asnodename }}
+
+* Client based encryption
+* ENCRYPTKey         save
+* encryptiontype     aes256
+* include.encrypt    /.../*
+
+* Optional file with include/exclude statements for files to backup
+* Not used here, only archiving specific files
+* INCLExcl           adsm-exclude-list
+
+

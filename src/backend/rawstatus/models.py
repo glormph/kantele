@@ -49,7 +49,8 @@ class MSInstrument(models.Model):
 
 class FileServer(models.Model):
     name = models.TextField(unique=True)
-    uri = models.TextField()
+    uri = models.TextField() # for users
+    fqdn = models.TextField() # controller URL for rsync SSH etc
 
     def __str__(self):
         return self.name

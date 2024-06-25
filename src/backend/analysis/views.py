@@ -18,6 +18,7 @@ from kantele import settings
 from analysis import models as am
 from analysis import jobs as aj
 from datasets import models as dm
+from datasets.views import move_dset_project_servershare
 from rawstatus import models as rm
 from home import views as hv
 from jobs import jobs as jj
@@ -1143,23 +1144,30 @@ def start_analysis(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
+    if 'item_id' in req:
+        # home app
+        jobq = Q(nextflowsearch__id=req['item_id'])
+    elif 'analysis_id' in req:
+        # analysis start app
+        jobq = Q(nextflowsearch__analysis_id=req['analysis_id'])
+    else:
+        return JsonResponse({'error': 'Incorrect request, contact admin'}, status=400)
     try:
-        job = False
-        if 'item_id' in req:
-            # home app
-            job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
-        elif 'analysis_id' in req:
-            # analysis start app
-            job = jm.Job.objects.get(nextflowsearch__analysis_id=req['analysis_id'])
+        job = jm.Job.objects.get(jobq)
     except jm.Job.DoesNotExist:
-        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
-    if not job:
         return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
     ownership = jv.get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can start this job'}, status=403)
     elif job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
         return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, this job is {}'.format(job.state)}, status=403)
+
+    primary_share = rm.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    for dset in am.DatasetAnalysis.objects.filter(analysis_id=job.nextflowsearch.analysis_id): 
+        if dset.storageshare.server != primary_share.server:
+            if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+                return JsonResponse({'error': error}, status=403)
+
     jv.do_retry_job(job)
     return JsonResponse({}) 
 

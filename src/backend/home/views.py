@@ -867,7 +867,8 @@ def create_mzmls(request):
     # before saving, allowing to return a 403 here.
     # Move entire project if not on same file server
     res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
-    if dset.storageshare.server != res_share.server:
+    primary_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    if dset.storageshare.server != primary_share.server:
         if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
             return JsonResponse({'error': error}, status=403)
     # Remove other pwiz mzMLs
@@ -928,7 +929,8 @@ def refine_mzmls(request):
     # Move entire project if not on same file server (403 is checked before saving anything
     # or queueing jobs)
     res_share = filemodels.ServerShare.objects.get(name=settings.MZMLINSHARENAME)
-    if dset.storageshare.server != res_share.server:
+    primary_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    if dset.storageshare.server != primary_share.server:
         if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
             return JsonResponse({'error': error}, status=403)
     # FIXME get analysis if it does exist, in case someone reruns?

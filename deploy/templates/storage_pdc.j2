@@ -1,1 +1,0 @@
-ps ax | grep pdc_archive | grep -v grep || nohup {{ kantelevenv }}/bin/celery -A kantele worker -Q pdc_archive -n pdcjobs.% --concurrency=1 &>> {{ kanteledir }}/pdc_nohup.out &
