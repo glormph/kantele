@@ -94,17 +94,7 @@ def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, srcserver_url,
     # TODO this task is very specific to our Lehtio infra at scilife,
     # and we should probably remove it from the codebase when we're
     # done migrating, including its job and views etc
-    cmd = ['rsync', '-av']
     dstdir = os.path.join(settings.SHAREMAP[dstsharename], srcpath)
-    if srcserver_url != dstserver_url:
-        # two different controllers -> rsync over ssh
-        cmd.extend(['-e',
-            f'"ssh -l {settings.SECONDARY_STORAGE_RSYNC_USER} -i {settings.SECONDARY_STORAGE_RSYNC_KEY}"',
-            f'{srcserver_url}:{os.path.join(srcshare_path_controller, srcpath, srcfn)}', dstdir])
-    else:
-        # same controller on src and dst -> rsync over mounts
-        srcfpath = os.path.join(settings.SHAREMAP[srcsharename], srcpath)
-        cmd.extend([srcfpath, dstdir])
     try:
         os.makedirs(dstdir, exist_ok=True)
     except Exception:
@@ -113,9 +103,16 @@ def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, srcserver_url,
     for srcfn in fns:
         # Dont compress, tests with raw data just make it slower and likely
         # the raw data is already fairly well compressed.
-        cmd = ['rsync', '-av', '-e',
+        cmd = ['rsync', '-av']
+        if srcserver_url != dstserver_url:
+            # two different controllers -> rsync over ssh
+            cmd.extend(['-e',
                 f'"ssh -l {settings.SECONDARY_STORAGE_RSYNC_USER} -i {settings.SECONDARY_STORAGE_RSYNC_KEY}"',
-                os.path.join(srcdir, srcfn), dstdir]
+                f'{srcserver_url}:{os.path.join(srcshare_path_controller, srcpath, srcfn)}', dstdir])
+        else:
+            # same controller on src and dst -> rsync over mounts
+            srcfpath = os.path.join(settings.SHAREMAP[srcsharename], srcpath)
+            cmd.extend([srcfpath, dstdir])
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError:
