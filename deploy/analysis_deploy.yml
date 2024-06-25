@@ -9,7 +9,9 @@
     - name: Specific analysis tasks
       ansible.builtin.import_tasks:
         file: analysis_tasks.yml
+      when: onlystop is undefined
 
     - name: General kantele/celery updates
       ansible.builtin.import_tasks:
         file: update_analysis_storage_tasks.yml
+      when: onlystop is undefined

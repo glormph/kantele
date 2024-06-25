@@ -23,22 +23,16 @@ pip install "ansible >2.9"
 source .ansible-env
 
 echo Stopping storage workers
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER}" storage_stop.yml
+ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER} onlystop=true" storage_deploy.yml -K
 
 echo Stopping analysis workers
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "analysis_connect_user=${ANALYSIS_USER}" analysis_stop.yml -K
-
-echo Update storage code
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER}" storage_update.yml
-
-echo Updating analysis code
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "analysis_connect_user=${ANALYSIS_USER}" analysis_update.yml -K
+ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "analysis_connect_user=${ANALYSIS_USER} onlystop=true" analysis_deploy.yml -K
 
 echo Update web node and restart it
 ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "web_connect_user=${WEB_USER}" web-deploy.yml -K
 
-echo Start storage
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER}" storage_start.yml
+echo Update storage code
+ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "storage_connect_user=${STORAGE_USER}" storage_deploy.yml -K
 
-echo Start analysis
-ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "analysis_connect_user=${ANALYSIS_USER}" analysis_start.yml -K
+echo Updating analysis code
+ansible-playbook -i default_inventory -i "${INVENTORY_PATH}" --extra-vars "analysis_connect_user=${ANALYSIS_USER}" analysis_deploy.yml -K
