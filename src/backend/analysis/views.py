@@ -764,7 +764,7 @@ def store_analysis(request):
     primary_share = rm.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
     for dset in dsets.values():
         if dset.storageshare.server != primary_share.server:
-            if error := move_dset_project_servershare(dsa.dataset, settings.PRIMARY_STORAGESHARENAME):
+            if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
                 return JsonResponse({'error': error}, status=403)
 
     for dsid in req['dsids']:
