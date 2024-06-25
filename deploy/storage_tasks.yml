@@ -25,8 +25,8 @@
   become: yes
   become_user: '{{ kanteleuser }}'
   ansible.builtin.copy:
-    src: files/ssh_key_rsync.secret
-    dest: "{{ rsync_ssh_key_file }}"
+    src: "{{ item.0 }}"
+    dest: "{{ item.1 }}"
     owner: "{{ kanteleuser }}"
     group: "{{ kanteleuser }}"
     mode: '400'

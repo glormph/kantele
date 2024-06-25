@@ -1163,9 +1163,9 @@ def start_analysis(request):
         return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, this job is {}'.format(job.state)}, status=403)
 
     primary_share = rm.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
-    for dset in am.DatasetAnalysis.objects.filter(analysis_id=job.nextflowsearch.analysis_id): 
-        if dset.storageshare.server != primary_share.server:
-            if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+    for dsa in am.DatasetAnalysis.objects.filter(analysis_id=job.nextflowsearch.analysis_id): 
+        if dsa.dataset.storageshare.server != primary_share.server:
+            if error := move_dset_project_servershare(dsa.dataset, settings.PRIMARY_STORAGESHARENAME):
                 return JsonResponse({'error': error}, status=403)
 
     jv.do_retry_job(job)
