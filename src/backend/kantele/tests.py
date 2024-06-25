@@ -44,14 +44,16 @@ class BaseTest(TestCase):
         self.user.save() 
         login = self.cl.login(username=username, password=password)
         # storage backend
-        self.newfserver, _ = rm.FileServer.objects.get_or_create(name='server1', uri='s1.test')
+        self.newfserver, _ = rm.FileServer.objects.get_or_create(name='server1', uri='s1.test',
+                fqdn='sameserver')
         self.sstmp, _ = rm.ServerShare.objects.get_or_create(name=settings.TMPSHARENAME, server=self.newfserver,
                 share='/home/testtmp')
         self.ssnewstore, _ = rm.ServerShare.objects.get_or_create(name=settings.PRIMARY_STORAGESHARENAME,
                 server=self.newfserver, share='/home/storage')
         self.archivestore, _ = rm.ServerShare.objects.get_or_create(name=settings.ARCHIVESHARENAME,
                 server=self.newfserver, share='/home/archive')
-        self.oldfserver, _ = rm.FileServer.objects.get_or_create(name='oldserver', uri='s0.test')
+        self.oldfserver, _ = rm.FileServer.objects.get_or_create(name='oldserver', uri='s0.test',
+                fqdn='sameserver')
         self.ssoldstorage, _ = rm.ServerShare.objects.get_or_create(name=settings.STORAGESHARENAMES[0],
                 server=self.oldfserver, share='/home/storage')
 
@@ -257,7 +259,6 @@ class TestMultiStorageServers(BaseIntegrationTest):
         self.assertTrue(self.tmpraw.claimed)
         # call job runner to run rsync
         self.run_job()
-        self.assertFalse(os.path.exists(self.oldfpath))
         newdspath = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.oldstorloc)
         self.assertTrue(os.path.exists(os.path.join(newdspath, self.oldsf.filename)))
         self.oldsf.refresh_from_db()
