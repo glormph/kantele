@@ -85,20 +85,37 @@ def rename_top_level_project_storage_dir(self, projsharename, srcname, newname, 
 
 
 @shared_task(bind=True, queue=settings.QUEUE_FILE_DOWNLOAD)
-def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, dstsharename, fns, upd_sf_ids):
+def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, srcserver_url,
+        srcshare_path_controller, dstserver_url, dstsharename, fns, upd_sf_ids):
     '''Uses rsync to copy a dataset to other servershare. E.g in case of consolidating
     projects to a certain share, or when e.g. moving to new storage unit. Files are rsynced
     one at a time, to avoid rsyncing files removed from dset before running this job,
     and avoiding files added to dset updating servershare post-job'''
-    srcdir = os.path.join(settings.SHAREMAP[srcsharename], srcpath)
+    # TODO this task is very specific to our Lehtio infra at scilife,
+    # and we should probably remove it from the codebase when we're
+    # done migrating, including its job and views etc
+    cmd = ['rsync', '-av']
     dstdir = os.path.join(settings.SHAREMAP[dstsharename], srcpath)
+    if srcserver_url != dstserver_url:
+        # two different controllers -> rsync over ssh
+        cmd.extend(['-e',
+            f'"ssh -l {settings.SECONDARY_STORAGE_RSYNC_USER} -i {settings.SECONDARY_STORAGE_RSYNC_KEY}"',
+            f'{srcserver_url}:{os.path.join(srcshare_path_controller, srcpath, srcfn)}', dstdir])
+    else:
+        # same controller on src and dst -> rsync over mounts
+        srcfpath = os.path.join(settings.SHAREMAP[srcsharename], srcpath)
+        cmd.extend([srcfpath, dstdir])
     try:
         os.makedirs(dstdir, exist_ok=True)
     except Exception:
         taskfail_update_db(self.request.id)
         raise
     for srcfn in fns:
-        cmd = ['rsync', '-avz', os.path.join(srcdir, srcfn), dstdir]
+        # Dont compress, tests with raw data just make it slower and likely
+        # the raw data is already fairly well compressed.
+        cmd = ['rsync', '-av', '-e',
+                f'"ssh -l {settings.SECONDARY_STORAGE_RSYNC_USER} -i {settings.SECONDARY_STORAGE_RSYNC_KEY}"',
+                os.path.join(srcdir, srcfn), dstdir]
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError:
@@ -108,10 +125,9 @@ def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, dstsharename, f
             except MaxRetriesExceededError:
                 taskfail_update_db(self.request.id)
                 raise
-    # delete files in source dir after rsyncing ALL files (else task is not retryable)
-    for srcfn in fns:
-        os.unlink(os.path.join(srcdir, srcfn))
-    delete_empty_dir(srcsharename, srcpath) # pylint: disable=E1120
+    # Do not delete files afterwards, as that cannot be done when they live on a different
+    # controller server
+
     # report finished
     fnpostdata = {'fn_ids': upd_sf_ids, 'servershare': dstsharename,
             'dst_path': srcpath, 'client_id': settings.APIKEY, 'task': self.request.id}

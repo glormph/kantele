@@ -30,6 +30,9 @@
     owner: "{{ kanteleuser }}"
     group: "{{ kanteleuser }}"
     mode: '400'
+  loop:
+    - [files/ssh_key_rsync.secret, "{{ rsync_ssh_key_file }}"]
+    - [files/ssh_key_secondaryserver.secret, "{{ secondary_storage_sshkey }}"]
 
 - name: Get tivoli backup client from IBM
   become: yes
