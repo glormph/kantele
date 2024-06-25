@@ -15,6 +15,8 @@ from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
 from jobs.jobutil import create_job, check_job_error, create_job_without_check
+from jobs import models as jm
+from jobs import jobs as jj
 
 
 INTERNAL_PI_PK = 1
@@ -1163,15 +1165,25 @@ def empty_files_json():
 def move_dset_project_servershare(dset, dstsharename):
     '''Takes a dataset and moves its entire project to a new
     servershare'''
-    kwargs = [{'dset_id': dset.pk, 'srcsharename': dset.storageshare.name, 'dstsharename': dstsharename}]
+    kwargs = []
+    kw = {'dset_id': dset.pk, 'srcsharename': dset.storageshare.name, 'dstsharename': dstsharename}
+    if not jm.Job.objects.filter(funcname='move_dset_servershare',
+            kwargs__dset_id=kw['dset_id'], kwargs__srcsharename=kw['srcsharename'],
+            kwargs__dstsharename=kw['dstsharename']).exclude(state__in=jj.JOBSTATES_DONE).exists():
+        kwargs = [kw]
     if error := check_job_error('move_dset_servershare', **kwargs[0]):
         return error
     for other_ds in models.Dataset.objects.filter(deleted=False, purged=False,
             runname__experiment__project=dset.runname.experiment.project).exclude(pk=dset.pk):
-        kwargs.append({'dset_id': other_ds.pk, 'srcsharename': other_ds.storageshare.name,
-            'dstsharename': dstsharename})
-        if error := check_job_error('move_dset_servershare', **kwargs[-1]):
-            return error
+        kw = {'dset_id': other_ds.pk, 'srcsharename': other_ds.storageshare.name,
+                'dstsharename': dstsharename}
+        jobs_in_progress = jm.Job.objects.filter(funcname='move_dset_servershare',
+                kwargs__dset_id=kw['dset_id'], kwargs__srcsharename=kw['srcsharename'],
+                kwargs__dstsharename=kw['dstsharename']).exclude(state__in=jj.JOBSTATES_DONE)
+        if not jobs_in_progress.exists():
+            if error := check_job_error('move_dset_servershare', **kw):
+                return error
+            kwargs.append(kw)
     [create_job_without_check('move_dset_servershare', **kw) for kw in kwargs]
     return False
 
