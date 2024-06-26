@@ -108,7 +108,7 @@ def rsync_dset_servershare(self, dset_id, srcsharename, srcpath, srcserver_url,
         if srcserver_url != dstserver_url:
             # two different controllers -> rsync over ssh
             cmd.extend(['-e',
-                f'"ssh -l {settings.SECONDARY_STORAGE_RSYNC_USER} -i {settings.SECONDARY_STORAGE_RSYNC_KEY}"',
+                f'ssh -l {settings.SECONDARY_STORAGE_RSYNC_USER} -i {settings.SECONDARY_STORAGE_RSYNC_KEY}',
                 f'{srcserver_url}:{os.path.join(srcshare_path_controller, srcpath, srcfn)}', dstdir])
         else:
             # same controller on src and dst -> rsync over mounts

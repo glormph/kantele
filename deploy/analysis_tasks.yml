@@ -1,14 +1,6 @@
 ---
 # Tasks for analysis node
 #
-- name: Create scratch dir for running
-  become: yes
-  ansible.builtin.file: 
-      path: "{{ baserun_dir }}"
-      state: directory
-      owner: "{{ kanteleuser }}"
-      group: "{{ kanteleuser }}"
-
 - name: Mount storages
   become: yes
   mount:
@@ -18,6 +10,22 @@
       fstype: cifs
       opts: "credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}"
   loop: "{{ storagedirs | zip(storageservers) | list }}"
+
+- name: Create work dir for running
+  become: yes
+  ansible.builtin.file: 
+      path: "{{ baserun_dir }}"
+      state: directory
+      owner: "{{ kanteleuser }}"
+      group: "{{ kanteleuser }}"
+
+- name: Create VM-local scratch dir for SQLite etc
+  become: yes
+  ansible.builtin.file: 
+      path: "{{ scratch_dir }}"
+      state: directory
+      owner: "{{ kanteleuser }}"
+      group: "{{ kanteleuser }}"
 
 - name: Set mariaDB root password
   become: yes
