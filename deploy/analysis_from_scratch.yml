@@ -14,7 +14,7 @@
           - git
           - docker.io
           - docker-compose-v2
-          - default-jre-headless
+          - openjdk-17-jre-headless
           - python3-venv
           - libpq-dev
           - python3-dev
@@ -38,6 +38,7 @@
       ansible.builtin.user:
         name: "{{ kanteleuser }}"
         group: "{{ kantelegroup }}"
+        groups: docker
         create_home: yes
      
     - name: Download nextflow

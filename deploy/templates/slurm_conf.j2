@@ -144,5 +144,5 @@ SlurmdLogFile=/var/log/slurm/slurmd.log
 #
 #
 # COMPUTE NODES
-NodeName=lehtio-production CPUs={{ analysis_cpus }} RealMemory=125 State=UNKNOWN
+NodeName=lehtio-production CPUs={{ analysis_cpus }} RealMemory={{ analysis_mem }} State=UNKNOWN
 PartitionName=analysis1 Nodes=ALL Default=YES MaxTime=INFINITE State=UP

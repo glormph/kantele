@@ -50,7 +50,8 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
     url = urljoin(settings.KANTELEHOST, reverse('jobs:updatestorage'))
     update_db(url, json=postdata)
     shutil.rmtree(rundir)
-    shutil.rmtree(stagedir)
+    if stagedir:
+        shutil.rmtree(stagedir)
 
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)

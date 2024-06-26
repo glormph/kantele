@@ -127,7 +127,7 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
     ssh_host = urlsplit(settings.KANTELEHOST).netloc
     ssh_srcpath = f'{settings.RSYNC_SSHUSER}@{ssh_host}:{srcpath}'
     dstfpath = os.path.join(settings.SHAREMAP[dstsharename], dstpath)
-    cmd = ['rsync', '-avz', '-e',
+    cmd = ['rsync', '-av', '-e',
             f'ssh -o StrictHostKeyChecking=no -p {settings.RSYNC_SSHPORT} -i {settings.RSYNC_SSHKEY}',
             ssh_srcpath, dstfpath]
     try:

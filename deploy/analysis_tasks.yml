@@ -75,7 +75,7 @@
 - name: Start Slurm
   become: yes
   systemd:
-      state: started 
+      state: restarted 
       enabled: true
       daemon_reload: yes
       name: "{{ item }}"
