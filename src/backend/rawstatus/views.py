@@ -419,11 +419,6 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
     """
     is_ms = hasattr(rfn.producer, 'msinstrument')
     is_active_ms = is_ms and rfn.producer.internal and rfn.producer.msinstrument.active
-    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
-    if archive_only:
-        sfn.deleted = True
-        sfn.save()
-        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     fn = sfn.filename
     if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
         rfn.claimed = True
@@ -449,6 +444,12 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
                 newname=newname)
     else:
         newname = sfn.filename
+    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
+    if archive_only:
+        # This purge job only runs when the PDC job is confirmed, w need_archive
+        sfn.deleted = True
+        sfn.save()
+        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     return newname
 
 
