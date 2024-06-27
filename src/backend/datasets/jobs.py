@@ -89,6 +89,9 @@ class MoveDatasetServershare(DatasetJob):
     def check_error(self, **kwargs):
         dset = Dataset.objects.values('pk', 'storage_loc').get(pk=kwargs['dset_id'])
         sfs = self.getfiles_query(**kwargs).values('path', 'servershare__name', 'filename', 'pk')
+        if sfs.count() == 0:
+            # Do not error on empty dataset, just skip
+            return
         paths = sfs.distinct('path')
         if paths.count() > 1:
             return (f'Dataset {dset["pk"]} live files are spread over multiple paths and cannot '
@@ -115,6 +118,9 @@ class MoveDatasetServershare(DatasetJob):
         dset = Dataset.objects.values('storage_loc').get(pk=kwargs['dset_id'])
         sfs = self.getfiles_query(**kwargs).values('path', 'servershare__name', 
                 'servershare__share', 'servershare__server__fqdn', 'filename', 'pk')
+        if sfs.count() == 0:
+            # Do not error on empty dataset, just skip
+            return
         rsync_sf = sfs.filter(deleted=False, purged=False, checked=True)
         firstsf = sfs.first()
         sharename = firstsf['servershare__name']
