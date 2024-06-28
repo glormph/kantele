@@ -257,7 +257,6 @@ class ConvertDatasetMzml(DatasetJob):
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'nfrundirname': 'small' if len(nf_raws) < 500 else 'larger',
                'dstsharename': res_share.name,
                'runname': runpath,
                }

@@ -126,11 +126,7 @@ USERFILEDIR = 'uploadfiles'
 NXF_COMMAND = os.environ.get('NXF_COMMAND', 'nextflow')
 LIBRARY_FILE_PATH = 'databases'
 ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE', False)
-SMALL_NFRUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
-LARGER_NFRUNDIR = os.environ.get('LARGER_NFRUNDIR')
-NF_RUNDIRS = {'small': SMALL_NFRUNDIR,
-              'larger': LARGER_NFRUNDIR,
-            }
+NF_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 
 # hardcoded name for fasta DBs
 DBFA_FT_NAME = 'database'

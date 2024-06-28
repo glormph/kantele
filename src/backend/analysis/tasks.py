@@ -264,8 +264,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
 
 
 def create_runname_dir(run):
-    rundir = settings.NF_RUNDIRS[run.get('nfrundirname', 'small')]
-    return os.path.join(rundir, run['runname']).replace(' ', '_')
+    return os.path.join(settings.NF_RUNDIR, run['runname']).replace(' ', '_')
 
 
 def prepare_nextflow_run(run, taskid, rundir, stagefiles, infiles, params):

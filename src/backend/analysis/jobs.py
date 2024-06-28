@@ -296,7 +296,6 @@ class RunNextflowWorkflow(MultiFileJob):
         # FIXME bigrun not hardcode, probably need to remove when new infra
         shortname = models.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
         bigrun = shortname == 'PISEP' or len(infiles) > 500
-        run['nfrundirname'] = 'larger' if bigrun else 'small'
 
         # COMPLEMENT/RERUN component:
         # Add base analysis stuff if it is complement and fractionated (if not it has only been used
