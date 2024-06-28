@@ -144,7 +144,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
         dsets[ads.dataset_id]['setname'] = ads.setname.setname
         dsets[ads.dataset_id]['files'] = {}
         analysis_dsfiles[ads.dataset_id] = {x.sfile_id for x in
-                am.AnalysisDSInputFile.objects.filter(analysisset=ads.setname)}
+                am.AnalysisDSInputFile.objects.filter(analysisset=ads.setname,
+                    dsanalysis__dataset_id=ads.dataset_id)}
 
     for dsid in new_ana_dsids:
         for fn in am.AnalysisFileValue.objects.filter(analysis=ana,
@@ -175,6 +176,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
             ds_msfiles, _ = get_msdataset_files_by_type(dssfiles)
             dsf_by_type.update(ds_msfiles)
 
+        dsets[dsid]['picked_ftype'] = rawftype
         for ft, sf_qset in dsf_by_type.items():
             if not analysis_dsfiles[dsid].difference({x.pk for x in sf_qset}):
                 dsets[dsid]['picked_ftype'] = ft
