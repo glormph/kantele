@@ -8,7 +8,7 @@
       src: "{{ item.1 }}"
       state: mounted
       fstype: cifs
-      opts: "credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }}"
+      opts: "credentials={{ mount_cred }},uid={{ kanteleuser }},domain={{ mount_domain }},iocharset=utf8,vers=3.0,_netdev,mfsymlinks"
   loop: "{{ storagedirs | zip(storageservers) | list }}"
 
 - name: Create work dir for running
