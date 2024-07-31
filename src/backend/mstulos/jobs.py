@@ -24,8 +24,6 @@ class ProcessAnalysis(BaseJob):
     'analysis_id': 1,
     'token': abcdd1234 ,
     """
-    # FIXME: need mods defined as unimod when analysing
-    # ideally we have a unimod lookup in Kantele, can download from there
     # FIXME this is not atomic view, if crash -> DB entries!
     # maybe instead of job, put some of this in view that created/saved analysis
    

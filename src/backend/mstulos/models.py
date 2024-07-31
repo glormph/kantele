@@ -31,13 +31,26 @@ class Condition(models.Model):
 class Modification(models.Model):
     # FIXME need to fill this with unimod data
     mass = models.FloatField()
+    # Special case: name==Unknown: save new Mod w name=Unknown:${mass}, uni_id=-1,-2,-3
     unimod_name = models.TextField(unique=True)
     unimod_id = models.IntegerField(unique=True)
+    # For analysis GUI: Fill JSON field with [["STY", "var", "labile"], ["C", "fix", "stable"], ...]
+    # predefined_aa_list = models.JSONField() # TODO
 
 
-class ResidueMod(models.Model):
+class AnalysisModSpec(models.Model):
+    class Location(models.IntegerChoices):
+        ANY = 0, 'Anywhere'
+        NTERM = 1, 'N-term'
+        CTERM = 2, 'C-term'
+
+    analysis = models.ForeignKey(am.Analysis, on_delete=models.CASCADE)
+    # Multiple residues possible, e.g STY, or * for any
+    # otherwise maybe also make integerchoice field
     residue = models.TextField()
     mod = models.ForeignKey(Modification, on_delete=models.CASCADE)
+    fixed = models.BooleanField()
+    location = models.IntegerField(choices=Location.choices)
 
 
 class Gene(models.Model):
@@ -99,8 +112,11 @@ class PeptideMolecule(models.Model):
 
 
 class MoleculeMod(models.Model):
+    '''PeptideMolecule stored as encoded_pep like: tmt10plex with phos: IAMAPEPTIDE[0:3,8:1]
+    To allow for fast searching. But, we will also store modifications here in case 
+    of e.g. aggregate reporting, and maybe the encoding will not be necessary'''
     position = models.IntegerField()
-    mod = models.ForeignKey(ResidueMod, on_delete=models.CASCADE)
+    mod = models.ForeignKey(Modification, on_delete=models.CASCADE)
     molecule = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
 
 

@@ -63,8 +63,47 @@ def add_analysis(request, nfs_id):
 #        # TODO currently only recent and isobaric data, as  a start
 #        # figure out how we store one file/sample -> analysisfilesample
 #        # and labelfree fractions?  -> analysisdset probbaly
-#        if not hasattr(analysis, 'analysissampletable'):
-#            raise RuntimeError('Cannot process analysis without sampletable as conditions currently')
+    if not hasattr(analysis, 'analysissampletable'):
+        return JsonResponse({'error': True, 'message': 'Cannot process analysis without sampletable as conditions currently'})
+
+    # TODO Use this code when migrating analysis params to Modification db table
+    # then it can be removed here - maybe also use it for saving directly in analysis GUI later 
+    allmods = {x.unimod_name: x for x in m.Modification.objects.all()}
+    Locations = m.AnalysisModSpec.Locations
+    locmap = {'N-term': Locations.NTERM, 'C-term': Locations.CTERM, 'any': Locations.ANY}
+    m.AnalysisModSpec.objects.filter(analysis=analysis).delete()
+    for ap in analysis.analysisparam_set.filter(param__nfparam__in=['--mods', '--locptms', '--ptms']) :
+        if type(ap.value) == list:
+            # option list
+            for po in am.ParamOption.objects.filter(pk__in=ap.value):
+                mod = allmods[po.value]
+                m.AnalysisModSpec.objects.create(analysis=analysis,
+                        mod=mod.pk,
+                        residue=mod.predefined_list[0][0],
+                        fixed=mod.predefined_list[0][1] == 'fix',
+                        location=Locations.ANY,
+                        )
+        elif type(ap.value) == str:
+            for msgfmod in ap.value.split(';'):
+                # e.g. 43.005814,*,opt,N-term,Carbamyl
+                # Sometimes Unknown
+                mass, aa, varfix, loc, uniname = msgfmod.split(',')
+                if uniname == 'Unknown':
+                    mod, _ = m.Modification.objects.get_or_create(unimod_name=f'Unknown:{mass}',
+                            defaults={'mass': mass, 'unimod_id': F('pk') + 10000})
+                else:
+                    mod = allmods[uniname]
+                m.AnalysisModSpec.objects.create(analysis=analysis,
+                        mod=mod.pk,
+                        residue=aa,
+                        fixed=varfix == 'fix',
+                        location=locmap[loc],
+                        )
+        else:
+            return JsonResponse({'error': True, 'message': 'Cannot parse analysis modifications'})
+    # Now run the isobaric quant mods:
+
+
 
     create_job('ingest_search_results', analysis_id=analysis.pk, token=exp.token,
             organism_id=organisms.pop())
@@ -370,7 +409,11 @@ def upload_proteins(request):
 
 
 def get_mods_from_seq(seq, mods=False, pos=0):
-    '''Recursive, finds mods at positions in peptide'''
+    '''Recursive, finds mods at positions in peptide.
+    e.g. seq = IAMAPEPT79.1234IDE
+    outputs: 
+    {8: 79.1234}
+    '''
     if not mods:
         mods = {}
     if m := re.search('[+-][0-9]+\.[0-9]+', seq):
@@ -378,15 +421,13 @@ def get_mods_from_seq(seq, mods=False, pos=0):
         mods[pos] = m.group()
         nextseq = seq[m.end():]
         mods, pos = get_mods_from_seq(nextseq, mods, pos)
+    # FIXME what if there is a negative mod (ie fixed plus another)?
     return mods, pos
 
 
-def encode_mods(resultmolecule, barepep, mod_ids_table):
-    # FIXME what if there is a negative mod (ie fixed plus another)?
+def encode_mods(barepep, modpos, mod_ids_table):
     '''Turn any PSM sequence (from sage or MSGF) into a barepep with a map
     of where the mods and their IDs in our DB are'''
-    resultmol_strip = re.sub('[\[\]]', '', resultmolecule)
-    modpos, _ = get_mods_from_seq(resultmol_strip)
     encodings = [f'{pos}:{mod_ids_table[mod]}' for pos, mod in modpos.items()]
     return f'{barepep}[{",".join(encodings)}]'
 
@@ -405,17 +446,21 @@ def upload_peptides(request):
     # e.g. {304.1234: 3, 304.123: 3, 79.1234: 1, 79.123: 1}
     # TODO maybe centralize table so its same in other views etc?
     mod_ids = {}
-    [mod_ids.update({f'+{round(x.mass, 3)}': x.id, f'+{round(x.mass, 4)}': x.id})
-        for x in m.Modification.objects.all()]
+    [mod_ids.update({f'+{round(x.mod.mass, 3)}': x.mod_id, f'+{round(x.mod.mass, 4)}': x.mod_id})
+        for x in m.AnalysisModSpec.objects.filter(analysis_id=exp.analysis_id)]
     for pep in data['peptides']:
         bareseq = re.sub('[^A-Z]', '', pep['pep'])
         pepseq, _cr = m.PeptideSeq.objects.get_or_create(seq=bareseq)
-        encoded_pepmol = encode_mods(pep['pep'], bareseq, mod_ids)
+        pepmol_strip = re.sub('[\[\]]', '', pep['pep'])
+        modpos, _ = get_mods_from_seq(pepmol_strip)
+        encoded_pepmol = encode_mods(bareseq, modpos, mod_ids)
         if _cr:
             mol = m.PeptideMolecule.objects.create(sequence=pepseq, encoded_pep=encoded_pepmol)
         else:
             mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq,
                     encoded_pep=encoded_pepmol)
+        if _cr:
+            m.MoleculeMod.objects.bulk_create(m.MoleculeMod(position=pos, mod_id=mod, molecule=mol) for pos, mod in modpos.items())
 
         for prot_id in pep['prots']:
             m.PeptideProtein.objects.get_or_create(peptide=pepseq, proteinfa_id=prot_id,
