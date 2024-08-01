@@ -29,17 +29,28 @@ class Condition(models.Model):
 
 
 class Modification(models.Model):
-    # FIXME need to fill this with unimod data
     mass = models.FloatField()
     # Special case: name==Unknown: save new Mod w name=Unknown:${mass}, uni_id=-1,-2,-3
     unimod_name = models.TextField(unique=True)
     unimod_id = models.IntegerField(unique=True)
     # For analysis GUI: Fill JSON field with [["STY", "var", "labile"], ["C", "fix", "stable"], ...]
-    # predefined_aa_list = models.JSONField() # TODO
+    predefined_aa_list = models.JSONField()
+
+    def __str__(self):
+        return self.unimod_name
+
+
+class QuantLabelMod(models.Model):
+    # If someone tries to delete the quanttype or the mod, restrict it
+    quanttype = models.ForeignKey(dm.QuantType, on_delete=models.RESTRICT)
+    mod = models.ForeignKey(Modification, on_delete=models.RESTRICT)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['quanttype', 'mod'], name='uni_qtype_mod')]
 
 
 class AnalysisModSpec(models.Model):
-    class Location(models.IntegerChoices):
+    class Locations(models.IntegerChoices):
         ANY = 0, 'Anywhere'
         NTERM = 1, 'N-term'
         CTERM = 2, 'C-term'
@@ -50,7 +61,7 @@ class AnalysisModSpec(models.Model):
     residue = models.TextField()
     mod = models.ForeignKey(Modification, on_delete=models.CASCADE)
     fixed = models.BooleanField()
-    location = models.IntegerField(choices=Location.choices)
+    location = models.IntegerField(choices=Locations.choices)
 
 
 class Gene(models.Model):

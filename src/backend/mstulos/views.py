@@ -77,10 +77,9 @@ def add_analysis(request, nfs_id):
             # option list
             for po in am.ParamOption.objects.filter(pk__in=ap.value):
                 mod = allmods[po.value]
-                m.AnalysisModSpec.objects.create(analysis=analysis,
-                        mod=mod.pk,
-                        residue=mod.predefined_list[0][0],
-                        fixed=mod.predefined_list[0][1] == 'fix',
+                m.AnalysisModSpec.objects.create(analysis=analysis, mod=mod,
+                        residue=mod.predefined_aa_list[0][0],
+                        fixed=mod.predefined_aa_list[0][1] == 'fix',
                         location=Locations.ANY,
                         )
         elif type(ap.value) == str:
@@ -93,17 +92,25 @@ def add_analysis(request, nfs_id):
                             defaults={'mass': mass, 'unimod_id': F('pk') + 10000})
                 else:
                     mod = allmods[uniname]
-                m.AnalysisModSpec.objects.create(analysis=analysis,
-                        mod=mod.pk,
+                m.AnalysisModSpec.objects.create(analysis=analysis, mod=mod,
                         residue=aa,
                         fixed=varfix == 'fix',
                         location=locmap[loc],
                         )
         else:
             return JsonResponse({'error': True, 'message': 'Cannot parse analysis modifications'})
-    # Now run the isobaric quant mods:
-
-
+    # Now store the isobaric quant mods:
+    quantmods = set()
+    for aiq in analysis.analysisisoquant_set.all():
+        set_dsets = analysis.datasetanalysis_set.filter(analysisdsinputfile__analysisset=aiq.setname)
+        mod_pk = set_dsets.values('dataset__quantdataset__quanttype__quantlabelmod__mod').distinct().get()['dataset__quantdataset__quanttype__quantlabelmod__mod']
+        quantmods.add(mod_pk)
+    for mod_pk in quantmods:
+        # Hard coded K/Nterm but at the moment that is fine - in future this needs to be in db
+        m.AnalysisModSpec.objects.create(analysis=analysis, mod_id=mod_pk, fixed=True, residue='K',
+                location=Locations.ANY)
+        m.AnalysisModSpec.objects.create(analysis=analysis, mod_id=mod_pk, fixed=True, residue='*',
+                location=Locations.NTERM)
 
     create_job('ingest_search_results', analysis_id=analysis.pk, token=exp.token,
             organism_id=organisms.pop())
