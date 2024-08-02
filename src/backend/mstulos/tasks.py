@@ -23,6 +23,7 @@ from jobs.post import update_db
 
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
+def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, outheaders, fafns):
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
@@ -111,8 +112,16 @@ from jobs.post import update_db
         pep_values = []
         for line in fp:
             line = line.strip('\n').split('\t')
-            storepep = {'pep': line[pepfield],
-                    'prots': [storedproteins[x] for x in line[protfield].split(';')]}
+            bareseq = re.sub('[^A-Z]', '', line[pepfield])
+            prots = []
+            for protein in line[protfield].split(';'):
+                storeprot = storedproteins[protein]
+                for fa_id, acc_seqs in all_seq.items():
+                    if protein in acc_seqs:
+                        protpos = str(acc_seqs[protein].seq).index(bareseq)
+                        prots.append([storeprot, protpos])
+                        break
+            storepep = {'pep': line[pepfield], 'prots': prots}
             for datatype, col_conds in conditions.items():
                 storepep[datatype] = []
                 for col, cond_id in col_conds:

@@ -19,6 +19,7 @@ function clearFilters() {
   );
   filters.pep_excludes = '';
   filters.datatypes = {dia: false, dda: false};
+  filters.exclude_ragged = false;
   filters.expand = Object.fromEntries(keys.slice(1).map(x => [x, 0]));
 }
 clearFilters();
@@ -29,7 +30,10 @@ function filterItems() {
     .concat(textfilterkeys.map(x => filters[x]))
     .concat(exacttextfilterkeys.map(x => filters[x]));
   ppge = ppge.concat(keys.slice(1).map(
-    x => filters.expand[x])).concat(filters.pep_excludes).concat(filters.datatypes);
+    x => filters.expand[x]))
+    .concat(filters.pep_excludes)
+    .concat(filters.datatypes)
+    .concat(filters.exclude_ragged);
   const b64filter = btoa(JSON.stringify(ppge));
   location.search = `q=${b64filter}`;
 }
@@ -80,6 +84,7 @@ onMount(async() => {
   filters = Object.assign(idfilters, textfilters, exactfilters, {
     expand: prefilters.expand,
     pep_excludes: prefilters.pep_excludes,
+    exclude_ragged: prefilters.exclude_ragged,
     datatypes: prefilters.datatypes,
   });
 });
@@ -224,6 +229,11 @@ onMount(async() => {
           <div class="columns">
             <div class="column">
               <label class="label">Exclude sequences containing:</label>
+              <div class="control">
+                <label class="checkbox">
+                  <input type=checkbox bind:checked={filters.exclude_ragged} />Ragged ends (KK, KR)
+                </label>
+              </div>
               Use sequences or write e.g. <code>intC</code> for internal Cysteine
               <div class="field has-addons">
                 <div class="control">

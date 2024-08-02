@@ -35,7 +35,7 @@ class ProcessAnalysis(BaseJob):
         # Output files headers according to their DB entry
         headers = {'pep': {'psmcount': output.peppsmcountfield, 'fdr': output.pepfdrfield,
             'peptide': output.peppeptidefield, 'protein': output.pepprotfield,
-            'gene': output.pepgenefield, 'ms1': output.pepms1field, 'isobaric': []},
+            'ms1': output.pepms1field, 'isobaric': []},
             'psm': {'fdr': output.psmfdrfield, 'fn': output.psmfnfield, 'scan': output.scanfield,
                 'setname': output.psmsetname, 'peptide': output.psmpeptide, 'score': output.psmscorefield}}
 

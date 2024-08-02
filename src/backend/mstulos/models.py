@@ -105,6 +105,7 @@ class PeptideProtein(models.Model):
     names caused by different protein input db versions'''
     peptide = models.ForeignKey(PeptideSeq, on_delete=models.CASCADE)
     proteinfa = models.ForeignKey(ProteinFasta, on_delete=models.CASCADE)
+    proteinpos = models.IntegerField()
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
 
 

@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.views.decorators.http import require_POST
 from django.db.models import Q, Count, F
-from django.db.models.functions import Upper
+from django.db.models.functions import Upper, Substr, Length
 from django.core.paginator import Paginator
 
 from mstulos import models as m
@@ -198,11 +198,13 @@ def frontpage(request):
             q['expand'][feat] = getq[exp_ix]
         q['pep_excludes'] = getq[exp_ix + 1]
         q['datatypes'] = getq[exp_ix + 2]
+        q['exclude_ragged'] = getq[exp_ix + 3]
     else:
         q = {f: [] for f in idfields}
         q.update({**{f: '' for f in textfields}, **{f: 1 for f in exactfields}})
         q['experiments_text_exact'] = 0
         q['pep_excludes'] = ''
+        q['exclude_ragged'] = False
         q['datatypes'] = {'dia': True, 'dda': True}
         q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
     # first query filtering:
@@ -220,18 +222,20 @@ def frontpage(request):
             qset = qset.filter(peptq)
 
     # Exclude sequences if any
-    do_exclude, pepexq = False, Q()
+    pepexq = Q()
     internal_aa = []
     pep_excludes = q['pep_excludes'].split('\n') if q['pep_excludes'] else []
     for pepex in pep_excludes:
-        do_exclude = True
         if len(pepex) == 4 and pepex[:3] == 'int':
             internal_aa.append(pepex[-1].upper())
         else:
             pepexq |= Q(pepupp__contains=pepex)
     if internal_aa:
         pepexq |= Q(pepupp__regex=f'[A-Z]+[{"".join(internal_aa)}][A-Z]+')
-    if do_exclude:
+    if q['exclude_ragged']:
+        qset = qset.annotate(seqplus=Substr('peptideprotein__proteinfa__sequence', F('peptideprotein__proteinpos') + 1, Length('pepupp') + 1))
+        pepexq |= Q(pepupp__regex='.*[KR][KR]$') | Q(seqplus__regex='.*[KR][KR]$')
+    if len(pep_excludes) or q['exclude_ragged']:
         qset = qset.exclude(pepexq)
 
     if q['experiments_id']:
@@ -365,7 +369,7 @@ def psm_table(request):
     else:
         pepquery = {}
     all_exp_ids = {y for x in pepquery.values() for y in x}
-    exp_files = {eid: m.Condition.objects.filter(cond_type=m.Condition.Condtype['FILE'],
+    exp_files = {eid: m.Condition.objects.filter(cond_type=m.Condition.Condtype.FILE,
         experiment=eid) for eid in all_exp_ids}
 
     filterq = Q()
@@ -374,7 +378,12 @@ def psm_table(request):
         filterq |= Q(peptide__sequence_id=pepid, filecond__experiment__in=exps)
     sample_cond = 'filecond__parent_conds__name'
     sample_cond_id = 'filecond__parent_conds__id'
-    qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score', 'filecond__experiment__analysis__name', 'sample_or_set').order_by('peptide_id', 'filecond__experiment_id', sample_cond_id, 'filecond_id')
+    qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)
+        ).annotate(condtype=F('filecond__parent_conds__cond_type')
+        ).filter(condtype=m.Condition.Condtype.SAMPLESET
+        ).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score',
+                'filecond__experiment__analysis__name', 'sample_or_set'
+        ).order_by('peptide_id', 'filecond__experiment_id', sample_cond_id, 'filecond_id')
     pnr = request.GET.get('page', 1)
     page, page_context = paginate(qset, pnr)
     context = {'psms': page, **page_context}
@@ -407,7 +416,7 @@ def upload_proteins(request):
         fa_prot = f'{fa_id}__{prot}'
         if fa_prot not in existing_prots:
             dbprot, _ = m.Protein.objects.get_or_create(name=prot)
-            protfa = m.ProteinFasta.objects.create(protein=store_prot, fafn_id=fa_id, sequence=seq)
+            protfa = m.ProteinFasta.objects.create(protein=dbprot, fafn_id=fa_id, sequence=seq)
             existing_prots[fa_prot] = protfa.pk
             if gene:
                 m.ProteinGene.objects.get_or_create(proteinfa=protfa, gene_id=store_gid)
@@ -467,11 +476,12 @@ def upload_peptides(request):
             mol, _cr = m.PeptideMolecule.objects.get_or_create(sequence=pepseq,
                     encoded_pep=encoded_pepmol)
         if _cr:
-            m.MoleculeMod.objects.bulk_create(m.MoleculeMod(position=pos, mod_id=mod, molecule=mol) for pos, mod in modpos.items())
+            m.MoleculeMod.objects.bulk_create(m.MoleculeMod(position=pos, mod_id=mod_ids[mass],
+                molecule=mol) for pos, mass in modpos.items())
 
-        for prot_id in pep['prots']:
+        for prot_id, pos in pep['prots']:
             m.PeptideProtein.objects.get_or_create(peptide=pepseq, proteinfa_id=prot_id,
-                    experiment=exp)
+                    proteinpos=pos, experiment=exp)
         stored_peps[pep['pep']] = mol.pk
         idpeps = {}
         for cond_id, fdr in pep['qval']:
