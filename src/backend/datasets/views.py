@@ -251,9 +251,10 @@ def get_admin_params_for_dset(response, dset_id, category):
         return
     # Parse new params (not filled in in dset), old params (not active anymore)
     # use list comprehension so no error: dict changes during iteration
+    # TODO why is this, we dont have client support
     for p_id in [x for x in params.keys()]:
         if params[p_id]['model'] == '':
-            newparams[p_id] = params.pop(p_id)
+            newparams[p_id] = params.get(p_id)
     if params_saved:
         response['oldparams'] = [x for x in oldparams.values()]
         response['newparams'] = [x for x in newparams.values()]
