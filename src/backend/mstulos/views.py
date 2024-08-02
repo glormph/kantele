@@ -6,6 +6,7 @@ from uuid import uuid4
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.views.decorators.http import require_POST
 from django.db.models import Q, Count, F
@@ -39,7 +40,7 @@ def paginate(qset, pnr):
     return page, page_context
 
 
-@login_required
+@staff_member_required
 @require_POST
 def add_analysis(request, nfs_id):
     analysis = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__wfoutput').get(
@@ -47,6 +48,8 @@ def add_analysis(request, nfs_id):
     # First do checks:
     organisms = set()
     for dsa in analysis.datasetanalysis_set.all():
+        if not dsa.dataset.selectparametervalue_set.filter(value__value__in=['DIA', 'DDA']).exists():
+            return JsonResponse({'error': True, 'message': 'Must enter acquisition type in dataset metadata in order to load results'})
         dsorganisms = set()
         for dss in dsa.dataset.datasetsample_set.all():
             dsorganisms.update(x.species_id for x in dss.projsample.samplespecies_set.all())
@@ -63,8 +66,11 @@ def add_analysis(request, nfs_id):
 #        # TODO currently only recent and isobaric data, as  a start
 #        # figure out how we store one file/sample -> analysisfilesample
 #        # and labelfree fractions?  -> analysisdset probbaly
+    if analysis.nextflowsearch.workflow.wftype != am.UserWorkflow.WFTypeChoices.STD:
+        return JsonResponse({'error': True, 'message': 'Cannot process analysis which is not standard quantitative proteomics'})
     if not hasattr(analysis, 'analysissampletable'):
-        return JsonResponse({'error': True, 'message': 'Cannot process analysis without sampletable as conditions currently'})
+        return JsonResponse({'error': True, 'message': 'Cannot process analysis without sampletable as conditions currently '
+            '- only isobaric experiments are supported'})
 
     # TODO Use this code when migrating analysis params to Modification db table
     # then it can be removed here - maybe also use it for saving directly in analysis GUI later 
@@ -98,7 +104,7 @@ def add_analysis(request, nfs_id):
                         location=locmap[loc],
                         )
         else:
-            return JsonResponse({'error': True, 'message': 'Cannot parse analysis modifications'})
+            return JsonResponse({'error': True, 'message': 'Cannot parse analysis modifications, please contact admin'})
     # Now store the isobaric quant mods:
     quantmods = set()
     for aiq in analysis.analysisisoquant_set.all():
@@ -114,7 +120,7 @@ def add_analysis(request, nfs_id):
 
     create_job('ingest_search_results', analysis_id=analysis.pk, token=exp.token,
             organism_id=organisms.pop())
-    return JsonResponse({})
+    return JsonResponse({'error': False})
 
 
 @require_POST
