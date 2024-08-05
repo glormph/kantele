@@ -10,7 +10,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.views.decorators.http import require_POST
 from django.db.models import Q, Count, F
-from django.db.models.functions import Upper, Substr, Length
+from django.db.models.functions import Upper, Substr, Length, Round
 from django.core.paginator import Paginator
 
 from mstulos import models as m
@@ -34,8 +34,10 @@ def paginate(qset, pnr):
     except ValueError:
         pnr = 1
     page = pages.get_page(pnr)
-    page_context = {'last_res_nr': page.end_index(), 'total_res_nr': pages.count,
-            'first_res_nr': page.start_index(), 'page_nr': pnr,
+    last_res_page = page.end_index()
+    first_res_page = page.start_index()
+    page_context = {'last_res_nr': last_res_page, 'total_res_nr': pages.count,
+            'first_res_nr': first_res_page, 'nr_res_page': last_res_page - first_res_page + 1, 'page_nr': pnr,
             'pagerange': [x for x in pages.get_elided_page_range(pnr, on_each_side=2, on_ends=1)]}
     return page, page_context
 
@@ -214,8 +216,7 @@ def frontpage(request):
         q['datatypes'] = {'dia': True, 'dda': True}
         q['expand'] = {'proteins': 0, 'genes': 0, 'experiments': 0}
     # first query filtering:
-    qset = m.PeptideSeq.objects
-    qset = qset.annotate(pepupp=Upper('seq'))
+    qset = m.PeptideSeq.objects.annotate(pepupp=Upper('seq'))
     if q['peptides_id']:
         qset = qset.filter(pk__in=[x[0] for x in q['peptides_id']])
     if q['peptides_text']:
@@ -307,6 +308,7 @@ def frontpage(request):
     rows = []
     pnr = request.GET.get('page', 1)
     page, page_context = paginate(qset, pnr)
+    filt_exp = set()
     for pep in page:
         agg_prots = pep.get('proteins', False)
         agg_genes = pep.get('genes', False)
@@ -327,21 +329,68 @@ def frontpage(request):
             row['genes'] = list(set(zip(pep['genes_id'], agg_genes)))
         if agg_exps:
             row['experiments'] = list(set(zip(pep['experiments_id'], agg_exps)))
+            filt_exp.update(pep['experiments_id'])
         if not agg_prots:
             row['proteins'] = [(pid, prot)]
         if not agg_genes:
             row['genes'] = [(gid, gene)]
         if not agg_exps:
             row['experiments'] = [(eid, exp)]
+            filt_exp.update(eid)
         rows.append(row)
     context = {'tulos_data': rows, 'filters': q, **page_context,
             'total_exp': m.Experiment.objects.filter(upload_complete=True).count(), 'q': rawq or '',
-            'total_pep': m.PeptideSeq.objects.count(),
+            'total_pep': m.PeptideSeq.objects.count(), 'nr_filtered_exp': len(filt_exp),
             }
     return render(request, 'mstulos/front_pep.html', context=context)
 
 
-#@login_required
+@login_required
+@require_POST
+def fetch_plotdata(request):
+    data = json.loads(request.body.decode('utf-8'))
+    ## First the set/sample values
+    samples = [x for x in m.IdentifiedPeptide.objects.filter(peptide__sequence__pk__in=data['pepids'],
+            setorsample__experiment__pk__in=data['expids']
+            ).annotate(ctype=F('setorsample__cond_type'), cname=F('setorsample__name'),
+                    seq=F('peptide__sequence__seq'),
+                    exp=F('setorsample__experiment'),
+                    mod=F('peptide__encoded_pep'),
+                    ms1=Round('peptidems1__ms1'),
+                    qval=F('peptidefdr__fdr'),
+                    ).values(
+            'pk', 'peptide', 'seq', 'mod', 'exp', 'ctype', 'cname', 'ms1', 'qval')]
+
+    # Map peptide molecules to seq/mod for easy access for multiplex isobaric quant rows to
+    # their respective mod/seq
+    moleculemap = {}
+    for idpep in samples:
+        moleculemap[idpep.pop('peptide')] = {'seq': idpep['seq'], 'mod': idpep['mod']}
+
+    ## Then the isobaric quant values
+    ## First map the channel / sample / set names
+    channel_samples = {x: {} for x in data['expids']}
+    ctypes = m.Condition.Condtype
+    for cond in m.Condition.objects.filter(experiment_id__in=data['expids'], cond_type=ctypes.CHANNEL):
+        channel_samples[cond.pk] = {'name': cond.name, 'exp': cond.experiment_id}
+        for pc in cond.parent_conds.all():
+            ctype = ctypes(pc.cond_type).name
+            channel_samples[cond.pk][ctype] = pc.name
+
+    # DB fetch isoquant peptides and put in list
+    iso = m.PeptideIsoQuant.objects.filter(peptide__sequence__pk__in=data['pepids'],
+            channel__experiment__pk__in=data['expids']
+            ).annotate(ch=F('channel')).values('ch', 'peptide', 'value')
+
+    return JsonResponse({'conditions': {x.value: x.label for x in ctypes}, 'molmap': moleculemap,
+        'chmap': channel_samples,
+        'experiments': {x.pk: x.analysis.name for x in m.Experiment.objects.filter(pk__in=data['expids'])},
+        'modifications': {x.pk: x.unimod_name for x in m.Modification.objects.all()},
+        'samples': samples, 'isobaric': [x for x in iso],
+        })
+
+
+@login_required
 def peptide_table(request):
     rawq = request.GET.get('q', False)
     if rawq:

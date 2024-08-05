@@ -2,6 +2,7 @@
 
 import { onMount } from 'svelte';
 import Tablerow from './Tablerow.svelte';
+import Plots from './Plots.svelte'
 
 const keys = ['peptides', 'proteins', 'genes', 'experiments'];
 const idfilterkeys = keys.map(x => `${x}_id`);
@@ -91,7 +92,7 @@ onMount(async() => {
 </script>
 
 
-<div class="tile is-ancestor">
+<div class="tile is-ancestor mt-2">
   <div class="tile is-parent is-2">
     <article class="tile is-child notification is-info is-light">
       <h5 class="title is-5">Selected peptides</h5>
@@ -103,7 +104,7 @@ onMount(async() => {
     <article class="tile is-child notification is-success is-light">
       <div class="tile is-parent is-vertical">
         <div class="tile is-child">
-          <h3 class="title is-5">Filtering</h3>
+          <h5 class="title is-5">Filtering</h5>
           Filters are applied as such:
           any peptide is shown matching a combination of ALL of the text matches :
           e.g. pep-sequence AND (protein1 OR protein2) AND (experiment1 OR experiment2)
@@ -117,7 +118,9 @@ onMount(async() => {
           <div class="columns"> 
             <div class="column">
                 <label class="label">Peptides</label>
-                <input type=checkbox bind:checked={filters.peptides_text_exact}> Exact match (faster)
+                  <label class="checkbox">
+                    <input type=checkbox bind:checked={filters.peptides_text_exact}> Exact match (faster)
+                  </label>
                 <div class="field has-addons">
                   <div class="control">
                     <textarea bind:value={filters.peptides_text}></textarea>
@@ -144,7 +147,9 @@ onMount(async() => {
             </div>
             <div class="column">
               <label class="label">Proteins</label>
-              <input type=checkbox bind:checked={filters.proteins_text_exact}> Exact match (faster)
+                <label class="checkbox">
+                  <input type=checkbox bind:checked={filters.proteins_text_exact}> Exact match (faster)
+                </label>
               <div class="field has-addons">
                 <div class="control">
                   <textarea bind:value={filters.proteins_text}></textarea>
@@ -171,7 +176,9 @@ onMount(async() => {
             </div>
             <div class="column">
               <label class="label">Genes</label>
-              <input type=checkbox bind:checked={filters.genes_text_exact}> Exact match (faster)
+                <label class="checkbox">
+                  <input type=checkbox bind:checked={filters.genes_text_exact}> Exact match (faster)
+                </label>
               <div class="field has-addons">
                 <div class="control">
                   <textarea bind:value={filters.genes_text}></textarea>
@@ -198,7 +205,10 @@ onMount(async() => {
             </div>
             <div class="column">
               <label class="label">Experiments</label>
-              <input type=checkbox bind:checked={filters.experiments_text_exact}> Exact match (faster)
+              <label class="checkbox">
+                <input type=checkbox bind:checked={filters.experiments_text_exact}> Exact match (faster)
+              </label>
+
               <div class="field has-addons">
                 <div class="control">
                   <textarea bind:value={filters.experiments_text}></textarea>
@@ -245,10 +255,14 @@ onMount(async() => {
               <div class="field">
                 <label class="label">Acquisition types</label>
                 <div class="control">
-                  <input type=checkbox bind:checked={filters.datatypes.dia} />DIA
+                  <label class="checkbox">
+                    <input type=checkbox bind:checked={filters.datatypes.dia} />DIA
+                  </label>
                 </div>
                 <div class="control">
-                  <input type=checkbox bind:checked={filters.datatypes.dda} />DDA
+                  <label class="checkbox">
+                    <input type=checkbox bind:checked={filters.datatypes.dda} />DDA
+                  </label>
                 </div>
               </div>
             </div>
@@ -258,7 +272,9 @@ onMount(async() => {
               <label class="label">Expand ("unroll") peptides per feature</label>
               {#each keys.slice(1) as k}
               <div>
-                <input bind:checked={filters.expand[k]} type="checkbox">Expand {k}
+                <label class="checkbox">
+                  <input bind:checked={filters.expand[k]} type="checkbox">Expand {k}
+                </label>
               </div>
               {/each}
             </div>
@@ -273,6 +289,8 @@ onMount(async() => {
     </article>
   </div>
 </div>
+
+  <Plots />
 
 <table class="table is-striped is-fullwidth">
   <thead>

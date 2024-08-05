@@ -37,7 +37,7 @@ async function addToResults() {
     const resp = await postJSON(`/mstulos/add/${anaId}/`);
     if (resp.error) {
       notif.errors[resp.message] = 1;
-      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, resp.message);
     }
   });
 }
