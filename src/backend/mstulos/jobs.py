@@ -37,7 +37,8 @@ class ProcessAnalysis(BaseJob):
             'peptide': output.peppeptidefield, 'protein': output.pepprotfield,
             'ms1': output.pepms1field, 'isobaric': []},
             'psm': {'fdr': output.psmfdrfield, 'fn': output.psmfnfield, 'scan': output.scanfield,
-                'setname': output.psmsetname, 'peptide': output.psmpeptide, 'score': output.psmscorefield}}
+                'setname': output.psmsetname, 'peptide': output.psmpeptide,
+                'charge': output.psmchargefield, 'score': output.psmscorefield}}
 
         plexq = Q(dataset__quantdataset__quanttype__shortname__contains='plex')
         plexq |= Q(dataset__quantdataset__quanttype__shortname='tmtpro')

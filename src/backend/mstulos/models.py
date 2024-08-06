@@ -169,6 +169,7 @@ class PSM(models.Model):
     scan = models.IntegerField()
     # score type in Wfoutput?
     score = models.FloatField()
+    charge = models.IntegerField()
     # TODO no scan in DIA/TIMS/etc
     # TODO hardcode condition fieldname is file?
     filecond = models.ForeignKey(Condition, on_delete=models.CASCADE)

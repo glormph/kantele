@@ -156,6 +156,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         # FIXME catch these index() calls!
         fncol = header.index(psm_header['fn'])
         scancol = header.index(psm_header['scan'])
+        chargecol = header.index(psm_header['charge'])
         setcol = header.index(psm_header['setname'])
         pepcol = header.index(psm_header['peptide'])
         fdrcol = header.index(psm_header['fdr'])
@@ -166,7 +167,8 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
             fn_cond_id = samplesets[line[setcol]]['files'][line[fncol]]
             # FIXME catch no peps, no fdr, no scan -- what??
             storepsm = {'scan': line[scancol], 'qval': line[fdrcol], 'fncond': fn_cond_id,
-                    'score': line[scorecol], 'pep_id': storedpeps[line[pepcol]]}
+                    'score': line[scorecol], 'charge': line[chargecol],
+                    'pep_id': storedpeps[line[pepcol]]}
             psms.append(storepsm)
             if len(psms) > 10000:
                 resp = update_db(psmurl, json={'psms': psms, 'token': token})

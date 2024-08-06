@@ -436,7 +436,7 @@ def psm_table(request):
     qset = m.PSM.objects.filter(filterq).annotate(sample_or_set=F(sample_cond)
         ).annotate(condtype=F('filecond__parent_conds__cond_type')
         ).filter(condtype=m.Condition.Condtype.SAMPLESET
-        ).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score',
+        ).values('peptide__encoded_pep', 'filecond__name', 'scan', 'fdr', 'score', 'charge',
                 'filecond__experiment__analysis__name', 'sample_or_set'
         ).order_by('peptide_id', 'filecond__experiment_id', sample_cond_id, 'filecond_id')
     pnr = request.GET.get('page', 1)
@@ -565,7 +565,7 @@ def upload_psms(request):
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     for psm in data['psms']:
         m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], scan=psm['scan'],
-                filecond_id=psm['fncond'], score=psm['score'])
+                filecond_id=psm['fncond'], score=psm['score'], charge=psm['charge'])
     return JsonResponse({'error': False})
 
 
