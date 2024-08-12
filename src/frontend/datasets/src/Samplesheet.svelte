@@ -163,6 +163,7 @@ function copySampletypesMultiplexDown(chix) {
 
 function changeSampleNameChannel(chix) {
   prepdata.quants[prepdata.labeled].chans[chix].model = '';
+  prepdata.quants[prepdata.labeled].chans[chix].overwrite = false;
   prepdata.quants[prepdata.labeled].chans[chix].projsam_dup_use = false;
   prepdata.quants[prepdata.labeled].chans[chix].projsam_dup = false;
   prepdata.quants[prepdata.labeled].chans[chix].species_error = [];
@@ -173,6 +174,7 @@ function changeSampleNameChannel(chix) {
 
 function changeSampleNameFile(fn_id) {
   prepdata.samples[fn_id].model = '';
+  prepdata.samples[fn_id].overwrite = false;
   prepdata.samples[fn_id].projsam_dup = false;
   prepdata.samples[fn_id].projsam_dup_use = false;
   prepdata.samples[fn_id].species_error = [];
@@ -180,6 +182,22 @@ function changeSampleNameFile(fn_id) {
   editMade();
 }
 
+
+function overwriteDuplicateFileSam(fn_id) {
+  prepdata.samples[fn_id].overwrite = true;
+  prepdata.samples[fn_id].model = prepdata.samples[fn_id].projsam_dup;
+  prepdata.samples[fn_id].projsam_dup_use = prepdata.samples[fn_id].projsam_dup;
+  prepdata.samples[fn_id].projsam_dup = false;
+}
+
+
+function overwriteDuplicateAllFileSam() {
+  Object.entries(prepdata.samples).forEach(([fn_id, sample]) => {
+    if (sample.projsam_dup && !sample.projsam_dup_use) {
+      overwriteDuplicateFileSam(fn_id);
+    }
+  });
+}
 
 function useDuplicateFileSam(fn_id) {
   prepdata.samples[fn_id].model = prepdata.samples[fn_id].projsam_dup;
@@ -192,6 +210,21 @@ function useDuplicateAllFileSam() {
   Object.entries(prepdata.samples).forEach(([fn_id, sample]) => {
     if (!sample.projsam_dup_use) {
       useDuplicateFileSam(fn_id);
+    }
+  });
+}
+
+function overwriteDuplicateSampleChannel(chix) {
+  prepdata.quants[prepdata.labeled].chans[chix].overwrite = true;
+  prepdata.quants[prepdata.labeled].chans[chix].model = prepdata.quants[prepdata.labeled].chans[chix].projsam_dup;
+  prepdata.quants[prepdata.labeled].chans[chix].projsam_dup_use = prepdata.quants[prepdata.labeled].chans[chix].projsam_dup;
+  prepdata.quants[prepdata.labeled].chans[chix].projsam_dup = false;
+}
+
+function overwriteDuplicateSampleAllChannel() {
+  prepdata.quants[prepdata.labeled].chans.forEach((channel, chix) => {
+    if (channel.projsam_dup && !channel.projsam_dup_use) {
+      overwriteDuplicateSampleChannel(chix);
     }
   });
 }
@@ -220,7 +253,7 @@ function checkSamplesIfNewFiles() {
     // FIXME need more here!
     prepdata.samples[associd] = {model: '', samplename: '', selectedspecies: '', species: '',
       selectedsampletype: '', sampletypes: [], projsam_dup: false, projsam_dup_use: false,
-      sampletypes_error: [], species_error: []};
+      overwrite: false, sampletypes_error: [], species_error: []};
   }
 }
 
@@ -436,8 +469,16 @@ onMount(async() => {
         please either use a different sample ID or confirm it is the same sample as used in:</p>
         <p class="help is-info">{channel.duprun}</p>
         <p>
-        <button class="button is-small" on:click={e => useDuplicateSampleChannel(chix)}>Accept</button>
-        <button class="button is-small" on:click={useDuplicateSampleAllChannel}>Accept all</button>
+        <button class="button is-small" on:click={e => overwriteDuplicateSampleChannel(chix)}>Overwrite existing sample</button>
+        <button class="button is-small" on:click={overwriteDuplicateSampleAllChannel}>Overwrite all</button>
+        </p>
+        <p>
+        <button class="button is-small" on:click={e => useDuplicateSampleChannel(chix)}>Use existing</button>
+        <button class="button is-small" on:click={useDuplicateSampleAllChannel}>Use existing for all</button>
+        </p>
+        {:else if channel.projsam_dup_use && channel.overwrite}
+        <p class="help is-success">
+        Overwriting sample {channel.projsam_dup_use} with current species/sample types
         </p>
         {:else if channel.projsam_dup_use}
         <p class="help is-success">
@@ -519,8 +560,12 @@ onMount(async() => {
         please either use a different sample ID or confirm it is the same sample as used in:</p>
         <p class="help is-info">{prepdata.samples[file.associd].duprun}</p>
         <p>
-        <button class="button is-small" on:click={e => useDuplicateFileSam(file.associd)}>Accept</button>
-        <button class="button is-small" on:click={useDuplicateAllFileSam}>Accept all</button>
+        <button class="button is-small" on:click={e => overwriteDuplicateFileSam(file.associd)}>Overwrite existing sample</button>
+        <button class="button is-small" on:click={overwriteDuplicateAllFileSam}>Overwrite all</button>
+        </p>
+        <p>
+        <button class="button is-small" on:click={e => useDuplicateFileSam(file.associd)}>Use existing</button>
+        <button class="button is-small" on:click={useDuplicateAllFileSam}>Use existing for all</button>
         </p>
         {:else if prepdata.samples[file.associd].projsam_dup_use}
         <p class="help is-success">

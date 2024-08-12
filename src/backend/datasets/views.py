@@ -153,8 +153,8 @@ def dataset_samples(request, dataset_id=False):
                 rawfile__dataset_id=dataset_id):
             sample = {'model': str(qsf.projsample_id), 'samplename': qsf.projsample.sample,
                     'selectedspecies': '', 'species': [], 'selectedsampletype': '',
-                    'sampletypes': [], 'projsam_dup': False, 'sampletypes_error': [],
-                    'species_error': [], 'projsam_dup_use': False}
+                    'sampletypes': [], 'projsam_dup': False, 'overwrite': False,
+                    'sampletypes_error': [], 'species_error': [], 'projsam_dup_use': False}
             for samspec in qsf.projsample.samplespecies_set.all():
                 sample['species'].append({'id': samspec.species_id, 'name': samspec.species.popname,
                     'linnean': samspec.species.linnean})
@@ -166,10 +166,10 @@ def dataset_samples(request, dataset_id=False):
         chan_samples = []
         for qsc in multiplexchans.select_related('channel__channel'):
             sample = {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
-                'model': str(qsc.projsample_id), 'samplename': qsc.projsample.sample, 'qcsid': qsc.id,
+                'model': str(qsc.projsample_id), 'samplename': qsc.projsample.sample,
                 'species': [], 'sampletypes': [], 'selectedspecies': '', 'selectedsampletype': '',
-                'projsam_dup': False, 'projsam_dup_use': False, 'sampletypes_error': [],
-                'species_error': []}
+                'projsam_dup': False, 'projsam_dup_use': False, 'overwrite': False,
+                'sampletypes_error': [], 'species_error': []}
             for samspec in qsc.projsample.samplespecies_set.all():
                 sample['species'].append({'id': samspec.species_id, 'name': samspec.species.popname,
                     'linnean': samspec.species.linnean})
@@ -1451,8 +1451,8 @@ def save_samples(request):
     allsampletypes = {x.pk: x.name for x in models.SampleMaterialType.objects.all()}
     for fidix, sample in fid_or_chid_samples:
         if sample['model']:
-            # Any sample which has a model (sample pk) is not checked, since it represent an
-            # existing sample
+            # Any sample which has a model (sample pk) is not checked for existing, 
+            # since it represents an existing sample, or overwrites an existing sample
             continue
         elif psam := models.ProjectSample.objects.filter(project=dset.runname.experiment.project,
                 sample=sample['samplename']):
@@ -1545,6 +1545,19 @@ def save_samples(request):
                 models.SampleSpecies.objects.bulk_create([models.SampleSpecies(sample=psam,
                     species_id=x['id']) for x in passedsample['species']])
             dset_psams.add(psampk)
+
+        elif psampk and passedsample['overwrite']:
+            # Grab projsample by PK and delete bindings to material/species
+            psam = models.ProjectSample.objects.get(pk=psampk)
+            models.DatasetSample.objects.get_or_create(dataset=dset, projsample=psam)
+            models.SampleMaterial.objects.filter(sample=psam).delete()
+            models.SampleSpecies.objects.filter(sample=psam).delete()
+            models.SampleMaterial.objects.bulk_create([models.SampleMaterial(sample=psam,
+                sampletype_id=x['id']) for x in passedsample['sampletypes']])
+            models.SampleSpecies.objects.bulk_create([models.SampleSpecies(sample=psam,
+                species_id=x['id']) for x in passedsample['species']])
+            dset_psams.add(psampk)
+
         # Even though we delete the QCS/QSF rows above in case of quanttype switch, we still
         # need to update_or_create in case of not switching but using different project sample
         if data['multiplex']:
