@@ -24,16 +24,17 @@ async function replot() {
   let ms1plot = Plot.plot({
     width: plots.offsetWidth - 20,
     x: {axis: null},
-    y: {tickFormat: 's', grid: true}, // scientific ticks
-    marks: [Plot.rectY(fetched.samples, {
+    y: {tickFormat: 's', grid: true, }, // scientific ticks
+    marks: [Plot.barY(fetched.samples, {
       y: 'ms1',
-      x: (d) => d.seq,
+      x: (d) => `${d.seq}_${d.cname}`,
       fx: (d) => fetched.experiments[d.exp],
-      fill: (d) => d.seq,
+      fill: 'seq',
     }),
-      Plot.tip(fetched.samples, Plot.pointer({y: 0,
-        x: (d) => d.seq,
+      Plot.tip(fetched.samples, Plot.pointer({
+        x: (d) => `${d.seq}_${d.cname}`,
         fx: (d) => fetched.experiments[d.exp],
+        maxRadius: 200,
         title: (d) => [d.seq, '', 
           d.mod.replaceAll(pep_re, '')
           .split(',')
@@ -52,14 +53,14 @@ async function replot() {
     y: {grid: true},
     marks: [Plot.barY(fetched.samples, {
       y: 'qval',
-      x: (d) => d.seq,
+      x: (d) => `${d.seq}_${d.cname}`,
       fx: (d) => fetched.experiments[d.exp],
-      fill: (d) => d.seq,
+      fill: 'seq',
     }),
       Plot.tip(fetched.samples, Plot.pointer({
-        y: 0,
-        x: (d) => d.seq,
+        x: (d) => `${d.seq}_${d.cname}`,
         fx: (d) => fetched.experiments[d.exp],
+        maxRadius: 200,
         title: (d) => [d.seq, '', 
           d.mod.replaceAll(pep_re, '')
           .split(',')
@@ -78,14 +79,17 @@ async function replot() {
     y: {grid: true},
     marks: [Plot.barY(fetched.isobaric, {
       y: 'value',
-      x: (d) => `${d.peptide}_${fetched.chmap[d.ch].name}`,
+      //x: (d) => `${d.peptide}_${d.cname}_${fetched.chmap[d.ch].name}`,
+      x: (d) => `${fetched.molmap[d.peptide].seq}_${d.ch}`,
       fx: (d) => fetched.experiments[fetched.chmap[d.ch].exp],
       fill: (d) => fetched.molmap[d.peptide].seq,
     }),
-      Plot.tip(fetched.isobaric, Plot.pointer({y: 0,
-        x: (d) => `${d.peptide}_${fetched.chmap[d.ch].name}`,
+      Plot.tip(fetched.isobaric, Plot.pointer({
+        y: 0,
+        x: (d) => `${fetched.molmap[d.peptide].seq}_${d.ch}`,
         fx: (d) => fetched.experiments[fetched.chmap[d.ch].exp],
         title: (d) => [fetched.molmap[d.peptide].seq, '', 
+          d.value,
           fetched.molmap[d.peptide].mod.replaceAll(pep_re, '')
           .split(',')
           .map(x => x.trim().split(':'))

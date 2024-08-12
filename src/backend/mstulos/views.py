@@ -551,9 +551,10 @@ def upload_peptides(request):
         stored_peps[pep['pep']] = mol.pk
         idpeps = {}
         for cond_id, fdr in pep['qval']:
-            idpep = m.IdentifiedPeptide.objects.create(peptide=mol, setorsample_id=cond_id)
-            idpeps[cond_id] = idpep
-            m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
+            if fdr != 'NA':
+                idpep = m.IdentifiedPeptide.objects.create(peptide=mol, setorsample_id=cond_id)
+                idpeps[cond_id] = idpep
+                m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
         for cond_id, nrpsms in pep['psmcount']:
             m.AmountPSMsPeptide.objects.create(value=nrpsms, idpep=idpeps[cond_id])
         for cond_id, ms1area in pep['ms1']:
