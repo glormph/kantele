@@ -62,9 +62,6 @@ def add_analysis(request, nfs_id):
     if len(organisms) > 1:
         return JsonResponse({'error': True, 'message': 'Multiple organism-datasets are not possible to load in result service'})
 
-    exp, _cr = m.Experiment.objects.get_or_create(analysis=analysis, defaults={'token': str(uuid4())})
-    if not _cr and exp.upload_complete:
-        return JsonResponse({'error': True, 'message': 'This analysis is already in the results database'})
 #        # TODO currently only recent and isobaric data, as  a start
 #        # figure out how we store one file/sample -> analysisfilesample
 #        # and labelfree fractions?  -> analysisdset probbaly
@@ -84,12 +81,18 @@ def add_analysis(request, nfs_id):
         if type(ap.value) == list:
             # option list
             for po in am.ParamOption.objects.filter(pk__in=ap.value):
-                mod = allmods[po.value]
-                m.AnalysisModSpec.objects.create(analysis=analysis, mod=mod,
-                        residue=mod.predefined_aa_list[0][0],
-                        fixed=mod.predefined_aa_list[0][1] == 'fix',
-                        location=Locations.ANY,
-                        )
+                # First try to see if all mods are in the DB already
+                try:
+                    mod = allmods[po.value]
+                except KeyError:
+                    return JsonResponse({'error': True, 'message': 'Cannot find modification '
+                        f'details for {po.value} in database, please contact admin'})
+                else:
+                    m.AnalysisModSpec.objects.create(analysis=analysis, mod=mod,
+                            residue=mod.predefined_aa_list[0][0],
+                            fixed=mod.predefined_aa_list[0][1] == 'fix',
+                            location=Locations.ANY,
+                            )
         elif type(ap.value) == str:
             for msgfmod in ap.value.split(';'):
                 # e.g. 43.005814,*,opt,N-term,Carbamyl
@@ -99,7 +102,11 @@ def add_analysis(request, nfs_id):
                     mod, _ = m.Modification.objects.get_or_create(unimod_name=f'Unknown:{mass}',
                             defaults={'mass': mass, 'unimod_id': F('pk') + 10000})
                 else:
-                    mod = allmods[uniname]
+                    try:
+                        mod = allmods[uniname]
+                    except KeyError:
+                        return JsonResponse({'error': True, 'message': 'Cannot find modification '
+                            f'details for {uniname} in database, please contact admin'})
                 m.AnalysisModSpec.objects.create(analysis=analysis, mod=mod,
                         residue=aa,
                         fixed=varfix == 'fix',
@@ -107,6 +114,10 @@ def add_analysis(request, nfs_id):
                         )
         else:
             return JsonResponse({'error': True, 'message': 'Cannot parse analysis modifications, please contact admin'})
+
+    exp, _cr = m.Experiment.objects.get_or_create(analysis=analysis, defaults={'token': str(uuid4())})
+    if not _cr and exp.upload_complete:
+        return JsonResponse({'error': True, 'message': 'This analysis is already in the results database'})
     # Now store the isobaric quant mods:
     quantmods = set()
     for aiq in analysis.analysisisoquant_set.all():
