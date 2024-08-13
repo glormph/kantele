@@ -5,6 +5,7 @@ import * as Plot from '@observablehq/plot';
 
 // data is already top lvl on the document so need no passing in here
 let plots
+let errors = [];
 
 async function fetchData() {
   let url = new URL('/mstulos/plotdata/', document.location);
@@ -20,107 +21,129 @@ async function replot() {
   const fetched = await fetchData();
   const pep_re = /[A-Z\[\]]/gi;
 
+  let ms1plot;
+  let qplot;
+  let isoplot;
+
   // MS1 plot
-  let ms1plot = Plot.plot({
-    width: plots.offsetWidth - 20,
-    x: {axis: null},
-    y: {tickFormat: 's', grid: true, }, // scientific ticks
-    marks: [Plot.barY(fetched.samples, {
-      y: 'ms1',
-      x: (d) => `${d.seq}_${d.cname}`,
-      fx: (d) => fetched.experiments[d.exp],
-      fill: 'seq',
-    }),
-      Plot.tip(fetched.samples, Plot.pointer({
+  try {
+    ms1plot = Plot.plot({
+      width: plots.offsetWidth - 20,
+      x: {axis: null},
+      y: {tickFormat: 's', grid: true, }, // scientific ticks
+      marks: [Plot.barY(fetched.samples, {
+        y: 'ms1',
         x: (d) => `${d.seq}_${d.cname}`,
         fx: (d) => fetched.experiments[d.exp],
-        maxRadius: 200,
-        title: (d) => [d.seq, '', 
-          d.mod.replaceAll(pep_re, '')
-          .split(',')
-          .map(x => x.trim().split(':'))
-          .map(x => [d.seq[x[0]], x[0], ':', fetched.modifications[x[1]]].join(''))
-          .join(', '),
-          fetched.experiments[d.exp],
-          `${fetched.conditions[d.ctype]}: ${d.cname}`, `MS1: ${d.ms1}`, ].join('\n')}))
-    ]
-  });
-
-  // FDR plot
-  let qplot = Plot.plot({
-    width: plots.offsetWidth - 20,
-    x: {axis: null},
-    y: {grid: true},
-    marks: [Plot.barY(fetched.samples, {
-      y: 'qval',
-      x: (d) => `${d.seq}_${d.cname}`,
-      fx: (d) => fetched.experiments[d.exp],
-      fill: 'seq',
-    }),
-      Plot.tip(fetched.samples, Plot.pointer({
-        x: (d) => `${d.seq}_${d.cname}`,
-        fx: (d) => fetched.experiments[d.exp],
-        maxRadius: 200,
-        title: (d) => [d.seq, '', 
-          d.mod.replaceAll(pep_re, '')
-          .split(',')
-          .map(x => x.trim().split(':'))
-          .map(x => [d.seq[x[0]], x[0], ':', fetched.modifications[x[1]]].join(''))
-          .join(', '),
-          fetched.experiments[d.exp],
-          `${fetched.conditions[d.ctype]}: ${d.cname}`, `q-value: ${d.qval}`, ].join('\n')}))
-    ]
-  });
-
-  // Isobaric plot
-  let isoplot = Plot.plot({
-    width: plots.offsetWidth - 20,
-    x: {axis: null},
-    y: {grid: true},
-    marks: [Plot.barY(fetched.isobaric, {
-      y: 'value',
-      //x: (d) => `${d.peptide}_${d.cname}_${fetched.chmap[d.ch].name}`,
-      x: (d) => `${fetched.molmap[d.peptide].seq}_${d.ch}`,
-      fx: (d) => fetched.experiments[fetched.chmap[d.ch].exp],
-      fill: (d) => fetched.molmap[d.peptide].seq,
-    }),
-      Plot.tip(fetched.isobaric, Plot.pointer({
-        y: 0,
-        x: (d) => `${fetched.molmap[d.peptide].seq}_${d.ch}`,
-        fx: (d) => fetched.experiments[fetched.chmap[d.ch].exp],
-        title: (d) => [fetched.molmap[d.peptide].seq, '', 
-          d.value,
-          fetched.molmap[d.peptide].mod.replaceAll(pep_re, '')
-          .split(',')
-          .map(x => x.trim().split(':'))
-          .map(x => [fetched.molmap[d.peptide].seq[x[0]], x[0], ':', fetched.modifications[x[1]]].join(''))
-          .join(', '),
-          fetched.experiments[fetched.chmap[d.ch].exp],
-          fetched.chmap[d.ch].name,
-          fetched.chmap[d.ch].SAMPLE,
-          fetched.chmap[d.ch].SAMPLESET,
-          ].join('\n')}))
-
-    ]
-
-  });
-
-  plots?.append(qplot);
-  plots?.append(ms1plot);
-  if (fetched.isobaric) {
-    plots?.append(isoplot);
+        fill: 'seq',
+      }),
+        Plot.tip(fetched.samples, Plot.pointer({
+          x: (d) => `${d.seq}_${d.cname}`,
+          fx: (d) => fetched.experiments[d.exp],
+          maxRadius: 200,
+          title: (d) => [d.seq, '', 
+            d.mod.replaceAll(pep_re, '')
+            .split(',')
+            .map(x => x.trim().split(':'))
+            .map(x => [d.seq[x[0]], x[0], ':', fetched.modifications[x[1]]].join(''))
+            .join(', '),
+            fetched.experiments[d.exp],
+            `${fetched.conditions[d.ctype]}: ${d.cname}`, `MS1: ${d.ms1}`, ].join('\n')}))
+      ]
+    });
+  } catch (error) {
+    errors.push(`For MS1 plots: ${error}`);
   }
 
+  // FDR plot
+  try {
+    qplot = Plot.plot({
+      width: plots.offsetWidth - 20,
+      x: {axis: null},
+      y: {grid: true},
+      marks: [Plot.barY(fetched.samples, {
+        y: 'qval',
+        x: (d) => `${d.seq}_${d.cname}`,
+        fx: (d) => fetched.experiments[d.exp],
+        fill: 'seq',
+      }),
+        Plot.tip(fetched.samples, Plot.pointer({
+          x: (d) => `${d.seq}_${d.cname}`,
+          fx: (d) => fetched.experiments[d.exp],
+          maxRadius: 200,
+          title: (d) => [d.seq, '', 
+            d.mod.replaceAll(pep_re, '')
+            .split(',')
+            .map(x => x.trim().split(':'))
+            .map(x => [d.seq[x[0]], x[0], ':', fetched.modifications[x[1]]].join(''))
+            .join(', '),
+            fetched.experiments[d.exp],
+            `${fetched.conditions[d.ctype]}: ${d.cname}`, `q-value: ${d.qval}`, ].join('\n')}))
+      ]
+    });
+  } catch (error) {
+    errors.push(`For FDR plots: ${error}`);
+  }
+
+  // Isobaric plot
+  try {
+    isoplot = Plot.plot({
+      width: plots.offsetWidth - 20,
+      x: {axis: null},
+      y: {grid: true},
+      marks: [Plot.barY(fetched.isobaric, {
+        y: 'value',
+        //x: (d) => `${d.peptide}_${d.cname}_${fetched.chmap[d.ch].name}`,
+        x: (d) => `${fetched.molmap[d.peptide].seq}_${d.ch}`,
+        fx: (d) => fetched.experiments[fetched.chmap[d.ch].exp],
+        fill: (d) => fetched.molmap[d.peptide].seq,
+      }),
+        Plot.tip(fetched.isobaric, Plot.pointer({
+          y: 0,
+          x: (d) => `${fetched.molmap[d.peptide].seq}_${d.ch}`,
+          fx: (d) => fetched.experiments[fetched.chmap[d.ch].exp],
+          title: (d) => [fetched.molmap[d.peptide].seq, '', 
+            d.value,
+            fetched.molmap[d.peptide].mod.replaceAll(pep_re, '')
+            .split(',')
+            .map(x => x.trim().split(':'))
+            .map(x => [fetched.molmap[d.peptide].seq[x[0]], x[0], ':', fetched.modifications[x[1]]].join(''))
+            .join(', '),
+            fetched.experiments[fetched.chmap[d.ch].exp],
+            fetched.chmap[d.ch].name,
+            fetched.chmap[d.ch].SAMPLE,
+            fetched.chmap[d.ch].SAMPLESET,
+            ].join('\n')}))
+      ]
+    });
+  } catch (error) {
+    errors.push(`For isobaric plots: ${error}`);
+  }
+
+  if (qplot) {
+    plots?.append(qplot);
+  }
+  if (ms1plot) {
+    plots?.append(ms1plot);
+  }
+  if (fetched.isobaric && isoplot) {
+    plots?.append(isoplot);
+  }
+  errors = [...errors];
 }
 
 onMount(async() => {
   replot();
 });
 
-  </script>
+</script>
 
-<button class="button">Plot {nr_filtered_pep} peptide{nr_filtered_pep > 1 ? 's' : ''} over {nr_filtered_exp} experiment{nr_filtered_exp > 1 ? 's' : ''}</button>
-<button class="button">Plot aggregates</button>
+  {#if errors.length}
+  <article class="message is-danger">
+    <div class="message-body">
+    {errors.join('\n')}
+    </div>
+  </article>
+  {/if}
 
-  <div class="box" bind:this={plots} id="plots"></div>
-
+<div class="box" bind:this={plots} id="plots"> </div>

@@ -11,6 +11,7 @@ const exacttextfilterkeys = keys.map(x => `${x}_text_exact`);
 
 let selectedrows = {};
 let filters;
+let showplots = false;
 
 function clearFilters() {
   filters = Object.fromEntries(
@@ -290,7 +291,11 @@ onMount(async() => {
   </div>
 </div>
 
+  <button class="button" on:click={e => showplots = true}>Plot {nr_filtered_pep} peptide{nr_filtered_pep > 1 ? 's' : ''} over {nr_filtered_exp} experiment{nr_filtered_exp > 1 ? 's' : ''}</button>
+
+  {#if showplots}
   <Plots />
+  {/if}
 
 <table class="table is-striped is-fullwidth">
   <thead>
