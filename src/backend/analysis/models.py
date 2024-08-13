@@ -121,6 +121,54 @@ class WfOutput(models.Model):
     psmsetname = models.TextField()
     psmpeptide = models.TextField()
 
+    def get_fasta_files(self, **jobkw):
+        '''Fasta files need inspection of job parameters as there is no "proper" DB
+        column for them in the analysis'''
+        try:
+            sfids = jobkw['multifiles'][self.fasta_arg]
+        except KeyError:
+            try:
+                sfids = [jobkw['singlefiles'][self.fasta_arg]]
+            except KeyError:
+                return (1, False, 'Cannot find fasta files for this analysis with job arg '
+                        f'{output.fasta_arg}, contact admin.')
+        fa_files = filemodels.StoredFile.objects.filter(pk__in=sfids).values(
+                'pk', 'servershare__name', 'path', 'filename')
+        if fa_files.count() < len(sfids):
+            return (1, False, 'Cannot find fasta files for this analysis with db ids '
+                        f'{",".join([str(x) for x in sfids])}, contact admin.')
+        return (0, fa_files, '')
+
+    def get_psm_outfile(self, analysis):
+        b_ana_mgr = AnalysisBaseanalysis.objects.filter(analysis=analysis, rerun_from_psms=True)
+        base_analysis = False
+        # Get potentially nested base analysis for PSM tables:
+        while b_ana_mgr.count():
+            base_analysis = b_ana_mgr.get().base_analysis
+            b_ana_mgr = AnalysisBaseanalysis.objects.filter(analysis=base_analysis,
+                    rerun_from_psms=True)
+        if base_analysis:
+            psmfilename = base_analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
+            psmfile = base_analysis.analysisresultfile_set.filter(sfile__filename=psmfilename)
+        else:
+            psmfilename = analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
+            psmfile = analysis.analysisresultfile_set.filter(sfile__filename=psmfilename)
+        if psmfile.count() == 1:
+            return (0, psmfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
+        elif psmfile.count() > 1:
+            return (1, False, f'Multiple PSM files ({psmfilename}) found for this analysis? Contact admin.')
+        else:
+            return (1, False, f'Cannot find output PSM file ({psmfilename}) for this analysis.')
+
+    def get_peptide_outfile(self, analysis):
+        pepfile = analysis.analysisresultfile_set.filter(
+                sfile__filename=analysis.nextflowsearch.nfwfversionparamset.wfoutput.pepfile)
+        if pepfile.count() == 1:
+            return (0, pepfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
+        elif pepfile.count() > 1:
+            return (1, False, f'Multiple peptide files ({self.pepfile}) found for this analysis? Contact admin.')
+        else:
+            return (1, False, f'Cannot find output peptide file ({self.pepfile}) for this analysis.')
 
 class PsetComponent(models.Model):
     '''Special components for a parameter set. Components are such elements for a workflow

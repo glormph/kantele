@@ -71,6 +71,15 @@ def add_analysis(request, nfs_id):
         return JsonResponse({'error': True, 'message': 'Cannot process analysis without sampletable as conditions currently '
             '- only isobaric experiments are supported'})
 
+    # Check if output files exist
+    wfoutputdef = analysis.nextflowsearch.nfwfversionparamset.wfoutput
+    fa_rc, _, faerr = wfoutputdef.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
+    psm_rc, _, psmerr = wfoutputdef.get_psm_outfile(analysis)
+    pep_rc, _, peperr = wfoutputdef.get_peptide_outfile(analysis)
+    
+    if fa_rc or psm_rc or pep_rc:
+        return JsonResponse({'error': True, 'message': ' '.join([faerr, psmerr, peperr])})
+
     # TODO Use this code when migrating analysis params to Modification db table
     # then it can be removed here - maybe also use it for saving directly in analysis GUI later 
     allmods = {x.unimod_name: x for x in m.Modification.objects.all()}

@@ -44,7 +44,9 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     for fa_id, fa_server, fafn in fafns:
         fa_path = os.path.join(settings.SHAREMAP[fa_server], fafn)
         all_seq[fa_id] = SeqIO.index(fa_path, 'fasta')
-    with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
+    
+    pepfile_fpath = os.path.join(settings.SHAREMAP[peptide_file[0]], peptide_file[1])
+    with open(pepfile_fpath) as fp:
         header = next(fp).strip('\n').split('\t')
         protfield = header.index(pepheader['protein'])
         for line in fp:
@@ -81,7 +83,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     # any conditions used
     pepurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_peptides'))
     storedpeps = {} # for ID tracking
-    with open(os.path.join(settings.ANALYSISSHARE, peptide_file)) as fp:
+    with open(pepfile_fpath) as fp:
         header = next(fp).strip('\n').split('\t')
         conditions = {'psmcount': [], 'ms1': [], 'qval': [], 'isobaric': []}
         # find header fields and match with conditions by setname/sample/channel
@@ -151,7 +153,8 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     psm_header = outheaders['psm']
     psms = []
     psmurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_psms'))
-    with open(os.path.join(settings.ANALYSISSHARE, psm_file)) as fp:
+    psmfile_fpath = os.path.join(settings.SHAREMAP[psm_file[0]], psm_file[1])
+    with open(psmfile_fpath) as fp:
         header = next(fp).strip('\n').split('\t')
         # FIXME catch these index() calls!
         fncol = header.index(psm_header['fn'])

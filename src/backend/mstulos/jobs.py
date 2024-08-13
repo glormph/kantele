@@ -47,35 +47,22 @@ class ProcessAnalysis(BaseJob):
             ptname = plextype.dataset.quantdataset.quanttype.shortname
             plextype_trf = {'tmtpro': 'tmt16plex'}.get(ptname, ptname)
             headers['pep']['isobaric'].append(plextype_trf)
-        pepfile = os.path.join(analysis.storage_dir, output.pepfile)
-        b_ana_mgr = am.AnalysisBaseanalysis.objects.filter(analysis=analysis, rerun_from_psms=True)
-        base_analysis = False
-        # Get potentially nested base analysis for PSM tables:
-        while b_ana_mgr.count():
-            base_analysis = b_ana_mgr.get().base_analysis
-            b_ana_mgr = am.AnalysisBaseanalysis.objects.filter(analysis=base_analysis,
-                    rerun_from_psms=True)
         
         # Get fasta files
-        jobkw = analysis.nextflowsearch.job.kwargs['inputs']
-        try:
-            sfids = jobkw['multifiles'][output.fasta_arg]
-        except KeyError:
-            try:
-                sfids = [jobkw['singlefiles'][output.fasta_arg]]
-            except KeyError:
-                raise RuntimeError('Cannot find fasta files for this analysis with job arg '
-                        f'{output.fasta_arg}, contact admin')
-        fa_files = rm.StoredFile.objects.filter(pk__in=sfids)
-        if fa_files.count() < len(sfids):
-            raise RuntimeError('Cannot find fasta files for this analysis with db ids'
-                        f'{",".join(sfids)}, contact admin')
-        fa_files = [(x.pk, x.servershare.name, os.path.join(x.path, x.filename)) for x in fa_files]
-
-        if base_analysis:
-            base_output = base_analysis.nextflowsearch.nfwfversionparamset.wfoutput
-            psmfile = os.path.join(base_analysis.storage_dir, base_output.psmfile)
+        fa_rc, fa_files, faerr = output.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
+        psm_rc, psmfile, psmerr = output.get_psm_outfile(analysis)
+        pep_rc, pepfile, peperr = output.get_peptide_outfile(analysis)
+        
+        if fa_rc or psm_rc or pep_rc:
+            raise RuntimeError('\n'.join([faerr, psmerr, peperr]).strip())
         else:
-            psmfile = os.path.join(analysis.storage_dir, output.psmfile)
-        self.run_tasks.append(((kwargs['token'], kwargs['organism_id'], pepfile, psmfile, headers, fa_files), {}))
-        print(self.run_tasks)
+            psmfile = psmfile.get()
+            pepfile = pepfile.get()
+
+        fa_files = [(x['pk'], x['servershare__name'], os.path.join(x['path'], x['filename']))
+                for x in fa_files]
+        pepfile_arg = (pepfile['sfile__servershare__name'],
+                os.path.join(pepfile['sfile__path'], pepfile['sfile__filename']))
+        psmfile_arg =  (psmfile['sfile__servershare__name'],
+                os.path.join(psmfile['sfile__path'], psmfile['sfile__filename']))
+        self.run_tasks.append(((kwargs['token'], kwargs['organism_id'], pepfile_arg, psmfile_arg, headers, fa_files), {}))
