@@ -3,6 +3,8 @@
 import { onMount } from 'svelte';
 import Tablerow from './Tablerow.svelte';
 import Plots from './Plots.svelte'
+import AggPlotsPep from './AggregatePlots.svelte'
+import AggPlotsPSM from './AggregatePlotsPSM.svelte'
 
 const keys = ['peptides', 'proteins', 'genes', 'experiments'];
 const idfilterkeys = keys.map(x => `${x}_id`);
@@ -11,7 +13,13 @@ const exacttextfilterkeys = keys.map(x => `${x}_text_exact`);
 
 let selectedrows = {};
 let filters;
-let showplots = false;
+let showplots = {};
+
+function switchPlot(plottype) {
+  Object.keys(showplots).forEach(plot => showplots[plot] = false);
+  showplots[plottype] = true;
+}
+
 
 function clearFilters() {
   filters = Object.fromEntries(
@@ -291,10 +299,19 @@ onMount(async() => {
   </div>
 </div>
 
-  <button class="button" on:click={e => showplots = true}>Plot {nr_filtered_pep} peptide{nr_filtered_pep > 1 ? 's' : ''} over {nr_filtered_exp} experiment{nr_filtered_exp > 1 ? 's' : ''}</button>
+  <div>
+  <p class="is-size-5">Plot {nr_filtered_pep} peptide{nr_filtered_pep > 1 ? 's' : ''} over {nr_filtered_exp} experiment{nr_filtered_exp > 1 ? 's' : ''}</p>
+  <button class="button" on:click={e => switchPlot('peptides')}>Peptides</button>
+  <button class="button" on:click={e => switchPlot('aggregates_pep')}>Aggregated peptides</button>
+  <button class="button" on:click={e => switchPlot('aggregates_psm')}>Aggregated PSMs</button>
+  </div>
 
-  {#if showplots}
+  {#if showplots.peptides}
   <Plots />
+  {:else if showplots.aggregates_pep}
+  <AggPlotsPep />
+  {:else if showplots.aggregates_psm}
+  <AggPlotsPSM />
   {/if}
 
 <table class="table is-striped is-fullwidth">

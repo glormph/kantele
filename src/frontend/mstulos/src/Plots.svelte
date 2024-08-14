@@ -8,12 +8,22 @@ let plots
 let errors = [];
 
 async function fetchData() {
-  let url = new URL('/mstulos/plotdata/', document.location);
+  let url = new URL('/mstulos/plotdata/peptides/', document.location);
   let expids = new Set();
   data.forEach(x => x.experiments.forEach(x => expids.add(x[0])));
   const post = {expids: Array.from(expids), pepids: data.map(x => x.id )}
   const resp = await postJSON(url, post);
   return resp;
+}
+
+function formatModseq(d, modmap) {
+  let lastpos_modseq = d.modpos.reduce(
+    (previx_modseq, pos, ix) => 
+    [pos, previx_modseq[1] + d.seq.slice(previx_modseq[0], pos) + `(${modmap[d.mods[ix]]})`],
+    
+    [0, ''],
+  )
+  return `${lastpos_modseq[1]}${d.seq.slice(lastpos_modseq[0])}`;
 }
 
 
@@ -28,6 +38,7 @@ async function replot() {
   // MS1 plot
   try {
     ms1plot = Plot.plot({
+      title: 'MS1 area',
       width: plots.offsetWidth - 20,
       x: {axis: null},
       y: {tickFormat: 's', type: 'log', grid: true, }, // scientific ticks
@@ -42,12 +53,7 @@ async function replot() {
           x: (d) => `${d.mod}_${d.cname}`,
           fx: (d) => fetched.experiments[d.exp],
           maxRadius: 200,
-          title: (d) => [d.seq, '', 
-            d.mod.replaceAll(pep_re, '')
-            .split(',')
-            .map(x => x.trim().split(':'))
-            .map(x => [d.seq[x[0]], x[0], ':', fetched.modifications[x[1]]].join(''))
-            .join(', '),
+          title: (d) => [d.seq, '', formatModseq(d, fetched.modifications),
             fetched.experiments[d.exp],
             `${fetched.conditions[d.ctype]}: ${d.cname}`, `MS1: ${d.ms1}`, ].join('\n')}))
       ]
@@ -59,6 +65,7 @@ async function replot() {
   // FDR plot
   try {
     qplot = Plot.plot({
+      title: 'FDR (q-value)',
       width: plots.offsetWidth - 20,
       x: {axis: null},
       y: {grid: true},
@@ -89,6 +96,7 @@ async function replot() {
   // Isobaric plot
   try {
     isoplot = Plot.plot({
+      title: 'Isobaric values',
       width: plots.offsetWidth - 20,
       x: {axis: null},
       y: {grid: true},
@@ -146,4 +154,6 @@ onMount(async() => {
   </article>
   {/if}
 
-<div class="box" bind:this={plots} id="plots"> </div>
+<div class="box" bind:this={plots} id="plots">
+  <h4 class="title is-4">Peptides</h4>
+</div>

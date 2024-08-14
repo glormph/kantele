@@ -367,7 +367,7 @@ def frontpage(request):
 
 @login_required
 @require_POST
-def fetch_plotdata(request):
+def fetch_plotdata_peptides(request):
     data = json.loads(request.body.decode('utf-8'))
     ## First the set/sample values
     samples = [x for x in m.IdentifiedPeptide.objects.filter(peptide__sequence__pk__in=data['pepids'],
@@ -375,11 +375,15 @@ def fetch_plotdata(request):
             ).annotate(ctype=F('setorsample__cond_type'), cname=F('setorsample__name'),
                     seq=F('peptide__sequence__seq'),
                     exp=F('setorsample__experiment'),
+                    mods=ArrayAgg('peptide__moleculemod__mod__pk',
+                        ordering='peptide__moleculemod__position'),
+                    modpos=ArrayAgg('peptide__moleculemod__position',
+                        ordering='peptide__moleculemod__position'),
                     mod=F('peptide__encoded_pep'),
                     ms1=Round('peptidems1__ms1'),
                     qval=F('peptidefdr__fdr'),
                     ).values(
-            'pk', 'peptide', 'seq', 'mod', 'exp', 'ctype', 'cname', 'ms1', 'qval')]
+            'peptide', 'seq', 'mod', 'mods', 'modpos', 'exp', 'ctype', 'cname', 'ms1', 'qval')]
 
     # Map peptide molecules to seq/mod for easy access for multiplex isobaric quant rows to
     # their respective mod/seq
@@ -407,6 +411,37 @@ def fetch_plotdata(request):
         'experiments': {x.pk: x.analysis.name for x in m.Experiment.objects.filter(pk__in=data['expids'])},
         'modifications': {x.pk: x.unimod_name for x in m.Modification.objects.all()},
         'samples': samples, 'isobaric': [x for x in iso],
+        })
+
+
+@login_required
+def fetch_plotdata_psms(request):
+    data = json.loads(request.body.decode('utf-8'))
+    modmap = {x.pk: x.unimod_name for x in m.Modification.objects.all()}
+    ## First the set/sample values
+    psms = [x for x in m.PSM.objects.filter(peptide__sequence__pk__in=data['pepids'],
+            filecond__experiment__pk__in=data['expids']
+            ).annotate(
+                    seq=F('peptide__sequence__seq'),
+                    exp=F('filecond__experiment'),
+                    mods=ArrayAgg('peptide__moleculemod__mod__pk',
+                        ordering='peptide__moleculemod__position'),
+                    modpos=ArrayAgg('peptide__moleculemod__position',
+                        ordering='peptide__moleculemod__position'),
+                    # FIXME need to store MS1 for PSM, and some others?
+                    # ms1=Round('peptidems1__ms1'),
+                    fcid=F('filecond'),
+                    ).values(
+            'seq', 'mods', 'modpos', 'exp', 'fcid', 'fdr', 'score', 'charge')]
+    
+    # Map file to sampleset / fraction conditions
+    ctypes = m.Condition.Condtype
+    fn_parents = {}
+    for c_fn in m.Condition.objects.filter(experiment_id__in=data['expids'], cond_type=ctypes.FILE):
+        fn_parents[c_fn.pk] = {ctypes(x.cond_type).name: x.name for x in c_fn.parent_conds.all()}
+    return JsonResponse({'fn_conds': fn_parents, 'psms': psms,
+        'modifications': modmap,
+        'experiments': {x.pk: x.analysis.name for x in m.Experiment.objects.filter(pk__in=data['expids'])},
         })
 
 
