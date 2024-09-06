@@ -14,7 +14,7 @@ from django.utils import timezone
 from kantele import settings
 from datasets import models
 from rawstatus import models as filemodels
-from jobs.jobutil import create_job, check_job_error, create_job_without_check
+from jobs.jobutil import create_job, check_job_error, create_job_without_check, jobmap
 from jobs import models as jm
 from jobs import jobs as jj
 
@@ -785,10 +785,16 @@ def archive_dataset(dset):
                 return {'state': 'error', 'error': error}
         backing_up = True
         create_job('backup_dataset', dset_id=dset.id)
+
     # If you reach this point, the dataset is either backed up or has a job queued for that, so queue delete job
     if storestate != 'empty' and (backing_up or dset.storageshare_id == prim_share.pk):
         create_job('delete_active_dataset', dset_id=dset.id)
         create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
+    elif storestate != 'empty' and dset.storageshare_id != prim_share.pk:
+        # Mark files as purged since they are in secondary storage
+        # This is very much temporary code and should be removed once we have consolidated all storage
+        fakejob = jobmap['delete_active_dataset'](False)
+        fakejob.getfiles_query(dset_id=dset.pk).update(deleted=True, purged=True)
     dset.deleted, dset.purged = True, False
     dset.save()
     return {'state': 'ok', 'error': 'Dataset queued for archival'}
