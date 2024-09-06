@@ -371,6 +371,10 @@ def update_dataset(data):
             f'{new_storage_loc}'}, status=403)
     elif (new_storage_loc != dset.storage_loc and 
             models.DatasetRawFile.objects.filter(dataset_id=dset.id).count()):
+        # Update storage loc, first check if dataset needs moving
+        if dset.storageshare != prim_share:
+            if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+                return JsonResponse({'error': error}, status=403)
         job = create_job('rename_dset_storage_loc', dset_id=dset.id, dstpath=new_storage_loc)
         if job['error']: 
             return JsonResponse({'error': job['error']}, status=403)
@@ -604,6 +608,7 @@ def merge_projects(request):
             'project(s) you have passed exist in the system, possibly project ' 
             'input is out of date?'}, status=400)
 
+    prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
     for proj in projs[1:]:
         # Refresh oldexps with every merged project
         oldexps = {x.name: x for x in projs[0].experiment_set.all()}
@@ -634,6 +639,9 @@ def merge_projects(request):
                 prefrac = pfds.prefractionation if pfds else False
                 hrrange_id = pfds.hiriefdataset.hirief_id if hasattr(pfds, 'hiriefdataset') else False
                 new_storage_loc = set_storage_location(projs[0], exp, runname, dset.datatype, prefrac, hrrange_id)
+                if dset.storageshare_id != prim_share.pk:
+                    if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+                        return JsonResponse({'error': error}, status=403)
                 job = create_job('rename_dset_storage_loc', dset_id=dset.id,
                         dstpath=new_storage_loc)
                 if job['error']:
@@ -660,10 +668,15 @@ def rename_project(request):
         return JsonResponse({'error': f'Cannot change name to existing name for project {proj.name}'}, status=403)
     elif is_invalid_proj_exp_runnames(data['newname']):
         return JsonResponse({'error': f'Project name cannot contain characters except {settings.ALLOWED_PROJEXPRUN_CHARS}'}, status=403)
-    dsets = models.Dataset.objects.filter(runname__experiment__project=proj)
+    dsets = [x for x in models.Dataset.objects.filter(runname__experiment__project=proj).select_related(
+            'runname__experiment__project__projtype')]
     if not all(check_ownership(request.user, ds) for ds in dsets):
         return JsonResponse({'error': f'You do not have the rights to change all datasets in this project'}, status=403)
     # queue jobs to rename project, update project name after that since it is needed in job for path
+    prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    if len(dsets) and dsets[0].storageshare_id != prim_share.pk:
+        if error := move_dset_project_servershare(dsets[0], settings.PRIMARY_STORAGESHARENAME):
+            return JsonResponse({'error': error}, status=403)
     job = create_job('rename_top_lvl_projectdir', newname=data['newname'], proj_id=data['projid'])
     if job['error']:
         return JsonResponse({'error': job['error']}, status=403)
@@ -756,6 +769,8 @@ def get_dset_storestate(dset, dsfiles=False):
 def archive_dataset(dset):
     # FIXME dataset reactivating and archiving reports error when ok and vv? I mean, if you click archive and reactivate quickly, you will get error (still in active storage), and also in this func, storestate is not updated at same time as DB (it is result of jobs)
     storestate = get_dset_storestate(dset)
+    prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
+    backing_up = False
     if storestate == 'purged':
         return {'state': 'error', 'error': 'Cannot archive dataset, already purged'}
     elif storestate == 'broken':
@@ -764,9 +779,14 @@ def archive_dataset(dset):
         return {'state': 'error', 'error': 'Cannot archive new dataset'}
     elif storestate == 'unknown':
         return {'state': 'error', 'error': 'Cannot archive dataset with unknown storage state'}
-    if storestate == 'active-only':
+    elif storestate == 'active-only':
+        if dset.storageshare_id != prim_share.pk:
+            if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
+                return {'state': 'error', 'error': error}
+        backing_up = True
         create_job('backup_dataset', dset_id=dset.id)
-    if storestate != 'empty':
+    # If you reach this point, the dataset is either backed up or has a job queued for that, so queue delete job
+    if storestate != 'empty' and (backing_up or dset.storageshare_id == prim_share.pk):
         create_job('delete_active_dataset', dset_id=dset.id)
         create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
     dset.deleted, dset.purged = True, False
@@ -859,6 +879,7 @@ def delete_dataset_from_cold(dset):
     dset.purged = True
     dset.save()
     # Also create delete active job just in case files are lying around
+    # FIXME add check if active on primary share
     create_job('delete_active_dataset', dset_id=dset.id)
     create_job('delete_empty_directory', sf_ids=[x.id for x in filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)])
     storestate = get_dset_storestate(dset)
