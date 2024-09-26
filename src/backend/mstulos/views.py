@@ -293,9 +293,9 @@ def frontpage(request):
         dtypes_db = {x.value.upper(): x for x in dm.SelectParameterOption.objects.filter(param__title='Acquisition mode')}
         for dtype, keep_dt in q['datatypes'].items():
             if keep_dt:
-                dt_q |= Q(peptideprotein__experiment__analysis__datasetsearch__dataset__selectparametervalue__value=dtypes_db[dtype.upper()])
+                dt_q |= Q(peptideprotein__experiment__analysis__datasetanalysis__dataset__selectparametervalue__value=dtypes_db[dtype.upper()])
         qset = qset.filter(dt_q)
-
+
     if q['genes_id']:
         qset = qset.filter(peptideprotein__proteinfa__proteingene__gene__in=[x[0] for x in q['genes_id']])
     if q['genes_text']:

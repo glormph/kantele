@@ -584,8 +584,10 @@ def get_analysis_info(request, nfs_id):
             errors.append(task.taskerror.message)
     dsicount = anmodels.AnalysisDSInputFile.objects.filter(analysisset__analysis=ana).count()
     afscount = ana.analysisfilevalue_set.count()
-    result_parse_ok = (hasattr(ana, 'experiment') is False and request.user.is_staff and
-            ana.nextflowsearch.workflow.wftype == anmodels.UserWorkflow.WFTypeChoices.STD)
+    result_parse_ok = ((hasattr(ana, 'experiment') is False or ana.experiment.upload_complete is False)
+            and request.user.is_staff and
+            ana.nextflowsearch.workflow.wftype == anmodels.UserWorkflow.WFTypeChoices.STD and
+            hasattr(ana.nextflowsearch.nfwfversionparamset, 'wfoutput'))
     resp = {'name': aj.get_ana_fullname(ana),
             'addToResults': result_parse_ok,
             'wf': {'fn': nfs.nfwfversionparamset.filename, 
