@@ -4,7 +4,7 @@ import { postJSON } from '../../datasets/src/funcJSON.js'
 import * as Plot from '@observablehq/plot';
 
 // data is already top lvl on the document so need no passing in here
-let plots
+let plots;
 let errors = [];
 
 async function fetchData() {

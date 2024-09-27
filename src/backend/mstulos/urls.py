@@ -15,5 +15,6 @@ urlpatterns = [
         path('upload/done/', views.upload_done, name='upload_done'),
         path('plotdata/peptides/', views.fetch_plotdata_peptides),
         path('plotdata/psms/', views.fetch_plotdata_psms),
+        path('plotdata/genes/', views.fetch_plotdata_genes),
         ]
 

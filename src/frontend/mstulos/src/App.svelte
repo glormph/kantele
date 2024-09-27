@@ -3,6 +3,7 @@
 import { onMount } from 'svelte';
 import Tablerow from './Tablerow.svelte';
 import Plots from './Plots.svelte'
+import GenePlots from './GenePlots.svelte'
 import AggPlotsPep from './AggregatePlots.svelte'
 import AggPlotsPSM from './AggregatePlotsPSM.svelte'
 
@@ -302,12 +303,15 @@ onMount(async() => {
   <div>
   <p class="is-size-5">Plot {nr_filtered_pep} peptide{nr_filtered_pep > 1 ? 's' : ''} over {nr_filtered_exp} experiment{nr_filtered_exp > 1 ? 's' : ''}</p>
   <button class="button" on:click={e => switchPlot('peptides')}>Peptides</button>
+  <button class="button" on:click={e => switchPlot('genes')}>Gene</button>
   <button class="button" on:click={e => switchPlot('aggregates_pep')}>Aggregated peptides</button>
   <button class="button" on:click={e => switchPlot('aggregates_psm')}>Aggregated PSMs</button>
   </div>
 
   {#if showplots.peptides}
   <Plots />
+  {:else if showplots.genes}
+  <GenePlots />
   {:else if showplots.aggregates_pep}
   <AggPlotsPep />
   {:else if showplots.aggregates_psm}

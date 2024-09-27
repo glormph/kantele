@@ -374,6 +374,36 @@ def frontpage(request):
 
 @login_required
 @require_POST
+def fetch_plotdata_genes(request):
+    '''As fetch_plotdata_peptides, but with only isobaric values,
+    which is the only thing we store'''
+    data = json.loads(request.body.decode('utf-8'))
+    ## Only the isobaric quant values
+    ## First map the channel / sample / set names
+    channel_samples = {x: {} for x in data['expids']}
+    ctypes = m.Condition.Condtype
+    for cond in m.Condition.objects.filter(experiment_id__in=data['expids'], cond_type=ctypes.CHANNEL):
+        channel_samples[cond.pk] = {'name': cond.name, 'exp': cond.experiment_id}
+        for pc in cond.parent_conds.all():
+            ctype = ctypes(pc.cond_type).name
+            channel_samples[cond.pk][ctype] = pc.name
+
+    genemap = {x.pk: x.name for x in m.Gene.objects.filter(pk__in=data['gids'])}
+    # DB fetch isoquant peptides and put in list
+    iso = m.GeneIsoQuant.objects.filter(gene__pk__in=data['gids'],
+            channel__experiment__pk__in=data['expids']
+            ).annotate(ch=F('channel')).values('ch', 'gene', 'value')
+
+    return JsonResponse({'conditions': {x.value: x.label for x in ctypes},
+        'chmap': channel_samples,
+        'experiments': {x.pk: x.analysis.name for x in m.Experiment.objects.filter(pk__in=data['expids'])},
+        'genemap': genemap,
+        'isobaric': [x for x in iso],
+        })
+
+
+@login_required
+@require_POST
 def fetch_plotdata_peptides(request):
     data = json.loads(request.body.decode('utf-8'))
     ## First the set/sample values
