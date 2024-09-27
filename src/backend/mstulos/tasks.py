@@ -24,7 +24,8 @@ from jobs.post import update_db
 
 
 @shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
-def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, outheaders, fafns):
+def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, gene_file,
+        outheaders, fafns):
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
     # FIXME not all runs have genes
@@ -52,12 +53,16 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     best_match_wf = max(wf_out_count, key=wf_out_count.get)
     peptide_file = peptide_file[best_match_wf]
     psm_file = psm_file[best_match_wf]
+    if best_match_wf in gene_file:
+        gene_file = gene_file[best_match_wf]
+    else:
+        gene_file = False
     outheaders = outheaders[best_match_wf]
     fafns = fafns[best_match_wf]
 
     # Store proteins, genes found, first fasta
     protgenes = []
-    storedproteins = {}
+    storedproteins, storedgenes = {}, {}
     protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
     all_seq = {}
     for fa_id, fa_server, fafn in fafns:
@@ -112,7 +117,9 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
                     resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
                         'organism_id': organism_id, 'fa_ids': [x[0] for x in fafns]})
                     resp.raise_for_status()
-                    storedproteins.update(resp.json()['protein_ids'])
+                    rj = resp.json()
+                    storedproteins.update(rj['protein_ids'])
+                    storedgenes.update(rj['gene_ids'])
                     protgenes = []
                     for newprot, bareseqs_tosave in pepprots_nopk.items():
                         storeprot = storedproteins[newprot]
@@ -127,7 +134,9 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
             'organism_id': organism_id, 'fa_ids': [x[0] for x in fafns]})
         resp.raise_for_status()
-        storedproteins.update(resp.json()['protein_ids'])
+        rj = resp.json()
+        storedproteins.update(rj['protein_ids'])
+        storedgenes.update(rj['gene_ids'])
         for newprot, bareseqs_tosave in pepprots_nopk.items():
             storeprot = storedproteins[newprot]
             for fa_id, acc_seqs in all_seq.items():
@@ -161,7 +170,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
             elif pepheader['ms1'] and pepheader['ms1'] in field:
                 setname = field.replace(f'_{pepheader["ms1"]}', '')
                 conditions['ms1'].append((ix, samplesets[setname]['set_id']))
-            elif pepheader['isobaric'] and any(plex in field for plex in pepheader['isobaric']):
+            elif outheaders['isobaric'] and any(plex in field for plex in outheaders['isobaric']):
                 plex_re = '(.*)_[a-z0-9]+plex_([0-9NC]+)'
                 # Need to remove e.g. plex_126 - Quanted PSMs, with $
                 if re.match(f'{plex_re}$', field):
@@ -233,11 +242,42 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         if len(psms):
             resp = update_db(psmurl, json={'psms': psms, 'token': token})
             resp.raise_for_status()
-    
+
+    # Gene table parse if any
+    if gene_file:
+        geneurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_geneq'))
+        genefile_fpath = os.path.join(settings.SHAREMAP[gene_file[0]], gene_file[1])
+        with open(genefile_fpath) as fp:
+            header = next(fp).strip('\n').split('\t')
+            conditions = {'isobaric': []}
+            # find header fields and match with conditions by setname/sample/channel
+            genefield = header.index(outheaders['gene']['genename'])
+            for ix, field in enumerate(header):
+                # bit strict handling with f'_PSM count' to avoid Quanted PSM count fields..
+                # Text parsing is not always super clean. We may need to think about that in
+                # the pipeline itself, to make sure it is parseable, or encode somehow
+                if outheaders['isobaric'] and any(plex in field for plex in outheaders['isobaric']):
+                    plex_re = '(.*)_[a-z0-9]+plex_([0-9NC]+)'
+                    # Need to remove e.g. plex_126 - Quanted PSMs, with $
+                    if re.match(f'{plex_re}$', field):
+                        sample_set_ch = re.sub(plex_re, '\\1___\\2', field)
+                        conditions['isobaric'].append((ix, samples[sample_set_ch]))
+            gene_values = []
+            for line in fp:
+                line = line.strip('\n').split('\t')
+                storegene = {'gene': storedgenes[line[genefield]]}
+                for datatype, col_conds in conditions.items():
+                    storegene[datatype] = []
+                    for col, cond_id in col_conds:
+                        storegene[datatype].append((cond_id, line[col]))
+                gene_values.append(storegene)
+                if len(gene_values) == 1000:
+                    resp = update_db(geneurl, json={'genes': gene_values, 'token': token})
+                    resp.raise_for_status()
+                    gene_values = []
+            if len(gene_values):
+                resp = update_db(geneurl, json={'genes': gene_values, 'token': token})
+                resp.raise_for_status()
+
     # Finished, report done
     update_db(urljoin(settings.KANTELEHOST, reverse('mstulos:upload_done')), json={'token': token, 'task_id': self.request.id})
-
-
-
-x = ('jorrit/14394_STD_GMPSDL1-allsample_pool_denominator_20221102_14.52/peptides_table.txt', 'georgios/14392_STD_GMPSDL1-13_20221101_15.20/target_psmtable.txt', 'georgios/14392_STD_GMPSDL1-13_20221101_15.20/target_psmlookup.sql', {'pep': {'psmcount': 'PSM count', 'fdr': 'q-value', 'peptide': 'Peptide sequence', 'isobaric': []}, 'psm': {'fdr': 'PSM q-value', 'fn': 'SpectraFile', 'scan': 'ScanNum', 'setname': 'Biological set', 'peptide': 'Peptide'}}, {'set1': {'set_id': 269, 'fractions': {}, 'files': {'GMPSDL1-13_Labelcheck_4hrs_3of10_set01.mzML': 270}}}, {'groups': {}, 'samples': {'GMPSDL_1_set1___126': 271, 'GMPSDL_2_set1___127N': 273, 'GMPSDL_3_set1___127C': 275, 'GMPSDL_4_set1___128N': 277, 'GMPSDL_5_set1___128C': 279, 'GMPSDL_6_set1___129N': 281, 'GMPSDL_7_set1___129C': 283, 'GMPSDL_8_set1___130N': 285, 'GMPSDL_9_set1___130C': 287, 'GMPSDL_10_set1___131N': 289, 'GMPSDL_11_set1___131C': 291, 'GMPSDL_12_set1___132N': 293, 'GMPSDL_13_set1___132C': 295, 'POOL(EAPSDL1-30)_set1___133N': 297, 'empty_set1___133C': 299, 'empty_set1___134N': 299}, 'GMPSDL_1_set1___126': 272, 'GMPSDL_2_set1___127N': 274, 'GMPSDL_3_set1___127C': 276, 'GMPSDL_4_set1___128N': 278, 'GMPSDL_5_set1___128C': 280, 'GMPSDL_6_set1___129N': 282, 'GMPSDL_7_set1___129C': 284, 'GMPSDL_8_set1___130N': 286, 'GMPSDL_9_set1___130C': 288, 'GMPSDL_10_set1___131N': 290, 'GMPSDL_11_set1___131C': 292, 'GMPSDL_12_set1___132N': 294, 'GMPSDL_13_set1___132C': 296, 'POOL(EAPSDL1-30)_set1___133N': 298, 'empty_set1___133C': 300, 'empty_set1___134N': 301})
-

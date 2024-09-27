@@ -11,6 +11,7 @@ urlpatterns = [
         path('upload/proteins/', views.upload_proteins, name='upload_proteins'),
         path('upload/peptides/', views.upload_peptides, name='upload_peptides'),
         path('upload/psms/', views.upload_psms, name='upload_psms'),
+        path('upload/genes/', views.upload_genes, name='upload_geneq'),
         path('upload/done/', views.upload_done, name='upload_done'),
         path('plotdata/peptides/', views.fetch_plotdata_peptides),
         path('plotdata/psms/', views.fetch_plotdata_psms),

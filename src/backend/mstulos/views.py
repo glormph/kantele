@@ -530,6 +530,8 @@ def upload_proteins(request):
             store_gid = existing_genes[gene]
         elif gene:
             store_gid = m.Gene.objects.get_or_create(name=gene, organism_id=data['organism_id'])[0].pk
+        if gene:
+            stored_genes[gene] = store_gid
         fa_prot = f'{fa_id}__{prot}'
         if fa_prot not in existing_prots:
             dbprot, _ = m.Protein.objects.get_or_create(name=prot)
@@ -538,7 +540,7 @@ def upload_proteins(request):
             if gene:
                 m.ProteinGene.objects.get_or_create(proteinfa=protfa, gene_id=store_gid)
         stored_prots[prot] = existing_prots[fa_prot]
-    return JsonResponse({'error': False, 'protein_ids': stored_prots})
+    return JsonResponse({'error': False, 'protein_ids': stored_prots, 'gene_ids': stored_genes})
 
 
 def get_mods_from_seq(seq, mods=False, pos=0):
@@ -634,6 +636,25 @@ def upload_psms(request):
         if psm['ms1'] != 'NA': 
             m.PSMMS1.objects.create(psm=dbpsm, ms1=psm['ms1'])
     return JsonResponse({'error': False})
+
+
+@require_POST
+def upload_genes(request):
+    data = json.loads(request.body.decode('utf-8'))
+    print(data)
+    try:
+        exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
+    except m.Experiment.DoesNotExist:
+        return JsonResponse({'error': 'Not allowed to access'}, status=403)
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
+    for gene in data['genes']:
+        for cond_id, quant in gene['isobaric']:
+            if quant != 'NA':
+                m.GeneIsoQuant.objects.create(gene_id=gene['gene'], value=quant, channel_id=cond_id)
+    return JsonResponse({'error': False})
+
+
 
 
 @require_POST

@@ -138,6 +138,7 @@ class WfOutput(models.Model):
     psmscorefield = models.ForeignKey(OutputFieldName, related_name='score', on_delete=models.CASCADE)
     psmsetname = models.ForeignKey(OutputFieldName, related_name='psmset', on_delete=models.CASCADE)
     psmpeptide = models.ForeignKey(OutputFieldName, related_name='psmpep', on_delete=models.CASCADE)
+    genetablegenefield = models.ForeignKey(OutputFieldName, related_name='genegene', on_delete=models.CASCADE)
 
     def get_fasta_files(self, **jobkw):
         '''Fasta files need inspection of job parameters as there is no "proper" DB
@@ -189,6 +190,17 @@ class WfOutput(models.Model):
             return (1, False, f'Multiple peptide files ({self.pepfile}) found for this analysis? Contact admin.')
         else:
             return (1, False, f'Cannot find output peptide file ({self.pepfile}) for this analysis.')
+
+    def get_gene_outfile(self, analysis):
+        '''Gene file is not always output'''
+        genefile = analysis.analysisresultfile_set.filter(sfile__filename=self.genefile)
+        if genefile.count() > 1:
+            return (1, False, f'Multiple gene files ({self.genefile}) found for this analysis? Contact admin.')
+        elif genefile.count():
+            return (0, genefile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
+        else:
+            return (0, False, 'No gene file available in this analysis')
+        
 
 
 class PipelineVersionOutput(models.Model):

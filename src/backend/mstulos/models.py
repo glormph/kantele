@@ -148,6 +148,15 @@ class PeptideIsoQuant(models.Model):
         constraints = [models.UniqueConstraint(fields=['channel', 'peptide'], name='uni_isochpep')]
 
 
+class GeneIsoQuant(models.Model):
+    value = models.FloatField()
+    channel = models.ForeignKey(Condition, on_delete=models.CASCADE)
+    gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['channel', 'gene'], name='uni_isochgene')]
+
+
 class PeptideMS1(models.Model):
     ms1 = models.FloatField()
     idpep = models.OneToOneField(IdentifiedPeptide, on_delete=models.CASCADE)

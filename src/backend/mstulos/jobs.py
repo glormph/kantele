@@ -34,25 +34,26 @@ class ProcessAnalysis(BaseJob):
         plexq = Q(dataset__quantdataset__quanttype__shortname__contains='plex')
         plexq |= Q(dataset__quantdataset__quanttype__shortname='tmtpro')
         isob_types = []
-        all_pepfile_arg, all_psmfile_arg, all_fa_files = {}, {}, {}
+        all_pepfile_arg, all_psmfile_arg, all_genefile_arg, all_fa_files = {}, {}, {}, {}
         for plextype in analysis.datasetanalysis_set.filter(plexq).distinct(
                 'dataset__quantdataset__quanttype__shortname'):
             ptname = plextype.dataset.quantdataset.quanttype.shortname
             plextype_trf = {'tmtpro': 'tmt16plex'}.get(ptname, ptname)
             isob_types.append(plextype_trf)
         
-        # Pass all WfOuput objects for the pipeline
+        # Pass all WfOuput objects mapped for the used pipeline
         headers, fa_files, pepfile_arg, psmfile_arg = {}, {}, {}, {}
-        for pipe_out in analysis.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.all():
+        for pipe_out in analysis.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.select_related('output').all():
             output = pipe_out.output
             # Output files headers according to their DB entries
             headers[output.pk] = {
+                    'isobaric': isob_types,
                     'pep': {
                         'fdr': output.pepfdrfield.fieldname,
                         'posterior': output.peppepfield.fieldname,
                         'peptide': output.peppeptidefield.fieldname,
                         'ms1': output.pepms1field.fieldname,
-                        'isobaric': isob_types},
+                        },
                     'psm': {
                         'fdr': output.psmfdrfield.fieldname,
                         'posterior': output.psmpepfield.fieldname,
@@ -65,18 +66,24 @@ class ProcessAnalysis(BaseJob):
                         'ms1': output.psmms1field.fieldname,
                         'rt': output.rtfield.fieldname,
                         'protein': output.psmprotfield.fieldname,
-                        }}
+                        },
+                    'gene': {
+                        'genename': output.genetablegenefield.fieldname,
+                        },
+                        }
 
             # Get fasta files
             fa_rc, fa_files, faerr = output.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
             psm_rc, psmfile, psmerr = output.get_psm_outfile(analysis)
             pep_rc, pepfile, peperr = output.get_peptide_outfile(analysis)
+            gene_rc, genefile, geneerr = output.get_gene_outfile(analysis)
             
-            if fa_rc or psm_rc or pep_rc:
-                raise RuntimeError('\n'.join([faerr, psmerr, peperr]).strip())
-            else:
-                psmfile = psmfile.get()
-                pepfile = pepfile.get()
+            if fa_rc or psm_rc or pep_rc or gene_rc:
+                raise RuntimeError('\n'.join([faerr, psmerr, peperr, generr]).strip())
+
+            psmfile = psmfile.get()
+            pepfile = pepfile.get()
+            genefile = genefile.get() if genefile else False
 
             all_fa_files[output.pk] = [(x['pk'], x['servershare__name'], os.path.join(x['path'], x['filename']))
                     for x in fa_files]
@@ -84,4 +91,8 @@ class ProcessAnalysis(BaseJob):
                     os.path.join(pepfile['sfile__path'], pepfile['sfile__filename']))
             all_psmfile_arg[output.pk] = (psmfile['sfile__servershare__name'],
                     os.path.join(psmfile['sfile__path'], psmfile['sfile__filename']))
-            self.run_tasks.append(((kwargs['token'], kwargs['organism_id'], all_pepfile_arg, all_psmfile_arg, headers, all_fa_files), {}))
+            if genefile:
+                all_genefile_arg[output.pk] = (genefile['sfile__servershare__name'],
+                        os.path.join(genefile['sfile__path'], genefile['sfile__filename']))
+
+        self.run_tasks.append(((kwargs['token'], kwargs['organism_id'], all_pepfile_arg, all_psmfile_arg, all_genefile_arg, headers, all_fa_files), {}))
