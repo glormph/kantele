@@ -45,8 +45,12 @@ def paginate(qset, pnr):
 @staff_member_required
 @require_POST
 def add_analysis(request, nfs_id):
-    analysis = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__wfoutput').get(
-            nextflowsearch__pk=nfs_id)
+    # FIXME: need mods defined as unimod when analysing
+    # ideally we have a unimod lookup in Kantele, can download from there
+    analysis = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset',
+            'nextflowsearch__job',
+            ).get(nextflowsearch__pk=nfs_id)
+
     # First do checks:
     organisms = set()
     for dsa in analysis.datasetanalysis_set.all():
@@ -72,11 +76,14 @@ def add_analysis(request, nfs_id):
             '- only isobaric experiments are supported'})
 
     # Check if output files exist
-    wfoutputdef = analysis.nextflowsearch.nfwfversionparamset.wfoutput
-    fa_rc, _, faerr = wfoutputdef.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
-    psm_rc, _, psmerr = wfoutputdef.get_psm_outfile(analysis)
-    pep_rc, _, peperr = wfoutputdef.get_peptide_outfile(analysis)
-    
+    for pvo in analysis.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.select_related('output').all():
+        wfoutputdef = pvo.output
+        fa_rc, _, faerr = wfoutputdef.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
+        psm_rc, _, psmerr = wfoutputdef.get_psm_outfile(analysis)
+        pep_rc, _, peperr = wfoutputdef.get_peptide_outfile(analysis)
+        if not fa_rc or not psm_rc or not pep_rc:
+            # One of the wfouput possibles has a returncode zero on the files, break out
+            break
     if fa_rc or psm_rc or pep_rc:
         return JsonResponse({'error': True, 'message': ' '.join([faerr, psmerr, peperr])})
 
@@ -599,8 +606,9 @@ def upload_peptides(request):
                 idpep = m.IdentifiedPeptide.objects.create(peptide=mol, setorsample_id=cond_id)
                 idpeps[cond_id] = idpep
                 m.PeptideFDR.objects.create(fdr=fdr, idpep=idpep)
-        for cond_id, nrpsms in pep['psmcount']:
-            m.AmountPSMsPeptide.objects.create(value=nrpsms, idpep=idpeps[cond_id])
+        for cond_id, post_err in pep['posterior']:
+            if post_err != 'NA':
+                m.PeptidePosteriorError.objects.create(pep=post_err, idpep=idpeps[cond_id])
         for cond_id, ms1area in pep['ms1']:
             if ms1area != 'NA':
                 m.PeptideMS1.objects.create(ms1=ms1area, idpep=idpeps[cond_id])
@@ -620,8 +628,11 @@ def upload_psms(request):
     except KeyError:
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
     for psm in data['psms']:
-        m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], scan=psm['scan'],
-                filecond_id=psm['fncond'], score=psm['score'], charge=psm['charge'])
+        dbpsm = m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], pep=psm['PEP'],
+                scan=psm['scan'], filecond_id=psm['fncond'], score=psm['score'], 
+                charge=psm['charge'], rt=psm['rt'])
+        if psm['ms1'] != 'NA': 
+            m.PSMMS1.objects.create(psm=dbpsm, ms1=psm['ms1'])
     return JsonResponse({'error': False})
 
 

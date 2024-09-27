@@ -102,24 +102,42 @@ class UserWorkflow(models.Model):
         return self.name
 
 
+# FIXME 
+# - Field names used are stored in experiment JSON
+# - gene quant, other extra fields 
+# - msstitch for extra fields (ExplainedIonCurrentRatio, NumMatchedMainIons)
+class OutputFieldName(models.Model):
+    '''To be user-friendly, store field names here using a description,
+    so that it is easier to use the correct name'''
+    description = models.TextField(help_text='Short description')
+    fieldname = models.TextField()
+
+    def __str__(self):
+        return f'{self.description}: {self.fieldname}'
+
+
 class WfOutput(models.Model):
-    nfwfversion = models.OneToOneField(NextflowWfVersionParamset, on_delete=models.CASCADE)
-    psmfile = models.TextField()
+    description = models.TextField() # E.g MSGF from dda 3.0
+    # Sometimes fields will not be there at all! In that case just ignore
+    psmfile = models.TextField() # e.g psmtable.txt, name of file
     pepfile = models.TextField()
+    genefile = models.TextField()
     fasta_arg = models.TextField() # e.g. --tdb (cannot use FK bc we dont know if its multifile or not)
-    peppeptidefield = models.TextField()
-    pepprotfield = models.TextField()
-    pepms1field = models.TextField()
-    peppsmcountfield = models.TextField()
-    pepfdrfield = models.TextField()
-    psmfdrfield = models.TextField()
-    psmchargefield = models.TextField()
-    psmfnfield = models.TextField()
-    scanfield = models.TextField()
-    psmscorefield = models.TextField()
-    # need score type?
-    psmsetname = models.TextField()
-    psmpeptide = models.TextField()
+    peppeptidefield = models.ForeignKey(OutputFieldName, related_name='peppep', on_delete=models.CASCADE)
+    peppepfield = models.ForeignKey(OutputFieldName, related_name='pepposterior', on_delete=models.CASCADE)
+    psmprotfield = models.ForeignKey(OutputFieldName, related_name='prot', on_delete=models.CASCADE)
+    psmms1field = models.ForeignKey(OutputFieldName, related_name='psmms1', on_delete=models.CASCADE)
+    pepms1field = models.ForeignKey(OutputFieldName, related_name='pepms1', on_delete=models.CASCADE)
+    pepfdrfield = models.ForeignKey(OutputFieldName, related_name='pepfdr', on_delete=models.CASCADE)
+    psmfdrfield = models.ForeignKey(OutputFieldName, related_name='psmfdr', on_delete=models.CASCADE)
+    psmpepfield = models.ForeignKey(OutputFieldName, related_name='psmposterior', on_delete=models.CASCADE)
+    psmchargefield = models.ForeignKey(OutputFieldName, related_name='charge', on_delete=models.CASCADE)
+    psmfnfield = models.ForeignKey(OutputFieldName, related_name='fn', on_delete=models.CASCADE)
+    scanfield = models.ForeignKey(OutputFieldName, related_name='psmscan', on_delete=models.CASCADE)
+    rtfield = models.ForeignKey(OutputFieldName, related_name='psmrt', on_delete=models.CASCADE)
+    psmscorefield = models.ForeignKey(OutputFieldName, related_name='score', on_delete=models.CASCADE)
+    psmsetname = models.ForeignKey(OutputFieldName, related_name='psmset', on_delete=models.CASCADE)
+    psmpeptide = models.ForeignKey(OutputFieldName, related_name='psmpep', on_delete=models.CASCADE)
 
     def get_fasta_files(self, **jobkw):
         '''Fasta files need inspection of job parameters as there is no "proper" DB
@@ -148,11 +166,12 @@ class WfOutput(models.Model):
             b_ana_mgr = AnalysisBaseanalysis.objects.filter(analysis=base_analysis,
                     rerun_from_psms=True)
         if base_analysis:
-            psmfilename = base_analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
-            psmfile = base_analysis.analysisresultfile_set.filter(sfile__filename=psmfilename)
+            pass # FIXME need to get Experiment -> wfoutput_deteceted
+            #            psmfilename = base_analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
+            #            psmfile = base_analysis.analysisresultfile_set.filter(sfile__filename=psmfilename)
         else:
-            psmfilename = analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
-            psmfile = analysis.analysisresultfile_set.filter(sfile__filename=psmfilename)
+            #psmfilename = analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
+            psmfile = analysis.analysisresultfile_set.filter(sfile__filename=self.psmfile)
         if psmfile.count() == 1:
             return (0, psmfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
         elif psmfile.count() > 1:
@@ -162,13 +181,23 @@ class WfOutput(models.Model):
 
     def get_peptide_outfile(self, analysis):
         pepfile = analysis.analysisresultfile_set.filter(
-                sfile__filename=analysis.nextflowsearch.nfwfversionparamset.wfoutput.pepfile)
+                #sfile__filename=analysis.nextflowsearch.nfwfversionparamset.wfoutput.pepfile)
+                sfile__filename=self.pepfile)
         if pepfile.count() == 1:
             return (0, pepfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
         elif pepfile.count() > 1:
             return (1, False, f'Multiple peptide files ({self.pepfile}) found for this analysis? Contact admin.')
         else:
             return (1, False, f'Cannot find output peptide file ({self.pepfile}) for this analysis.')
+
+
+class PipelineVersionOutput(models.Model):
+    '''Mapping a pipeline (version) to an output field definition. Multiple
+    output definitions can be used for a single pipeline version, so that
+    a pipeline can output e.g. different search engine PSMs'''
+    nfwfversion = models.ForeignKey(NextflowWfVersionParamset, on_delete=models.CASCADE)
+    output = models.ForeignKey(WfOutput, on_delete=models.CASCADE)
+
 
 class PsetComponent(models.Model):
     '''Special components for a parameter set. Components are such elements for a workflow

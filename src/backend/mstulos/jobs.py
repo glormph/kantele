@@ -27,42 +27,61 @@ class ProcessAnalysis(BaseJob):
     # FIXME this is not atomic view, if crash -> DB entries!
     # maybe instead of job, put some of this in view that created/saved analysis
    
-    #getfiles_query()? needed
     def process(self, **kwargs):
-        analysis = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__wfoutput').get(
+        analysis = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset').get(
                 pk=kwargs['analysis_id'])
-        output = analysis.nextflowsearch.nfwfversionparamset.wfoutput
-        # Output files headers according to their DB entry
-        headers = {'pep': {'psmcount': output.peppsmcountfield, 'fdr': output.pepfdrfield,
-            'peptide': output.peppeptidefield, 'protein': output.pepprotfield,
-            'ms1': output.pepms1field, 'isobaric': []},
-            'psm': {'fdr': output.psmfdrfield, 'fn': output.psmfnfield, 'scan': output.scanfield,
-                'setname': output.psmsetname, 'peptide': output.psmpeptide,
-                'charge': output.psmchargefield, 'score': output.psmscorefield}}
-
+        # First get isobaric types:
         plexq = Q(dataset__quantdataset__quanttype__shortname__contains='plex')
         plexq |= Q(dataset__quantdataset__quanttype__shortname='tmtpro')
+        isob_types = []
+        all_pepfile_arg, all_psmfile_arg, all_fa_files = {}, {}, {}
         for plextype in analysis.datasetanalysis_set.filter(plexq).distinct(
                 'dataset__quantdataset__quanttype__shortname'):
             ptname = plextype.dataset.quantdataset.quanttype.shortname
             plextype_trf = {'tmtpro': 'tmt16plex'}.get(ptname, ptname)
-            headers['pep']['isobaric'].append(plextype_trf)
+            isob_types.append(plextype_trf)
         
-        # Get fasta files
-        fa_rc, fa_files, faerr = output.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
-        psm_rc, psmfile, psmerr = output.get_psm_outfile(analysis)
-        pep_rc, pepfile, peperr = output.get_peptide_outfile(analysis)
-        
-        if fa_rc or psm_rc or pep_rc:
-            raise RuntimeError('\n'.join([faerr, psmerr, peperr]).strip())
-        else:
-            psmfile = psmfile.get()
-            pepfile = pepfile.get()
+        # Pass all WfOuput objects for the pipeline
+        headers, fa_files, pepfile_arg, psmfile_arg = {}, {}, {}, {}
+        for pipe_out in analysis.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.all():
+            output = pipe_out.output
+            # Output files headers according to their DB entries
+            headers[output.pk] = {
+                    'pep': {
+                        'fdr': output.pepfdrfield.fieldname,
+                        'posterior': output.peppepfield.fieldname,
+                        'peptide': output.peppeptidefield.fieldname,
+                        'ms1': output.pepms1field.fieldname,
+                        'isobaric': isob_types},
+                    'psm': {
+                        'fdr': output.psmfdrfield.fieldname,
+                        'posterior': output.psmpepfield.fieldname,
+                        'fn': output.psmfnfield.fieldname,
+                        'scan': output.scanfield.fieldname,
+                        'setname': output.psmsetname.fieldname,
+                        'peptide': output.psmpeptide.fieldname,
+                        'charge': output.psmchargefield.fieldname,
+                        'score': output.psmscorefield.fieldname,
+                        'ms1': output.psmms1field.fieldname,
+                        'rt': output.rtfield.fieldname,
+                        'protein': output.psmprotfield.fieldname,
+                        }}
 
-        fa_files = [(x['pk'], x['servershare__name'], os.path.join(x['path'], x['filename']))
-                for x in fa_files]
-        pepfile_arg = (pepfile['sfile__servershare__name'],
-                os.path.join(pepfile['sfile__path'], pepfile['sfile__filename']))
-        psmfile_arg =  (psmfile['sfile__servershare__name'],
-                os.path.join(psmfile['sfile__path'], psmfile['sfile__filename']))
-        self.run_tasks.append(((kwargs['token'], kwargs['organism_id'], pepfile_arg, psmfile_arg, headers, fa_files), {}))
+            # Get fasta files
+            fa_rc, fa_files, faerr = output.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
+            psm_rc, psmfile, psmerr = output.get_psm_outfile(analysis)
+            pep_rc, pepfile, peperr = output.get_peptide_outfile(analysis)
+            
+            if fa_rc or psm_rc or pep_rc:
+                raise RuntimeError('\n'.join([faerr, psmerr, peperr]).strip())
+            else:
+                psmfile = psmfile.get()
+                pepfile = pepfile.get()
+
+            all_fa_files[output.pk] = [(x['pk'], x['servershare__name'], os.path.join(x['path'], x['filename']))
+                    for x in fa_files]
+            all_pepfile_arg[output.pk] = (pepfile['sfile__servershare__name'],
+                    os.path.join(pepfile['sfile__path'], pepfile['sfile__filename']))
+            all_psmfile_arg[output.pk] = (psmfile['sfile__servershare__name'],
+                    os.path.join(psmfile['sfile__path'], psmfile['sfile__filename']))
+            self.run_tasks.append(((kwargs['token'], kwargs['organism_id'], all_pepfile_arg, all_psmfile_arg, headers, all_fa_files), {}))

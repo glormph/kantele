@@ -1,6 +1,7 @@
 import os
 import re
 from urllib.parse import urljoin
+from collections import defaultdict
 
 from django.urls import reverse
 from celery import shared_task
@@ -35,69 +36,128 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     resp.raise_for_status()
     samplesets, samples = resp.json()['samplesets'], resp.json()['samples']
 
-    # Store proteins, genes found
+    # Determine wf_output first, on PSM table
+    wf_out_count = defaultdict(int)
+    for wf_out_pk, psmfn in psm_file.items():
+        psmfile_fpath = os.path.join(settings.SHAREMAP[psmfn[0]], psmfn[1])
+        with open(psmfile_fpath) as fp:
+            header = next(fp).strip('\n').split('\t')
+        for coln in ['fn', 'scan', 'charge', 'setname', 'peptide', 'fdr', 'score', 'ms1']:
+            try:
+                header.index(outheaders[wf_out_pk]['psm'][coln])
+            except IndexError:
+                pass
+            else:
+                wf_out_count[wf_out_pk] += 1
+    best_match_wf = max(wf_out_count, key=wf_out_count.get)
+    peptide_file = peptide_file[best_match_wf]
+    psm_file = psm_file[best_match_wf]
+    outheaders = outheaders[best_match_wf]
+    fafns = fafns[best_match_wf]
+
+    # Store proteins, genes found, first fasta
     protgenes = []
-    storedproteins, storedgenes = {}, {}
+    storedproteins = {}
     protein_url = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_proteins'))
-    pepheader = outheaders['pep']
     all_seq = {}
     for fa_id, fa_server, fafn in fafns:
         fa_path = os.path.join(settings.SHAREMAP[fa_server], fafn)
         all_seq[fa_id] = SeqIO.index(fa_path, 'fasta')
-    
-    pepfile_fpath = os.path.join(settings.SHAREMAP[peptide_file[0]], peptide_file[1])
-    with open(pepfile_fpath) as fp:
+    # Now parse proteins/peptides from PSM table (as in peptide table proteins
+    # are possibly grouped
+    psmfile_fpath = os.path.join(settings.SHAREMAP[psm_file[0]], psm_file[1])
+    psm_header = outheaders['psm']
+    pepprots_nopk = defaultdict(set)
+    pepprots = defaultdict(list)
+    with open(psmfile_fpath) as fp:
         header = next(fp).strip('\n').split('\t')
-        protfield = header.index(pepheader['protein'])
+        protfield = header.index(psm_header['protein'])
+        pepfield = header.index(psm_header['peptide'])
         for line in fp:
             line = line.strip('\n').split('\t')
+            bareseq = re.sub('[^A-Z]', '', line[pepfield])
             # FIXME if genes:
             # This assumes proteins are in a field separated by semicolons, which is
             # the case for MSGF, Sage, msstitch PSM tables (and msstitch peptide table)
-            for protein in line[protfield].split(';'):
+            for rawprotein in line[protfield].split(';'):
+                # Assume protein names are A-Z0-9, i.e. strip other characters after that
+                protein = re.sub('[^A-Za-z_\-0-9\.].*', '', rawprotein)
                 if protein not in storedproteins:
+                    # Protein found not yet knowing the DB ID of, so pass it to backend
                     gene = False
                     for fa_id, acc_seqs in all_seq.items():
                         if protein in acc_seqs:
                             fahead = acc_seqs[protein].description.split()
-                            seq = str(acc_seqs[protein].seq)
-                        ens = [x for x  in [x.split(':') for x in fahead] if x[0] == 'gene_symbol']
-                        sp = [x for x  in [x.split('=') for x in fahead] if x[0] == 'GN']
-                        if rec_gene := ens or sp:
-                            gene = rec_gene[0][1]
-                    protgenes.append([fa_id, protein, gene, seq])
+                            protseq = str(acc_seqs[protein].seq)
+                            ens = [x for x  in [x.split(':') for x in fahead] if x[0] == 'gene_symbol']
+                            sp = [x for x  in [x.split('=') for x in fahead] if x[0] == 'GN']
+                            if rec_gene := ens or sp:
+                                gene = rec_gene[0][1]
+                            break
+                    protgenes.append([fa_id, protein, gene, protseq])
                     storedproteins[protein] = False
+                    pepprots_nopk[protein].add(bareseq)
+                elif bareseq not in pepprots:
+                    # Protein has DB ID, but peptide seq is not yet encountered, so
+                    # map peptide to stored protein for later use
+                    for fa_id, acc_seqs in all_seq.items():
+                        if protein in acc_seqs:
+                            protpos = str(acc_seqs[protein].seq).index(bareseq)
+                            if storedproteins[protein] is False:
+                                pepprots_nopk[protein].add(bareseq)
+                            else:
+                                pepprots[bareseq].append([storedproteins[protein], protpos])
+                        break
                 if len(protgenes) == 1000:
                     resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
                         'organism_id': organism_id, 'fa_ids': [x[0] for x in fafns]})
                     resp.raise_for_status()
                     storedproteins.update(resp.json()['protein_ids'])
                     protgenes = []
+                    for newprot, bareseqs_tosave in pepprots_nopk.items():
+                        storeprot = storedproteins[newprot]
+                        for fa_id, acc_seqs in all_seq.items():
+                            if newprot in acc_seqs:
+                                for bseq_tosave in bareseqs_tosave:
+                                    protpos = str(acc_seqs[newprot].seq).index(bseq_tosave)
+                                    pepprots[bseq_tosave].append([storeprot, protpos])
+                            break
+                    pepprots_nopk = defaultdict(set)
     if len(protgenes):
         resp = update_db(protein_url, json={'protgenes': protgenes, 'token': token,
             'organism_id': organism_id, 'fa_ids': [x[0] for x in fafns]})
         resp.raise_for_status()
         storedproteins.update(resp.json()['protein_ids'])
+        for newprot, bareseqs_tosave in pepprots_nopk.items():
+            storeprot = storedproteins[newprot]
+            for fa_id, acc_seqs in all_seq.items():
+                if newprot in acc_seqs:
+                    for bseq_tosave in bareseqs_tosave:
+                        protpos = str(acc_seqs[newprot].seq).index(bseq_tosave)
+                        pepprots[bseq_tosave].append([storeprot, protpos])
+                break
 
     # Now store all peptide sequences found with proteins/genes association, and
     # any conditions used
+    pepheader = outheaders['pep']
     pepurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_peptides'))
     storedpeps = {} # for ID tracking
+    pepfile_fpath = os.path.join(settings.SHAREMAP[peptide_file[0]], peptide_file[1])
     with open(pepfile_fpath) as fp:
         header = next(fp).strip('\n').split('\t')
-        conditions = {'psmcount': [], 'ms1': [], 'qval': [], 'isobaric': []}
+        conditions = {'ms1': [], 'qval': [], 'posterior': [], 'isobaric': []}
         # find header fields and match with conditions by setname/sample/channel
         pepfield = header.index(pepheader['peptide'])
         for ix, field in enumerate(header):
             # bit strict handling with f'_PSM count' to avoid Quanted PSM count fields..
             # Text parsing is not always super clean. We may need to think about that in
             # the pipeline itself, to make sure it is parseable, or encode somehow
-            if pepheader['psmcount'] and f'_{pepheader["psmcount"]}' in field:
-                setname = field.replace(f'_{pepheader["psmcount"]}', '')
-                conditions['psmcount'].append((ix, samplesets[setname]['set_id']))
-            elif pepheader['fdr'] and pepheader['fdr'] in field:
+            if pepheader['fdr'] and pepheader['fdr'] in field:
                 setname = field.replace(f'_{pepheader["fdr"]}', '')
                 conditions['qval'].append((ix, samplesets[setname]['set_id']))
+            elif pepheader['posterior'] and pepheader['posterior'] in field:
+                setname = field.replace(f'_{pepheader["posterior"]}', '')
+                conditions['posterior'].append((ix, samplesets[setname]['set_id']))
             elif pepheader['ms1'] and pepheader['ms1'] in field:
                 setname = field.replace(f'_{pepheader["ms1"]}', '')
                 conditions['ms1'].append((ix, samplesets[setname]['set_id']))
@@ -115,15 +175,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         for line in fp:
             line = line.strip('\n').split('\t')
             bareseq = re.sub('[^A-Z]', '', line[pepfield])
-            prots = []
-            for protein in line[protfield].split(';'):
-                storeprot = storedproteins[protein]
-                for fa_id, acc_seqs in all_seq.items():
-                    if protein in acc_seqs:
-                        protpos = str(acc_seqs[protein].seq).index(bareseq)
-                        prots.append([storeprot, protpos])
-                        break
-            storepep = {'pep': line[pepfield], 'prots': prots}
+            storepep = {'pep': line[pepfield], 'prots': pepprots[bareseq]}
             for datatype, col_conds in conditions.items():
                 storepep[datatype] = []
                 for col, cond_id in col_conds:
@@ -150,10 +202,8 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
             # with mods 
 
     # Go through PSM table with peptide_ids as map
-    psm_header = outheaders['psm']
     psms = []
     psmurl = urljoin(settings.KANTELEHOST, reverse('mstulos:upload_psms'))
-    psmfile_fpath = os.path.join(settings.SHAREMAP[psm_file[0]], psm_file[1])
     with open(psmfile_fpath) as fp:
         header = next(fp).strip('\n').split('\t')
         # FIXME catch these index() calls!
@@ -163,15 +213,18 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         setcol = header.index(psm_header['setname'])
         pepcol = header.index(psm_header['peptide'])
         fdrcol = header.index(psm_header['fdr'])
+        posteriorcol = header.index(psm_header['posterior'])
         scorecol = header.index(psm_header['score'])
+        ms1col = header.index(psm_header['ms1'])
+        rtcol = header.index(psm_header['rt'])
         for line in fp:
             line = line.strip('\n').split('\t')
             storepsm = {}
             fn_cond_id = samplesets[line[setcol]]['files'][line[fncol]]
             # FIXME catch no peps, no fdr, no scan -- what??
-            storepsm = {'scan': line[scancol], 'qval': line[fdrcol], 'fncond': fn_cond_id,
-                    'score': line[scorecol], 'charge': line[chargecol],
-                    'pep_id': storedpeps[line[pepcol]]}
+            storepsm = {'scan': line[scancol], 'qval': line[fdrcol], 'PEP': line[posteriorcol],
+                    'fncond': fn_cond_id, 'score': line[scorecol], 'charge': line[chargecol],
+                    'ms1': line[ms1col], 'rt': line[rtcol], 'pep_id': storedpeps[line[pepcol]]}
             psms.append(storepsm)
             if len(psms) > 10000:
                 resp = update_db(psmurl, json={'psms': psms, 'token': token})

@@ -158,18 +158,19 @@ class PeptideFDR(models.Model):
     idpep = models.OneToOneField(IdentifiedPeptide, on_delete=models.CASCADE)
 
 
-class AmountPSMsPeptide(models.Model):
-    # TODO can we merge amountPSM and FDR? PepValues or somethign?
-    value = models.IntegerField()
+class PeptidePosteriorError(models.Model):
+    pep = models.FloatField()
     idpep = models.OneToOneField(IdentifiedPeptide, on_delete=models.CASCADE)
 
 
 class PSM(models.Model):
     fdr = models.FloatField()
+    pep = models.FloatField()
     scan = models.IntegerField()
     # score type in Wfoutput?
     score = models.FloatField()
     charge = models.IntegerField()
+    rt = models.FloatField() # in minutes or seconds? SPECIFY!
     # TODO no scan in DIA/TIMS/etc
     # TODO hardcode condition fieldname is file?
     filecond = models.ForeignKey(Condition, on_delete=models.CASCADE)
@@ -177,3 +178,8 @@ class PSM(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['filecond', 'scan'], name='uni_psmscans')]
+
+
+class PSMMS1(models.Model):
+    psm = models.OneToOneField(PSM, on_delete=models.CASCADE)
+    ms1 = models.FloatField()
