@@ -150,7 +150,7 @@ class WfOutput(models.Model):
                 sfids = [jobkw['singlefiles'][self.fasta_arg]]
             except KeyError:
                 return (1, False, 'Cannot find fasta files for this analysis with job arg '
-                        f'{output.fasta_arg}, contact admin.')
+                        f'{self.fasta_arg}, contact admin.')
         fa_files = filemodels.StoredFile.objects.filter(pk__in=sfids).values(
                 'pk', 'servershare__name', 'path', 'filename')
         if fa_files.count() < len(sfids):
