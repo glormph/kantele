@@ -77,10 +77,9 @@ def add_analysis(request, nfs_id):
 
     # Check if output files exist
     for pvo in analysis.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.select_related('output').all():
-        wfoutputdef = pvo.output
-        fa_rc, _, faerr = wfoutputdef.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
-        psm_rc, _, psmerr = wfoutputdef.get_psm_outfile(analysis)
-        pep_rc, _, peperr = wfoutputdef.get_peptide_outfile(analysis)
+        fa_rc, _, faerr = pvo.output.get_fasta_files(**analysis.nextflowsearch.job.kwargs['inputs'])
+        psm_rc, _, psmerr = pvo.output.get_psm_outfile(analysis)
+        pep_rc, _, peperr = pvo.output.get_peptide_outfile(analysis)
         if not fa_rc or not psm_rc or not pep_rc:
             # One of the wfouput possibles has a returncode zero on the files, break out
             break

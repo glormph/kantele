@@ -159,31 +159,24 @@ class WfOutput(models.Model):
         return (0, fa_files, '')
 
     def get_psm_outfile(self, analysis):
+        '''Returns the PSM file to be used, returns error in case of not found,
+        or when the analysis is a "rerun from PSM table"
+        '''
         b_ana_mgr = AnalysisBaseanalysis.objects.filter(analysis=analysis, rerun_from_psms=True)
-        base_analysis = False
-        # Get potentially nested base analysis for PSM tables:
-        while b_ana_mgr.count():
-            base_analysis = b_ana_mgr.get().base_analysis
-            b_ana_mgr = AnalysisBaseanalysis.objects.filter(analysis=base_analysis,
-                    rerun_from_psms=True)
-        if base_analysis:
-            pass # FIXME need to get Experiment -> wfoutput_deteceted
-            #            psmfilename = base_analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
-            #            psmfile = base_analysis.analysisresultfile_set.filter(sfile__filename=psmfilename)
+        if b_ana_mgr.count():
+            return (1, False, f'Cannot load results which have been generated from an '
+            'existing PSM table (rerun from PSMs).')
         else:
-            #psmfilename = analysis.nextflowsearch.nfwfversionparamset.wfoutput.psmfile
             psmfile = analysis.analysisresultfile_set.filter(sfile__filename=self.psmfile)
         if psmfile.count() == 1:
             return (0, psmfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
         elif psmfile.count() > 1:
-            return (1, False, f'Multiple PSM files ({psmfilename}) found for this analysis? Contact admin.')
+            return (1, False, f'Multiple PSM files ({self.psmfile}) found for this analysis? Contact admin.')
         else:
-            return (1, False, f'Cannot find output PSM file ({psmfilename}) for this analysis.')
+            return (1, False, f'Cannot find output PSM file ({self.psmfile}) for this analysis.')
 
     def get_peptide_outfile(self, analysis):
-        pepfile = analysis.analysisresultfile_set.filter(
-                #sfile__filename=analysis.nextflowsearch.nfwfversionparamset.wfoutput.pepfile)
-                sfile__filename=self.pepfile)
+        pepfile = analysis.analysisresultfile_set.filter(sfile__filename=self.pepfile)
         if pepfile.count() == 1:
             return (0, pepfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
         elif pepfile.count() > 1:
