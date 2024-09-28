@@ -13,17 +13,18 @@ services:
                 GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
         volumes:
             - ../../data/storage:/storage
-            - ../../data/newstorage:/s3storage
+            - ../../data/newstorage:/newstorage
+            - ../../data/analysisfiles:/analysisfiles
             - ../backend:/kantele
         environment:
             APIKEY: "${APIKEY_STORAGE}"
             KANTELEHOST: nginx
             PROTOCOL: http
             TMPSHARE: '/s3storage/tmp'
-            ANALYSISSHARE: '/storage/analysis'
+            ANALYSISSHARE: /analysisfiles
             RABBITHOST: mq
             RABBIT_VHOST: "${RABBIT_VHOST}"
             RABBITUSER: "${RABBITUSER:-guest}"
             RABBITPASS: "${RABBITPASS:-guest}"
-            STORAGESHARES: '/storage/storage,/s3storage/storage'
+            STORAGESHARES: '/storage,/newstorage'
             PRIMARY_STORAGE: s3storage

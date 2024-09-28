@@ -20,7 +20,7 @@ services:
             - ./src/backend:/kantele
             - ./static:/kantele/static
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
-            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
+            - ./data/analysisfiles:/analysisfiles
     
     nginx:
         image: "nginx:1.21"
@@ -33,7 +33,7 @@ services:
             - ./src/docker/uwsgi_params:/etc/nginx/uwsgi_params
             - ./src/docker/nginx_stage.conf:/etc/nginx/nginx.conf
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
-            - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
+            - ./data/analysisfiles:/analysisfiles
 
     db: 
         extends:
@@ -96,6 +96,16 @@ services:
             RSYNC_SSHUSER: kantele
             RSYNC_SSHPORT: 22
             RSYNC_SSHKEY: "/home/kantele/.ssh/rsync_key"
+
+    tulos_ingester:
+      depends_on:
+        - mq
+      env_file:
+        - ./src/docker/stage.env
+      extends:
+        file: ./src/docker/docker-compose-dev.yml
+        service: storage
+      command: celery -A kantele worker -Q scaninbox -n storage_downloads.%h --concurrency=1
 
 
     upload_bay_rsync:
