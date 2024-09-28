@@ -31,12 +31,6 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
     # FIXME not all runs have genes
     # FIXME isobaric has not been fone yet!
 
-    # Create conditions etc
-    init_url = urljoin(settings.KANTELEHOST, reverse('mstulos:init_store'))
-    resp = update_db(init_url, json={'token': token})
-    resp.raise_for_status()
-    samplesets, samples = resp.json()['samplesets'], resp.json()['samples']
-
     # Determine wf_output first, on PSM table
     wf_out_count = defaultdict(int)
     for wf_out_pk, psmfn in psm_file.items():
@@ -59,6 +53,12 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         gene_file = False
     outheaders = outheaders[best_match_wf]
     fafns = fafns[best_match_wf]
+
+    # Update the experiment with best_match_wf, delete existing values and get sampletable 
+    init_url = urljoin(settings.KANTELEHOST, reverse('mstulos:init_store'))
+    resp = update_db(init_url, json={'token': token, 'wfout_found': best_match_wf})
+    resp.raise_for_status()
+    samplesets, samples = resp.json()['samplesets'], resp.json()['samples']
 
     # Store proteins, genes found, first fasta
     protgenes = []

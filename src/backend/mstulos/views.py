@@ -130,7 +130,9 @@ def add_analysis(request, nfs_id):
         else:
             return JsonResponse({'error': True, 'message': 'Cannot parse analysis modifications, please contact admin'})
 
-    exp, _cr = m.Experiment.objects.get_or_create(analysis=analysis, defaults={'token': str(uuid4())})
+    # Start storing here (except mods, above)
+    # Experiment is inited with default wfoutput_found, will be determined in task
+    exp, _cr = m.Experiment.objects.get_or_create(analysis=analysis, defaults={'token': str(uuid4()), 'wfoutput_found': pvo.output})
     if not _cr and exp.upload_complete:
         return JsonResponse({'error': True, 'message': 'This analysis is already in the results database'})
     # Now store the isobaric quant mods:
@@ -153,13 +155,14 @@ def add_analysis(request, nfs_id):
 
 @require_POST
 def init_store_experiment(request):
+    data = json.loads(request.body.decode('utf-8'))
+    exp, _ = m.Experiment.objects.update_or_create(token=data['token'],
+            defaults={'wfoutput_found_id': data['wfout_found']})
     # Delete all conditions before rerunning task, both because since it is not possible to only
     # get_or_create on name/exp, as there are duplicates in the DB e.g. multiple sets with
     # TMT channel 126 and:
     # It also obviates the need to do get_or_create on a lot of fields running the task
     # storing the data -> only create is faster since it skips the get query
-    data = json.loads(request.body.decode('utf-8'))
-    exp = m.Experiment.objects.get(token=data['token'])
     m.Condition.objects.filter(experiment_id=exp).delete()
     samplesets = {}
     # FIXME non-set searches (have analysisdsinputfile), also non-sampletable (same?)

@@ -11,6 +11,7 @@ class Experiment(models.Model):
     # FIXME token must have invalidation time
     token = models.TextField()
     analysis = models.OneToOneField(am.Analysis, on_delete=models.CASCADE)
+    wfoutput_found = models.ForeignKey(am.WfOutput, on_delete=models.CASCADE)
 
 
 class Condition(models.Model):
