@@ -28,8 +28,6 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         outheaders, fafns):
     # FIXME maybe not do proteins when running 6FT? Need to make it selectable!
     # FIXME exempt proteogenomics completely for now or make button (will be misused!)
-    # FIXME not all runs have genes
-    # FIXME isobaric has not been fone yet!
 
     # Determine wf_output first, on PSM table
     wf_out_count = defaultdict(int)
@@ -81,7 +79,6 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         for line in fp:
             line = line.strip('\n').split('\t')
             bareseq = re.sub('[^A-Z]', '', line[pepfield])
-            # FIXME if genes:
             # This assumes proteins are in a field separated by semicolons, which is
             # the case for MSGF, Sage, msstitch PSM tables (and msstitch peptide table)
             for rawprotein in line[protfield].split(';'):

@@ -96,6 +96,7 @@ class ProteinFasta(models.Model):
 
 
 class PeptideSeq(models.Model):
+    '''Just the amino acid sequence without modifications'''
     seq = models.TextField(unique=True)
 
 
@@ -175,6 +176,7 @@ class PeptidePosteriorError(models.Model):
 
 class PSM(models.Model):
     fdr = models.FloatField()
+    # FIXME PEP in separate model in case its not there
     pep = models.FloatField()
     scan = models.IntegerField()
     # score type in Wfoutput?
@@ -182,7 +184,7 @@ class PSM(models.Model):
     charge = models.IntegerField()
     rt = models.FloatField() # in minutes or seconds? SPECIFY!
     # TODO no scan in DIA/TIMS/etc
-    # TODO hardcode condition fieldname is file?
+    # TODO hardcode condition fieldname is file? - what does it mean?
     filecond = models.ForeignKey(Condition, on_delete=models.CASCADE)
     peptide = models.ForeignKey(PeptideMolecule, on_delete=models.CASCADE)
 

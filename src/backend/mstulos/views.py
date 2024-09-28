@@ -20,12 +20,6 @@ from datasets import models as dm
 from analysis import models as am
 
 
-# FIXME:
-# fix fixmes in job/task
-# have shareable URLs for search including unrolls
-# create plots for TMT
-# gene/protein centric tables
-
 def paginate(qset, pnr):
     pages = Paginator(qset, 100)
     pages.ELLIPSIS = '__'
@@ -59,7 +53,6 @@ def add_analysis(request, nfs_id):
         dsorganisms = set()
         for dss in dsa.dataset.datasetsample_set.all():
             dsorganisms.update(x.species_id for x in dss.projsample.samplespecies_set.all())
-        # FIXME also check DIA/DDA here
         if not len(dsorganisms):
             return JsonResponse({'error': True, 'message': 'Must enter organism in dataset metadata in order to load results'})
         organisms.update(dsorganisms)
@@ -135,7 +128,7 @@ def add_analysis(request, nfs_id):
     exp, _cr = m.Experiment.objects.get_or_create(analysis=analysis, defaults={'token': str(uuid4()), 'wfoutput_found': pvo.output})
     if not _cr and exp.upload_complete:
         return JsonResponse({'error': True, 'message': 'This analysis is already in the results database'})
-    # Now store the isobaric quant mods:
+    # store the isobaric quant mods:
     quantmods = set()
     for aiq in analysis.analysisisoquant_set.all():
         set_dsets = analysis.datasetanalysis_set.filter(analysisdsinputfile__analysisset=aiq.setname)
@@ -505,7 +498,7 @@ def peptide_table(request):
     
 
 
-#@login_required
+@login_required
 def psm_table(request):
     '''Given a combination of peptide-sequence-ids and experiments they are in,
     produce a PSM table'''
@@ -673,7 +666,6 @@ def upload_psms(request):
 @require_POST
 def upload_genes(request):
     data = json.loads(request.body.decode('utf-8'))
-    print(data)
     try:
         exp = m.Experiment.objects.get(token=data['token'], upload_complete=False)
     except m.Experiment.DoesNotExist:

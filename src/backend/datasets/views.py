@@ -1302,52 +1302,6 @@ def save_mssamples(request):
     return JsonResponse({})
 
 
-def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
-    '''This function is used both by LC and normal Dset'''
-    # FIXME can LC use normal dset samples?
-        # first delete old qcs/qsf
-        # create new ones but first do samples
-    # LC does not use samples, what is this?
-
-    # switch from labelfree - tmt: remove filesample, create other channels
-    if oldqtype == 'labelfree' and updated_qtype:
-        print('Switching to isobaric')
-        # FIXME new_channelsamples need fixing I guess
-        # what does this mean, fixed?
-        models.QuantChannelSample.objects.bulk_create([
-            models.QuantChannelSample(dataset_id=data['dataset_id'],
-                projsample_id=chan['model'], channel_id=chan['id'])
-            for chan in data['samples']])
-        models.QuantSampleFile.objects.filter(
-            rawfile__dataset_id=dset_id).delete()
-    # reverse switch
-    elif data['labelfree'] and updated_qtype:
-        print('Switching isobaric-labelfree')
-        models.QuantChannelSample.objects.filter(dataset_id=dset_id).delete()
-    elif not data['labelfree']:
-        print('Updating isobaric')
-        if updated_qtype:
-            print('new quant type found')
-            models.QuantChannelSample.objects.filter(
-                dataset_id=dset_id).delete()
-            models.QuantChannelSample.objects.bulk_create([
-                models.QuantChannelSample(dataset_id=data['dataset_id'],
-                    projsample_id=chan['model'], channel_id=chan['id'])
-                for chan in data['samples']])
-        else:
-            print('checking if new samples')
-            existing_samples = {x.id: (x.projsample_id, x) for x in 
-                models.QuantChannelSample.objects.filter(dataset_id=data['dataset_id'])}
-            for chan in data['samples']:
-                exis_qcs = existing_samples[chan['qcsid']]
-                if chan['model'] != exis_qcs[0]:
-                    exis_qcs[1].projsample_id = chan['model']
-                    exis_qcs[1].save()
-                if chan['id'] != exis_qcs[1].channel_id:
-                    exis_qcs[1].channel_id = chan['id']
-                    exis_qcs[1].save()
-
-
 def update_labelcheck(data, qtype):
     dset_id = data['dataset_id']
     if data['quanttype'] != qtype.quanttype_id:
@@ -1501,8 +1455,6 @@ def save_samples(request):
             'sample IDs', 'sample_dups': projsamples}, status=400)
 
     # All is ready for saving or updating
-    # FIXME this line can be removed, not used
-    lf_qtid = models.QuantType.objects.get(name='labelfree').pk
     if is_update := models.DatasetComponentState.objects.filter(dataset=dset,
             dtcomp=models.DatasetUIComponent.SAMPLES, state=models.DCStates.OK).count():
         # existing component state OK -> update: if quanttype changes - delete the old quanttype

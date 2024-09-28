@@ -18,7 +18,6 @@ class ProcessAnalysis(BaseJob):
     refname = 'ingest_search_results'
     task = mt.summarize_result_peptable
 
-    # version 1, 2021 msstitch sqlite
     """
     kwargs = {
     'analysis_id': 1,
