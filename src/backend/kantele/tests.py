@@ -80,7 +80,7 @@ class BaseTest(TestCase):
         rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
                 filetype=self.ft)
         self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='testqtplex')
-        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
+        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='126')
         self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
         self.lfqt, _ = dm.QuantType.objects.get_or_create(name='labelfree', shortname='lf')
 

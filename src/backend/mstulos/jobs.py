@@ -78,7 +78,7 @@ class ProcessAnalysis(BaseJob):
             gene_rc, genefile, geneerr = output.get_gene_outfile(analysis)
             
             if fa_rc or psm_rc or pep_rc or gene_rc:
-                raise RuntimeError('\n'.join([faerr, psmerr, peperr, generr]).strip())
+                raise RuntimeError('\n'.join([faerr, psmerr, peperr, geneerr]).strip())
 
             psmfile = psmfile.get()
             pepfile = pepfile.get()

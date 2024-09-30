@@ -182,7 +182,7 @@ def init_store_experiment(request):
     # Can also do that because they cant be duplicate in experiment, like e.g.
     # fractions or channels over multiple sets
     # TODO exempt them from deletion above?
-    samples = {'groups': {}, 'samples': {}, }
+    samples = {}
     for ch, setn, sample, sgroup in exp.analysis.analysissampletable.samples:
         clean_group = re.sub('[^a-zA-Z0-9_]', '_', sgroup)
         clean_sample = re.sub('[^a-zA-Z0-9_]', '_', sample)
@@ -191,12 +191,11 @@ def init_store_experiment(request):
             gss = f'{clean_group}_{clean_sample}_{clean_set}___{ch}'
             c_group, _cr = m.Condition.objects.get_or_create(name=sgroup,
                     cond_type=m.Condition.Condtype['SAMPLEGROUP'], experiment=exp)
-            samples['groups'][gss] = c_group.pk
         else:
             gss = f'{clean_sample}_{clean_set}___{ch}'
+            c_group = False
         c_sample, _cr = m.Condition.objects.get_or_create(name=sample,
                 cond_type=m.Condition.Condtype['SAMPLE'], experiment=exp)
-        #samples['samples'][gss] = c_sample.pk
         c_ch = m.Condition.objects.create(name=ch, cond_type=m.Condition.Condtype['CHANNEL'],
                 experiment=exp)
         samples[gss] = c_ch.pk
@@ -204,7 +203,7 @@ def init_store_experiment(request):
         c_ch.parent_conds.add(samplesets[clean_set]['set_id'])
         c_ch.parent_conds.add(c_sample)
         # TODO how to treat non-grouped sample? currently this is X__POOL
-        if sgroup != '':
+        if c_group:
             c_sample.parent_conds.add(c_group)
     return JsonResponse({'samplesets': samplesets, 'samples': samples})
 
@@ -550,12 +549,13 @@ def upload_proteins(request):
     # To defend against that wed have to include the sequence
     existing_prots = {f'{x.fafn_id}__{x.protein.name}': x.pk for x in 
             m.ProteinFasta.objects.filter(fafn_id__in=data['fa_ids'])}
+
     for fa_id, prot, gene, seq in data['protgenes']:
         if gene in existing_genes:
             store_gid = existing_genes[gene]
+            stored_genes[gene] = store_gid
         elif gene:
             store_gid = m.Gene.objects.get_or_create(name=gene, organism_id=data['organism_id'])[0].pk
-        if gene:
             stored_genes[gene] = store_gid
         fa_prot = f'{fa_id}__{prot}'
         if fa_prot not in existing_prots:
