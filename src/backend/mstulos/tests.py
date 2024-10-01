@@ -126,7 +126,7 @@ class BaseTC(BaseIntegrationTest):
         #self.cond_fn = m.Condition.objects.create(cond_type=CT.FILE, name='file1', experiment=self.exp)
 
 
-class TestUploadAnalysis(BaseIntegrationTest):
+class TestUploadAnalysis(BaseTC):
     jobname = 'ingest_search_results'
 
     @tag('mstulos')
