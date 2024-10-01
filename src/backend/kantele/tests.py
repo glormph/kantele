@@ -42,7 +42,7 @@ class BaseTest(TestCase):
         self.user = User(username=username, email=email)
         self.user.set_password(password)
         self.user.save() 
-        login = self.cl.login(username=username, password=password)
+        self.cl.login(username=username, password=password)
         # storage backend
         self.newfserver, _ = rm.FileServer.objects.get_or_create(name='server1', uri='s1.test')
         self.sstmp, _ = rm.ServerShare.objects.get_or_create(name=settings.TMPSHARENAME, server=self.newfserver,

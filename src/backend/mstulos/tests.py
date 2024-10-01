@@ -11,6 +11,7 @@ from kantele import settings
 
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.test import tag
 
 
 class BaseTC(BaseIntegrationTest):
@@ -52,17 +53,16 @@ class BaseTC(BaseIntegrationTest):
         am.PsetParam.objects.create(pset=pset, param=pmod)
         am.AnalysisParam.objects.create(analysis=self.ana, param=pmod, value=[p_opt1.pk, p_opt2.pk])
 
-        nfwf = am.NextflowWfVersionParamset.objects.create(update='test update', commit='abc123',
+        self.nfwf = am.NextflowWfVersionParamset.objects.create(update='test update', commit='abc123',
                 filename='main.nf', profiles=[], nfworkflow=nfw, paramset=pset, nfversion='22', active=True)
-        am.PipelineVersionOutput.objects.create(nfwfversion=nfwf, output=wfo)
-        wf = am.UserWorkflow.objects.create(name='testwf', public=True,
+        am.PipelineVersionOutput.objects.create(nfwfversion=self.nfwf, output=wfo)
+        self.wf = am.UserWorkflow.objects.create(name='testwf', public=True,
                 wftype=am.UserWorkflow.WFTypeChoices.STD)
-        wf.nfwfversionparamsets.add(nfwf)
+        self.wf.nfwfversionparamsets.add(self.nfwf)
         
         sp = dm.SelectParameter.objects.create(title='dtype', category=1)
         spo = dm.SelectParameterOption.objects.create(param=sp, value='DDA')
-        spv = dm.SelectParameterValue.objects.create(dataset=self.ds, value=spo)
-        dsa = am.DatasetAnalysis.objects.create(analysis=self.ana, dataset=self.ds)
+        dm.SelectParameterValue.objects.create(dataset=self.ds, value=spo)
 
         # For convenience all files are stored in tulosdir, including fasta
         testpath = 'mstulos'
@@ -85,35 +85,31 @@ class BaseTC(BaseIntegrationTest):
         am.AnalysisResultFile.objects.create(analysis=self.ana, sfile=genesf)
         fastaraw = rm.RawFile.objects.create(name='fasta.txt', producer=self.anaprod,
                 source_md5='fasta.result', size=100, date=timezone.now(), claimed=True)
-        fastasf = rm.StoredFile.objects.create(rawfile=fastaraw, filetype_id=self.ft.id,
+        self.fastasf = rm.StoredFile.objects.create(rawfile=fastaraw, filetype_id=self.ft.id,
             filename=fastaraw.name, servershare=ssana, path=testpath, md5=fastaraw.source_md5)
-        samples = am.AnalysisSampletable.objects.create(analysis=self.ana,
-                samples=[['126', 'set01', 'sample', 'group']])
+        am.AnalysisSampletable.objects.create(analysis=self.ana, samples=[['126', 'set01', 'sample', 'group']])
         asn = am.AnalysisSetname.objects.create(analysis=self.ana, setname='set01')
+        dsa = am.DatasetAnalysis.objects.create(analysis=self.ana, dataset=self.ds)
         am.AnalysisDSInputFile.objects.create(dsanalysis=dsa, sfile=self.f3sfmz, analysisset=asn)
         am.AnalysisIsoquant.objects.create(analysis=self.ana, setname=asn, value=[])
 
-        job = jm.Job.objects.create(funcname='anajob', kwargs={'inputs': {'params': {'--mods': 'Carbamidomethyl;Oxidation'}, 'singlefiles': {'--tdb': fastasf.pk}}},
+        job = jm.Job.objects.create(funcname='anajob', kwargs={'inputs': {'params': {'--mods': 'Carbamidomethyl;Oxidation'}, 'singlefiles': {'--tdb': self.fastasf.pk}}},
                 state=jj.Jobstates.DONE, timestamp=timezone.now())
-        self.nfs = am.NextflowSearch.objects.create(analysis=self.ana, nfwfversionparamset=nfwf,
-                workflow=wf, token='mstulos_ana', job=job)
+        self.nfs = am.NextflowSearch.objects.create(analysis=self.ana, nfwfversionparamset=self.nfwf,
+                workflow=self.wf, token='mstulos_ana', job=job)
 
         m.Modification.objects.create(mass=15.994915, unimod_name='Oxidation', unimod_id=35, predefined_aa_list=[["M", "var", "stable"]])
         m.Modification.objects.create(mass=57.021464, unimod_name='Carbamidomethyl', unimod_id=4, predefined_aa_list=[["C", "fix", "stable"]])
         tmt = m.Modification.objects.create(mass=304.207146, unimod_name='TMTpro', unimod_id=2016, predefined_aa_list=[])
         m.QuantLabelMod.objects.create(quanttype=self.qt, mod=tmt)
 
-        username='adminuser'
+        self.username='adminuser'
         email = 'admin@test.test'
-        password='12345'
-        user = User(username=username, email=email, is_staff=True)
-        user.set_password(password)
+        self.password='12345'
+        user = User(username=self.username, email=email, is_staff=True)
+        user.set_password(self.password)
         user.save() 
-        login = self.cl.login(username=username, password=password)
-
-# need dataset etc
-
-
+        login = self.cl.login(username=self.username, password=self.password)
         #self.exp = m.Experiment.objects.create(analysis=ana, token=self.token, wfoutput_found=wfo)
         #self.gene1 = m.Gene.objects.create(name='gene1', organism=self.species)
         #self.prot1 = m.Protein.objects.create(name='protein-1')
@@ -130,19 +126,22 @@ class BaseTC(BaseIntegrationTest):
         #self.cond_fn = m.Condition.objects.create(cond_type=CT.FILE, name='file1', experiment=self.exp)
 
 
-class TestUploadAnalysis(BaseTC):
+class TestUploadAnalysis(BaseIntegrationTest):
     jobname = 'ingest_search_results'
 
+    @tag('mstulos')
     def test_with_genes(self):
-        # instead, do add_analuysis
         self.url = f'/mstulos/add/{self.nfs.pk}/'
         resp = self.post_json({})
         self.assertEqual(resp.status_code, 200)
-        print(resp.json())
+
         job = jm.Job.objects.last()
         self.assertEqual(job.kwargs['analysis_id'], self.ana.pk)
         self.assertEqual(job.kwargs['organism_id'], self.spec1.pk)
         self.assertIn('token', job.kwargs.keys())
+        # FIXME This line is a problem!? Other liveservertestcase cannot run, address already in use, 
+        # unless we comment out below (to end of test, else it fails). Even when the test fails, this
+        # problem remains. 
         self.run_job()
 
         job.refresh_from_db()
