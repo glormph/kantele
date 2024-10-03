@@ -131,6 +131,7 @@ class WfOutput(models.Model):
     pepfdrfield = models.ForeignKey(OutputFieldName, related_name='pepfdr', on_delete=models.CASCADE)
     psmfdrfield = models.ForeignKey(OutputFieldName, related_name='psmfdr', on_delete=models.CASCADE)
     psmpepfield = models.ForeignKey(OutputFieldName, related_name='psmposterior', on_delete=models.CASCADE)
+    psmmzfield = models.ForeignKey(OutputFieldName, related_name='psmmz', on_delete=models.CASCADE)
     psmchargefield = models.ForeignKey(OutputFieldName, related_name='charge', on_delete=models.CASCADE)
     psmfnfield = models.ForeignKey(OutputFieldName, related_name='fn', on_delete=models.CASCADE)
     scanfield = models.ForeignKey(OutputFieldName, related_name='psmscan', on_delete=models.CASCADE)

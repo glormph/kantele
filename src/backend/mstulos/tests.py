@@ -30,6 +30,7 @@ class BaseTC(BaseIntegrationTest):
                 'psmfdrfield': 'PSM q-value',
                 'psmpepfield': 'PSM PEP',
                 'psmchargefield': 'Charge',
+                'psmmzfield': 'Precursor',
                 'psmfnfield': 'SpectraFile',
                 'scanfield': 'ScanNum',
                 'rtfield': 'Retention time(min)',

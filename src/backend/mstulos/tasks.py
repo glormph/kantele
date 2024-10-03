@@ -35,7 +35,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         psmfile_fpath = os.path.join(settings.SHAREMAP[psmfn[0]], psmfn[1])
         with open(psmfile_fpath) as fp:
             header = next(fp).strip('\n').split('\t')
-        for coln in ['fn', 'scan', 'charge', 'setname', 'peptide', 'fdr', 'score', 'ms1']:
+        for coln in ['fn', 'scan', 'charge', 'setname', 'peptide', 'fdr', 'score', 'ms1', 'mz']:
             try:
                 header.index(outheaders[wf_out_pk]['psm'][coln])
             except IndexError:
@@ -221,6 +221,7 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
         fdrcol = header.index(psm_header['fdr'])
         posteriorcol = header.index(psm_header['posterior'])
         scorecol = header.index(psm_header['score'])
+        mzcol = header.index(psm_header['mz'])
         ms1col = header.index(psm_header['ms1'])
         rtcol = header.index(psm_header['rt'])
         for line in fp:
@@ -230,7 +231,8 @@ def summarize_result_peptable(self, token, organism_id, peptide_file, psm_file, 
             # FIXME catch no peps, no fdr, no scan -- what??
             storepsm = {'scan': line[scancol], 'qval': line[fdrcol], 'PEP': line[posteriorcol],
                     'fncond': fn_cond_id, 'score': line[scorecol], 'charge': line[chargecol],
-                    'ms1': line[ms1col], 'rt': line[rtcol], 'pep_id': storedpeps[line[pepcol]]}
+                    'ms1': line[ms1col], 'rt': line[rtcol], 'pep_id': storedpeps[line[pepcol]],
+                    'mz': line[mzcol]}
             psms.append(storepsm)
             if len(psms) > 10000:
                 resp = update_db(psmurl, json={'psms': psms, 'token': token})

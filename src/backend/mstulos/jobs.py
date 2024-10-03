@@ -60,6 +60,7 @@ class ProcessAnalysis(BaseJob):
                         'scan': output.scanfield.fieldname,
                         'setname': output.psmsetname.fieldname,
                         'peptide': output.psmpeptide.fieldname,
+                        'mz': output.psmmzfield.fieldname,
                         'charge': output.psmchargefield.fieldname,
                         'score': output.psmscorefield.fieldname,
                         'ms1': output.psmms1field.fieldname,

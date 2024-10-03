@@ -182,6 +182,7 @@ class PSM(models.Model):
     # score type in Wfoutput?
     score = models.FloatField()
     charge = models.IntegerField()
+    mz = models.FloatField()
     rt = models.FloatField() # in minutes or seconds? SPECIFY!
     # TODO no scan in DIA/TIMS/etc
     # TODO hardcode condition fieldname is file? - what does it mean?
@@ -192,6 +193,8 @@ class PSM(models.Model):
         constraints = [models.UniqueConstraint(fields=['filecond', 'scan'], name='uni_psmscans')]
 
 
-class PSMMS1(models.Model):
+class PSMMS1Quant(models.Model):
     psm = models.OneToOneField(PSM, on_delete=models.CASCADE)
-    ms1 = models.FloatField()
+    ms1quant = models.FloatField()
+
+

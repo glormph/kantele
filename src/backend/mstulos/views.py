@@ -657,9 +657,9 @@ def upload_psms(request):
     for psm in data['psms']:
         dbpsm = m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], pep=psm['PEP'],
                 scan=psm['scan'], filecond_id=psm['fncond'], score=psm['score'], 
-                charge=psm['charge'], rt=psm['rt'])
+                charge=psm['charge'], rt=psm['rt'], mz=psm['mz'])
         if psm['ms1'] != 'NA': 
-            m.PSMMS1.objects.create(psm=dbpsm, ms1=psm['ms1'])
+            m.PSMMS1Quant.objects.create(psm=dbpsm, ms1=psm['ms1'])
     return JsonResponse({'error': False})
 
 
