@@ -11,4 +11,5 @@ urlpatterns = [
     path('', include('django.contrib.auth.urls')),
     path('', include('home.urls')),
     path('analysis/', include('analysis.urls')),
+    path('mstulos/', include('mstulos.urls')),
 ]

@@ -155,8 +155,8 @@ def dataset_samples(request, dataset_id=False):
                 rawfile__dataset_id=dataset_id):
             sample = {'model': str(qsf.projsample_id), 'samplename': qsf.projsample.sample,
                     'selectedspecies': '', 'species': [], 'selectedsampletype': '',
-                    'sampletypes': [], 'projsam_dup': False, 'sampletypes_error': [],
-                    'species_error': [], 'projsam_dup_use': False}
+                    'sampletypes': [], 'projsam_dup': False, 'overwrite': False,
+                    'sampletypes_error': [], 'species_error': [], 'projsam_dup_use': False}
             for samspec in qsf.projsample.samplespecies_set.all():
                 sample['species'].append({'id': samspec.species_id, 'name': samspec.species.popname,
                     'linnean': samspec.species.linnean})
@@ -168,10 +168,10 @@ def dataset_samples(request, dataset_id=False):
         chan_samples = []
         for qsc in multiplexchans.select_related('channel__channel'):
             sample = {'id': qsc.channel.id, 'name': qsc.channel.channel.name,
-                'model': str(qsc.projsample_id), 'samplename': qsc.projsample.sample, 'qcsid': qsc.id,
+                'model': str(qsc.projsample_id), 'samplename': qsc.projsample.sample,
                 'species': [], 'sampletypes': [], 'selectedspecies': '', 'selectedsampletype': '',
-                'projsam_dup': False, 'projsam_dup_use': False, 'sampletypes_error': [],
-                'species_error': []}
+                'projsam_dup': False, 'projsam_dup_use': False, 'overwrite': False,
+                'sampletypes_error': [], 'species_error': []}
             for samspec in qsc.projsample.samplespecies_set.all():
                 sample['species'].append({'id': samspec.species_id, 'name': samspec.species.popname,
                     'linnean': samspec.species.linnean})
@@ -253,9 +253,10 @@ def get_admin_params_for_dset(response, dset_id, category):
         return
     # Parse new params (not filled in in dset), old params (not active anymore)
     # use list comprehension so no error: dict changes during iteration
+    # TODO why is this, we dont have client support
     for p_id in [x for x in params.keys()]:
         if params[p_id]['model'] == '':
-            newparams[p_id] = params.pop(p_id)
+            newparams[p_id] = params.get(p_id)
     if params_saved:
         response['oldparams'] = [x for x in oldparams.values()]
         response['newparams'] = [x for x in newparams.values()]
@@ -1340,52 +1341,6 @@ def save_mssamples(request):
     return JsonResponse({})
 
 
-def quanttype_switch_isobaric_update(oldqtype, updated_qtype, data, dset_id):
-    '''This function is used both by LC and normal Dset'''
-    # FIXME can LC use normal dset samples?
-        # first delete old qcs/qsf
-        # create new ones but first do samples
-    # LC does not use samples, what is this?
-
-    # switch from labelfree - tmt: remove filesample, create other channels
-    if oldqtype == 'labelfree' and updated_qtype:
-        print('Switching to isobaric')
-        # FIXME new_channelsamples need fixing I guess
-        # what does this mean, fixed?
-        models.QuantChannelSample.objects.bulk_create([
-            models.QuantChannelSample(dataset_id=data['dataset_id'],
-                projsample_id=chan['model'], channel_id=chan['id'])
-            for chan in data['samples']])
-        models.QuantSampleFile.objects.filter(
-            rawfile__dataset_id=dset_id).delete()
-    # reverse switch
-    elif data['labelfree'] and updated_qtype:
-        print('Switching isobaric-labelfree')
-        models.QuantChannelSample.objects.filter(dataset_id=dset_id).delete()
-    elif not data['labelfree']:
-        print('Updating isobaric')
-        if updated_qtype:
-            print('new quant type found')
-            models.QuantChannelSample.objects.filter(
-                dataset_id=dset_id).delete()
-            models.QuantChannelSample.objects.bulk_create([
-                models.QuantChannelSample(dataset_id=data['dataset_id'],
-                    projsample_id=chan['model'], channel_id=chan['id'])
-                for chan in data['samples']])
-        else:
-            print('checking if new samples')
-            existing_samples = {x.id: (x.projsample_id, x) for x in 
-                models.QuantChannelSample.objects.filter(dataset_id=data['dataset_id'])}
-            for chan in data['samples']:
-                exis_qcs = existing_samples[chan['qcsid']]
-                if chan['model'] != exis_qcs[0]:
-                    exis_qcs[1].projsample_id = chan['model']
-                    exis_qcs[1].save()
-                if chan['id'] != exis_qcs[1].channel_id:
-                    exis_qcs[1].channel_id = chan['id']
-                    exis_qcs[1].save()
-
-
 def update_labelcheck(data, qtype):
     dset_id = data['dataset_id']
     if data['quanttype'] != qtype.quanttype_id:
@@ -1489,8 +1444,8 @@ def save_samples(request):
     allsampletypes = {x.pk: x.name for x in models.SampleMaterialType.objects.all()}
     for fidix, sample in fid_or_chid_samples:
         if sample['model']:
-            # Any sample which has a model (sample pk) is not checked, since it represent an
-            # existing sample
+            # Any sample which has a model (sample pk) is not checked for existing, 
+            # since it represents an existing sample, or overwrites an existing sample
             continue
         elif psam := models.ProjectSample.objects.filter(project=dset.runname.experiment.project,
                 sample=sample['samplename']):
@@ -1539,8 +1494,6 @@ def save_samples(request):
             'sample IDs', 'sample_dups': projsamples}, status=400)
 
     # All is ready for saving or updating
-    # FIXME this line can be removed, not used
-    lf_qtid = models.QuantType.objects.get(name='labelfree').pk
     if is_update := models.DatasetComponentState.objects.filter(dataset=dset,
             dtcomp=models.DatasetUIComponent.SAMPLES, state=models.DCStates.OK).count():
         # existing component state OK -> update: if quanttype changes - delete the old quanttype
@@ -1583,6 +1536,19 @@ def save_samples(request):
                 models.SampleSpecies.objects.bulk_create([models.SampleSpecies(sample=psam,
                     species_id=x['id']) for x in passedsample['species']])
             dset_psams.add(psampk)
+
+        elif psampk and passedsample['overwrite']:
+            # Grab projsample by PK and delete bindings to material/species
+            psam = models.ProjectSample.objects.get(pk=psampk)
+            models.DatasetSample.objects.get_or_create(dataset=dset, projsample=psam)
+            models.SampleMaterial.objects.filter(sample=psam).delete()
+            models.SampleSpecies.objects.filter(sample=psam).delete()
+            models.SampleMaterial.objects.bulk_create([models.SampleMaterial(sample=psam,
+                sampletype_id=x['id']) for x in passedsample['sampletypes']])
+            models.SampleSpecies.objects.bulk_create([models.SampleSpecies(sample=psam,
+                species_id=x['id']) for x in passedsample['species']])
+            dset_psams.add(psampk)
+
         # Even though we delete the QCS/QSF rows above in case of quanttype switch, we still
         # need to update_or_create in case of not switching but using different project sample
         if data['multiplex']:

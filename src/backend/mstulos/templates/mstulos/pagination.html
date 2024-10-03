@@ -1,0 +1,11 @@
+  <div> 
+    {% if pagerange|length > 1 %}
+    {% for pnr in pagerange %}
+      {% if pnr == page_nr %}
+      <button class="button" disabled>{{ pnr }}</button>
+      {% elif pnr != '__' %}
+        <a class="button" href="?{% if q %}q={{ q }}&{% endif %}page={{ pnr }}">{{ pnr }}</a>
+      {% endif %}
+    {% endfor %}
+    {% endif %}
+  </div>

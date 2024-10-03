@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% load static %}
+
+{% block head %}
+  <script defer src='{% static "mstulos/bundle.js" %}'></script>
+  {{ tulos_data | json_script:'tulos_data'}}
+  {{ filters | json_script:'prefilters'}}
+  <script>
+  let data = JSON.parse(document.getElementById('tulos_data').textContent);
+  let prefilters = JSON.parse(document.getElementById('prefilters').textContent);
+  let nr_filtered_pep = {{ nr_res_page }};
+  let nr_filtered_exp = {{ nr_filtered_exp }};
+  </script>
+{% endblock head %}
+
+{% block content %}
+
+<div class="container is-fluid">
+
+  {% if tulos_data|length %}
+  <div class="container is-fluid"> Showing row {{ first_res_nr }} to {{ last_res_nr }} of {{ total_res_nr }}
+   {% include 'mstulos/pagination.html' %}
+  </div>
+  {% endif %}
+
+
+{% block tables %}
+{% endblock tables %}
+
+   {% include 'mstulos/pagination.html' %}
+    Results DB contains {{ total_pep }} peptide sequences from {{ total_exp }} experiments
+</div> 
+
+{% endblock content %}

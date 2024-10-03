@@ -32,6 +32,17 @@ async function fetchDetails(anaids) {
   analyses = Object.assign(analyses, fetchedAna);
 }
 
+async function addToResults() {
+  const tasks = anaIds.map(async anaId => {
+    const resp = await postJSON(`/mstulos/add/${anaId}/`);
+    if (resp.error) {
+      notif.errors[resp.message] = 1;
+      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, resp.message);
+    }
+  });
+}
+
+
 function cleanFetchDetails(anaids) {
   analyses = {};
   fetchDetails(anaids);
@@ -52,6 +63,12 @@ onMount(async() => {
       {#each analysis.errmsg as err}
       <div>{err}</div>
       {/each}
+    </div>
+    {/if}
+
+    {#if analysis.addToResults}
+    <div class="field">
+      <button on:click={addToResults} class="button is-small is-primary is-light">Add to results DB</button>
     </div>
     {/if}
 

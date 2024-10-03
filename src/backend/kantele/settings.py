@@ -140,6 +140,8 @@ DEBUG = True
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 CSRF_COOKIE_SECURE = False # enforces HTTPS on cookie
+# 10 MB data upload instead of 2.5 max - for results viewer
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760 
 #SESSION_COOKIE_SECURE = True
 #X_FRAME_OPTIONS = 'DENY'
 #SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -168,7 +170,7 @@ INSTALLED_APPS = [
     'analysis.apps.AnalysisConfig',
     'dashboard.apps.DashboardConfig',
     'staffpage.apps.StaffPageConfig',
-    #'mstulos.apps.MSResultConfig',
+    'mstulos.apps.MSTulosConfig',
 ]
 
 MIDDLEWARE = [

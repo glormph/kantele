@@ -18,30 +18,33 @@
 </head>
 
 <body>
-<div class="container">
-	<nav id="navMenu" class="navbar">
+	<nav id="navMenu" class="navbar is-light">
 	  <div class="navbar-brand">
 	  	<a class="navbar-item" href="{% url 'home:home' %}"><img id="navMenuLogo" src="{% static "datasets/logo.svg" %}"></a>
 	  </div>
 	  {% if user.is_authenticated %}
 	  <div class="navbar-menu">
 	    <div class="navbar-start">
-		    <a class="navbar-item " href="{% url 'home:home' %}">HOME</a>
-		    <a class="navbar-item " href="{% url 'datasets:new' %}">NEW DATASET</a>
-		    <a class="navbar-item " href="{% url 'dashboard:dash' %}">DASHBOARD</a>
-		    <a class="navbar-item " href="{% url 'files:inflow' %}">DATA UPLOADS</a>
+		  {% with request.resolver_match.app_name as appname %}
+		  <a class="navbar-item {% if appname == 'home' %}is-active{% endif %}" href="{% url 'home:home' %}">HOME</a>
+		    <a class="navbar-item {% if appname == 'datasets' %}is-active{% endif %}" href="{% url 'datasets:new' %}">NEW DATASET</a>
+		    <a class="navbar-item {% if appname == 'dashboard' %}is-active{% endif %}" href="{% url 'dashboard:dash' %}">DASHBOARD</a>
+		    <a class="navbar-item {% if appname == 'files' %}is-active{% endif %}" href="{% url 'files:inflow' %}">DATA UPLOADS</a>
+		    <a class="navbar-item {% if appname == 'mstulos' %}is-active{% endif %}" href="{% url 'mstulos:front' %}">RESULTS VIEWER</a>
 	  	    {% if user.is_staff %}
-		    <a class="navbar-item " href="{% url 'staffpage:home' %}">ADMIN</a>
+		    <a class="navbar-item {% if appname == 'staffpage' %}is-active{% endif %}" href="{% url 'staffpage:home' %}">ADMIN</a>
 		    {% endif %}
-		    <a class="navbar-item " href="{% url 'logout' %}">LOGOUT {{ user }}</a>
+		    <a class="navbar-item" href="{% url 'logout' %}">LOGOUT {{ user }}</a>
+		  {% endwith %}
 	    </div>
     </div>
 	{% endif %}
   </nav>
-</div>
 
+  <div class="container mt-2">
 {% block content %}
 {% endblock content %}
+  </div>
 
 </body>
 </html>

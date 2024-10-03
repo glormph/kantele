@@ -102,6 +102,109 @@ class UserWorkflow(models.Model):
         return self.name
 
 
+# FIXME 
+# - Field names used are stored in experiment JSON
+# - gene quant, other extra fields 
+# - msstitch for extra fields (ExplainedIonCurrentRatio, NumMatchedMainIons)
+class OutputFieldName(models.Model):
+    '''To be user-friendly, store field names here using a description,
+    so that it is easier to use the correct name'''
+    description = models.TextField(help_text='Short description')
+    fieldname = models.TextField()
+
+    def __str__(self):
+        return f'{self.description}: {self.fieldname}'
+
+
+class WfOutput(models.Model):
+    description = models.TextField() # E.g MSGF from dda 3.0
+    # Sometimes fields will not be there at all! In that case just ignore
+    psmfile = models.TextField() # e.g psmtable.txt, name of file
+    pepfile = models.TextField()
+    genefile = models.TextField()
+    fasta_arg = models.TextField() # e.g. --tdb (cannot use FK bc we dont know if its multifile or not)
+    peppeptidefield = models.ForeignKey(OutputFieldName, related_name='peppep', on_delete=models.CASCADE)
+    peppepfield = models.ForeignKey(OutputFieldName, related_name='pepposterior', on_delete=models.CASCADE)
+    psmprotfield = models.ForeignKey(OutputFieldName, related_name='prot', on_delete=models.CASCADE)
+    psmms1field = models.ForeignKey(OutputFieldName, related_name='psmms1', on_delete=models.CASCADE)
+    pepms1field = models.ForeignKey(OutputFieldName, related_name='pepms1', on_delete=models.CASCADE)
+    pepfdrfield = models.ForeignKey(OutputFieldName, related_name='pepfdr', on_delete=models.CASCADE)
+    psmfdrfield = models.ForeignKey(OutputFieldName, related_name='psmfdr', on_delete=models.CASCADE)
+    psmpepfield = models.ForeignKey(OutputFieldName, related_name='psmposterior', on_delete=models.CASCADE)
+    psmmzfield = models.ForeignKey(OutputFieldName, related_name='psmmz', on_delete=models.CASCADE)
+    psmchargefield = models.ForeignKey(OutputFieldName, related_name='charge', on_delete=models.CASCADE)
+    psmfnfield = models.ForeignKey(OutputFieldName, related_name='fn', on_delete=models.CASCADE)
+    scanfield = models.ForeignKey(OutputFieldName, related_name='psmscan', on_delete=models.CASCADE)
+    rtfield = models.ForeignKey(OutputFieldName, related_name='psmrt', on_delete=models.CASCADE)
+    psmscorefield = models.ForeignKey(OutputFieldName, related_name='score', on_delete=models.CASCADE)
+    psmsetname = models.ForeignKey(OutputFieldName, related_name='psmset', on_delete=models.CASCADE)
+    psmpeptide = models.ForeignKey(OutputFieldName, related_name='psmpep', on_delete=models.CASCADE)
+    genetablegenefield = models.ForeignKey(OutputFieldName, related_name='genegene', on_delete=models.CASCADE)
+
+    def get_fasta_files(self, **jobkw):
+        '''Fasta files need inspection of job parameters as there is no "proper" DB
+        column for them in the analysis'''
+        try:
+            sfids = jobkw['multifiles'][self.fasta_arg]
+        except KeyError:
+            try:
+                sfids = [jobkw['singlefiles'][self.fasta_arg]]
+            except KeyError:
+                return (1, False, 'Cannot find fasta files for this analysis with job arg '
+                        f'{self.fasta_arg}, contact admin.')
+        fa_files = filemodels.StoredFile.objects.filter(pk__in=sfids).values(
+                'pk', 'servershare__name', 'path', 'filename')
+        if fa_files.count() < len(sfids):
+            return (1, False, 'Cannot find fasta files for this analysis with db ids '
+                        f'{",".join([str(x) for x in sfids])}, contact admin.')
+        return (0, fa_files, '')
+
+    def get_psm_outfile(self, analysis):
+        '''Returns the PSM file to be used, returns error in case of not found,
+        or when the analysis is a "rerun from PSM table"
+        '''
+        b_ana_mgr = AnalysisBaseanalysis.objects.filter(analysis=analysis, rerun_from_psms=True)
+        if b_ana_mgr.count():
+            return (1, False, f'Cannot load results which have been generated from an '
+            'existing PSM table (rerun from PSMs).')
+        else:
+            psmfile = analysis.analysisresultfile_set.filter(sfile__filename=self.psmfile)
+        if psmfile.count() == 1:
+            return (0, psmfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
+        elif psmfile.count() > 1:
+            return (1, False, f'Multiple PSM files ({self.psmfile}) found for this analysis? Contact admin.')
+        else:
+            return (1, False, f'Cannot find output PSM file ({self.psmfile}) for this analysis.')
+
+    def get_peptide_outfile(self, analysis):
+        pepfile = analysis.analysisresultfile_set.filter(sfile__filename=self.pepfile)
+        if pepfile.count() == 1:
+            return (0, pepfile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
+        elif pepfile.count() > 1:
+            return (1, False, f'Multiple peptide files ({self.pepfile}) found for this analysis? Contact admin.')
+        else:
+            return (1, False, f'Cannot find output peptide file ({self.pepfile}) for this analysis.')
+
+    def get_gene_outfile(self, analysis):
+        '''Gene file is not always output'''
+        genefile = analysis.analysisresultfile_set.filter(sfile__filename=self.genefile)
+        if genefile.count() > 1:
+            return (1, False, f'Multiple gene files ({self.genefile}) found for this analysis? Contact admin.')
+        elif genefile.count():
+            return (0, genefile.values('sfile__servershare__name', 'sfile__path', 'sfile__filename'), '')
+        else:
+            return (0, False, 'No gene file available in this analysis')
+        
+
+
+class PipelineVersionOutput(models.Model):
+    '''Mapping a pipeline (version) to an output field definition. Multiple
+    output definitions can be used for a single pipeline version, so that
+    a pipeline can output e.g. different search engine PSMs'''
+    nfwfversion = models.ForeignKey(NextflowWfVersionParamset, on_delete=models.CASCADE)
+    output = models.ForeignKey(WfOutput, on_delete=models.CASCADE)
+
+
 class PsetComponent(models.Model):
     '''Special components for a parameter set. Components are such elements for a workflow
     that require special, non generalized code written for it. They can be in multiple workflows
@@ -264,6 +367,7 @@ class DatasetAnalysis(models.Model):
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     # cannot put setname here because of searches without dset/setname
     # model used in reporting, and also for finding datasets for base analysis etc
+    # and in mstulos for coupling dset/analysis
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_dsa_anadsets')]

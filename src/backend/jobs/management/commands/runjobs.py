@@ -48,6 +48,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
             # Register files
             # FIXME do some jobs really have no files?
             sf_ids = jwrapper.get_sf_ids_jobrunner(**job.kwargs)
+            # FIXME if restart jobrunner - this will create duplicates!
             FileJob.objects.bulk_create([FileJob(storedfile_id=sf_id, job_id=job.id)
                 for sf_id in sf_ids])
             job_fn_map[job.id] = set(sf_ids)

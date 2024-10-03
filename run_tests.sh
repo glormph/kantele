@@ -1,13 +1,5 @@
 set -eo pipefail
 
-
-if [[ -z "$1" ]]
-then
-    TESTCMD="python manage.py test"
-else
-    TESTCMD="python manage.py test $1"
-fi
-
 DOCKERCMD="docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml"
 
 # remove old test results if needed (locally)
@@ -42,6 +34,13 @@ sleep 5
 
 echo Running tests
 # Run tests
-$DOCKERCMD run --use-aliases web $TESTCMD || ($DOCKERCMD logs web storage_mvfiles storage_downloads && exit 1)
 
+TESTCMD="python manage.py test"
+if [[ -z "$1" ]]
+then
+    $DOCKERCMD run --use-aliases web $TESTCMD --exclude-tag mstulos || ($DOCKERCMD logs web storage_mvfiles storage_downloads tulos_ingester && exit 1)
+    $DOCKERCMD run --use-aliases web $TESTCMD mstulos || ($DOCKERCMD logs web storage_mvfiles storage_downloads tulos_ingester && exit 1)
+else
+    $DOCKERCMD run --use-aliases web $TESTCMD $1|| ($DOCKERCMD logs web storage_mvfiles storage_downloads tulos_ingester && exit 1)
+fi
 $DOCKERCMD down

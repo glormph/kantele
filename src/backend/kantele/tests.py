@@ -42,7 +42,7 @@ class BaseTest(TestCase):
         self.user = User(username=username, email=email)
         self.user.set_password(password)
         self.user.save() 
-        login = self.cl.login(username=username, password=password)
+        self.cl.login(username=username, password=password)
         # storage backend
         self.newfserver, _ = rm.FileServer.objects.get_or_create(name='server1', uri='s1.test',
                 fqdn='sameserver')
@@ -65,6 +65,7 @@ class BaseTest(TestCase):
 
 
         # Datasets/projects prep
+        self.species = dm.Species.objects.create(linnean='Homo sapiens', popname='Human')
         self.dtype, _ = dm.Datatype.objects.get_or_create(name='dtype1')
         self.dtcompdef = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dm.DatasetUIComponent.DEFINITION)
         self.dtcompfiles = dm.DatatypeComponent.objects.create(datatype=self.dtype, component=dm.DatasetUIComponent.FILES)
@@ -81,7 +82,7 @@ class BaseTest(TestCase):
         rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
                 filetype=self.ft)
         self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='testqtplex')
-        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='thech')
+        self.qch, _ = dm.QuantChannel.objects.get_or_create(name='126')
         self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
         self.lfqt, _ = dm.QuantType.objects.get_or_create(name='labelfree', shortname='lf')
 
