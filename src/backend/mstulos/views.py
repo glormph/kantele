@@ -654,12 +654,13 @@ def upload_psms(request):
         return JsonResponse({'error': 'Not allowed to access'}, status=403)
     except KeyError:
         return JsonResponse({'error': 'Bad request to mstulos uploads'}, status=400)
+
     for psm in data['psms']:
         dbpsm = m.PSM.objects.create(peptide_id=psm['pep_id'], fdr=psm['qval'], pep=psm['PEP'],
                 scan=psm['scan'], filecond_id=psm['fncond'], score=psm['score'], 
                 charge=psm['charge'], rt=psm['rt'], mz=psm['mz'])
-        if psm['ms1'] != 'NA': 
-            m.PSMMS1Quant.objects.create(psm=dbpsm, ms1=psm['ms1'])
+        if psm.get('ms1', 'NA') != 'NA': 
+            m.PSMMS1Quant.objects.create(psm=dbpsm, ms1quant=psm['ms1'])
     return JsonResponse({'error': False})
 
 
