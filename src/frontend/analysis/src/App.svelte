@@ -19,6 +19,7 @@ let analysis_id = existing_analysis ? existing_analysis.analysis_id : false;
 let wf = false;
 let dsets = {};
 
+let dsetToAdd;
 let libfiles = {};
 let libfnorder = [];
 let fetched_resultfiles = [];
@@ -27,6 +28,7 @@ let resfn_arr = [];
 let resultfiles = {}
 let resultfnorder = [];
 let field_order = [];
+let dsnames = initial_dsnames;
 
 let base_analysis = {
   isComplement: false,
@@ -46,6 +48,24 @@ let added_results = {};
 if (existing_analysis && existing_analysis.added_results) {
   added_results = existing_analysis.added_results;
   added_analyses_order = Object.keys(existing_analysis.added_results);
+}
+
+
+function addDataset() {
+  dsnames[dsetToAdd] = `Dataset ${dsetToAdd}`;
+  if (wf) {
+    fetchDatasetDetails([dsetToAdd]);
+  }
+}
+
+
+function removeDataset(dsid) {
+  delete(dsnames[dsid]);
+  dsnames = dsnames;
+  if (dsid in dsets) {
+    delete(dsets[dsid]);
+    dsets = dsets;
+  }
 }
 
 
@@ -258,7 +278,7 @@ async function fetchWorkflow() {
   */
   notif = {errors: {}, messages: {}, links: {}};
   let url = new URL('/analysis/workflow', document.location)
-  const params = {dsids: dsids.join(','), wfvid: config.wfversion.id};
+  const params = {dsids: Object.keys(dsnames).join(','), wfvid: config.wfversion.id};
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   loadingItems = true;
@@ -290,14 +310,16 @@ async function fetchWorkflow() {
     });
   }
   updateResultfiles();
-  await fetchDatasetDetails(false);
+  if (Object.keys(dsnames).length) {
+    await fetchDatasetDetails(false);
+  }
 }
 
 
 async function fetchDatasetDetails(fetchdsids) {
   let url = new URL(`/analysis/dsets/${config.wfversion.id}/`, document.location)
   const params = {
-    dsids: fetchdsids ? fetchdsids.join(',') : dsids.join(','),
+    dsids: fetchdsids ? fetchdsids.join(',') : Object.keys(dsnames).join(','),
     anid: existing_analysis ? existing_analysis.analysis_id : 0,
   };
   url.search = new URLSearchParams(params).toString();
@@ -314,6 +336,7 @@ async function fetchDatasetDetails(fetchdsids) {
     Object.keys(result.dsets).forEach(x => {
       dsets[x] = result.dsets[x];
       dsets[x].changed = false;
+      dsnames[x] = dsets[x].storage;
       });
     Object.keys(dsets).forEach(x => {
       dsets[x].changed = false;
@@ -330,7 +353,7 @@ async function loadAnalysisResults() {
   }
   let url = new URL(`/analysis/resultfiles/load/${adding_analysis.selected}/`, document.location)
   const params = {
-    dsids: dsids.join(','),
+    dsids: Object.keys(dsnames).join(','),
     base_ana: base_analysis.selected || '0',
   };
   url.search = new URLSearchParams(params).toString();
@@ -610,7 +633,21 @@ onMount(async() => {
 </div>
 
 <div class="content">
-	<div class="title is-5">Analysis </div>
+  <h5 class="title is-5">Datasets selected</h5>
+  <DynamicSelect placeholder='Find dataset to add' bind:selectval={dsetToAdd} on:selectedvalue={addDataset} niceName={x => x.name} fetchUrl="/analysis/find/datasets/" />
+  <div class="tags">
+  {#each Object.entries(dsnames) as [dsid, name]}
+    <span class="tag is-medium is-info">
+      {name}
+      <button class="delete is-small" on:click={e => removeDataset(dsid)}></button>
+    </span>
+  {/each}
+  {#if !Object.entries(dsnames).length}
+  No datasets selected
+  {/if}
+  </div>
+
+
 	<div class="field is-horizontal">
     <div class="field-label is-normal">
       <label class="label">Workflow:</label>
@@ -674,10 +711,10 @@ onMount(async() => {
     </div>
     {/if}
     <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" />
-	</div>
+  </div>
   {/if}
 
-	<div class="title is-5">Datasets</div>
+ <div class="title is-5">Datasets details</div>
   {#each Object.values(dsets) as ds}
   <div class="box">
     {#if ds.changed}

@@ -114,6 +114,7 @@ function purgeAnalyses() {
 
 <Tabs tabshow="Analyses" notif={notif} />
 
+<a class="button" href="/analysis/new/" target="_blank">New analysis</a>
 {#if selectedAnalyses.length}
 <a class="button" on:click={deleteAnalyses}>Delete analyses</a>
 <a class="button" on:click={unDeleteAnalyses}>Undelete analyses</a>

@@ -22,4 +22,5 @@ urlpatterns = [
     path('upload/', views.upload_servable_file, name='checkfileupload'),
     path('log/<int:nfs_id>', views.show_analysis_log),
     path('showfile/<int:file_id>', views.serve_analysis_file),
+    path('find/datasets/', views.find_datasets),
 ]

@@ -30,19 +30,20 @@ from jobs import models as jm
 @login_required
 @require_GET
 def get_analysis_init(request):
-    '''New page, empty analysis, only gets datasets'''
+    '''New page, empty analysis, only gets dataset ids'''
     dserrors = []
     try:
         dsids = request.GET['dsids'].split(',')
     except (KeyError, ValueError):
-        dserrors.append('Something wrong when asking datasets, contact admin')
-    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
+        dsids = [] 
+    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('runname__experiment__project')
     deleted = dbdsets.filter(deleted=True).count()
     if deleted:
         dserrors.append('Deleted datasets can not be analysed')
     if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
         dserrors.append('Some datasets could not be found, they may not exist')
-    context = {'dsids': dsids, 'ds_errors': dserrors, 'analysis': False, 'wfs': get_allwfs()}
+    dsets = {d.pk: f'{d.storage_loc.replace(os.path.sep, f" {os.path.sep} ")}' for d in dbdsets}
+    context = {'dsets': dsets, 'ds_errors': dserrors, 'analysis': False, 'wfs': get_allwfs()}
     return render(request, 'analysis/analysis.html', context)
 
 
@@ -555,6 +556,7 @@ def get_datasets(request, wfversion_id):
                 'proj': dset.runname.experiment.project.name,
                 'exp': dset.runname.experiment.name,
                 'run': dset.runname.name,
+                'storage': f'{dset.storage_loc.replace(os.path.sep, f" {os.path.sep} ")}',
                 'dtype': dset.datatype.name,
                 'prefrac': prefrac,
                 'hr': hr,
@@ -582,7 +584,7 @@ def get_datasets(request, wfversion_id):
 def get_workflow_versioned(request):
     try:
         wf = am.NextflowWfVersionParamset.objects.get(pk=request.GET['wfvid'])
-        dsids = request.GET['dsids'].split(',')
+        dsids = [x for x in request.GET['dsids'].split(',') if x]
     except KeyError:
         return JsonResponse({'error': 'Something is wrong, contact admin'}, status=400)
     except am.NextflowWfVersionParamset.DoesNotExist:
@@ -627,7 +629,12 @@ def get_workflow_versioned(request):
                 'name': x.sfile.filename}
                 for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}
     }
-    resp['prev_resultfiles'] = get_prev_resultfiles(dsids)
+    # FIXME we should call get workflow versioned when new datasets are added, to get the new
+    # prev_resultfiles -> or at least update it
+    if dsids:
+        resp['prev_resultfiles'] = get_prev_resultfiles(dsids)
+    else:
+        resp['prev_resultfiles'] = []
     return JsonResponse({'wf': resp})
 
 
@@ -1210,6 +1217,18 @@ def upload_servable_file(request):
         print('Ready to upload')
         return JsonResponse({'msg': 'File can be uploaded and served'}, status=200)
 
+
+@require_GET
+@login_required
+def find_datasets(request):
+    searchterms = [x for x in request.GET['q'].split() if x != '']
+    dbdsets = hv.dataset_query_creator(searchterms).filter(deleted=False)
+    dsets = {d.id: {
+        'id': d.id,
+        'name': f'{d.storage_loc.replace(os.path.sep, f" {os.path.sep} ")}',
+        } for d in dbdsets}
+    return JsonResponse(dsets)
+    
 
 def get_servable_files(resultfiles):
     return resultfiles.filter(sfile__filename__in=settings.SERVABLE_FILENAMES)

@@ -63,12 +63,8 @@ def find_projects(request):
     return JsonResponse({'items': items, 'order': order})
 
 
-@login_required
-@require_GET
-def find_datasets(request):
-    """Loop through comma-separated q-param in GET, do a lot of OR queries on
-    datasets to find matches. String GET-derived q-params by AND."""
-    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+def dataset_query_creator(searchterms):
+    '''Shared by home find_datasets and analysis find_datasets'''
     query = Q(runname__name__icontains=searchterms[0])
     query |= Q(runname__experiment__name__icontains=searchterms[0])
     query |= Q(runname__experiment__project__name__icontains=searchterms[0])
@@ -95,8 +91,17 @@ def find_datasets(request):
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__start=term)
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__end=term)
         query &= subquery
-    dbdsets = dsmodels.Dataset.objects.filter(query)
-    if request.GET['deleted'] == 'false':
+    return dsmodels.Dataset.objects.filter(query)
+
+
+@login_required
+@require_GET
+def find_datasets(request):
+    """Loop through comma-separated q-param in GET, do a lot of OR queries on
+    datasets to find matches. String GET-derived q-params by AND."""
+    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+    dbdsets = dataset_query_creator(searchterms)
+    if request.GET.get('deleted', 'false') == 'false':
         dbdsets = dbdsets.filter(deleted=False)
     dsets = populate_dset(dbdsets, request.user)
     return JsonResponse({'items': dsets, 'order': list(dsets.keys())})
