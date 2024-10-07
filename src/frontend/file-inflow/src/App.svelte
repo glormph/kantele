@@ -14,9 +14,22 @@ let uploadRunning;
 let copiedToken = false;
 const isWindows = navigator.appVersion.toLowerCase().indexOf('win') != -1 ? 1 : 0;
 
+function get_upload_type() {
+  let upl_type;
+  if (ft_selected.israw) {
+    upl_type = rawfile_id;
+  } else if (isLibrary) {
+    upl_type = rawfile_id;
+  } else {
+    upl_type = userfile_id;
+  }
+  return upl_type;
+}
+
+
 async function createToken() {
   const resp = await postJSON('../token/', {ftype_id: ft_selected.id,
-    archive_only: onlyArchive, is_library: isLibrary && !ft_selected.israw});
+    archive_only: onlyArchive, uploadtype: get_upload_type()});
   if (resp.error) {
     console.log('error');
     // FIXME
@@ -40,7 +53,7 @@ async function uploadFile() {
   fdata.append('desc', uploaddesc);
   fdata.append('ftype_id', ft_selected.id);
   fdata.append('archive_only', onlyArchive ? '1' : '0');
-  fdata.append('is_library', isLibrary ? '1' : '0');
+  fdata.append('uploadtype', get_upload_type());
   const csrftoken = getCookie('csrftoken');
   let resp = await fetch('/files/upload/userfile/', {
     method: 'POST',

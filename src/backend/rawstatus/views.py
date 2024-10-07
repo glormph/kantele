@@ -42,7 +42,9 @@ def inflow_page(request):
     return render(request, 'rawstatus/inflow.html', {
         'producers': {x.id: x.name for x in Producer.objects.filter(msinstrument__active=True,
             internal=True)}, 'filetypes': [{'id': x.id, 'name': x.name, 'israw': x.is_rawdata,
-                'isfolder': x.is_folder} for x in StoredFileType.objects.filter(user_uploadable=True)]})
+                'isfolder': x.is_folder, 'userfile_id': UploadToken.UploadFileType.USERFILE,
+                'rawfile_id': UploadToken.UploadFileType.RAWFILE,
+                'library_id': UploadToken.UploadFileType.LIBRARY} for x in StoredFileType.objects.filter(user_uploadable=True)]})
 
 
 @staff_member_required
@@ -138,21 +140,23 @@ def browser_userupload(request):
         f'{data["ftype_id"]}'})
     except StoredFileType.DoesNotExist:
         return JsonResponse({'success': False, 'msg': 'Illegal file type to upload'})
+    try:
+        archive_only = bool(int(data['archive_only']))
+        uploadtype = int(data['uploadtype'])
+    except (ValueError, KeyError):
+        return JsonResponse({'success': False, 'msg': 'Bad request, contact admin'}, status=400)
     if not ftype.is_rawdata:
         desc = str(data.get('desc', '').strip())
         if desc == '':
             return JsonResponse({'success': False, 'msg': 'A description for this file is required'})
     elif ftype.is_folder:
         return JsonResponse({'success': False, 'msg': 'Cannot upload folder datatypes through browser'})
+    elif uploadtype != UploadToken.UploadFileType.RAWFILE:
+        return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library files, contact admin! This should not happen.'})
 
-    try:
-        archive_only = bool(int(data['archive_only']))
-        is_library = bool(int(data['is_library']))
-    except (ValueError, KeyError):
-        return JsonResponse({'success': False, 'msg': 'Bad request, contact admin'}, status=400)
     # create userfileupload model (incl. fake token)
     producer = Producer.objects.get(shortname='admin')
-    upload = create_upload_token(ftype.pk, request.user.id, producer, archive_only, is_library)
+    upload = create_upload_token(ftype.pk, request.user.id, producer, uploadtype, archive_only)
     # tmp write file 
     upfile = request.FILES['file']
     dighash = md5()
@@ -230,6 +234,7 @@ def instrument_check_in(request):
     upload = UploadToken.validate_token(token) if token else False
     task = jm.Task.objects.filter(asyncid=taskid).exclude(state__in=jobutil.JOBSTATES_DONE)
 
+    uploadtype = UploadToken.UploadFileType.RAWFILE
     if upload and upload.producer.client_id != data['client_id']:
         # Keep the token bound to a client instrument
         return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
@@ -248,7 +253,7 @@ def instrument_check_in(request):
             user_op = staff_ops.first()
         else:
             user_op = dsmodels.Operator.objects.first()
-        newtoken = create_upload_token(ftype.pk, user_op.user_id, producer)
+        newtoken = create_upload_token(ftype.pk, user_op.user_id, producer, uploadtype)
         response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
     elif not upload:
         return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
@@ -256,7 +261,7 @@ def instrument_check_in(request):
     elif upload.expires > timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
         upload.expired = True
         upload.save()
-        newtoken = create_upload_token(upload.filetype_id, upload.user_id, upload.producer)
+        newtoken = create_upload_token(upload.filetype_id, upload.user_id, upload.producer, uploadtype)
         response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
     return JsonResponse(response)
 
@@ -288,22 +293,27 @@ def request_upload_token(request):
         selected_ft = StoredFileType.objects.get(pk=data['ftype_id'])
     except StoredFileType.DoesNotExist:
         return JsonResponse({'error': True, 'error': 'Cannot use that file type'}, status=403)
-    ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['archive_only'],
-            data['is_library'] and not selected_ft.is_rawdata)
-    token_info = f'{ufu.token}|{settings.KANTELEHOST}|{int(ufu.is_library)}|{int(not ufu.filetype.is_rawdata)}'
+    if selected_ft.is_rawdata and int(data['uploadtype']) != UploadToken.UploadFileType.RAWFILE:
+        return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library /etc files'})
+    elif int(data['uploadtype']) not in [UploadToken.UploadFileType.RAWFILE,
+            UploadToken.UploadFileType.USERFILE, UploadToken.UploadFileType.LIBRARY]:
+        return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library /etc files'})
+
+    ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['uploadtype'], data['archive_only'])
+    token_info = f'{ufu.token}|{settings.KANTELEHOST}'
     token_ft_host_b64 = b64encode(token_info.encode('utf-8'))
     return JsonResponse({'token': ufu.token,
         'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
 
 
-def create_upload_token(ftype_id, user_id, producer, archive_only=False, is_library=False):
+def create_upload_token(ftype_id, user_id, producer, uploadtype, archive_only=False):
     '''Generates a new UploadToken for a producer and stores it in DB'''
     token = str(uuid4())
     expi_sec = settings.MAX_TIME_PROD_TOKEN if producer.internal else settings.MAX_TIME_UPLOADTOKEN
     expiry = timezone.now() + timedelta(seconds=expi_sec)
     return UploadToken.objects.create(token=token, user_id=user_id, expired=False,
             expires=expiry, filetype_id=ftype_id, producer=producer,
-            archive_only=archive_only, is_library=is_library)
+            archive_only=archive_only, uploadtype=uploadtype)
 
 
 def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
@@ -471,15 +481,12 @@ def transfer_file(request):
         print('POST request to transfer_file with incorrect fn_id, '
               '{}'.format(error))
         return JsonResponse({'error': 'Bad request'}, status=400)
-    libdesc = data.get('libdesc', False)
-    userdesc = data.get('userdesc', False)
+    desc = data.get('desc', False)
     upload = UploadToken.validate_token(token)
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
-    elif upload.is_library and not libdesc:
-        return JsonResponse({'error': 'Library file needs a description'}, status=403)
-    elif not upload.is_library and not upload.filetype.is_rawdata and not userdesc:
-        return JsonResponse({'error': 'User file needs a description'}, status=403)
+    elif upload.uploadtype in [UploadToken.UploadFileType.LIBRARY, UploadToken.UploadFileType.USERFILE] and not desc:
+        return JsonResponse({'error': 'Library or user files need a description'}, status=403)
     # First check if everything is OK wrt rawfile/storedfiles
     try:
         rawfn = RawFile.objects.get(pk=fn_id)
@@ -550,10 +557,10 @@ def transfer_file(request):
         # This could happen in the future when there is some kind of bypass of the above
         # check sfns.count(). 
         print('File already registered as transferred')
-    elif upload.is_library:
-        LibraryFile.objects.create(sfile=file_trf, description=libdesc)
-    elif not upload.filetype.is_rawdata:
-        UserFile.objects.create(sfile=file_trf, description=userdesc, upload=upload)
+    elif upload.uploadtype == UploadToken.UploadFileType.LIBRARY:
+        LibraryFile.objects.create(sfile=file_trf, description=desc)
+    elif upload.uploadtype == UploadToken.UploadFileType.USERFILE:
+        UserFile.objects.create(sfile=file_trf, description=desc, upload=upload)
     create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 

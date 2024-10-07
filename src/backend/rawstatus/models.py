@@ -104,6 +104,13 @@ class StoredFile(models.Model):
 
 class UploadToken(models.Model):
     """A token to upload a specific file type for a specified time"""
+
+    class UploadFileType(models.IntegerChoices):
+        RAWFILE = 1, 'Raw file'
+        ANALYSIS = 2, 'Analysis result'
+        LIBRARY = 3, 'Shared file for all users'
+        USERFILE = 4, 'User upload'
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.CharField(max_length=36, unique=True) # UUID keys
     timestamp = models.DateTimeField(auto_now=True) # this can be updated
@@ -113,7 +120,7 @@ class UploadToken(models.Model):
     # ftype is encoded in token for upload, so need to bind Token to Filetype:
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     archive_only = models.BooleanField(default=False)
-    is_library = models.BooleanField(default=False)
+    uploadtype = models.IntegerField(choices=UploadFileType.choices)
 
     @staticmethod
     def validate_token(token):

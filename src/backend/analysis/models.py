@@ -92,6 +92,7 @@ class UserWorkflow(models.Model):
         PISEP = 5, 'pI-separated identification'
         SPEC = 6, 'Special internal'
         LC = 7, 'Labelcheck'
+        USER = 8, 'User-run workflow'
 
     name = models.TextField()
     wftype = models.IntegerField(choices=WFTypeChoices.choices)

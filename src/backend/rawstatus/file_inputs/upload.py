@@ -173,16 +173,14 @@ def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **
     return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata)
 
 
-def transfer_file(url, fpath, fn_id, token, libdesc, userdesc, cookies, host):
+def transfer_file(url, fpath, fn_id, token, desc, cookies, host):
     # use fpath/basename instead of fname, to get the
     # zipped file name if needed, instead of the normal fn
     filename = os.path.basename(fpath)
     logging.info(f'Transferring {fpath} to {host}')
     stddata = {'fn_id': f'{fn_id}', 'token': token, 'filename': filename}
-    if libdesc:
-        stddata['libdesc'] = libdesc
-    elif userdesc:
-        stddata['userdesc'] = userdesc
+    if desc:
+        stddata['desc'] = desc
     with open(fpath, 'rb') as fp:
         stddata['file'] = (filename, fp)
         mpedata = MultipartEncoder(fields=stddata)
@@ -279,7 +277,7 @@ def log_listener(log_q):
 
 
 def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox,
-        kantelehost, clientname, library_descs, user_descs):
+        kantelehost, clientname, descriptions):
     '''This process does the registration and the transfer of files'''
     # Start getting the leftovers from previous run
     fnstate_url = urljoin(kantelehost, 'files/transferstate/')
@@ -407,10 +405,10 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             if cts_id not in ledger:
                 logger.warning(f'Could not find file with ID {fndata["fn_id"]} locally')
                 continue
-            ldesc, udesc = library_descs.get(fndata['fpath'], False), user_descs.get(fndata['fpath'], False)
+            desc = descriptions.get(fndata['fpath'], False)
             try:
                 resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
-                        ldesc, udesc, cookies, kantelehost)
+                        desc, cookies, kantelehost)
             except subprocess.CalledProcessError:
                 logger.warning(f'Could not transfer {fndata["fpath"]}')
             else:
@@ -443,10 +441,10 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
 
 
 def start_processes(regq, regdoneq, logqueue, ledger, config, configfn, donebox, host, hostname,
-        libdescs, userdescs):
+        descriptions):
     processes = []
     register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger,
-        config, configfn, donebox, host, hostname, libdescs, userdescs))
+        config, configfn, donebox, host, hostname, descriptions))
     register_p.start()
     logproc = Process(target=log_listener, args=(logqueue,))
     logproc.start()
@@ -482,14 +480,14 @@ def main():
     proc_log_configure(logqueue)
     clientname = config.get('hostname', '')
     logger = logging.getLogger(f'{clientname}.producer.main')
-    libdescs, userdescs = {}, {}
+    descriptions = {}
 
     if not config.get('client_id', False):
         # Parse token gotten from web UI, this is needed so Kantele knows
         # which filetype were uploading, and it will contain the upload location
         webtoken = input('Please provide token from web interface: ').strip()
         try:
-            token, kantelehost, is_libfile, is_userfile = b64decode(webtoken).decode('utf-8').split('|')
+            token, kantelehost = b64decode(webtoken).decode('utf-8').split('|')
         except ValueError:
             print('Incorrect token')
             sys.exit(1)
@@ -498,9 +496,7 @@ def main():
             args.files = glob(args.files[0])
         for fn in args.files:
             if int(is_libfile):
-                libdescs[fn] = input(f'Please enter a description for your library file {fn}: ')
-            elif int(is_userfile):
-                userdescs[fn] = input(f'Please enter a description for your userfile {fn}: ')
+                descriptions[fn] = input(f'Please enter a description for your file {fn}: ')
         config.update({'host': kantelehost, 'token': token, 'is_manual': True})
     elif args.configfn:
         config['is_manual'] = False
@@ -538,7 +534,7 @@ def main():
         processes = [collect_p]
         collect_p.start()
         processes.extend(start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
-            donebox, config['host'], clientname, libdescs, userdescs))
+            donebox, config['host'], clientname, descriptions))
     elif args.files:
         print('New files found, calculating checksum')
         # Multi file upload by user with token from web GUI
@@ -562,7 +558,7 @@ def main():
             # TODO cannot zip yet, there is no "zipbox", maybe make it workdir
             # FIXME align this with collector process
         processes = start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
-                donebox, config['host'], clientname, libdescs, userdescs)
+                donebox, config['host'], clientname, descriptions)
         for upload_fnid, fndata in ledger.items():
             if fndata['is_dir'] and 'nonzipped_path' not in fndata:
                 zipname = os.path.join(zipbox, os.path.basename(fndata['fpath']))
