@@ -367,7 +367,7 @@ def populate_analysis(nfsearches, user):
                 'id': nfs.id,
                 'own': nfs.analysis.user_id == user.id,
                 'usr': nfs.analysis.user.username,
-                'name': aj.get_ana_fullname(nfs.analysis),
+                'name': aj.get_ana_fullname(nfs.analysis, nfs.workflow.wftype),
                 'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
                 'jobstate': nfs.job.state,
                 'jobid': nfs.job_id,
@@ -593,7 +593,7 @@ def get_analysis_info(request, nfs_id):
             and request.user.is_staff and
             ana.nextflowsearch.workflow.wftype == anmodels.UserWorkflow.WFTypeChoices.STD and
             ana.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.count())
-    resp = {'name': aj.get_ana_fullname(ana),
+    resp = {'name': aj.get_ana_fullname(ana, nfs.workflow.wftype),
             'addToResults': result_parse_ok,
             'wf': {'fn': nfs.nfwfversionparamset.filename, 
                    'name': nfs.nfwfversionparamset.nfworkflow.description,
@@ -640,14 +640,14 @@ def refresh_job(request, job_id):
 @login_required
 def refresh_analysis(request, nfs_id):
     # FIXME share with show/populate
-    nfs = anmodels.NextflowSearch.objects.select_related('analysis', 'job').get(pk=nfs_id)
+    nfs = anmodels.NextflowSearch.objects.select_related('analysis', 'workflow', 'job').get(pk=nfs_id)
     fjobs = nfs.job.filejob_set.all().select_related(
             'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
     return JsonResponse({
         'wf': f'{nfs.workflow.name} - {nfs.nfwfversionparamset.update}',
         'wflink': nfs.nfwfversionparamset.nfworkflow.repo,
         'jobstate': nfs.job.state,
-        'name': aj.get_ana_fullname(nfs.analysis),
+        'name': aj.get_ana_fullname(nfs.analysis, nfs.workflow.wftype),
         'jobid': nfs.job_id,
         'deleted': nfs.analysis.deleted,
         'purged': nfs.analysis.purged,

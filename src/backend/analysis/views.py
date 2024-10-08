@@ -56,7 +56,7 @@ def load_analysis_resultfiles(request, anid):
     and files from base_analyses loaded for this analysis. These files will
     already be loaded in the UI.'''
     try:
-        ana = am.Analysis.objects.get(pk=anid)
+        ana = am.Analysis.objects.select_related('nextflowsearch__workflow').get(pk=anid)
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis_date = datetime.strftime(ana.date, '%Y-%m-%d')
@@ -69,11 +69,12 @@ def load_analysis_resultfiles(request, anid):
     else:
         base_ana_resfiles_ids = []
     already_loaded_files = analysis_prev_resfiles_ids + base_ana_resfiles_ids
-    ananame = aj.get_ana_fullname(ana)
+    ananame = aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype)
     anadate = datetime.strftime(ana.date, '%Y-%m-%d')
     resultfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
-    return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
+    return JsonResponse({'analysisname': aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype),
+        'date': analysis_date, 'fns': resultfiles})
 
 
 @require_GET
@@ -96,7 +97,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
     except am.NextflowWfVersionParamset.DoesNotExist:
         return JsonResponse({'error': 'Workflow for applying base analysis not found'}, status=403)
     try:
-        ana = am.Analysis.objects.select_related('nextflowsearch').get(pk=baseanid)
+        ana = am.Analysis.objects.select_related('nextflowsearch__workflow').get(pk=baseanid)
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     baseana_dsids = [dss.dataset_id for dss in ana.datasetanalysis_set.all()]
@@ -124,7 +125,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
     # Collect files used in base analysis, determine if they are multifile or not,
     # and if they're from an added analysis
     prev_resultfiles_ids = get_prev_resultfiles(baseana_dsids, only_ids=True)
-    for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
+    for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id
+            ).select_related('analysis__nextflowsearch__workflow'):
         try:
             fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
         except KeyError:
@@ -132,7 +134,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
             analysis['multifileparams'][afp.param_id] = {}
         analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
         get_added_analysis_contents(afp, prev_resultfiles_ids, analysis['added_results'])
-    for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
+    for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id
+            ).select_related('analysis__nextflowsearch__workflow'):
         analysis['fileparams'][afp.param_id] = afp.sfile_id
         get_added_analysis_contents(afp, prev_resultfiles_ids, analysis['added_results'])
 
@@ -204,8 +207,9 @@ def load_base_analysis(request, wfversion_id, baseanid):
     added_files_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
         analysis_id__in=added_ana_ids).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
     already_loaded_files = analysis_prev_resfiles_ids + added_files_ids
-    base_resfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': aj.get_ana_fullname(ana),
-        'date':datetime.strftime(ana.date, '%Y-%m-%d')}
+    base_resfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename,
+        'ana': aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype),
+        'date': datetime.strftime(ana.date, '%Y-%m-%d')}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
     return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': base_resfiles})
 
@@ -251,11 +255,13 @@ def get_analysis(request, anid):
     dsids = [x.dataset_id for x in ana.datasetanalysis_set.all()]
     prev_resultfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
     # Parse base analysis if any
-    ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch').filter(analysis_id=ana.id)
+    ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch__workflow'
+            ).filter(analysis_id=ana.id)
     if ana_base.exists():
         ana_base = ana_base.get()
         base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetanalysis_set.all()]
-        baname = aj.get_ana_fullname(ana_base.base_analysis)
+        baname = aj.get_ana_fullname(ana_base.base_analysis,
+                ana_base.base_analysis.nextflowsearch.workflow.wftype)
         badate = datetime.strftime(ana_base.base_analysis.date, '%Y-%m-%d')
         analysis['base_analysis'] = {
                 #### these are repeated in ana/wf if same dsets
@@ -278,7 +284,7 @@ def get_analysis(request, anid):
 
     multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
     non_added_results_fnids = set(prev_resultfiles_ids).union(ana_base_resfiles)
-    for afp in ana.analysisfileparam_set.all():
+    for afp in ana.analysisfileparam_set.all().select_related('analysis__nextflowsearch__workflow'):
         # determine if adp to load is from an added analysis,
         # then populate either multifile or single file params
         get_added_analysis_contents(afp, non_added_results_fnids, analysis['added_results'])
@@ -365,9 +371,10 @@ def get_base_analyses(request):
             subquery |= Q(nextflowsearch__workflow__wftype__in=match_wftypes)
             query &= subquery
         resp = {}
-        for x in am.Analysis.objects.select_related('nextflowsearch').filter(query,
+        for x in am.Analysis.objects.select_related('nextflowsearch__workflow').filter(query,
                 nextflowsearch__isnull=False, deleted=False):
-            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(x),
+            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(
+                aj.get_ana_fullname(x, x.nextflowsearch.workflow.wftype),
                 x.nextflowsearch.workflow.name, x.nextflowsearch.nfwfversionparamset.update,
                 x.user.username, datetime.strftime(x.date, '%Y%m%d'))}
         return JsonResponse(resp)
@@ -657,9 +664,9 @@ def get_prev_resultfiles(dsids, only_ids=False):
         prev_resultfiles = [x['sfile_id'] for x in qset_arf.values('sfile_id')]
     else:
         prev_resultfiles = [{'id': x.sfile.id, 'fn': x.sfile.filename,
-            'ana': aj.get_ana_fullname(x.analysis),
+            'ana': aj.get_ana_fullname(x.analysis, x.analysis.nextflowsearch.workflow.wftype),
             'date': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
-        for x in qset_arf.select_related('analysis')]
+        for x in qset_arf.select_related('analysis__nextflowsearch__workflow')]
     return prev_resultfiles
 
 
@@ -669,7 +676,7 @@ def get_added_analysis_contents(afp, prev_or_base_resultfns, added_results):
             and afp.sfile.analysisresultfile.analysis_id not in added_results):
         arf = afp.sfile.analysisresultfile
         arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
-        arf_ananame = aj.get_ana_fullname(arf.analysis)
+        arf_ananame = aj.get_ana_fullname(arf.analysis, arf.analysis.nextflowsearch.workflow.wftype)
         arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': arf_ananame,
             'date': arf_date} for x in arf.analysis.analysisresultfile_set.all()]
         added_results[arf.analysis_id] = {'analysisname': arf_ananame, 'date': arf_date, 'fns': arf_fns}
@@ -853,15 +860,13 @@ def store_analysis(request):
         dss.filter(dataset_id__in=excess_dss).delete()
         newdss = am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
-        wfshortname = am.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
         dss_map = {x.dataset_id: x.pk for x in [*dss, *newdss]}
     else:
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
-        wfshortname = am.UserWorkflow.WFTypeChoices(am.UserWorkflow.objects.get(pk=req['wfid']).wftype).name
         dss = am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid,
             analysis=analysis) for dsid in req['dsids']])
         dss_map = {x.dataset_id: x.pk for x in dss}
-    ana_storpathname = (f'{analysis.pk}_{wfshortname}_{analysis.name}_'
+    ana_storpathname = (f'{analysis.pk}_{aj.get_ana_fullname(analysis, wftype)}_'
             f'{datetime.strftime(analysis.date, "%Y%m%d_%H.%M")}')
     analysis.storage_dir = f'{analysis.user.username}/{ana_storpathname}'
     analysis.save()
