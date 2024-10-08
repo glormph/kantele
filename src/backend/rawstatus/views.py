@@ -40,11 +40,13 @@ from jobs.jobutil import create_job
 
 def inflow_page(request):
     return render(request, 'rawstatus/inflow.html', {
+        'userfile_id': UploadToken.UploadFileType.USERFILE,
+        'rawfile_id': UploadToken.UploadFileType.RAWFILE,
+        'library_id': UploadToken.UploadFileType.LIBRARY,
         'producers': {x.id: x.name for x in Producer.objects.filter(msinstrument__active=True,
-            internal=True)}, 'filetypes': [{'id': x.id, 'name': x.name, 'israw': x.is_rawdata,
-                'isfolder': x.is_folder, 'userfile_id': UploadToken.UploadFileType.USERFILE,
-                'rawfile_id': UploadToken.UploadFileType.RAWFILE,
-                'library_id': UploadToken.UploadFileType.LIBRARY} for x in StoredFileType.objects.filter(user_uploadable=True)]})
+            internal=True)},
+        'filetypes': [{'id': x.id, 'name': x.name, 'israw': x.is_rawdata, 'isfolder': x.is_folder}
+            for x in StoredFileType.objects.filter(user_uploadable=True)]})
 
 
 @staff_member_required

@@ -6,16 +6,13 @@
   <link rel='stylesheet' href='{% static "rawstatus/inflow-bundle.css" %}'>
   {{ producers | json_script:'producers_el'}}
   {{ filetypes | json_script:'filetypes_el'}}
-  {{ library_id | json_script:'libfn'}}
-  {{ rawfile_id | json_script:'rawfn'}}
-  {{ userfile_id | json_script:'userfn'}}
   <script defer src='{% static "rawstatus/inflow-bundle.js" %}'></script>
   <script>
     let producers = JSON.parse(document.getElementById('producers_el').textContent);
     let filetypes = JSON.parse(document.getElementById('filetypes_el').textContent);
-    let libfile_id = JSON.parse(document.getElementById('libfn').textContent);
-    let userfile_id = JSON.parse(document.getElementById('userfn').textContent);
-    let rawfile_id = JSON.parse(document.getElementById('rawfn').textContent);
+    let libfile_id = {{ library_id }};
+    let userfile_id = {{ userfile_id }};
+    let rawfile_id = {{ rawfile_id }};
   </script>
 {% endblock head %}
 
