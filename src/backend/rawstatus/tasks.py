@@ -127,6 +127,13 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
     ssh_host = urlsplit(settings.KANTELEHOST).netloc
     ssh_srcpath = f'{settings.RSYNC_SSHUSER}@{ssh_host}:{srcpath}'
     dstfpath = os.path.join(settings.SHAREMAP[dstsharename], dstpath)
+    fulldir, fn = os.path.split(dstfpath)
+    if not os.path.exists(fulldir):
+        os.makedirs(fulldir)
+    elif not os.path.isdir(fulldir):
+        msg = f'Directory to transfer file {fn} to already exists and it is a file ({fulldir})'
+        taskfail_update_db(self.request.id, msg=msg)
+        raise RuntimeError(msg)
     cmd = ['rsync', '-av', '-e',
             f'ssh -o StrictHostKeyChecking=no -p {settings.RSYNC_SSHPORT} -i {settings.RSYNC_SSHKEY}',
             ssh_srcpath, dstfpath]

@@ -187,11 +187,6 @@ def browser_userupload(request):
         os.chmod(dst, 0o644)
 
     # Unfortunately have to do checking after upload as we need the MD5 of the file
-    # NB not needed to test if file w identical name exists due to inclusion of ID
-    # in filename.
-    fname = f'{raw["file_id"]}_{upfile.name}'
-    dstpath = settings.USERFILEDIR
-    dstshare = ServerShare.objects.get(name=settings.ANALYSISSHARENAME)
     sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
     if sfns.count() == 1:
         os.unlink(dst)
@@ -201,6 +196,34 @@ def browser_userupload(request):
         os.unlink(dst)
         return JsonResponse({'success': False, 'msg': 'Multiple files already found, this '
             'should not happen, please inform your administrator'}, status=403)
+
+    # Get the file path and share dependent on the upload type
+    ufiletypes = UploadToken.UploadFileType
+    check_dup = False
+    if upload.uploadtype == ufiletypes.RAWFILE:
+        dstpath = settings.TMPPATH
+        dstsharename = settings.TMPSHARENAME
+        fname = upfile.name
+        check_dup = True
+    elif upload.uploadtype == ufiletypes.LIBRARY:
+        dstsharename = settings.PRIMARY_STORAGESHARENAME
+        fname = f'{raw["file_id"]}_{upfile.name}'
+        dstpath = settings.LIBRARY_FILE_PATH
+    elif upload.uploadtype == ufiletypes.USERFILE:
+        dstsharename = settings.PRIMARY_STORAGESHARENAME
+        fname = f'{raw["file_id"]}_{upfile.name}'
+        dstpath = settings.USERFILEDIR
+    else:
+        return JsonResponse({'success': False, 'msg': 'Can only upload files of raw, library, '
+            'or user type'}, status=403)
+
+    dstshare = ServerShare.objects.get(name=dstsharename)
+    if check_dup:
+        if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
+            return JsonResponse({'error': 'Another file in the system has the same name '
+                f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+                'Please investigate, possibly change the file name or location of this or the other '
+                'file to enable transfer without overwriting.'}, status=403)
     # All good, get the file to storage
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
             filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
@@ -489,6 +512,9 @@ def transfer_file(request):
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     elif upload.uploadtype in [UploadToken.UploadFileType.LIBRARY, UploadToken.UploadFileType.USERFILE] and not desc:
         return JsonResponse({'error': 'Library or user files need a description'}, status=403)
+    elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS and not data.get('analysis_id'):
+        # FIXME can we upload proper analysis files here too??? In theory, yes! At a speed cost
+        return JsonResponse({'error': 'Analysis result uploads need an analysis_id to put them in'}, status=403)
     # First check if everything is OK wrt rawfile/storedfiles
     try:
         rawfn = RawFile.objects.get(pk=fn_id)
@@ -504,26 +530,52 @@ def transfer_file(request):
         return JsonResponse({'error': 'This file is already in the '
             f'system: {sfns.first().filename}, if you are re-uploading a previously '
             'deleted file, consider reactivating from backup, or contact admin'}, status=403)
-    # Now prepare file system info, check if duplicate name exists:
-    if upload.archive_only:
-        dstshare = ServerShare.objects.get(name=settings.ARCHIVESHARENAME)
-    else:
-        dstshare = ServerShare.objects.get(name=settings.TMPSHARENAME)
+
 
     # Has the filename changed between register and transfer? Assume user has stopped the upload,
     # corrected the name, and also change the rawname
     if fname != rawfn.name:
         rawfn.name = fname
         rawfn.save()
-    # FIXME Why do we want a file id to the name? Uniqueness because harder to control external files?
-    # should we also update the rawfn name? Weird to have its own pk in the name though.
-    fname = fname if rawfn.producer.internal else f'{rawfn.pk}_{fname}'
-    dstpath = settings.TMPPATH
-    if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
-        return JsonResponse({'error': 'Another file in the system has the same name '
-            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
-            'Please investigate, possibly change the file name or location of this or the other '
-            'file to enable transfer without overwriting.'}, status=403)
+    ufiletypes = UploadToken.UploadFileType
+    # Now prepare file system info, check if duplicate name exists:
+    check_dup = False
+    if upload.archive_only:
+        dstsharename = settings.ARCHIVESHARENAME
+        dstpath = settings.ARCHIVEPATH
+        check_dup = True
+    elif upload.uploadtype == ufiletypes.RAWFILE:
+        dstpath = settings.TMPPATH
+        dstsharename = settings.TMPSHARENAME
+        check_dup = True
+    elif upload.uploadtype == ufiletypes.ANALYSIS:
+        # FIXME either directly to new dir for analysis,
+        # or to intermediatedir? like mzml_in ?
+        #run['runname']).replace(' ', '_')
+        analysis = Analysis.objects.get(pk=data['analysis_id'])
+        dstpath = analysis.storage_dir
+        dstsharename = settings.ANALYSISSHARENAME
+    elif upload.uploadtype == ufiletypes.LIBRARY:
+        # Make file names unique because harder to control external files
+        fname = f'{rawfn.pk}_{fname}'
+        dstpath = settings.LIBRARY_FILE_PATH
+        dstsharename = settings.PRIMARY_STORAGESHARENAME
+    elif upload.uploadtype == ufiletypes.USERFILE:
+        # Make file names unique because harder to control external files
+        fname = f'{rawfn.pk}_{fname}'
+        dstpath = settings.USERFILEDIR
+        dstsharename = settings.PRIMARY_STORAGESHARENAME
+    else:
+        return JsonResponse({'error': f'Upload has an invalid uploadtype ID ({upload.uploadtype}). '
+            'This should not happen, contact admin'}, status=403)
+
+    dstshare = ServerShare.objects.get(name=dstsharename)
+    if check_dup:
+        if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
+            return JsonResponse({'error': 'Another file in the system has the same name '
+                f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+                'Please investigate, possibly change the file name or location of this or the other '
+                'file to enable transfer without overwriting.'}, status=403)
 
     # All clear, do the upload storing:
     upfile = request.FILES['file']
