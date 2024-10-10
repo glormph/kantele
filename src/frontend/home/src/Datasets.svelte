@@ -19,7 +19,7 @@ let purgeConfirm = false;
 const tablefields = [
   {id: 'ptype', name: 'Project type', type: 'str', multi: false},
   {id: 'storestate', name: 'Stored', type: 'tag', multi: false, links: 'fn_ids', linkroute: '#/files/'},
-  {id: 'jobstates', name: '__hourglass-half', type: 'state', multi: true, links: 'jobids', linkroute: '#/jobs'},
+  {id: 'jobstate', name: '__hourglass-half', type: 'state', multi: true, links: 'jobids', linkroute: '#/jobs'},
   {id: 'smallstatus', name: '', type: 'smallcoloured', multi: true},
   {id: 'analyses', name: '', type: 'icon', icon: 'cogs', links: 'ana_ids', linkroute: '#/analyses'},
   {id: 'proj', name: 'Project', type: 'str', multi: false},
@@ -28,29 +28,6 @@ const tablefields = [
   {id: 'usr', name: 'Creator', type: 'str', multi: false},
   {id: 'dtype', name: 'Datatype', type: 'str', multi: false},
 ];
-
-const statecolors = {
-  storestate: {
-    cold: 'is-info',
-    purged: 'is-danger', 
-    complete: 'is-success', 
-    'active-only': 'is-warning', 
-    new: 'is-warning', 
-    empty: 'is-light',
-    broken: 'is-light',
-  },
-  jobstates: {
-    wait: 'has-text-grey-light',
-    pending: 'has-text-info',
-    error: 'has-text-danger', 
-    processing: 'has-text-warning', 
-    done: 'has-text-success',
-  },
-  smallstatus: {
-    active: 'has-text-primary',
-    deleted: 'has-text-grey',
-  }
-}
 
 const fixedbuttons = [
   {name: '__edit', alt: 'Show metadata', action: showMeta},
@@ -125,7 +102,7 @@ function setConfirm() {
 {/if}
 
 
-<Table tab="Datasets" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedDsets} fetchUrl="/show/datasets" findUrl="/find/datasets" getdetails={getDsetDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview={showDetails} />
+<Table tab="Datasets" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedDsets} fetchUrl="/show/datasets" findUrl="/find/datasets" getdetails={getDsetDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} on:detailview={showDetails} />
 
 {#if importVisible}
 <ImportExternal toggleWindow={e => importVisible = importVisible === false} />

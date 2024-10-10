@@ -235,7 +235,7 @@ def populate_files(dbfns):
               'ftype': fn.filetype.name,
               'analyses': [],
               'dataset': [],
-              'jobs': [],
+              'jobstate': [],
               'job_ids': [],
               'deleted': fn.deleted,
               'purged': fn.purged,
@@ -480,7 +480,7 @@ def populate_dset(dbdsets, user):
 
         # Add job states
         jobmap = get_ds_jobs(dbdsets)
-        dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
+        dsets[dataset.id]['jobstate'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
         dsets[dataset.id]['jobids'] = ','.join(list(jobmap[dataset.id].keys())) if dataset.id in jobmap else []
         if hasattr(dataset, 'prefractionationdataset'):
             pf = dataset.prefractionationdataset

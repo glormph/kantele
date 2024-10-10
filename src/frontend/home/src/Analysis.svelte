@@ -64,17 +64,6 @@ async function refreshAnalysis(nfsid) {
 }
 
 
-const statecolors = {
-  jobstate: {
-    wait: 'has-text-grey-light',
-    pending: 'has-text-info',
-    error: 'has-text-danger', 
-    processing: 'has-text-warning', 
-    revoking: 'has-text-grey-dark',
-    done: 'has-text-success',
-  },
-}
-
 function showDetails(event) {
   detailsVisible = event.detail.ids;
 }
@@ -125,7 +114,7 @@ function purgeAnalyses() {
 <a class="button" disabled>Purge analyses</a>
 {/if}
 
-<Table tab="Analyses" bind:items={analyses} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:rowAction={e => doAction(e.detail.action, e.detail.id)} />
+<Table tab="Analyses" bind:items={analyses} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['deleted', 'purged']} on:rowAction={e => doAction(e.detail.action, e.detail.id)} />
  
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} anaIds={detailsVisible} />
