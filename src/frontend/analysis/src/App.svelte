@@ -11,9 +11,11 @@ import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 
 let notif = {errors: {}, messages: {}, links: {}};
 let loadingItems = false;
-
 let runButtonActive = true;
 let postingAnalysis = false;
+let copiedToken = false;
+
+let external_results = false;
 
 let analysis_id = existing_analysis ? existing_analysis.analysis_id : false;
 let wf = false;
@@ -92,6 +94,7 @@ let config = {
   fileparams: {},
   inputparams: {},
   multifileparams: {},
+  token: '',
 }
 let matchedFr = {};
 
@@ -99,17 +102,17 @@ function validate() {
   notif = {errors: {}, messages: {}, links: {}};
   const charRe = RegExp('^[a-z0-9_-]+$', 'i');
   if (!config.analysisname) {
-	  notif.errors['Analysisname must be filled in'] = 1;
-	} else if (!charRe.test(config.analysisname)) {
-		notif.errors['Analysisname may only contain a-z 0-9 _ -'] = 1;
-	}
-	if (!config.wfid) {
-		notif.errors['You must select a workflow'] = 1;
-	}
-  if (!config.wfversion) {
+    notif.errors['Analysisname must be filled in'] = 1;
+  } else if (!charRe.test(config.analysisname)) {
+    notif.errors['Analysisname may only contain a-z 0-9 _ -'] = 1;
+  }
+  if (!config.wfid && !external_results) {
+    notif.errors['You must select a workflow'] = 1;
+  }
+  if (!config.wfversion && !external_results) {
 		notif.errors['You must select a workflow version'] = 1;
 	}
-  if (!Object.keys(dsets).length) {
+  if (!Object.keys(dsets).length && !external_results) {
     notif.errors['No datasets are in this analysis, maybe they need some editing'] = 1;
   }
   Object.values(dsets).forEach(ds => {
@@ -134,11 +137,13 @@ function validate() {
     })
   })
 
-  wf.selectparams.forEach(selp => {
-    if (!config.inputparams[selp.id]) {
-      notif.errors[`Must select a value for ${selp.name}`] = 1;
-      }
-  });
+  if (!external_results) {
+    wf.selectparams.forEach(selp => {
+      if (!config.inputparams[selp.id]) {
+        notif.errors[`Must select a value for ${selp.name}`] = 1;
+        }
+    });
+  }
   return Object.keys(notif.errors).length === 0;
 }
 
@@ -163,6 +168,7 @@ async function storeAnalysis() {
   setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   let post = {
     analysis_id: analysis_id,
+    upload_external: external_results,
     base_analysis: base_analysis,
     dsids: Object.keys(dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets)
@@ -187,7 +193,7 @@ async function storeAnalysis() {
       ISOQUANT_SAMPLETABLE: false,
     },
     wfid: config.wfid,
-    nfwfvid: config.wfversion.id,
+    nfwfvid: config.wfversion.id || false,
     analysisname: config.analysisname,
     // Most params are {param.id: value, param2.id: value}, but multicheck
     // is checkboxes and is thus {param.id: [value1.id, value2.id]}
@@ -205,11 +211,11 @@ async function storeAnalysis() {
         }))),
     },
   };
-  if ('ISOQUANT' in wf.components) {
+  if (wf && 'ISOQUANT' in wf.components) {
     post.components.ISOQUANT = config.isoquants;
   }
 
-  if ('ISOQUANT_SAMPLETABLE' in wf.components) {
+  if (wf && 'ISOQUANT_SAMPLETABLE' in wf.components) {
     // If data is purely labelfree this will be empty []
     const sampletable = Object.entries(config.isoquants).flatMap(([sname, isoq]) => 
       Object.entries(isoq.channels).map(([ch, sample]) => [ch, sname, sample[0], isoq.samplegroups[ch]]).sort((a, b) => {
@@ -247,6 +253,8 @@ async function storeAnalysis() {
       }
     } else {
       analysis_id = resp.analysis_id;
+      history.pushState({}, '', `/analysis/${analysis_id}/`);
+      config.token = resp.token;
     }
   }
   postingAnalysis = false;
@@ -507,6 +515,13 @@ function sortChannels(channels) {
 }
 
 
+function copyToken() {
+  navigator.clipboard.writeTest(config.token);
+  copiedToken = true;
+  setTimeout(() => {copiedToken = false;}, 2000);
+}
+
+
 function updateIsoquant(dsid_changed) {
   // Add new set, called when isobaric dataset gets new set name
   // FIXME Ideally handle if isobaric in wf in the dataset setname thing
@@ -557,10 +572,12 @@ function updateIsoquant(dsid_changed) {
 
 
 async function populate_analysis_and_fetch_wf() {
-  config.wfid = existing_analysis.wfid;
-  config.wfversion_id = existing_analysis.wfversion_id;
-  config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
-  await fetchWorkflow();
+  if (existing_analysis.wfid) {
+    config.wfid = existing_analysis.wfid;
+    config.wfversion_id = existing_analysis.wfversion_id;
+    config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
+    await fetchWorkflow();
+  }
   for (const key of ['analysisname', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
     config[key] = existing_analysis[key];
   }
@@ -581,9 +598,11 @@ onMount(async() => {
       // Populate dynamic select components by calling .inputdone()
       // Does not work if it is in populate_analysis, possibly is too fast
       // and values havent made it to selectval in the components yet
-      Object.keys(wf.fileparams).forEach(x => {
-        wf.fileparams[x].component.inputdone();
-      });
+      if (wf) {
+        Object.keys(wf.fileparams).forEach(x => {
+          wf.fileparams[x].component.inputdone();
+        });
+      }
       // wf.mfp: [{id: 1, components: []}, ]
       // cfg.mfp: {1: {0: 3, 1: 4}, ...}
       Object.entries(config.multifileparams).forEach(([paramid, ix_val]) => {
@@ -633,64 +652,89 @@ onMount(async() => {
 </div>
 
 <div class="content">
-  <h5 class="title is-5">Datasets selected</h5>
-  <DynamicSelect placeholder='Find dataset to add' bind:selectval={dsetToAdd} on:selectedvalue={addDataset} niceName={x => x.name} fetchUrl="/analysis/find/datasets/" />
-  <div class="tags">
-  {#each Object.entries(dsnames) as [dsid, name]}
-    <span class="tag is-medium is-info">
-      {name}
-      <button class="delete is-small" on:click={e => removeDataset(dsid)}></button>
-    </span>
-  {/each}
-  {#if !Object.entries(dsnames).length}
-  No datasets selected
-  {/if}
+  <div class="box">
+    <h5 class="title is-5">Analysis name</h5>
+    <div class="field">
+      <input type="text" class="input" bind:value={config.analysisname} placeholder="Please enter analysis name">
+    </div>
+  </div>
+
+  <div class="box">
+    <label class="checkbox">
+      <input type="checkbox" bind:checked={external_results} />
+      Externally run analysis, only upload results
+    </label>
+    {#if config.token}
+    <button on:click={copyToken} class="button">
+      {#if copiedToken}
+      <span class="icon is-small"><i class="fa fa-check has-text-success"></i></span>
+      {:else}
+      <span class="icon is-small"><i class="fa fa-copy"></i></span>
+      <span>Copy token</span>
+      {/if}
+    </button>
+    <div>
+      <input class="input" value={config.token.user_token} readonly />
+      This token will expire {config.token.expires}
+    </div>
+    {/if}
+  </div>
+
+  <div class="box">
+    <h5 class="title is-5">Datasets selected</h5>
+    <DynamicSelect placeholder='Find dataset to add' bind:selectval={dsetToAdd} on:selectedvalue={addDataset} niceName={x => x.name} fetchUrl="/analysis/find/datasets/" />
+    <div class="tags">
+    {#each Object.entries(dsnames) as [dsid, name]}
+      <span class="tag is-medium is-info">
+        {name}
+        <button class="delete is-small" on:click={e => removeDataset(dsid)}></button>
+      </span>
+    {/each}
+    {#if !Object.entries(dsnames).length}
+    No datasets selected
+    {/if}
+    </div>
   </div>
 
 
-	<div class="field is-horizontal">
-    <div class="field-label is-normal">
-      <label class="label">Workflow:</label>
-    </div>
-    <div class="field-body">
-      <div class="field">
-        <div class="select">
-          <select bind:value={config.wfid} on:change={e => wf = config.wfversion = false}>
-            <option disabled value={false}>Select workflow</option>
-            {#each wforder as wfid}
-            <option value={wfid}>{allwfs[wfid].name} </option>
-            {/each}
-          </select>
+  <div class="box">
+    <div class="field is-horizontal">
+      <div class="field-label is-normal">
+        <label class="label">Workflow:</label>
+      </div>
+      <div class="field-body">
+        <div class="field">
+          <div class="select">
+            <select bind:value={config.wfid} on:change={e => wf = config.wfversion = false}>
+              <option disabled value={false}>Select workflow</option>
+              {#each wforder as wfid}
+              <option value={wfid}>{allwfs[wfid].name} </option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="field-label is-normal">
+        <label class="label">Workflow version:</label>
+      </div>
+      <div class="field-body">
+        <div class="field">
+          <div class="select" on:change={fetchWorkflow}>
+            <select bind:value={config.wfversion}>
+              <option disabled value={false}>Select workflow version</option>
+              {#if config.wfid}
+              {#each allwfs[config.wfid].versions as wfv}
+              <option value={wfv}>{wfv.date} -- {wfv.name}</option>
+              {/each}
+              {/if}
+            </select>
+          </div>
         </div>
       </div>
     </div>
-    <div class="field-label is-normal">
-      <label class="label">Workflow version:</label>
-    </div>
-    <div class="field-body">
-      <div class="field">
-        <div class="select" on:change={fetchWorkflow}>
-          <select bind:value={config.wfversion}>
-            <option disabled value={false}>Select workflow version</option>
-            {#if config.wfid}
-            {#each allwfs[config.wfid].versions as wfv}
-            <option value={wfv}>{wfv.date} -- {wfv.name}</option>
-            {/each}
-            {/if}
-          </select>
-        </div>
-      </div>
-    </div>
-	</div>
+  </div>
 
   {#if wf}
-	<div class="field">
-    <input type="text" class="input" bind:value={config.analysisname} placeholder="Please enter analysis name">
-    <div>Full name will be <code>{allwfs[config.wfid].wftype}_{config.analysisname}</code>
-    This will be the folder name for the output and prefixed to the output filenames
-    </div>
-	</div>
-
   <div class="box">
     <div class="title is-5">Fetch settings/files from a previous analysis</div>
     {#if wf && 'COMPLEMENT_ANALYSIS' in wf.components && base_analysis.selected}
@@ -714,7 +758,9 @@ onMount(async() => {
   </div>
   {/if}
 
+  {#if Object.keys(dsets).length}
  <div class="title is-5">Datasets details</div>
+  {/if}
   {#each Object.values(dsets) as ds}
   <div class="box">
     {#if ds.changed}
@@ -1039,17 +1085,16 @@ onMount(async() => {
     {/each}
 	</div>
   {/if}
+  {/if} 
 
   {#if runButtonActive && (!existing_analysis || existing_analysis.editable)}
-  <a class="button is-primary" on:click={storeAnalysis}>Store analysis</a>
-  <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
+    {#if wf || external_results}
+      <a class="button is-primary" on:click={storeAnalysis}>Store analysis</a>
+    {:else if wf}
+      <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
+    {/if}
   {:else if postingAnalysis}
-	<a class="button is-primary is-loading">Store analysis</a>
-	<a class="button is-primary is-loading">Store and queue analysis</a>
-  {:else}
-	<a class="button is-primary" disabled>Store analysis</a>
-	<a class="button is-primary" disabled>Store and queue analysis</a>
+	<a class="button is-primary is-loading"></a>
   {/if}
 
-  {/if} 
 </div>
