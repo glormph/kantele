@@ -16,11 +16,11 @@ urlpatterns = [
     path('show/dataset/<int:dataset_id>', views.get_dset_info, name="dsinfo"),
     path('show/project/<int:proj_id>', views.get_proj_info, name="projinfo"),
     path('show/file/<int:file_id>', views.get_file_info, name="fninfo"),
-    path('show/analysis/<int:nfs_id>', views.get_analysis_info, name="anainfo"),
+    path('show/analysis/<int:anid>', views.get_analysis_info, name="anainfo"),
     path('show/job/<int:job_id>', views.get_job_info, name="jobinfo"),
     path('messages/', views.show_messages, name="messages"),
     path('refresh/job/<int:job_id>', views.refresh_job, name="jobrefresh"),
-    path('refresh/analysis/<int:nfs_id>', views.refresh_analysis, name="analysisrefresh"),
+    path('refresh/analysis/<int:anid>', views.refresh_analysis, name="analysisrefresh"),
     path('createmzml/', views.create_mzmls),
     path('refinemzml/', views.refine_mzmls),
 ]
