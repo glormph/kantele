@@ -139,6 +139,8 @@ def pause_job(request):
             job.joberror.delete()
     job.state = Jobstates.WAITING
     job.save()
+    jwrapper = jobmap[job.funcname](job.id) 
+    jwrapper.on_pause(job.kwargs)
     return JsonResponse({}) 
     
 
@@ -295,6 +297,7 @@ def analysis_run_done(request):
     if 'task' in data:
         set_task_done(data['task'])
     send_slack_message('{}: Analysis of {} is now finished'.format(data['user'], data['name']), 'general')
+    am.Analysis.objects.filter(pk=data['analysis_id']).update(editable=False)
     return HttpResponse()
 
 

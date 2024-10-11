@@ -340,15 +340,17 @@ def get_job_actions(job, ownership):
 def get_ana_actions(analysis, user):
     actions = []
     if analysis.user != user and not user.is_staff:
-        pass
-    elif hasattr(analysis, 'nextflowsearch'):
-        if analysis.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
-            actions.append('run job')
-        elif analysis.nextflowsearch.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
-            actions.append('stop job')
-        if analysis.nextflowsearch.job.state  in jj.JOBSTATES_PRE_OK_JOB:
-            # FIXME need to edit upload-data only runs? Freeze state?
+        actions.append('view')
+    else:
+        if analysis.editable:
             actions.append('edit')
+        else:
+            actions.append('view')
+        if hasattr(analysis, 'nextflowsearch'):
+            if analysis.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
+                actions.append('run job')
+            elif analysis.nextflowsearch.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
+                actions.append('stop job')
     return actions
 
 

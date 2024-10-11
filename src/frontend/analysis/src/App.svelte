@@ -1,13 +1,10 @@
 <script>
-/* TODO
-- click-removable datasets ?
-- 
-*/
 
 import { onMount } from 'svelte';
-import { flashtime } from '../../util.js'
+import { flashtime, statecolors, helptexts } from '../../util.js'
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
+import TokenInstructions from '../../file-inflow/src/TokenInstructions.svelte';
 
 let notif = {errors: {}, messages: {}, links: {}};
 let loadingItems = false;
@@ -15,9 +12,8 @@ let runButtonActive = true;
 let postingAnalysis = false;
 let copiedToken = false;
 
-let external_results = false;
-
 let analysis_id = existing_analysis ? existing_analysis.analysis_id : false;
+
 let wf = false;
 let dsets = {};
 let external_dsets = {};
@@ -91,13 +87,17 @@ let config = {
   wfid: false,
   wfversion: false,
   analysisname: '',
+  editable: true,
+  external_results: false,
+  external_desc: '',
+  jobstate: false,
+  upload_token: false,
   flags: [],
   multicheck: [],
   isoquants: {}, // contain both isoquant and sampletable
   fileparams: {},
   inputparams: {},
   multifileparams: {},
-  token: '',
 }
 let matchedFr = {};
 
@@ -109,13 +109,13 @@ function validate() {
   } else if (!charRe.test(config.analysisname)) {
     notif.errors['Analysisname may only contain a-z 0-9 _ -'] = 1;
   }
-  if (!config.wfid && !external_results) {
+  if (!config.wfid && !config.external_results) {
     notif.errors['You must select a workflow'] = 1;
   }
-  if (!config.wfversion && !external_results) {
+  if (!config.wfversion && !config.external_results) {
 		notif.errors['You must select a workflow version'] = 1;
 	}
-  if (!Object.keys(dsets).length && !external_results) {
+  if (!Object.keys(dsets).length && !config.external_results) {
     notif.errors['No datasets are in this analysis, maybe they need some editing'] = 1;
   }
   Object.values(dsets).forEach(ds => {
@@ -140,7 +140,7 @@ function validate() {
     })
   })
 
-  if (!external_results) {
+  if (!config.external_results) {
     wf.selectparams.forEach(selp => {
       if (!config.inputparams[selp.id]) {
         notif.errors[`Must select a value for ${selp.name}`] = 1;
@@ -171,7 +171,9 @@ async function storeAnalysis() {
   setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   let post = {
     analysis_id: analysis_id,
-    upload_external: external_results,
+    upload_external: config.external_results,
+    external_description: config.external_desc,
+    upload_token: config.upload_token,
     base_analysis: base_analysis,
     dsids: wf ? Object.keys(dsets) : Object.keys(external_dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets)
@@ -257,7 +259,7 @@ async function storeAnalysis() {
     } else {
       analysis_id = resp.analysis_id;
       history.pushState({}, '', `/analysis/${analysis_id}/`);
-      config.token = resp.token;
+      config.upload_token = resp.token;
     }
   }
   postingAnalysis = false;
@@ -281,6 +283,36 @@ async function runAnalysis() {
   }
 }
 
+
+async function freezeAnalysis() {
+  await storeAnalysis();
+  if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
+    notif.messages[`Freezing analysis ${config.analysisname}`] = 1;
+    const post = {
+      analysis_id: analysis_id,
+    }
+    const resp = await postJSON('/analysis/freeze/', post);
+    if (resp.error) {
+      notif.errors[resp.error] = 1;
+    } else {
+      config.editable = false;
+    }
+  }
+}
+
+
+async function unFreezeAnalysis() {
+  console.log('unfee');
+  const post = {
+    analysis_id: analysis_id,
+  }
+  const resp = await postJSON('/analysis/unfreeze/', post);
+  if (resp.error) {
+    notif.errors[resp.error] = 1;
+  } else {
+    config.editable = true;
+  }
+}
 
 async function fetchWorkflow() {
   /* Fetch all info about a chosen workflow. Passes dsids as param
@@ -519,7 +551,7 @@ function sortChannels(channels) {
 
 
 function copyToken() {
-  navigator.clipboard.writeTest(config.token);
+  navigator.clipboard.writeTest(config.upload_token.user_token);
   copiedToken = true;
   setTimeout(() => {copiedToken = false;}, 2000);
 }
@@ -588,7 +620,17 @@ async function populate_analysis_and_fetch_wf() {
     config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
     await fetchWorkflow();
   }
-  for (const key of ['analysisname', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
+  for (const key of ['analysisname',
+      'jobstate',
+      'flags',
+      'inputparams',
+      'multicheck',
+      'fileparams',
+      'isoquants',
+      'editable',
+      'external_desc',
+      'external_results',
+      'upload_token']) {
     config[key] = existing_analysis[key];
   }
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
@@ -663,7 +705,25 @@ onMount(async() => {
 
 <div class="content">
   <div class="box">
-    <h5 class="title is-5">Analysis name</h5>
+    {#if analysis_id}
+    <span class="icon-text">
+      {#if config.editable}
+      <a title="Click to freeze" on:click={freezeAnalysis}><span class="icon "><i class="fa fa-lock-open has-text-grey"></i></span></a>
+      {:else if config.external_results}
+      <a title="Click to edit" on:click={unFreezeAnalysis}><span class="icon "><i class="fa fa-lock has-text-grey"></i></span></a>
+      {/if}
+      <span class="tags has-addons">
+        <span class="tag">Analysis {config.editable ? 'editable' : 'frozen'}</span>
+        {#if config.jobstate}
+        <span class="tag {statecolors.tag[config.jobstate]}">{helptexts.jobstate[config.jobstate]}</span>
+        {:else}
+        <span class="tag is-grey-light">No job</span>
+        {/if}
+      </span>
+    </span>
+    {/if}
+    <h5 class="mt-3 title is-5">Analysis name</h5>
+    
     <div class="field">
       <input type="text" class="input" bind:value={config.analysisname} placeholder="Please enter analysis name">
     </div>
@@ -682,12 +742,29 @@ onMount(async() => {
       </div>
       {/if}
     
+    <textarea class="textarea" bind:value={config.external_desc} placeholder="Describe your analysis, relevant info, versions etc, possibly command line invocation used"></textarea>
+      {#if config.upload_token}
+      <button on:click={copyToken} class="button">
+        {#if copiedToken}
+        <span class="icon is-small"><i class="fa fa-check has-text-success"></i></span>
+        {:else}
+        <span class="icon is-small"><i class="fa fa-copy"></i></span>
+        <span>Copy token</span>
+        {/if}
+      </button>
+
+      <button on:click={copyToken} class="button">
+        <span class="icon is-small"><i class="fa fa-sync"></i></span>
+        <span>Renew token FIXME</span>
+      </button>
+  
+      <div>
+        <input class="input" value={config.upload_token.user_token} readonly />
+        This token will expire {config.upload_token.expires}
+      </div>
+      <hr />
+      <TokenInstructions filetype="analysis output" />
       {/if}
-    </button>
-    <div>
-      <input class="input" value={config.token.user_token} readonly />
-      This token will expire {config.token.expires}
-    </div>
     {/if}
   </div>
 
@@ -1098,9 +1175,12 @@ onMount(async() => {
   {/if}
   {/if} 
 
-  {#if runButtonActive && (!existing_analysis || existing_analysis.editable)}
-    {#if wf || external_results}
+  {#if runButtonActive && (!existing_analysis || config.editable)}
+    {#if wf || config.external_results}
       <a class="button is-primary" on:click={storeAnalysis}>Store analysis</a>
+      {#if config.external_results}
+        <a class="button is-primary" on:click={freezeAnalysis}>Freeze analysis</a>
+      {/if}
     {:else if wf}
       <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
     {/if}

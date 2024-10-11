@@ -21,7 +21,7 @@ from analysis import jobs as aj
 from datasets import models as dm
 from datasets.views import move_dset_project_servershare
 from rawstatus import models as rm
-from rawstatus.views import create_upload_token
+from rawstatus.views import create_upload_token, parse_token_for_frontend
 from home import views as hv
 from jobs import jobs as jj
 from jobs import views as jv
@@ -238,18 +238,21 @@ def get_analysis(request, anid):
             'fileparams': {},
             'isoquants': {},
             'added_results': {},
-            'editable': False,
+            'editable': ana.editable,
+            'jobstate': False,
+            'external_desc': '',
             'wfversion_id': False,
             'wfid': False,
-            'base_analysis': {},
+            'external_results': False,
+            'base_analysis': False,
             }
     dsets = {x.dataset_id: format_dset_tag(x.dataset) for x in ana.datasetanalysis_set.select_related('dataset').all()}
     prev_resultfiles_ids = get_prev_resultfiles(dsets.keys(), only_ids=True)
     if hasattr(ana, 'nextflowsearch'):
         analysis.update({
-                'editable': ana.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR],
                 'wfversion_id': ana.nextflowsearch.nfwfversionparamset_id,
                 'wfid': ana.nextflowsearch.workflow_id,
+                'jobstate': ana.nextflowsearch.job.state,
                 })
         PTypes = am.Param.PTypes
         for ap in ana.analysisparam_set.all():
@@ -322,6 +325,11 @@ def get_analysis(request, anid):
 
         if 'ISOQUANT' in wf_components:
             analysis['isoquants'] = get_isoquants(ana, sampletables)
+
+    if hasattr(ana, 'externalanalysis'):
+        analysis.update({'external_desc': ana.externalanalysis.description,
+            'upload_token': parse_token_for_frontend(ana.externalanalysis.last_token), 
+            'external_results': True})
 
     context = {
             'dsets': dsets,
@@ -746,6 +754,8 @@ def store_analysis(request):
             return JsonResponse({'error': 'This analysis has already finished running, it cannot be edited'}, status=403)
         elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'}, status=403)
+        elif not analysis.editable:
+            return JsonResponse({'error': 'This analysis cannot be edited'}, status=403)
 
     response_errors = []
     dsets = {str(x.pk): x for x in dsetquery}
@@ -904,15 +914,29 @@ def store_analysis(request):
     analysis.save()
 
     if req['upload_external']:
-        # FIXME
-        upl_ft = rm.StoredFileType.objects.get(filetype=settings.ANALYSIS_FT_NAME)
-        ana_prod = rm.Producer.objects.get(client_id=settings.ANALYSISCLIENT_APIKEY)
-        upl_token = create_upload_token(upl_ft.pk, request.user.pk, ana_prod,
-                rm.UploadToken.UploadFileType.ANALYSIS)
-        user_token = b64encode(f'{upl_token.token}|{settings.KANTELEHOST}'.encode('utf-8'))
-        api_token = {'user_token': user_token.decode('utf-8'),
-                'expires': datetime.strftime(upl_token.expires, '%Y-%m-%d')}
+        # Generate new upload token if it does not already exist
+        exta = am.ExternalAnalysis.objects.filter(analysis=analysis).select_related('last_token')
+        try:
+            exta = exta.get()
+        except am.ExternalAnalysis.DoesNotExist:
+            upl_ft = rm.StoredFileType.objects.get(filetype=settings.ANALYSIS_FT_NAME)
+            ana_prod = rm.Producer.objects.get(client_id=settings.ANALYSISCLIENT_APIKEY)
+            upl_token = create_upload_token(upl_ft.pk, request.user.pk, ana_prod,
+                    rm.UploadToken.UploadFileType.ANALYSIS)
+            exta = am.ExternalAnalysis.objects.create(analysis=analysis,
+                    description=req['external_description'], last_token=upl_token)
+        else:
+            # Need to access its upload token so have to get it anyway
+            exta.description = req['external_description']
+            exta.save()
+        api_token = parse_token_for_frontend(exta.last_token)
     else:
+        # Delete any existing external analysis row, but also upload token!
+        exta = am.ExternalAnalysis.objects.filter(analysis=analysis).select_related('last_token')
+        if exta.exists():
+            exta = exta.get()
+            exta.delete()
+            exta.last_token.delete()
         api_token = False
 
     in_components = {k: v for k, v in req['components'].items() if v}
@@ -1232,6 +1256,8 @@ def start_analysis(request):
         return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, '
             f'this job is {job.state}'}, status=403)
     jv.do_retry_job(job)
+    job.nextflowsearch.analysis.editable = False
+    job.nextflowsearch.analysis.save()
     return JsonResponse({}) 
 
 
@@ -1240,8 +1266,53 @@ def stop_analysis(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
-    job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
+    job = jm.Job.objects.get(nextflowsearch__analysis_id=req['item_id'])
+    job.nextflowsearch.analysis.editable = True
+    job.nextflowsearch.analysis.save()
     return jv.revoke_job(job.pk, request)
+
+
+@login_required
+def freeze_analysis(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    ana = am.Analysis.objects.filter(pk=req['analysis_id'], editable=True, externalanalysis__isnull=False)
+    if not ana.exists():
+        return JsonResponse({'error': 'Analysis cannot be locked, is already locked, or does '
+            'not exist'}, status=403)
+    if request.user.is_superuser:
+        nr = ana.update(editable=False)
+    else:
+        nr = ana.filter(user=request.user).update(editable=False)
+    if nr == 0:
+        return JsonResponse({'error': 'You do not have permission to freeze this analysis'}, status=403)
+    elif nr > 1:
+        raise RuntimeError('Freeze crashed, too many analyses updated. Should not happen')
+    else:
+        return JsonResponse({}) 
+
+
+@login_required
+def unfreeze_analysis(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    ana = am.Analysis.objects.filter(pk=req['analysis_id'], editable=False,
+            externalanalysis__isnull=False)
+    if not ana.exists():
+        return JsonResponse({'error': 'Analysis cannot be unlocked, is already unlocked, or '
+            'does not exist'}, status=403)
+    if request.user.is_staff:
+        nr = ana.update(editable=True)
+    else:
+        nr = ana.filter(user=request.user).update(editable=True)
+    if nr == 0:
+        return JsonResponse({'error': 'You do not have permission to edit this analysis'}, status=403)
+    elif nr > 1:
+        raise RuntimeError('Unfreeze crashed, too many analyses updated. Should not happen')
+    else:
+        return JsonResponse({}) 
 
 
 @login_required

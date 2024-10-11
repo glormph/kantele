@@ -10,6 +10,8 @@ urlpatterns = [
     path('delete/', views.delete_analysis),
     path('stop/', views.stop_analysis),
     path('start/', views.start_analysis),
+    path('freeze/', views.freeze_analysis),
+    path('unfreeze/', views.unfreeze_analysis),
     path('undelete/', views.undelete_analysis),
     path('purge/', views.purge_analysis),
     path('dsets/<int:wfversion_id>/', views.get_datasets),

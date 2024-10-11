@@ -28,7 +28,7 @@ const fixedbuttons = [
   {name: '__redo', alt: 'Refresh analysis info', action: refreshAnalysis},
 ]
 
-function editAnalysis(anid) {
+function editViewAnalysis(anid) {
   window.open(`/analysis/${anid}`, '_blank');
 } 
 
@@ -45,7 +45,8 @@ function startJob(anid) {
 
 function doAction(action, anid) {
   const actionmap = {
-    edit: editAnalysis,
+    edit: editViewAnalysis,
+    view: editViewAnalysis,
     'stop job': stopJob,
     'run job': startJob,
   }

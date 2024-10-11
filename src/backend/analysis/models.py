@@ -268,6 +268,7 @@ class Analysis(models.Model):
     deleted = models.BooleanField(default=False)
     purged = models.BooleanField(default=False)
     storage_dir = models.TextField()
+    editable = models.BooleanField(default=True)
 
 
 # Can this be generalized to deleted log for also files?
@@ -279,6 +280,13 @@ class AnalysisDeleted(models.Model):
 class AnalysisError(models.Model):
     message = models.TextField()
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+
+
+class ExternalAnalysis(models.Model):
+    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+    description = models.TextField()
+    # Deleting tokens happens, and we shouldnt lose the external analysis for it
+    last_token = models.ForeignKey(filemodels.UploadToken, on_delete=models.PROTECT)
 
 
 class NextflowSearch(models.Model):

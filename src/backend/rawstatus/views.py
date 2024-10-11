@@ -304,6 +304,13 @@ def login_required_403_json(view_func):
     return _wrapped_view
 
 
+
+def parse_token_for_frontend(upl_token):
+    user_token = b64encode(f'{upl_token.token}|{settings.KANTELEHOST}'.encode('utf-8'))
+    return {'user_token': user_token.decode('utf-8'),
+            'expires': datetime.strftime(upl_token.expires, '%Y-%m-%d')}
+
+
 @login_required_403_json
 @require_POST
 def request_upload_token(request):
@@ -325,10 +332,7 @@ def request_upload_token(request):
         return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library /etc files'})
 
     ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['uploadtype'], data['archive_only'])
-    token_info = f'{ufu.token}|{settings.KANTELEHOST}'
-    token_ft_host_b64 = b64encode(token_info.encode('utf-8'))
-    return JsonResponse({'token': ufu.token,
-        'user_token': token_ft_host_b64.decode('utf-8'), 'expires': ufu.expires})
+    return JsonResponse(parse_token_for_frontend(ufu))
 
 
 def create_upload_token(ftype_id, user_id, producer, uploadtype, archive_only=False):
