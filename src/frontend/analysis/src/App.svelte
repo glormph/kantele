@@ -20,6 +20,7 @@ let external_results = false;
 let analysis_id = existing_analysis ? existing_analysis.analysis_id : false;
 let wf = false;
 let dsets = {};
+let external_dsets = {};
 
 let dsetToAdd;
 let libfiles = {};
@@ -57,6 +58,8 @@ function addDataset() {
   dsnames[dsetToAdd] = `Dataset ${dsetToAdd}`;
   if (wf) {
     fetchDatasetDetails([dsetToAdd]);
+  } else {
+    external_dsets[dsetToAdd] = 1;
   }
 }
 
@@ -170,7 +173,7 @@ async function storeAnalysis() {
     analysis_id: analysis_id,
     upload_external: external_results,
     base_analysis: base_analysis,
-    dsids: Object.keys(dsets),
+    dsids: wf ? Object.keys(dsets) : Object.keys(external_dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets)
       .filter(([x,ds]) => ds.allfilessamesample)
       .map(([dsid, ds]) => [dsid, ds.setname])),
@@ -570,6 +573,13 @@ function updateIsoquant(dsid_changed) {
   }
 }
 
+function clearWorkflow() {
+  config.wfid = false;
+  config.wfversion = false;
+  wf = false;
+  dsets = {};
+} 
+
 
 async function populate_analysis_and_fetch_wf() {
   if (existing_analysis.wfid) {
@@ -661,16 +671,17 @@ onMount(async() => {
 
   <div class="box">
     <label class="checkbox">
-      <input type="checkbox" bind:checked={external_results} />
-      Externally run analysis, only upload results
+      <input type="checkbox" bind:checked={config.external_results} />
+      Externally run analysis, upload results but don't run
     </label>
-    {#if config.token}
-    <button on:click={copyToken} class="button">
-      {#if copiedToken}
-      <span class="icon is-small"><i class="fa fa-check has-text-success"></i></span>
-      {:else}
-      <span class="icon is-small"><i class="fa fa-copy"></i></span>
-      <span>Copy token</span>
+
+    {#if config.external_results}
+      {#if config.wfid}
+      <div class="field">
+        <button class="button is-small" on:click={clearWorkflow}>Dont use workflow</button>
+      </div>
+      {/if}
+    
       {/if}
     </button>
     <div>

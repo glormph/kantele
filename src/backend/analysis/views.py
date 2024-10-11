@@ -753,6 +753,9 @@ def store_analysis(request):
     frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['infiles']}, set()
     dsfiles = {}
     for dsid in req['dsids']:
+        if req['upload_external'] and not req['wfid']:
+            # Do not do any other dset processing if there is no WF
+            continue
         dset = dsets[dsid]
         dsname = f'{dset.runname.experiment.project.name} / {dset.runname.experiment.name} / {dset.runname.name}'
         if not hasattr(dset, 'quantdataset'):
@@ -794,6 +797,9 @@ def store_analysis(request):
                 return JsonResponse({'error': error}, status=403)
 
     for dsid in req['dsids']:
+        if req['upload_external'] and not req['wfid']:
+            # Do not do any other dset processing if there is no WF
+            continue
         for sf in dsfiles[dsid]:
             if sf.pk in frontend_files_not_in_ds:
                 frontend_files_not_in_ds.remove(sf.pk)
