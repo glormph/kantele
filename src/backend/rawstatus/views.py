@@ -75,7 +75,7 @@ def import_external_data(request):
             fakemd5 = md5()
             fakemd5.update(fn.encode('utf-8'))
             fakemd5 = fakemd5.hexdigest()
-            rawfn = get_or_create_rawfile(fakemd5, fn, extprod, size, date, {'claimed': True})
+            rawfn = get_or_create_rawfile(fakemd5, fn, extprod, size, date, claimed=True)
             sfile = StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
                     filetype_id=extprod.msinstrument.filetype_id, filename=fn,
                     defaults={'servershare_id': share.id,
@@ -126,7 +126,11 @@ def register_file(request):
         print('POST request to register_file with incorrect formatted '
               'date parameter {}'.format(error))
         return JsonResponse({'error': 'Date passed to registration incorrectly formatted'}, status=400)
-    response = get_or_create_rawfile(md5, fn, upload.producer, size, file_date, data)
+    if upload.uploadtype == UploadToken.UploadFileType.ANALYSIS:
+        claimed = True
+    else:
+        claimed = False
+    response = get_or_create_rawfile(md5, fn, upload.producer, size, file_date, claimed=claimed)
     return JsonResponse(response)
 
 
@@ -179,7 +183,7 @@ def browser_userupload(request):
         if ftype.filetype == 'fasta' and not any(SeqIO.parse(fp, 'fasta')):
             return JsonResponse(notfa_err_resp, status=403)
         dighash = dighash.hexdigest() 
-        raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), {'claimed': True})
+        raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), claimed=True)
         dst = rsjobs.create_upload_dst_web(raw['file_id'], upload.filetype.filetype)
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
@@ -338,10 +342,10 @@ def create_upload_token(ftype_id, user_id, producer, uploadtype, archive_only=Fa
             archive_only=archive_only, uploadtype=uploadtype)
 
 
-def get_or_create_rawfile(md5, fn, producer, size, file_date, postdata):
+def get_or_create_rawfile(md5, fn, producer, size, file_date, claimed):
     rawfn, created = RawFile.objects.get_or_create(source_md5=md5, defaults={
         'name': fn, 'producer': producer, 'size': size, 'date': file_date,
-        'claimed': postdata.get('claimed', False)})
+        'claimed': claimed})
     if not created:
         nrsfn = StoredFile.objects.filter(md5=md5, checked=True).count()
         stored = True if nrsfn else False
@@ -509,7 +513,7 @@ def transfer_file(request):
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     elif upload.uploadtype in [UploadToken.UploadFileType.LIBRARY, UploadToken.UploadFileType.USERFILE] and not desc:
         return JsonResponse({'error': 'Library or user files need a description'}, status=403)
-    elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS and not data.get('analysis_id'):
+    elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS and not hasattr(upload, 'externalanalysis'):
         # FIXME can we upload proper analysis files here too??? In theory, yes! At a speed cost
         return JsonResponse({'error': 'Analysis result uploads need an analysis_id to put them in'}, status=403)
     # First check if everything is OK wrt rawfile/storedfiles
@@ -546,11 +550,7 @@ def transfer_file(request):
         dstsharename = settings.TMPSHARENAME
         check_dup = True
     elif upload.uploadtype == ufiletypes.ANALYSIS:
-        # FIXME either directly to new dir for analysis,
-        # or to intermediatedir? like mzml_in ?
-        #run['runname']).replace(' ', '_')
-        analysis = Analysis.objects.get(pk=data['analysis_id'])
-        dstpath = analysis.storage_dir
+        dstpath = upload.externalanalysis.analysis.storage_dir
         dstsharename = settings.ANALYSISSHARENAME
     elif upload.uploadtype == ufiletypes.LIBRARY:
         # Make file names unique because harder to control external files
@@ -612,6 +612,8 @@ def transfer_file(request):
         LibraryFile.objects.create(sfile=file_trf, description=desc)
     elif upload.uploadtype == UploadToken.UploadFileType.USERFILE:
         UserFile.objects.create(sfile=file_trf, description=desc, upload=upload)
+    elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS:
+        AnalysisResultFile.objects.create(sfile=file_trf, analysis=upload.externalanalysis.analysis)
     create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 
@@ -845,7 +847,7 @@ def download_px_project(request):
         fakemd5.update(filename.encode('utf-8'))
         fakemd5 = fakemd5.hexdigest()
         rawfn = get_or_create_rawfile(fakemd5, filename, extproducers[fn['instr_type']],
-                                       fn['fileSize'], date, {'claimed': True})
+                fn['fileSize'], date, claimed=True)
         shasums[rawfn['file_id']] = fn['sha1sum']
         if not rawfn['stored']:
             ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw').id
