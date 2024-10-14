@@ -341,7 +341,7 @@ def confirm_internal_file(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
     data =  json.loads(request.POST['json'])
-    upload = UploadToken.validate_token(data['token'])
+    upload = UploadToken.validate_token(data['token'], [])
     if not upload:
         return HttpResponseForbidden()
     dstshare = ServerShare.objects.get(name=data['dstsharename'])
@@ -349,7 +349,7 @@ def confirm_internal_file(request):
     # Reruns lead to trying to store files multiple times, avoid that here:
     sfile, created = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
             md5=data['md5'],
-            defaults={'filetype': upload.filetype, 'servershare': dstshare, 
+            defaults={'filetype_id': upload.filetype_id, 'servershare': dstshare, 
                 'path': data['outdir'], 'checked': True, 'filename': data['filename']})
     if data['analysis_id'] and created:
         am.AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)

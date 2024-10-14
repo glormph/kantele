@@ -127,9 +127,9 @@ class UploadToken(models.Model):
     uploadtype = models.IntegerField(choices=UploadFileType.choices)
 
     @staticmethod
-    def validate_token(token):
+    def validate_token(token, joinmodels):
         try:
-            upload = UploadToken.objects.select_related('filetype', 'producer').get(
+            upload = UploadToken.objects.select_related(*joinmodels).get(
                     token=token, expired=False)
         except UploadToken.DoesNotExist as e:
             print('Token for user upload does not exist')

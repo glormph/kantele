@@ -116,7 +116,7 @@ def register_file(request):
         print('POST request to register_file with missing parameter, '
               '{}'.format(error))
         return JsonResponse({'error': 'Data passed to registration incorrect'}, status=400)
-    upload = UploadToken.validate_token(token)
+    upload = UploadToken.validate_token(token, ['producer'])
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     try:
@@ -255,7 +255,7 @@ def instrument_check_in(request):
     elif taskid and not data.get('ftype', False):
         return JsonResponse({'error': 'Bad request'}, status=400)
 
-    upload = UploadToken.validate_token(token) if token else False
+    upload = UploadToken.validate_token(token, ['producer']) if token else False
     task = jm.Task.objects.filter(asyncid=taskid).exclude(state__in=jobutil.JOBSTATES_DONE)
 
     uploadtype = UploadToken.UploadFileType.RAWFILE
@@ -364,7 +364,7 @@ def get_files_transferstate(request):
         print(f'Request to get transferstate with missing parameter, {error}')
         return JsonResponse({'error': 'Bad request'}, status=400)
 
-    upload = UploadToken.validate_token(token)
+    upload = UploadToken.validate_token(token, ['producer'])
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     # Also do registration here? if MD5? prob not.
@@ -377,7 +377,7 @@ def get_files_transferstate(request):
         # is wrong here (unlikely right?)
         return JsonResponse({'error': f'File with ID {rfn.id} is not from producer  {upload.producer.name}'}, status=403)
     # FIXME if somehow really bad timing, there will be multiple sfns?
-    sfns = rfn.storedfile_set.filter(filetype=upload.filetype, mzmlfile__isnull=True)
+    sfns = rfn.storedfile_set.filter(filetype_id=upload.filetype_id, mzmlfile__isnull=True)
     if not sfns.count():
         # has not been reported as transferred,
         tstate = 'transfer'
@@ -504,7 +504,7 @@ def transfer_file(request):
               '{}'.format(error))
         return JsonResponse({'error': 'Bad request'}, status=400)
     desc = data.get('desc', False)
-    upload = UploadToken.validate_token(token)
+    upload = UploadToken.validate_token(token, ['filetype', 'externalanalysis__analysis'])
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     elif upload.uploadtype in [UploadToken.UploadFileType.LIBRARY, UploadToken.UploadFileType.USERFILE] and not desc:
