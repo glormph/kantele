@@ -487,7 +487,7 @@ def main():
         # which filetype were uploading, and it will contain the upload location
         webtoken = input('Please provide token from web interface: ').strip()
         try:
-            token, kantelehost = b64decode(webtoken).decode('utf-8').split('|')
+            token, kantelehost, need_desc = b64decode(webtoken).decode('utf-8').split('|')
         except ValueError:
             print('Incorrect token')
             sys.exit(1)
@@ -495,7 +495,7 @@ def main():
         if sys.platform.startswith('win'):
             args.files = glob(args.files[0])
         for fn in args.files:
-            if int(is_libfile):
+            if int(need_desc):
                 descriptions[fn] = input(f'Please enter a description for your file {fn}: ')
         config.update({'host': kantelehost, 'token': token, 'is_manual': True})
     elif args.configfn:

@@ -4,7 +4,6 @@ import json
 from datetime import datetime, timedelta
 from collections import defaultdict
 from uuid import uuid4
-from base64 import b64encode
 
 from django.utils import timezone
 from django.http import (HttpResponseForbidden, HttpResponse, JsonResponse,
@@ -21,7 +20,7 @@ from analysis import jobs as aj
 from datasets import models as dm
 from datasets.views import move_dset_project_servershare
 from rawstatus import models as rm
-from rawstatus.views import create_upload_token, parse_token_for_frontend
+from rawstatus.views import create_upload_token
 from home import views as hv
 from jobs import jobs as jj
 from jobs import views as jv
@@ -328,7 +327,7 @@ def get_analysis(request, anid):
 
     if hasattr(ana, 'externalanalysis'):
         analysis.update({'external_desc': ana.externalanalysis.description,
-            'upload_token': parse_token_for_frontend(ana.externalanalysis.last_token), 
+            'upload_token': ana.externalanalysis.last_token.parse_token_for_frontend(), 
             'external_results': True})
 
     context = {
@@ -929,7 +928,7 @@ def store_analysis(request):
             # Need to access its upload token so have to get it anyway
             exta.description = req['external_description']
             exta.save()
-        api_token = parse_token_for_frontend(exta.last_token)
+        api_token = exta.last_token.parse_token_for_frontend()
     else:
         # Delete any existing external analysis row, but also upload token!
         exta = am.ExternalAnalysis.objects.filter(analysis=analysis).select_related('last_token')
@@ -1156,6 +1155,31 @@ def get_isoquants(analysis, sampletables):
 
 
 @login_required
+@require_POST
+def renew_token(request):
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        analysis = am.Analysis.objects.select_related('externalanalysis__last_token').get(
+                editable=True, pk=req['analysis_id'])
+    except am.Analysis.DoesNotExist:
+        return JsonResponse({'error': 'Analysis does not exist or is frozen'}, status=403)
+
+    if not hasattr(analysis, 'externalanalysis'):
+        return JsonResponse({'error': 'Analysis is not stored as externally run and does not '
+            'have manual result uploads'}, status=403)
+
+    # Invalidate old token and create new one
+    analysis.externalanalysis.last_token.invalidate()
+    new_token = create_upload_token(analysis.externalanalysis.last_token.filetype.pk,
+            request.user.pk, analysis.externalanalysis.last_token.producer, 
+            rm.UploadToken.UploadFileType.ANALYSIS)
+    analysis.externalanalysis.last_token = new_token
+    analysis.externalanalysis.save()
+    api_token = new_token.parse_token_for_frontend()
+    return JsonResponse({'error': False, 'token': api_token})
+
+
+@login_required
 def undelete_analysis(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
@@ -1278,20 +1302,19 @@ def freeze_analysis(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
-    ana = am.Analysis.objects.filter(pk=req['analysis_id'], editable=True, externalanalysis__isnull=False)
+    ana = am.Analysis.objects.filter(pk=req['analysis_id'], editable=True, externalanalysis__isnull=False).select_related('externalanalysis__last_token')
     if not ana.exists():
         return JsonResponse({'error': 'Analysis cannot be locked, is already locked, or does '
             'not exist'}, status=403)
-    if request.user.is_superuser:
-        nr = ana.update(editable=False)
-    else:
-        nr = ana.filter(user=request.user).update(editable=False)
-    if nr == 0:
-        return JsonResponse({'error': 'You do not have permission to freeze this analysis'}, status=403)
-    elif nr > 1:
-        raise RuntimeError('Freeze crashed, too many analyses updated. Should not happen')
-    else:
-        return JsonResponse({}) 
+    if not request.user.is_superuser:
+        ana = ana.filter(user=request.user)
+        if not ana.exists():
+            return JsonResponse({'error': 'You do not have permission to freeze this analysis'}, status=403)
+    ana = ana.get()
+    ana.editable = False
+    ana.externalanalysis.last_token.invalidate()
+    ana.save()
+    return JsonResponse({}) 
 
 
 @login_required

@@ -550,6 +550,19 @@ function sortChannels(channels) {
 }
 
 
+async function renewToken() {
+  const post = {
+    analysis_id: analysis_id,
+  }
+  const resp = await postJSON('/analysis/token/renew/', post);
+  if (resp.error) {
+    notif.errors[resp.error] = 1;
+  } else {
+    config.upload_token = resp.token;
+  }
+}
+
+
 function copyToken() {
   navigator.clipboard.writeTest(config.upload_token.user_token);
   copiedToken = true;
@@ -743,6 +756,15 @@ onMount(async() => {
       {/if}
     
     <textarea class="textarea" bind:value={config.external_desc} placeholder="Describe your analysis, relevant info, versions etc, possibly command line invocation used"></textarea>
+
+    {#if config.external_results && config.editable}
+      {#if analysis_id}
+      <button title="Generate new token and invalidate any old tokens for this analysis" on:click={renewToken} class="button">
+        <span class="icon is-small"><i class="fa fa-sync"></i></span>
+        <span>New token</span>
+      </button>
+      {/if}
+
       {#if config.upload_token}
       <button on:click={copyToken} class="button">
         {#if copiedToken}
@@ -752,20 +774,23 @@ onMount(async() => {
         <span>Copy token</span>
         {/if}
       </button>
+      {/if}
 
-      <button on:click={copyToken} class="button">
-        <span class="icon is-small"><i class="fa fa-sync"></i></span>
-        <span>Renew token FIXME</span>
-      </button>
-  
+      {#if config.upload_token}
       <div>
         <input class="input" value={config.upload_token.user_token} readonly />
+        {#if config.upload_token.expired}
+        <span class="has-text-danger">Token has expired</span>
+        {:else}
         This token will expire {config.upload_token.expires}
+        {/if}
       </div>
       <hr />
       <TokenInstructions filetype="analysis output" />
       {/if}
     {/if}
+
+  {/if}
   </div>
 
   <div class="box">

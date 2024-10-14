@@ -1,8 +1,12 @@
+from datetime import datetime
+from base64 import b64encode
+
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.db.models import Q
 
+from kantele import settings
 from jobs.models import Job
 
 
@@ -141,7 +145,16 @@ class UploadToken(models.Model):
                 return False
             return upload
 
+    def parse_token_for_frontend(self):
+        ufts = self.UploadFileType
+        need_desc = int(self.uploadtype in [ufts.LIBRARY, ufts.USERFILE])
+        user_token = b64encode(f'{self.token}|{settings.KANTELEHOST}|{need_desc}'.encode('utf-8'))
+        return {'user_token': user_token.decode('utf-8'), 'expired': self.expired,
+                'expires': datetime.strftime(self.expires, '%Y-%m-%d')}
 
+    def invalidate(self):
+        self.expired = True
+        self.save()
 
 
 class UserFile(models.Model):

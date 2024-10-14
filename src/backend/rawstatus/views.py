@@ -17,7 +17,6 @@ import shutil
 import zipfile
 from tempfile import NamedTemporaryFile, mkstemp
 from uuid import uuid4
-from base64 import b64encode
 import requests
 from hashlib import md5
 from urllib.parse import urlsplit
@@ -305,12 +304,6 @@ def login_required_403_json(view_func):
 
 
 
-def parse_token_for_frontend(upl_token):
-    user_token = b64encode(f'{upl_token.token}|{settings.KANTELEHOST}'.encode('utf-8'))
-    return {'user_token': user_token.decode('utf-8'),
-            'expires': datetime.strftime(upl_token.expires, '%Y-%m-%d')}
-
-
 @login_required_403_json
 @require_POST
 def request_upload_token(request):
@@ -332,7 +325,7 @@ def request_upload_token(request):
         return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library /etc files'})
 
     ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['uploadtype'], data['archive_only'])
-    return JsonResponse(parse_token_for_frontend(ufu))
+    return JsonResponse(ufu.parse_token_for_frontend())
 
 
 def create_upload_token(ftype_id, user_id, producer, uploadtype, archive_only=False):
