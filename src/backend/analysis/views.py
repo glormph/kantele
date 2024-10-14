@@ -223,7 +223,7 @@ def get_analysis(request, anid):
     page where the JS can pick it up'''
     try:
         ana = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__paramset',
-                'nextflowsearch__job').get(pk=anid)
+                'nextflowsearch__job', 'externalanalysis__last_token').get(pk=anid)
     except am.Analysis.DoesNotExist:
         return HttpResponseNotFound()
     if ana.user != request.user and not request.user.is_staff:
@@ -1124,7 +1124,7 @@ def store_analysis(request):
         kwargs = {'analysis_id': analysis.id, 'dstsharename': settings.ANALYSISSHARENAME,
                 'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
                 'storagepath': analysis.storage_dir, **data_args}
-        if req['analysis_id']:
+        if req['analysis_id'] and hasattr(analysis, 'nextflowsearch'):
             job_db = analysis.nextflowsearch.job
             job_db.kwargs = kwargs
             job_db.state = jj.Jobstates.WAITING
@@ -1161,7 +1161,7 @@ def undelete_analysis(request):
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
-        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['item_id'])
+        analysis = am.Analysis.objects.get(pk=req['item_id'])
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if not analysis.deleted:
@@ -1181,7 +1181,7 @@ def delete_analysis(request):
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
-        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['item_id'])
+        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(pk=req['item_id'])
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if analysis.deleted:
@@ -1192,13 +1192,14 @@ def delete_analysis(request):
             analysis.save()
             del_record = am.AnalysisDeleted(analysis=analysis)
             del_record.save()
-            ana_job = analysis.nextflowsearch.job
-            if ana_job.state not in jj.Jobstates.DONE:
-                if ana_job.state in [jj.Jobstates.ERROR, jj.Jobstates.WAITING, jj.Jobstates.PENDING]:
-                    ana_job.state = jj.Jobstates.CANCELED
-                else:
-                    ana_job.state = jj.Jobstates.REVOKING
-                ana_job.save()
+            if hasattr(analysis, 'nextflowsearch'):
+                ana_job = analysis.nextflowsearch.job
+                if ana_job.state not in jj.Jobstates.DONE:
+                    if ana_job.state in [jj.Jobstates.ERROR, jj.Jobstates.WAITING, jj.Jobstates.PENDING]:
+                        ana_job.state = jj.Jobstates.CANCELED
+                    else:
+                        ana_job.state = jj.Jobstates.REVOKING
+                    ana_job.save()
         return JsonResponse({})
     else:
         return JsonResponse({'error': 'User is not authorized to delete this analysis'}, status=403)
@@ -1212,7 +1213,7 @@ def purge_analysis(request):
         return JsonResponse({'error': 'Only admin is authorized to purge analysis'}, status=403)
     req = json.loads(request.body.decode('utf-8'))
     try:
-        analysis = am.Analysis.objects.get(nextflowsearch__id=req['item_id'])
+        analysis = am.Analysis.objects.get(pk=req['item_id'])
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if not analysis.deleted:
@@ -1239,7 +1240,7 @@ def start_analysis(request):
     req = json.loads(request.body.decode('utf-8'))
     if 'item_id' in req:
         # home app
-        jobq = Q(nextflowsearch__id=req['item_id'])
+        jobq = Q(nextflowsearch__analysis_id=req['item_id'])
     elif 'analysis_id' in req:
         # analysis start app
         jobq = Q(nextflowsearch__analysis_id=req['analysis_id'])
