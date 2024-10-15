@@ -37,6 +37,7 @@ from urllib.parse import urljoin
 from time import sleep, time
 from multiprocessing import Process, Queue, set_start_method
 import requests
+import certifi
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 LEDGERFN = 'ledger.json'
@@ -107,14 +108,17 @@ def check_in_instrument(config, configfn, logger):
                     passwordfail = True
             username = input('Kantele username: ')
             password = getpass.getpass('Kantele password: ')
-            init_resp = session.get(loginurl)
+            init_resp = session.get(loginurl, verify=certifi.where())
             loginresp = session.post(loginurl,
                     data={'username': username, 'password': password},
-                    headers=get_csrf(session.cookies, kantelehost))
+                    headers=get_csrf(session.cookies, kantelehost),
+                    verify=certifi.where())
             tokenresp = session.post(urljoin(kantelehost, 'files/token/'),
                     headers=get_csrf(session.cookies, kantelehost),
                     json={'producer_id': clid, 'ftype_id': config['filetype_id'],
-                        'is_library': False, 'archive_only': False})
+                        'archive_only': False},
+                    verify=certifi.where()
+                    )
             if tokenresp.status_code != 403:
                 break
             if passwordfail:
@@ -127,10 +131,12 @@ def check_in_instrument(config, configfn, logger):
         config['token'] = result['token']
     elif clid:
         # Validate/renew existing token
-        loginresp = session.get(loginurl)
+        loginresp = session.get(loginurl, verify=certifi.where())
         valresp = session.post(urljoin(kantelehost, 'files/instruments/check/'),
                 headers=get_csrf(loginresp.cookies, kantelehost),
-                json={'token': config['token'], 'client_id': clid})
+                json={'token': config['token'], 'client_id': clid},
+                verify=certifi.where()
+                )
         if valresp.status_code == 403:
             logger.error('Token expired or invalid, will try to fetch new token')
             del(config['token'])
@@ -170,7 +176,8 @@ def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **
                 }
     if postkwargs:
         postdata.update(postkwargs)
-    return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata)
+    return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata,
+            verify=certifi.where())
 
 
 def transfer_file(url, fpath, fn_id, token, desc, cookies, host):
@@ -186,7 +193,7 @@ def transfer_file(url, fpath, fn_id, token, desc, cookies, host):
         mpedata = MultipartEncoder(fields=stddata)
         headers = get_csrf(cookies, host)
         headers['Content-Type'] = mpedata.content_type
-        return requests.post(url, cookies=cookies, data=mpedata, headers=headers)
+        return requests.post(url, cookies=cookies, data=mpedata, headers=headers, verify=certifi.where())
 
 
 def get_fndata_id(fndata):
@@ -287,7 +294,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
     logger = logging.getLogger(f'{clientname}.producer.worker')
     heartbeat_t = time()
     while True:
-        loginresp = requests.get(urljoin(kantelehost, 'login/'))
+        loginresp = requests.get(urljoin(kantelehost, 'login/'), verify=certifi.where())
         cookies = loginresp.cookies
         if not config['is_manual']:
             for fndata in [x for x in ledger.values() if not x['fn_id']]:
@@ -345,7 +352,8 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             try:
                 resp = requests.post(fnstate_url, cookies=cookies,
                         headers=get_csrf(cookies, kantelehost),
-                        json={'fnid': fnid, 'token': config['token']})
+                        json={'fnid': fnid, 'token': config['token']},
+                        verify=certifi.where())
             except requests.exceptions.ConnectionError:
                 logger.error('Cannot connect to kantele server to request state '
                 f'for file {fndata["fname"]}, will retry')

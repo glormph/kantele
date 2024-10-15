@@ -473,7 +473,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
     zipsizes = {'kantele_upload.sh': 337,
             'kantele_upload.bat': 185,
-            'upload.py': 25735,
+            'upload.py': 26075,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 689,
