@@ -114,6 +114,7 @@ class UploadToken(models.Model):
         ANALYSIS = 2, 'Analysis result'
         LIBRARY = 3, 'Shared file for all users'
         USERFILE = 4, 'User upload'
+        # QC file for auto processing!? FIXME
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.CharField(max_length=36, unique=True) # UUID keys
@@ -132,16 +133,13 @@ class UploadToken(models.Model):
             upload = UploadToken.objects.select_related(*joinmodels).get(
                     token=token, expired=False)
         except UploadToken.DoesNotExist as e:
-            print('Token for user upload does not exist')
             return False
         else:
             if upload.expires < timezone.now():
-                print('Token expired')
                 upload.expired = True
                 upload.save()
                 return False
             elif upload.expired:
-                print('Token expired')
                 return False
             return upload
 

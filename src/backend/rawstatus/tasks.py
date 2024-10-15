@@ -200,7 +200,6 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def delete_file(self, servershare, filepath, fn_id, is_dir=False):
-    print(settings.SHAREMAP)
     print('Deleting file {} on {}'.format(filepath, servershare))
     fileloc = os.path.join(settings.SHAREMAP[servershare], filepath)
     try:

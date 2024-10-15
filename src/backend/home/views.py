@@ -64,7 +64,6 @@ def find_projects(request):
 
 
 def dataset_query_creator(searchterms):
-    '''Shared by home find_datasets and analysis find_datasets'''
     query = Q(runname__name__icontains=searchterms[0])
     query |= Q(runname__experiment__name__icontains=searchterms[0])
     query |= Q(runname__experiment__project__name__icontains=searchterms[0])
@@ -598,10 +597,9 @@ def get_analysis_info(request, anid):
                    'name': ana.nextflowsearch.nfwfversionparamset.nfworkflow.description,
                    'update': ana.nextflowsearch.nfwfversionparamset.update,
                    'repo': ana.nextflowsearch.nfwfversionparamset.nfworkflow.repo},
-            'invocation': get_analysis_invocation(ana),
             }
     else:
-        nfs_info = {'name': ana.name, 'addToResults': False, 'wf': False, 'invocation': False, }
+        nfs_info = {'name': ana.name, 'addToResults': False, 'wf': False}
     dsicount = anmodels.AnalysisDSInputFile.objects.filter(analysisset__analysis=ana).count()
     afscount = ana.analysisfilevalue_set.count()
     resp = {'nrdsets': len(dsets),

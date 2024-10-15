@@ -28,7 +28,7 @@ from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               PDCBackedupFile, UploadToken)
 from rawstatus import jobs as rsjobs
 from rawstatus.tasks import search_raws_downloaded
-from analysis.models import (Analysis, LibraryFile, AnalysisResultFile, NextflowWfVersionParamset, UserWorkflow)
+from analysis.models import (Analysis, LibraryFile, AnalysisResultFile)
 from datasets import views as dsviews
 from datasets import models as dsmodels
 from dashboard import models as dashmodels

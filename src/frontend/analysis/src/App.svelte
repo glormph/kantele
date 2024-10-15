@@ -173,7 +173,6 @@ async function storeAnalysis() {
     analysis_id: analysis_id,
     upload_external: config.external_results,
     external_description: config.external_desc,
-    upload_token: config.upload_token,
     base_analysis: base_analysis,
     dsids: wf ? Object.keys(dsets) : Object.keys(external_dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets)
@@ -278,7 +277,7 @@ async function runAnalysis() {
     if (resp.error) {
       notif.errors[resp.error] = 1;
     } else {
-      window.location.href = '/?tab=searches';
+      window.location.href = '/#/analyses/';
     }
   }
 }
@@ -302,7 +301,6 @@ async function freezeAnalysis() {
 
 
 async function unFreezeAnalysis() {
-  console.log('unfee');
   const post = {
     analysis_id: analysis_id,
   }
@@ -627,6 +625,7 @@ function clearWorkflow() {
 
 
 async function populate_analysis_and_fetch_wf() {
+  // Only runs in onMount
   if (existing_analysis.wfid) {
     config.wfid = existing_analysis.wfid;
     config.wfversion_id = existing_analysis.wfversion_id;

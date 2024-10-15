@@ -1359,7 +1359,6 @@ def upload_servable_file(request):
     elif 'fname' not in data or data['fname'] not in settings.SERVABLE_FILENAMES:
         return JsonResponse({'msg': 'File is not servable'}, status=406)
     else:
-        print('Ready to upload')
         return JsonResponse({'msg': 'File can be uploaded and served'}, status=200)
 
 

@@ -376,7 +376,8 @@ class DatasetAnalysis(models.Model):
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     # cannot put setname here because of searches without dset/setname
     # model used in reporting, and also for finding datasets for base analysis etc
-    # and in mstulos for coupling dset/analysis
+    # and in mstulos for coupling dset/analysis, and for external analyses ("just dataset", 
+    # no input files etc are stored)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_dsa_anadsets')]
