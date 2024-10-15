@@ -92,6 +92,7 @@ class UserWorkflow(models.Model):
         PISEP = 5, 'pI-separated identification'
         SPEC = 6, 'Special internal'
         LC = 7, 'Labelcheck'
+        USER = 8, 'User-run workflow'
 
     name = models.TextField()
     wftype = models.IntegerField(choices=WFTypeChoices.choices)
@@ -267,6 +268,7 @@ class Analysis(models.Model):
     deleted = models.BooleanField(default=False)
     purged = models.BooleanField(default=False)
     storage_dir = models.TextField()
+    editable = models.BooleanField(default=True)
 
 
 # Can this be generalized to deleted log for also files?
@@ -278,6 +280,13 @@ class AnalysisDeleted(models.Model):
 class AnalysisError(models.Model):
     message = models.TextField()
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+
+
+class ExternalAnalysis(models.Model):
+    analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
+    description = models.TextField()
+    # Deleting tokens happens, and we shouldnt lose the external analysis for it
+    last_token = models.OneToOneField(filemodels.UploadToken, on_delete=models.PROTECT)
 
 
 class NextflowSearch(models.Model):
@@ -367,7 +376,8 @@ class DatasetAnalysis(models.Model):
     dataset = models.ForeignKey(dsmodels.Dataset, on_delete=models.CASCADE)
     # cannot put setname here because of searches without dset/setname
     # model used in reporting, and also for finding datasets for base analysis etc
-    # and in mstulos for coupling dset/analysis
+    # and in mstulos for coupling dset/analysis, and for external analyses ("just dataset", 
+    # no input files etc are stored)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['analysis', 'dataset'], name='uni_dsa_anadsets')]

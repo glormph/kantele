@@ -124,9 +124,16 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
     on its relevant file, in case the transferred file is corrupt'''
     # FIXME need to take care of e.g. zipped uploads which do not contain relevant file
     # (use case e.g. microscopy images), unlike e.g. .d folders from Bruker.
-    ssh_host = urlsplit(settings.KANTELEHOST).netloc
+    ssh_host = settings.RSYNC_HOST
     ssh_srcpath = f'{settings.RSYNC_SSHUSER}@{ssh_host}:{srcpath}'
     dstfpath = os.path.join(settings.SHAREMAP[dstsharename], dstpath)
+    fulldir, fn = os.path.split(dstfpath)
+    if not os.path.exists(fulldir):
+        os.makedirs(fulldir)
+    elif not os.path.isdir(fulldir):
+        msg = f'Directory to transfer file {fn} to already exists and it is a file ({fulldir})'
+        taskfail_update_db(self.request.id, msg=msg)
+        raise RuntimeError(msg)
     cmd = ['rsync', '-av', '-e',
             f'ssh -o StrictHostKeyChecking=no -p {settings.RSYNC_SSHPORT} -i {settings.RSYNC_SSHKEY}',
             ssh_srcpath, dstfpath]
@@ -193,7 +200,6 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
 
 @shared_task(bind=True, queue=settings.QUEUE_STORAGE)
 def delete_file(self, servershare, filepath, fn_id, is_dir=False):
-    print(settings.SHAREMAP)
     print('Deleting file {} on {}'.format(filepath, servershare))
     fileloc = os.path.join(settings.SHAREMAP[servershare], filepath)
     try:

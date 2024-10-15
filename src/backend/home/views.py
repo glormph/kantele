@@ -63,12 +63,7 @@ def find_projects(request):
     return JsonResponse({'items': items, 'order': order})
 
 
-@login_required
-@require_GET
-def find_datasets(request):
-    """Loop through comma-separated q-param in GET, do a lot of OR queries on
-    datasets to find matches. String GET-derived q-params by AND."""
-    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+def dataset_query_creator(searchterms):
     query = Q(runname__name__icontains=searchterms[0])
     query |= Q(runname__experiment__name__icontains=searchterms[0])
     query |= Q(runname__experiment__project__name__icontains=searchterms[0])
@@ -95,8 +90,17 @@ def find_datasets(request):
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__start=term)
             subquery |= Q(prefractionationdataset__hiriefdataset__hirief__end=term)
         query &= subquery
-    dbdsets = dsmodels.Dataset.objects.filter(query)
-    if request.GET['deleted'] == 'false':
+    return dsmodels.Dataset.objects.filter(query)
+
+
+@login_required
+@require_GET
+def find_datasets(request):
+    """Loop through comma-separated q-param in GET, do a lot of OR queries on
+    datasets to find matches. String GET-derived q-params by AND."""
+    searchterms = [x for x in request.GET['q'].split(',') if x != '']
+    dbdsets = dataset_query_creator(searchterms)
+    if request.GET.get('deleted', 'false') == 'false':
         dbdsets = dbdsets.filter(deleted=False)
     dsets = populate_dset(dbdsets, request.user)
     return JsonResponse({'items': dsets, 'order': list(dsets.keys())})
@@ -111,17 +115,17 @@ def find_analysis(request):
     query = Q()
     wftypes = zip(anmodels.UserWorkflow.WFTypeChoices.choices, anmodels.UserWorkflow.WFTypeChoices.names)
     for term in searchterms:
-        subquery = Q(analysis__name__icontains=term)
-        subquery |= Q(workflow__name__icontains=term)
-        subquery |= Q(analysis__user__username__icontains=term)
+        subquery = Q(name__icontains=term)
+        subquery |= Q(nextflowsearch__workflow__name__icontains=term)
+        subquery |= Q(user__username__icontains=term)
         # WF types is integerchoice, search as such
         match_wftypes = [x[0][0] for x in wftypes if term in x[0][1] or term in x[1]]
-        subquery |= Q(workflow__wftype__in=match_wftypes)
+        subquery |= Q(nextflowsearch__workflow__wftype__in=match_wftypes)
         query &= subquery
-    dbanalyses = anmodels.NextflowSearch.objects.filter(query)
+    dbanalyses = anmodels.Analysis.objects.filter(query)
     if request.GET['deleted'] == 'false':
-        dbanalyses = dbanalyses.filter(analysis__deleted=False)
-    items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
+        dbanalyses = dbanalyses.filter(deleted=False)
+    items, it_order = populate_analysis(dbanalyses.order_by('-date'), request.user)
     return JsonResponse({'items': items, 'order': it_order})
 
 
@@ -130,19 +134,15 @@ def find_analysis(request):
 def show_analyses(request):
     if 'ids' in request.GET:
         ids = request.GET['ids'].split(',')
-        dbanalyses = anmodels.NextflowSearch.objects.filter(pk__in=ids)
+        dbanalyses = anmodels.Analysis.objects.filter(pk__in=ids)
     else:
         # last 6month analyses of a user plus current analyses PENDING/PROCESSING
-        run_ana = anmodels.NextflowSearch.objects.select_related(
-            'workflow', 'analysis').filter(
-            job__state__in=jj.JOBSTATES_WAIT, analysis__deleted=False).exclude(
-            analysis__user_id=request.user.id)
-        user_ana = anmodels.NextflowSearch.objects.select_related(
-            'workflow', 'analysis').filter(
-            analysis__user_id=request.user.id, analysis__deleted=False,
-            analysis__date__gt=datetime.today() - timedelta(183))
+        run_ana = anmodels.Analysis.objects.select_related('nextflowsearch__workflow').filter(
+            nextflowsearch__job__state__in=jj.JOBSTATES_WAIT, deleted=False).exclude(user_id=request.user.id)
+        user_ana = anmodels.Analysis.objects.select_related('nextflowsearch__workflow').filter(
+            user_id=request.user.id, deleted=False, date__gt=datetime.today() - timedelta(183))
         dbanalyses = user_ana | run_ana
-    items, it_order = populate_analysis(dbanalyses.order_by('-analysis__date'), request.user)
+    items, it_order = populate_analysis(dbanalyses.order_by('-date'), request.user)
     return JsonResponse({'items': items, 'order': it_order})
 
 
@@ -234,7 +234,7 @@ def populate_files(dbfns):
               'ftype': fn.filetype.name,
               'analyses': [],
               'dataset': [],
-              'jobs': [],
+              'jobstate': [],
               'job_ids': [],
               'deleted': fn.deleted,
               'purged': fn.purged,
@@ -262,11 +262,10 @@ def populate_files(dbfns):
             elif hasattr(fn.rawfile.producer, 'msinstrument'):
                 mzmls = fn.rawfile.storedfile_set.filter(mzmlfile__isnull=False)
                 anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
-            it['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
+            it['analyses'].extend([x.job.nextflowsearch.analysis_id for x in anjobs.select_related('job__nextflowsearch')])
         elif hasattr(fn, 'analysisresultfile'):
             it['owner'] = fn.analysisresultfile.analysis.user.username
-            if hasattr(fn.analysisresultfile.analysis, 'nextflowsearch'):
-                it['analyses'].append(fn.analysisresultfile.analysis.nextflowsearch.id)
+            it['analyses'].append(fn.analysisresultfile.analysis.id)
         popfiles[fn.id] = it
     order = [x['id'] for x in sorted(popfiles.values(), key=lambda x: x['date'], reverse=True)]
     return JsonResponse({'items': popfiles, 'order': order})
@@ -306,7 +305,7 @@ def show_jobs(request):
                          'canceled': job.state == jj.Jobstates.CANCELED,
                          'usr': ', '.join(ownership['usernames']),
                          'date': datetime.strftime(job.timestamp, '%Y-%m-%d'),
-                         'analysis': analysis.nextflowsearch.id if analysis else False,
+                         'analysis': analysis.id if analysis else False,
                          'actions': get_job_actions(job, ownership)}
         items[job.id]['fn_ids'] = [x.storedfile_id for x in job.filejob_set.all()]
         dsets = job.kwargs.get('dset_id', job.kwargs.get('dset_ids', []))
@@ -337,49 +336,55 @@ def get_job_actions(job, ownership):
     return actions
 
 
-def get_ana_actions(nfs, user):
+def get_ana_actions(analysis, user):
     actions = []
-    if nfs.analysis.user != user and not user.is_staff:
-        pass
-    elif nfs.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
-        actions.append('run job')
-    elif nfs.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
-        actions.append('stop job')
-    if nfs.job.state  in jj.JOBSTATES_PRE_OK_JOB:
-        actions.append('edit')
+    if analysis.user != user and not user.is_staff:
+        actions.append('view')
+    else:
+        if analysis.editable:
+            actions.append('edit')
+        else:
+            actions.append('view')
+        if hasattr(analysis, 'nextflowsearch'):
+            if analysis.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
+                actions.append('run job')
+            elif analysis.nextflowsearch.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
+                actions.append('stop job')
     return actions
 
 
-def populate_analysis(nfsearches, user):
+def populate_analysis(analyses, user):
     ana_out, order = {}, []
-    nfsearches = nfsearches.select_related('analysis', 'job', 'workflow', 'nfwfversionparamset')
-    for nfs in nfsearches:
-        fjobs = nfs.job.filejob_set.all().select_related(
-            'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
-        fjobdsets = fjobs.distinct('storedfile__rawfile__datasetrawfile__dataset')
-        try:
-            ana_out[nfs.id] = {
-                'id': nfs.id,
-                'own': nfs.analysis.user_id == user.id,
-                'usr': nfs.analysis.user.username,
-                'name': aj.get_ana_fullname(nfs.analysis),
-                'date': datetime.strftime(nfs.analysis.date, '%Y-%m-%d'),
-                'jobstate': nfs.job.state,
-                'jobid': nfs.job_id,
-                'wf': f'{nfs.workflow.name} - {nfs.nfwfversionparamset.update}',
-                'wflink': nfs.nfwfversionparamset.nfworkflow.repo,
-                'deleted': nfs.analysis.deleted,
-                'purged': nfs.analysis.purged,
-                'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets
-                    if hasattr(x.storedfile.rawfile, 'datasetrawfile')],
-                'fn_ids': [x.storedfile_id for x in fjobs],
-                'actions': get_ana_actions(nfs, user),
-            }
-        except:
-        # FIXME this dont work except anmodels.Analysis.RelatedObjectDoesNotExist:
-            pass
+    for ana in analyses.select_related('nextflowsearch__job', 'nextflowsearch__workflow',
+            'nextflowsearch__nfwfversionparamset'):
+        if hasattr(ana, 'nextflowsearch'):
+            fjobs = ana.nextflowsearch.job.filejob_set.all().select_related(
+                    'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
+            fjobdsets = fjobs.distinct('storedfile__rawfile__datasetrawfile__dataset')
+            nfs = {'name': aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype),
+                    'jobstate': ana.nextflowsearch.job.state, 'jobid': ana.nextflowsearch.job_id,
+                    'wf': f'{ana.nextflowsearch.workflow.name} - {ana.nextflowsearch.nfwfversionparamset.update}',
+                    'wflink': ana.nextflowsearch.nfwfversionparamset.nfworkflow.repo,
+                    }
         else:
-            order.append(nfs.id)
+            nfs = {'jobid': False, 'fn_ids': False, 'dset_ids': False, 'wflink': False}
+            fjobs, fjobdsets = [], []
+
+        ana_out[ana.id] = {
+            'id': ana.id,
+            'own': ana.user_id == user.id,
+            'usr': ana.user.username,
+            'name': nfs.get('name', ana.name), #aj.get_ana_fullname(analysis, nfs.workflow.wftype),
+            'date': datetime.strftime(ana.date, '%Y-%m-%d'),
+            'deleted': ana.deleted,
+            'purged': ana.purged,
+            'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets
+                if hasattr(x.storedfile.rawfile, 'datasetrawfile')],
+            'fn_ids': [x.storedfile_id for x in fjobs],
+            'actions': get_ana_actions(ana, user),
+            **nfs,
+        }
+        order.append(ana.id)
     return ana_out, order
 
 
@@ -439,7 +444,7 @@ def populate_dset(dbdsets, user):
             'prefractionationdataset'):
         dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dataset)
         storestate = get_dset_storestate(dataset, dsfiles)
-        ana_ids = [x.id for x in anmodels.NextflowSearch.objects.filter(analysis__datasetanalysis__dataset_id=dataset.id)]
+        ana_ids = [x['id'] for x in anmodels.Analysis.objects.filter(datasetanalysis__dataset_id=dataset.id).values('id')]
         dsets[dataset.id] = {
             'id': dataset.id,
             'own': check_ownership(user, dataset),
@@ -476,7 +481,7 @@ def populate_dset(dbdsets, user):
 
         # Add job states
         jobmap = get_ds_jobs(dbdsets)
-        dsets[dataset.id]['jobstates'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
+        dsets[dataset.id]['jobstate'] = list(jobmap[dataset.id].values()) if dataset.id in jobmap else []
         dsets[dataset.id]['jobids'] = ','.join(list(jobmap[dataset.id].keys())) if dataset.id in jobmap else []
         if hasattr(dataset, 'prefractionationdataset'):
             pf = dataset.prefractionationdataset
@@ -558,44 +563,46 @@ def get_analysis_invocation(ana):
 
 
 @login_required
-def get_analysis_info(request, nfs_id):
-    nfs = anmodels.NextflowSearch.objects.filter(pk=nfs_id).select_related(
-        'analysis', 'workflow', 'nfwfversionparamset').get()
-    ana = nfs.analysis
+def get_analysis_info(request, anid):
+    ana = anmodels.Analysis.objects.filter(pk=anid).select_related('nextflowsearch__job',
+        'nextflowsearch__workflow', 'nextflowsearch__nfwfversionparamset').get()
     storeloc = filemodels.StoredFile.objects.select_related('servershare__server').filter(
             analysisresultfile__analysis=ana)
     dsets = {x.dataset for x in ana.datasetanalysis_set.all()}
     #projs = {x.runname.experiment.project for x in dsets}
-    if not nfs.analysis.log:
+    if not ana.log:
         logentry = ['Analysis without logging or not yet queued']
     else:
-        logentry = [x for y in nfs.analysis.log for x in y.split('\n') if x][-3:]
-    linkedfiles = [(x.id, x.sfile.filename) for x in av.get_servable_files(nfs.analysis.analysisresultfile_set.select_related('sfile'))]
+        logentry = [x for y in ana.log for x in y.split('\n') if x][-3:]
+    linkedfiles = [(x.id, x.sfile.filename) for x in av.get_servable_files(ana.analysisresultfile_set.select_related('sfile'))]
     errors = []
-    try:
-        errors.append(nfs.job.joberror.message)
-    except jm.JobError.DoesNotExist:
-        pass
-    for task in nfs.job.task_set.filter(state=tstates.FAILURE, taskerror__isnull=False):
-        # Tasks chained in a taskchain are all set to error when one errors, 
-        # otherwise we cannot retry jobs since that waits for all tasks to finish.
-        # This means we have to check for taskerror__isnull here
-        if task.taskerror.message:
-            errors.append(task.taskerror.message)
+    if hasattr(ana, 'nextflowsearch'):
+        try:
+            errors.append(ana.nextflowsearch.job.joberror.message)
+        except jm.JobError.DoesNotExist:
+            pass
+        for task in ana.nextflowsearch.job.task_set.filter(state=tstates.FAILURE, taskerror__isnull=False):
+            # Tasks chained in a taskchain are all set to error when one errors, 
+            # otherwise we cannot retry jobs since that waits for all tasks to finish.
+            # This means we have to check for taskerror__isnull here
+            if task.taskerror.message:
+                errors.append(task.taskerror.message)
+        result_parse_ok = ((hasattr(ana, 'experiment') is False or ana.experiment.upload_complete is False)
+                and request.user.is_staff and
+                ana.nextflowsearch.workflow.wftype == anmodels.UserWorkflow.WFTypeChoices.STD and
+                ana.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.count())
+        nfs_info = {'name': aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype),
+            'addToResults': result_parse_ok,
+            'wf': {'fn': ana.nextflowsearch.nfwfversionparamset.filename, 
+                   'name': ana.nextflowsearch.nfwfversionparamset.nfworkflow.description,
+                   'update': ana.nextflowsearch.nfwfversionparamset.update,
+                   'repo': ana.nextflowsearch.nfwfversionparamset.nfworkflow.repo},
+            }
+    else:
+        nfs_info = {'name': ana.name, 'addToResults': False, 'wf': False}
     dsicount = anmodels.AnalysisDSInputFile.objects.filter(analysisset__analysis=ana).count()
     afscount = ana.analysisfilevalue_set.count()
-    result_parse_ok = ((hasattr(ana, 'experiment') is False or ana.experiment.upload_complete is False)
-            and request.user.is_staff and
-            ana.nextflowsearch.workflow.wftype == anmodels.UserWorkflow.WFTypeChoices.STD and
-            ana.nextflowsearch.nfwfversionparamset.pipelineversionoutput_set.count())
-    resp = {'name': aj.get_ana_fullname(ana),
-            'addToResults': result_parse_ok,
-            'wf': {'fn': nfs.nfwfversionparamset.filename, 
-                   'name': nfs.nfwfversionparamset.nfworkflow.description,
-                   'update': nfs.nfwfversionparamset.update,
-                   'repo': nfs.nfwfversionparamset.nfworkflow.repo},
-##             'proj': [{'name': x.name, 'id': x.id} for x in projs],
-            'nrdsets': len(dsets),
+    resp = {'nrdsets': len(dsets),
             'nrfiles': dsicount + afscount,
             'storage_locs': [{'server': x.servershare.server.uri, 'share': x.servershare.name, 'path': x.path}
                 for x in storeloc],
@@ -604,6 +611,7 @@ def get_analysis_info(request, nfs_id):
             'servedfiles': linkedfiles,
             'invocation': get_analysis_invocation(ana),
             'errmsg': errors if len(errors) else False,
+            **nfs_info,
             }
     if anmodels.AnalysisBaseanalysis.objects.filter(analysis=ana, is_complement=True).count():
         baseana = anmodels.AnalysisBaseanalysis.objects.select_related('base_analysis').get(analysis=ana)
@@ -633,22 +641,10 @@ def refresh_job(request, job_id):
 
 
 @login_required
-def refresh_analysis(request, nfs_id):
-    # FIXME share with show/populate
-    nfs = anmodels.NextflowSearch.objects.select_related('analysis', 'job').get(pk=nfs_id)
-    fjobs = nfs.job.filejob_set.all().select_related(
-            'storedfile__rawfile__datasetrawfile__dataset__runname__experiment__project')
-    return JsonResponse({
-        'wf': f'{nfs.workflow.name} - {nfs.nfwfversionparamset.update}',
-        'wflink': nfs.nfwfversionparamset.nfworkflow.repo,
-        'jobstate': nfs.job.state,
-        'name': aj.get_ana_fullname(nfs.analysis),
-        'jobid': nfs.job_id,
-        'deleted': nfs.analysis.deleted,
-        'purged': nfs.analysis.purged,
-        'fn_ids': [x.storedfile_id for x in fjobs],
-        'actions': get_ana_actions(nfs, request.user),
-        })
+def refresh_analysis(request, anid):
+    ana = anmodels.Analysis.objects.filter(pk=anid)
+    ana_out, _order = populate_analysis(ana, request.user)
+    return JsonResponse(ana_out)
 
 
 @login_required
@@ -715,7 +711,7 @@ def get_file_info(request, file_id):
         elif hasattr(sfile.rawfile.producer, 'msinstrument') and not is_mzml:
             mzmls = sfile.rawfile.storedfile_set.filter(mzmlfile__isnull=False)
             anjobs = filemodels.FileJob.objects.filter(storedfile__in=mzmls, job__nextflowsearch__isnull=False)
-        info['analyses'].extend([x.job.nextflowsearch.id for x in anjobs])
+        info['analyses'].extend([x.job.nextflowsearch.analysis_id for x in anjobs])
     if hasattr(sfile, 'analysisresultfile') and hasattr(sfile.analysisresultfile.analysis, 'nextflowsearch'):
         info['analyses'].append(sfile.analysisresultfile.analysis.nextflowsearch.id)
     return JsonResponse(info)

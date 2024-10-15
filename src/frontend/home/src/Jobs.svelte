@@ -22,16 +22,6 @@ const tablefields = [
   {id: 'actions', name: 'Actions', type: 'button', multi: true, confirm: ['delete']},
 ];
 
-const statecolors = {
-  state: {
-    wait: 'has-text-grey-light',
-    pending: 'has-text-info',
-    error: 'has-text-danger', 
-    processing: 'has-text-warning', 
-    done: 'has-text-success',
-  },
-}
-
 const fixedbuttons = [
   {name: '__redo', alt: 'Refresh job', action: refreshJob},
 ]
@@ -95,4 +85,4 @@ async function getJobDetails(jobId) {
 
 <Tabs tabshow="Jobs" notif={notif} />
 
-<Table tab="Jobs" bind:items={jobs} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedjobs} fetchUrl="/show/jobs" findUrl="find/jobs" getdetails={getJobDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['canceled']} statecolors={statecolors} on:rowAction={e => jobAction(e.detail.action, e.detail.id)} />
+<Table tab="Jobs" bind:items={jobs} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedjobs} fetchUrl="/show/jobs" findUrl="find/jobs" getdetails={getJobDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['canceled']} on:rowAction={e => jobAction(e.detail.action, e.detail.id)} />

@@ -20,6 +20,7 @@ from analysis import jobs as aj
 from datasets import models as dm
 from datasets.views import move_dset_project_servershare
 from rawstatus import models as rm
+from rawstatus.views import create_upload_token
 from home import views as hv
 from jobs import jobs as jj
 from jobs import views as jv
@@ -30,19 +31,20 @@ from jobs import models as jm
 @login_required
 @require_GET
 def get_analysis_init(request):
-    '''New page, empty analysis, only gets datasets'''
+    '''New page, empty analysis, only gets dataset ids'''
     dserrors = []
     try:
         dsids = request.GET['dsids'].split(',')
     except (KeyError, ValueError):
-        dserrors.append('Something wrong when asking datasets, contact admin')
-    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('quantdataset__quanttype')
+        dsids = [] 
+    dbdsets = dm.Dataset.objects.filter(pk__in=dsids).select_related('runname__experiment__project')
     deleted = dbdsets.filter(deleted=True).count()
     if deleted:
         dserrors.append('Deleted datasets can not be analysed')
     if dbdsets.filter(deleted=False).count() + deleted < len(dsids):
         dserrors.append('Some datasets could not be found, they may not exist')
-    context = {'dsids': dsids, 'ds_errors': dserrors, 'analysis': False, 'wfs': get_allwfs()}
+    dsets = {d.pk: format_dset_tag(d) for d in dbdsets}
+    context = {'dsets': dsets, 'ds_errors': dserrors, 'analysis': False, 'wfs': get_allwfs()}
     return render(request, 'analysis/analysis.html', context)
 
 
@@ -55,7 +57,7 @@ def load_analysis_resultfiles(request, anid):
     and files from base_analyses loaded for this analysis. These files will
     already be loaded in the UI.'''
     try:
-        ana = am.Analysis.objects.get(pk=anid)
+        ana = am.Analysis.objects.select_related('nextflowsearch__workflow').get(pk=anid)
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis_date = datetime.strftime(ana.date, '%Y-%m-%d')
@@ -68,11 +70,12 @@ def load_analysis_resultfiles(request, anid):
     else:
         base_ana_resfiles_ids = []
     already_loaded_files = analysis_prev_resfiles_ids + base_ana_resfiles_ids
-    ananame = aj.get_ana_fullname(ana)
+    ananame = aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype)
     anadate = datetime.strftime(ana.date, '%Y-%m-%d')
     resultfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
-    return JsonResponse({'analysisname': aj.get_ana_fullname(ana), 'date': analysis_date, 'fns': resultfiles})
+    return JsonResponse({'analysisname': aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype),
+        'date': analysis_date, 'fns': resultfiles})
 
 
 @require_GET
@@ -95,7 +98,7 @@ def load_base_analysis(request, wfversion_id, baseanid):
     except am.NextflowWfVersionParamset.DoesNotExist:
         return JsonResponse({'error': 'Workflow for applying base analysis not found'}, status=403)
     try:
-        ana = am.Analysis.objects.select_related('nextflowsearch').get(pk=baseanid)
+        ana = am.Analysis.objects.select_related('nextflowsearch__workflow').get(pk=baseanid)
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     baseana_dsids = [dss.dataset_id for dss in ana.datasetanalysis_set.all()]
@@ -123,7 +126,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
     # Collect files used in base analysis, determine if they are multifile or not,
     # and if they're from an added analysis
     prev_resultfiles_ids = get_prev_resultfiles(baseana_dsids, only_ids=True)
-    for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id):
+    for afp in ana.analysisfileparam_set.filter(param__psetmultifileparam__pset_id=new_pset_id
+            ).select_related('analysis__nextflowsearch__workflow'):
         try:
             fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
         except KeyError:
@@ -131,7 +135,8 @@ def load_base_analysis(request, wfversion_id, baseanid):
             analysis['multifileparams'][afp.param_id] = {}
         analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
         get_added_analysis_contents(afp, prev_resultfiles_ids, analysis['added_results'])
-    for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id):
+    for afp in ana.analysisfileparam_set.filter(param__psetfileparam__pset_id=new_pset_id
+            ).select_related('analysis__nextflowsearch__workflow'):
         analysis['fileparams'][afp.param_id] = afp.sfile_id
         get_added_analysis_contents(afp, prev_resultfiles_ids, analysis['added_results'])
 
@@ -203,8 +208,9 @@ def load_base_analysis(request, wfversion_id, baseanid):
     added_files_ids = [x.sfile_id for x in am.AnalysisResultFile.objects.filter(
         analysis_id__in=added_ana_ids).exclude(sfile_id__in=analysis_prev_resfiles_ids)]
     already_loaded_files = analysis_prev_resfiles_ids + added_files_ids
-    base_resfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': aj.get_ana_fullname(ana),
-        'date':datetime.strftime(ana.date, '%Y-%m-%d')}
+    base_resfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename,
+        'ana': aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype),
+        'date': datetime.strftime(ana.date, '%Y-%m-%d')}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
     return JsonResponse({'base_analysis': analysis, 'datasets': dsets, 'resultfiles': base_resfiles})
 
@@ -215,16 +221,14 @@ def get_analysis(request, anid):
     '''Renders analysis HTML page, complete with analysis, values are loaded as JSON in rendered
     page where the JS can pick it up'''
     try:
-        ana = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__paramset').get(nextflowsearch__pk=anid)
+        ana = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset__paramset',
+                'nextflowsearch__job', 'externalanalysis__last_token').get(pk=anid)
     except am.Analysis.DoesNotExist:
         return HttpResponseNotFound()
     if ana.user != request.user and not request.user.is_staff:
         return HttpResponseForbidden()
     analysis = {
             'analysis_id': ana.pk,
-            'editable': ana.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR],
-            'wfversion_id': ana.nextflowsearch.nfwfversionparamset_id,
-            'wfid': ana.nextflowsearch.workflow_id,
             'analysisname': ana.name,
             'flags': [],
             'multicheck': [],
@@ -233,81 +237,101 @@ def get_analysis(request, anid):
             'fileparams': {},
             'isoquants': {},
             'added_results': {},
+            'editable': ana.editable,
+            'jobstate': False,
+            'external_desc': '',
+            'wfversion_id': False,
+            'wfid': False,
+            'external_results': False,
+            'base_analysis': {},
             }
-    PTypes = am.Param.PTypes
-    for ap in ana.analysisparam_set.all():
-        if ap.param.ptype == PTypes.FLAG and ap.value:
-            analysis['flags'].append(ap.param.id)
-        elif ap.param.ptype == PTypes.MULTI:
-            analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
-        elif ap.param.ptype == PTypes.SELECT:
-            analysis['inputparams'][ap.param_id] = str(ap.value)
+    dsets = {x.dataset_id: format_dset_tag(x.dataset) for x in ana.datasetanalysis_set.select_related('dataset').all()}
+    prev_resultfiles_ids = get_prev_resultfiles(dsets.keys(), only_ids=True)
+    if hasattr(ana, 'nextflowsearch'):
+        analysis.update({
+                'wfversion_id': ana.nextflowsearch.nfwfversionparamset_id,
+                'wfid': ana.nextflowsearch.workflow_id,
+                'jobstate': ana.nextflowsearch.job.state,
+                })
+        PTypes = am.Param.PTypes
+        for ap in ana.analysisparam_set.all():
+            if ap.param.ptype == PTypes.FLAG and ap.value:
+                analysis['flags'].append(ap.param.id)
+            elif ap.param.ptype == PTypes.MULTI:
+                analysis['multicheck'].extend(['{}___{}'.format(ap.param.id, str(x)) for x in ap.value])
+            elif ap.param.ptype == PTypes.SELECT:
+                analysis['inputparams'][ap.param_id] = str(ap.value)
+            else:
+                # For NUMBER, TEXT
+                analysis['inputparams'][ap.param_id] = ap.value
+
+        # Parse base analysis if any
+        ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch__workflow'
+                ).filter(analysis_id=ana.id)
+        if ana_base.exists():
+            ana_base = ana_base.get()
+            base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetanalysis_set.all()]
+            baname = aj.get_ana_fullname(ana_base.base_analysis,
+                    ana_base.base_analysis.nextflowsearch.workflow.wftype)
+            badate = datetime.strftime(ana_base.base_analysis.date, '%Y-%m-%d')
+            analysis['base_analysis'] = {
+                    #### these are repeated in ana/wf if same dsets
+                    'resultfiles':  [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': baname,
+                        'date': badate}
+                        for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
+                    'selected': ana_base.base_analysis_id,
+                    'typedname': '{} - {} - {} - {} - {}'.format(baname,
+                    ana_base.base_analysis.nextflowsearch.workflow.name,
+                    ana_base.base_analysis.nextflowsearch.nfwfversionparamset.update,
+                    ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
+                    'isComplement': ana_base.is_complement,
+                    'runFromPSM': ana_base.rerun_from_psms,
+                    'dsets_identical': set(base_dsids) == set(dsets.keys()),
+                    }
+            ana_base_resfiles = {x['id'] for x in analysis['base_analysis']['resultfiles']}
         else:
-            # For NUMBER, TEXT
-            analysis['inputparams'][ap.param_id] = ap.value
-    pset = ana.nextflowsearch.nfwfversionparamset.paramset
+            ana_base_resfiles = set()
 
-    dsids = [x.dataset_id for x in ana.datasetanalysis_set.all()]
-    prev_resultfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
-    # Parse base analysis if any
-    ana_base = am.AnalysisBaseanalysis.objects.select_related('base_analysis__nextflowsearch').filter(analysis_id=ana.id)
-    if ana_base.exists():
-        ana_base = ana_base.get()
-        base_dsids = [x.dataset_id for x in ana_base.base_analysis.datasetanalysis_set.all()]
-        baname = aj.get_ana_fullname(ana_base.base_analysis)
-        badate = datetime.strftime(ana_base.base_analysis.date, '%Y-%m-%d')
-        analysis['base_analysis'] = {
-                #### these are repeated in ana/wf if same dsets
-                'resultfiles':  [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': baname,
-                    'date': badate}
-                    for x in ana_base.base_analysis.analysisresultfile_set.exclude(sfile_id__in=prev_resultfiles_ids)],
-                'selected': ana_base.base_analysis_id,
-                'typedname': '{} - {} - {} - {} - {}'.format(baname,
-                ana_base.base_analysis.nextflowsearch.workflow.name,
-                ana_base.base_analysis.nextflowsearch.nfwfversionparamset.update,
-                ana_base.base_analysis.user.username, datetime.strftime(ana_base.base_analysis.date, '%Y%m%d')),
-                'isComplement': ana_base.is_complement,
-                'runFromPSM': ana_base.rerun_from_psms,
-                'dsets_identical': set(base_dsids) == set(dsids),
-                }
-        ana_base_resfiles = {x['id'] for x in analysis['base_analysis']['resultfiles']}
-    else:
-        analysis['base_analysis'] = False
-        ana_base_resfiles = set()
+        pset = ana.nextflowsearch.nfwfversionparamset.paramset
+        multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
+        non_added_results_fnids = set(prev_resultfiles_ids).union(ana_base_resfiles)
 
-    multifiles = {x.param_id for x in pset.psetmultifileparam_set.all()}
-    non_added_results_fnids = set(prev_resultfiles_ids).union(ana_base_resfiles)
-    for afp in ana.analysisfileparam_set.all():
-        # determine if adp to load is from an added analysis,
-        # then populate either multifile or single file params
-        get_added_analysis_contents(afp, non_added_results_fnids, analysis['added_results'])
-        if afp.param_id in multifiles:
+        for afp in ana.analysisfileparam_set.all():
+            # determine if adp to load is from an added analysis,
+            # then populate either multifile or single file params
+            get_added_analysis_contents(afp, non_added_results_fnids, analysis['added_results'])
+            if afp.param_id in multifiles:
+                try:
+                    fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
+                except KeyError:
+                    fnr = 0
+                    analysis['multifileparams'][afp.param_id] = {}
+                analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
+            else:
+                # not multi, put in normal file params
+                analysis['fileparams'][afp.param_id] = afp.sfile_id
+
+        allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
+        wf_components = {allcomponents[x.component].name: x.value for x in pset.psetcomponent_set.all()}
+
+        if 'ISOQUANT_SAMPLETABLE' in wf_components:
             try:
-                fnr = max(analysis['multifileparams'][afp.param_id].keys()) + 1
-            except KeyError:
-                fnr = 0
-                analysis['multifileparams'][afp.param_id] = {}
-            analysis['multifileparams'][afp.param_id][fnr] = afp.sfile_id
+                sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
+            except am.AnalysisSampletable.DoesNotExist:
+                sampletables = {}
         else:
-            # not multi, put in normal file params
-            analysis['fileparams'][afp.param_id] = afp.sfile_id
-
-    allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
-    wf_components = {allcomponents[x.component].name: x.value for x in pset.psetcomponent_set.all()}
-
-    if 'ISOQUANT_SAMPLETABLE' in wf_components:
-        try:
-            sampletables = am.AnalysisSampletable.objects.get(analysis=ana).samples
-        except am.AnalysisSampletable.DoesNotExist:
             sampletables = {}
-    else:
-        sampletables = {}
 
-    if 'ISOQUANT' in wf_components:
-        analysis['isoquants'] = get_isoquants(ana, sampletables)
+        if 'ISOQUANT' in wf_components:
+            analysis['isoquants'] = get_isoquants(ana, sampletables)
+
+    if hasattr(ana, 'externalanalysis'):
+        analysis.update({'external_desc': ana.externalanalysis.description,
+            'upload_token': ana.externalanalysis.last_token.parse_token_for_frontend(), 
+            'external_results': True})
 
     context = {
-            'dsids': dsids,
+            'dsets': dsets,
             'analysis': analysis,
             'wfs': get_allwfs()
             }
@@ -364,9 +388,10 @@ def get_base_analyses(request):
             subquery |= Q(nextflowsearch__workflow__wftype__in=match_wftypes)
             query &= subquery
         resp = {}
-        for x in am.Analysis.objects.select_related('nextflowsearch').filter(query,
+        for x in am.Analysis.objects.select_related('nextflowsearch__workflow').filter(query,
                 nextflowsearch__isnull=False, deleted=False):
-            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(aj.get_ana_fullname(x),
+            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(
+                aj.get_ana_fullname(x, x.nextflowsearch.workflow.wftype),
                 x.nextflowsearch.workflow.name, x.nextflowsearch.nfwfversionparamset.update,
                 x.user.username, datetime.strftime(x.date, '%Y%m%d'))}
         return JsonResponse(resp)
@@ -391,7 +416,6 @@ def get_datasets(request, wfversion_id):
     if dbdsets.count() < len(dsids):
         response['errmsg'].append('Some datasets could not be found, they may not exist or '
                 'have been deleted')
-
     dsetinfo = {}
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
     wfcomponents = {allcomponents[x.component].name: x.value
@@ -555,6 +579,7 @@ def get_datasets(request, wfversion_id):
                 'proj': dset.runname.experiment.project.name,
                 'exp': dset.runname.experiment.name,
                 'run': dset.runname.name,
+                'storage': format_dset_tag(dset),
                 'dtype': dset.datatype.name,
                 'prefrac': prefrac,
                 'hr': hr,
@@ -582,7 +607,7 @@ def get_datasets(request, wfversion_id):
 def get_workflow_versioned(request):
     try:
         wf = am.NextflowWfVersionParamset.objects.get(pk=request.GET['wfvid'])
-        dsids = request.GET['dsids'].split(',')
+        dsids = [x for x in request.GET['dsids'].split(',') if x]
     except KeyError:
         return JsonResponse({'error': 'Something is wrong, contact admin'}, status=400)
     except am.NextflowWfVersionParamset.DoesNotExist:
@@ -627,7 +652,12 @@ def get_workflow_versioned(request):
                 'name': x.sfile.filename}
                 for x in selectable_files if x.sfile.filetype_id == ft] for ft in ftypes}
     }
-    resp['prev_resultfiles'] = get_prev_resultfiles(dsids)
+    # FIXME we should call get workflow versioned when new datasets are added, to get the new
+    # prev_resultfiles -> or at least update it
+    if dsids:
+        resp['prev_resultfiles'] = get_prev_resultfiles(dsids)
+    else:
+        resp['prev_resultfiles'] = []
     return JsonResponse({'wf': resp})
 
 
@@ -650,9 +680,9 @@ def get_prev_resultfiles(dsids, only_ids=False):
         prev_resultfiles = [x['sfile_id'] for x in qset_arf.values('sfile_id')]
     else:
         prev_resultfiles = [{'id': x.sfile.id, 'fn': x.sfile.filename,
-            'ana': aj.get_ana_fullname(x.analysis),
+            'ana': aj.get_ana_fullname(x.analysis, x.analysis.nextflowsearch.workflow.wftype),
             'date': datetime.strftime(x.analysis.date, '%Y-%m-%d')}
-        for x in qset_arf.select_related('analysis')]
+        for x in qset_arf.select_related('analysis__nextflowsearch__workflow')]
     return prev_resultfiles
 
 
@@ -662,7 +692,7 @@ def get_added_analysis_contents(afp, prev_or_base_resultfns, added_results):
             and afp.sfile.analysisresultfile.analysis_id not in added_results):
         arf = afp.sfile.analysisresultfile
         arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
-        arf_ananame = aj.get_ana_fullname(arf.analysis)
+        arf_ananame = aj.get_ana_fullname(arf.analysis, arf.analysis.nextflowsearch.workflow.wftype)
         arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': arf_ananame,
             'date': arf_date} for x in arf.analysis.analysisresultfile_set.all()]
         added_results[arf.analysis_id] = {'analysisname': arf_ananame, 'date': arf_date, 'fns': arf_fns}
@@ -704,6 +734,7 @@ def store_analysis(request):
         req['multifiles']
         req['base_analysis']
         req['wfid']
+        req['upload_external']
     except json.decoder.JSONDecodeError:
         return JsonResponse({'error': 'Something went wrong, contact admin concerning a bad request'}, status=400)
     except KeyError:
@@ -718,10 +749,12 @@ def store_analysis(request):
         analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(pk=req['analysis_id'])
         if analysis.user_id != request.user.id and not request.user.is_staff:
             return JsonResponse({'error': 'You do not have permission to edit this analysis'}, status=403)
-        elif analysis.nextflowsearch.job.state == jj.Jobstates.DONE:
+        elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state == jj.Jobstates.DONE:
             return JsonResponse({'error': 'This analysis has already finished running, it cannot be edited'}, status=403)
-        elif analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
+        elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'}, status=403)
+        elif not analysis.editable:
+            return JsonResponse({'error': 'This analysis cannot be edited'}, status=403)
 
     response_errors = []
     dsets = {str(x.pk): x for x in dsetquery}
@@ -729,6 +762,9 @@ def store_analysis(request):
     frontend_files_not_in_ds, ds_withfiles_not_in_frontend = {int(x) for x in req['infiles']}, set()
     dsfiles = {}
     for dsid in req['dsids']:
+        if req['upload_external'] and not req['wfid']:
+            # Do not do any other dset processing if there is no WF
+            continue
         dset = dsets[dsid]
         dsname = f'{dset.runname.experiment.project.name} / {dset.runname.experiment.name} / {dset.runname.name}'
         if not hasattr(dset, 'quantdataset'):
@@ -770,6 +806,9 @@ def store_analysis(request):
                 return JsonResponse({'error': error}, status=403)
 
     for dsid in req['dsids']:
+        if req['upload_external'] and not req['wfid']:
+            # Do not do any other dset processing if there is no WF
+            continue
         for sf in dsfiles[dsid]:
             if sf.pk in frontend_files_not_in_ds:
                 frontend_files_not_in_ds.remove(sf.pk)
@@ -782,8 +821,13 @@ def store_analysis(request):
         response_special = {}
     # Components
     allcomponents = {x.value: x for x in am.PsetComponent.ComponentChoices}
-    nfwf_ver = am.NextflowWfVersionParamset.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
-    wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
+    if req['nfwfvid']:
+        nfwf_ver = am.NextflowWfVersionParamset.objects.filter(pk=req['nfwfvid']).select_related('paramset').get()
+        wf_components = {allcomponents[x.component].name: x.value for x in nfwf_ver.paramset.psetcomponent_set.all()}
+    else:
+        if not req['upload_external']:
+            response_errors.append('Need to pass a workflow version to store analysis')
+        wf_components = {}
 
     # Check if labelcheck - do we have quantchannel in single-file:
     if 'LABELCHECK_ISO' in wf_components and 'channel' in wf_components['INPUTDEF']:
@@ -832,6 +876,17 @@ def store_analysis(request):
         if isoq_cli:
             jobparams['--isobaric'] = [' '.join(isoq_cli)]
 
+    if not req['wfid'] and not req['upload_external']:
+        response_errors.append('No workflow passed, also not uploading external data, '
+                'need at least one of those.')
+
+    if req['wfid']:
+        wftype = am.UserWorkflow.objects.get(pk=req['wfid']).wftype
+    elif req['upload_external']:
+        wftype = am.UserWorkflow.WFTypeChoices.USER
+    else:
+        # Shouldnt happen but keeps linter happy about init variable
+        wftype = False
     # In case of errors, do not save anything
     # No storing above this line
     if len(response_errors):
@@ -846,18 +901,42 @@ def store_analysis(request):
         dss.filter(dataset_id__in=excess_dss).delete()
         newdss = am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid, analysis=analysis) 
             for dsid in set(req['dsids']).difference({x.dataset_id for x in dss})])
-        wfshortname = am.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
         dss_map = {x.dataset_id: x.pk for x in [*dss, *newdss]}
     else:
         analysis = am.Analysis.objects.create(name=req['analysisname'], user_id=request.user.id)
-        wfshortname = am.UserWorkflow.WFTypeChoices(am.UserWorkflow.objects.get(pk=req['wfid']).wftype).name
         dss = am.DatasetAnalysis.objects.bulk_create([am.DatasetAnalysis(dataset_id=dsid,
             analysis=analysis) for dsid in req['dsids']])
         dss_map = {x.dataset_id: x.pk for x in dss}
-    ana_storpathname = (f'{analysis.pk}_{wfshortname}_{analysis.name}_'
+    ana_storpathname = (f'{analysis.pk}_{aj.get_ana_fullname(analysis, wftype)}_'
             f'{datetime.strftime(analysis.date, "%Y%m%d_%H.%M")}')
     analysis.storage_dir = f'{analysis.user.username}/{ana_storpathname}'
     analysis.save()
+
+    if req['upload_external']:
+        # Generate new upload token if it does not already exist
+        exta = am.ExternalAnalysis.objects.filter(analysis=analysis).select_related('last_token')
+        try:
+            exta = exta.get()
+        except am.ExternalAnalysis.DoesNotExist:
+            upl_ft = rm.StoredFileType.objects.get(filetype=settings.ANALYSIS_FT_NAME)
+            ana_prod = rm.Producer.objects.get(client_id=settings.ANALYSISCLIENT_APIKEY)
+            upl_token = create_upload_token(upl_ft.pk, request.user.pk, ana_prod,
+                    rm.UploadToken.UploadFileType.ANALYSIS)
+            exta = am.ExternalAnalysis.objects.create(analysis=analysis,
+                    description=req['external_description'], last_token=upl_token)
+        else:
+            # Need to access its upload token so have to get it anyway
+            exta.description = req['external_description']
+            exta.save()
+        api_token = exta.last_token.parse_token_for_frontend()
+    else:
+        # Delete any existing external analysis row, but also upload token!
+        exta = am.ExternalAnalysis.objects.filter(analysis=analysis).select_related('last_token')
+        if exta.exists():
+            exta = exta.get()
+            exta.delete()
+            exta.last_token.delete()
+        api_token = False
 
     in_components = {k: v for k, v in req['components'].items() if v}
     jobinputs = {'components': wf_components, 'singlefiles': {}, 'multifiles': {}, 'params': {}}
@@ -1037,22 +1116,23 @@ def store_analysis(request):
         am.AnalysisSampletable.objects.filter(analysis=analysis).delete()
 
     # All data collected, now create a job in WAITING state
-    fname = 'run_nf_search_workflow'
-    jobinputs['params'] = [x for nf, vals in jobparams.items() for x in [nf, ';'.join([str(v) for v in vals])]]
-    #param_args = {'wfv_id': req['nfwfvid'], 'inputs': jobinputs}
-    kwargs = {'analysis_id': analysis.id, 'dstsharename': settings.ANALYSISSHARENAME,
-            'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
-            'storagepath': analysis.storage_dir, **data_args}
-    if req['analysis_id']:
-        job_db = analysis.nextflowsearch.job
-        job_db.kwargs = kwargs
-        job_db.state = jj.Jobstates.WAITING
-        job_db.save()
-        job = {'id': job_db.pk, 'error': False}
-    else:
-        job = create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-    am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': job['id'], 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
-    return JsonResponse({'error': False, 'analysis_id': analysis.id})
+    if not req['upload_external']:
+        fname = 'run_nf_search_workflow'
+        jobinputs['params'] = [x for nf, vals in jobparams.items() for x in [nf, ';'.join([str(v) for v in vals])]]
+        #param_args = {'wfv_id': req['nfwfvid'], 'inputs': jobinputs}
+        kwargs = {'analysis_id': analysis.id, 'dstsharename': settings.ANALYSISSHARENAME,
+                'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
+                'storagepath': analysis.storage_dir, **data_args}
+        if req['analysis_id'] and hasattr(analysis, 'nextflowsearch'):
+            job_db = analysis.nextflowsearch.job
+            job_db.kwargs = kwargs
+            job_db.state = jj.Jobstates.WAITING
+            job_db.save()
+            job = {'id': job_db.pk, 'error': False}
+        else:
+            job = create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
+        am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': job['id'], 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
+    return JsonResponse({'error': False, 'analysis_id': analysis.id, 'token': api_token})
 
 
 def get_isoquants(analysis, sampletables):
@@ -1075,12 +1155,37 @@ def get_isoquants(analysis, sampletables):
 
 
 @login_required
+@require_POST
+def renew_token(request):
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        analysis = am.Analysis.objects.select_related('externalanalysis__last_token').get(
+                editable=True, pk=req['analysis_id'])
+    except am.Analysis.DoesNotExist:
+        return JsonResponse({'error': 'Analysis does not exist or is frozen'}, status=403)
+
+    if not hasattr(analysis, 'externalanalysis'):
+        return JsonResponse({'error': 'Analysis is not stored as externally run and does not '
+            'have manual result uploads'}, status=403)
+
+    # Invalidate old token and create new one
+    analysis.externalanalysis.last_token.invalidate()
+    new_token = create_upload_token(analysis.externalanalysis.last_token.filetype.pk,
+            request.user.pk, analysis.externalanalysis.last_token.producer, 
+            rm.UploadToken.UploadFileType.ANALYSIS)
+    analysis.externalanalysis.last_token = new_token
+    analysis.externalanalysis.save()
+    api_token = new_token.parse_token_for_frontend()
+    return JsonResponse({'error': False, 'token': api_token})
+
+
+@login_required
 def undelete_analysis(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
-        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['item_id'])
+        analysis = am.Analysis.objects.get(pk=req['item_id'])
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if not analysis.deleted:
@@ -1100,7 +1205,7 @@ def delete_analysis(request):
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     try:
-        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(nextflowsearch__id=req['item_id'])
+        analysis = am.Analysis.objects.select_related('nextflowsearch__job').get(pk=req['item_id'])
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if analysis.deleted:
@@ -1111,13 +1216,14 @@ def delete_analysis(request):
             analysis.save()
             del_record = am.AnalysisDeleted(analysis=analysis)
             del_record.save()
-            ana_job = analysis.nextflowsearch.job
-            if ana_job.state not in jj.Jobstates.DONE:
-                if ana_job.state in [jj.Jobstates.ERROR, jj.Jobstates.WAITING, jj.Jobstates.PENDING]:
-                    ana_job.state = jj.Jobstates.CANCELED
-                else:
-                    ana_job.state = jj.Jobstates.REVOKING
-                ana_job.save()
+            if hasattr(analysis, 'nextflowsearch'):
+                ana_job = analysis.nextflowsearch.job
+                if ana_job.state not in jj.Jobstates.DONE:
+                    if ana_job.state in [jj.Jobstates.ERROR, jj.Jobstates.WAITING, jj.Jobstates.PENDING]:
+                        ana_job.state = jj.Jobstates.CANCELED
+                    else:
+                        ana_job.state = jj.Jobstates.REVOKING
+                    ana_job.save()
         return JsonResponse({})
     else:
         return JsonResponse({'error': 'User is not authorized to delete this analysis'}, status=403)
@@ -1131,7 +1237,7 @@ def purge_analysis(request):
         return JsonResponse({'error': 'Only admin is authorized to purge analysis'}, status=403)
     req = json.loads(request.body.decode('utf-8'))
     try:
-        analysis = am.Analysis.objects.get(nextflowsearch__id=req['item_id'])
+        analysis = am.Analysis.objects.get(pk=req['item_id'])
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if not analysis.deleted:
@@ -1158,7 +1264,7 @@ def start_analysis(request):
     req = json.loads(request.body.decode('utf-8'))
     if 'item_id' in req:
         # home app
-        jobq = Q(nextflowsearch__id=req['item_id'])
+        jobq = Q(nextflowsearch__analysis_id=req['item_id'])
     elif 'analysis_id' in req:
         # analysis start app
         jobq = Q(nextflowsearch__analysis_id=req['analysis_id'])
@@ -1175,6 +1281,8 @@ def start_analysis(request):
         return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, '
             f'this job is {job.state}'}, status=403)
     jv.do_retry_job(job)
+    job.nextflowsearch.analysis.editable = False
+    job.nextflowsearch.analysis.save()
     return JsonResponse({}) 
 
 
@@ -1183,8 +1291,52 @@ def stop_analysis(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
-    job = jm.Job.objects.get(nextflowsearch__id=req['item_id'])
+    job = jm.Job.objects.get(nextflowsearch__analysis_id=req['item_id'])
+    job.nextflowsearch.analysis.editable = True
+    job.nextflowsearch.analysis.save()
     return jv.revoke_job(job.pk, request)
+
+
+@login_required
+def freeze_analysis(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    ana = am.Analysis.objects.filter(pk=req['analysis_id'], editable=True, externalanalysis__isnull=False).select_related('externalanalysis__last_token')
+    if not ana.exists():
+        return JsonResponse({'error': 'Analysis cannot be locked, is already locked, or does '
+            'not exist'}, status=403)
+    if not request.user.is_superuser:
+        ana = ana.filter(user=request.user)
+        if not ana.exists():
+            return JsonResponse({'error': 'You do not have permission to freeze this analysis'}, status=403)
+    ana = ana.get()
+    ana.editable = False
+    ana.externalanalysis.last_token.invalidate()
+    ana.save()
+    return JsonResponse({}) 
+
+
+@login_required
+def unfreeze_analysis(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Must use POST'}, status=405)
+    req = json.loads(request.body.decode('utf-8'))
+    ana = am.Analysis.objects.filter(pk=req['analysis_id'], editable=False,
+            externalanalysis__isnull=False)
+    if not ana.exists():
+        return JsonResponse({'error': 'Analysis cannot be unlocked, is already unlocked, or '
+            'does not exist'}, status=403)
+    if request.user.is_staff:
+        nr = ana.update(editable=True)
+    else:
+        nr = ana.filter(user=request.user).update(editable=True)
+    if nr == 0:
+        return JsonResponse({'error': 'You do not have permission to edit this analysis'}, status=403)
+    elif nr > 1:
+        raise RuntimeError('Unfreeze crashed, too many analyses updated. Should not happen')
+    else:
+        return JsonResponse({}) 
 
 
 @login_required
@@ -1207,9 +1359,20 @@ def upload_servable_file(request):
     elif 'fname' not in data or data['fname'] not in settings.SERVABLE_FILENAMES:
         return JsonResponse({'msg': 'File is not servable'}, status=406)
     else:
-        print('Ready to upload')
         return JsonResponse({'msg': 'File can be uploaded and served'}, status=200)
 
+
+@require_GET
+@login_required
+def find_datasets(request):
+    searchterms = [x for x in request.GET['q'].split() if x != '']
+    dbdsets = hv.dataset_query_creator(searchterms).filter(deleted=False)
+    dsets = {d.id: {
+        'id': d.id,
+        'name': format_dset_tag(d),
+        } for d in dbdsets}
+    return JsonResponse(dsets)
+    
 
 def get_servable_files(resultfiles):
     return resultfiles.filter(sfile__filename__in=settings.SERVABLE_FILENAMES)
@@ -1243,6 +1406,10 @@ def nextflow_analysis_log(request):
         return HttpResponse()
     write_analysis_log(logmsg, nfs.analysis_id)
     return HttpResponse()
+
+
+def format_dset_tag(dset):
+    return f'{dset.storage_loc.replace(os.path.sep, f" {os.path.sep} ")}'
 
 
 def append_analysis_log(request):

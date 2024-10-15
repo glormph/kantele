@@ -13,14 +13,10 @@ from rawstatus import tasks as filetasks
 from datasets.jobs import get_or_create_mzmlentry
 from jobs.jobs import DatasetJob, SingleFileJob, BaseJob, MultiFileJob
 
-# FIXME
-# Need to work with analysis components!
-
-
 # TODO
 # rerun qc data and displaying qcdata for a given qc file, how? 
-def get_ana_fullname(analysis):
-    shortname = models.UserWorkflow.WFTypeChoices(analysis.nextflowsearch.workflow.wftype).name
+def get_ana_fullname(analysis, wftype):
+    shortname = models.UserWorkflow.WFTypeChoices(wftype).name
     return f'{shortname}_{analysis.name}'
 
 
@@ -199,6 +195,12 @@ class RunNextflowWorkflow(MultiFileJob):
                 'rawfile__datasetrawfile__dataset_id',
                 'rawfile__datasetrawfile__quantfilechannel__channel__channel__name')
 
+    def on_error(self, **kwargs):
+        analysis = models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
+
+    def on_pause(self, **kwargs):
+        analysis = models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
+
     def process(self, **kwargs):
         analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow').get(pk=kwargs['analysis_id'])
         nfwf = models.NextflowWfVersionParamset.objects.select_related('nfworkflow').get(
@@ -253,13 +255,12 @@ class RunNextflowWorkflow(MultiFileJob):
         # token is unique per job run:
         analysis.nextflowsearch.token = f'nf-{uuid4()}'
         analysis.nextflowsearch.save()
-        timestamp = datetime.strftime(analysis.date, '%Y%m%d_%H.%M')
         run = {'analysis_id': analysis.id,
                'token': analysis.nextflowsearch.token,
                'wf_commit': nfwf.commit,
                'nxf_wf_fn': nfwf.filename,
                'repo': nfwf.nfworkflow.repo,
-               'runname': f'{analysis.id}_{get_ana_fullname(analysis)}_{timestamp}',
+               'runname': kwargs['fullname'],
                'outdir': analysis.user.username,
                'infiles': [],
                'old_infiles': False,

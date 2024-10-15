@@ -28,7 +28,7 @@ const fixedbuttons = [
   {name: '__redo', alt: 'Refresh analysis info', action: refreshAnalysis},
 ]
 
-function editAnalysis(anid) {
+function editViewAnalysis(anid) {
   window.open(`/analysis/${anid}`, '_blank');
 } 
 
@@ -45,7 +45,8 @@ function startJob(anid) {
 
 function doAction(action, anid) {
   const actionmap = {
-    edit: editAnalysis,
+    edit: editViewAnalysis,
+    view: editViewAnalysis,
     'stop job': stopJob,
     'run job': startJob,
   }
@@ -63,17 +64,6 @@ async function refreshAnalysis(nfsid) {
    }
 }
 
-
-const statecolors = {
-  jobstate: {
-    wait: 'has-text-grey-light',
-    pending: 'has-text-info',
-    error: 'has-text-danger', 
-    processing: 'has-text-warning', 
-    revoking: 'has-text-grey-dark',
-    done: 'has-text-success',
-  },
-}
 
 function showDetails(event) {
   detailsVisible = event.detail.ids;
@@ -114,6 +104,7 @@ function purgeAnalyses() {
 
 <Tabs tabshow="Analyses" notif={notif} />
 
+<a class="button" href="/analysis/new/" target="_blank">New analysis</a>
 {#if selectedAnalyses.length}
 <a class="button" on:click={deleteAnalyses}>Delete analyses</a>
 <a class="button" on:click={unDeleteAnalyses}>Undelete analyses</a>
@@ -124,7 +115,7 @@ function purgeAnalyses() {
 <a class="button" disabled>Purge analyses</a>
 {/if}
 
-<Table tab="Analyses" bind:items={analyses} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:rowAction={e => doAction(e.detail.action, e.detail.id)} />
+<Table tab="Analyses" bind:items={analyses} bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedAnalyses} fetchUrl="/show/analyses" findUrl="/find/analyses" on:detailview={showDetails} getdetails={getAnalysisDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={['deleted', 'purged']} on:rowAction={e => doAction(e.detail.action, e.detail.id)} />
  
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} anaIds={detailsVisible} />

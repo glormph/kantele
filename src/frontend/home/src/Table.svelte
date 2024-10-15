@@ -9,7 +9,6 @@ import { flashtime } from '../../util.js'
 
 export let items = {};
 export let fields;
-export let statecolors;
 export let fixedbuttons = [];
 export let selected;
 export let getdetails;
@@ -198,10 +197,10 @@ div.spinner {
           <a href={`${field.linkroute ? `${field.linkroute}?ids=` : ''}${row[field.links]}`}>
             {#if field.multi}
             {#each row[field.id] as item}
-            <TableItem value={item} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
+            <TableItem value={item} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} on:rowAction />
             {/each}
             {:else} 
-            <TableItem value={row[field.id]} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
+            <TableItem value={row[field.id]} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} on:rowAction />
             {/if}
           </a>
           {/if}
@@ -209,10 +208,10 @@ div.spinner {
           {:else}
           {#if field.multi}
           {#each row[field.id] as item}
-          <TableItem value={item} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
+          <TableItem value={item} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} on:rowAction />
           {/each}
           {:else} 
-          <TableItem value={row[field.id]} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} color={statecolors[field.id]} on:rowAction />
+          <TableItem value={row[field.id]} rowid={rowid} inactive={inactive.some(x=>row[x])} help={field.help} icon={field.icon} field={field} on:rowAction />
           {/if}
           {/if}
 

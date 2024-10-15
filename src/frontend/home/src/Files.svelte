@@ -26,16 +26,9 @@ const tablefields = [
   {id: 'ftype', name: 'Type', type: 'str', multi: false},
 ];
 
-const statecolors = {
-  stored: false,
-  jobs: {
-    wait: 'has-text-grey-light',
-    pending: 'has-text-info',
-    error: 'has-text-danger', 
-    processing: 'has-text-warning', 
-    done: 'has-text-success',
-  },
-}
+//const statecolors = {
+//  stored: false,
+//}
 
 function showDetails(event) {
   detailsVisible = event.detail.ids;
@@ -128,7 +121,7 @@ async function fetchCleanup() {
 <a class="button" title="PERMANENTLY delete files from active and cold storage (admins only)" disabled>Purge files</a>
 {/if}
   
-<Table tab="Files" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} statecolors={statecolors} on:detailview={showDetails} />
+<Table tab="Files" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedFiles} fetchUrl="/show/files" findUrl="/find/files" getdetails={getFileDetails} fields={tablefields} inactive={['deleted', 'purged']} on:detailview={showDetails} />
 
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} fnIds={detailsVisible} />

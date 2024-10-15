@@ -42,9 +42,9 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
     active_jobs.difference_update([x['pk'] for x in wait_jobs])
     for job in jobs_not_finished:
         # First check if job is new or already registered
+        jwrapper = jobmap[job.funcname](job.id) 
         if not job.id in job_fn_map:
             print(f'Registering new job {job.id} - {job.funcname} - {job.state}')
-            jwrapper = jobmap[job.funcname](job.id) 
             # Register files
             # FIXME do some jobs really have no files?
             sf_ids = jwrapper.get_sf_ids_jobrunner(**job.kwargs)
@@ -75,7 +75,6 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 print(job.joberror.message)
                 
         elif job.state == Jobstates.REVOKING:
-            jwrapper = jobmap[job.funcname](job.id) 
             if jwrapper.revokable:
                 tasks.update(state=states.REVOKED)
                 for task in tasks:
@@ -94,6 +93,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 send_slack_message(f'Tasks for job {job.id} failed: {job.funcname}', 'kantele')
                 job.state = Jobstates.ERROR
                 job.save()
+                jwrapper.on_error(job.kwargs)
             elif tasks.count() == tasks.filter(state=states.SUCCESS).count():
                 print(f'All tasks finished, job {job.id} done')
                 job.state = Jobstates.DONE
@@ -122,7 +122,6 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 print('Executing job {}'.format(job.id))
                 active_jobs.add(job.id)
                 job.state = Jobstates.PROCESSING
-                jwrapper = jobmap[job.funcname](job.id) 
                 if errmsg := jwrapper.check_error(**job.kwargs):
                     job.state = Jobstates.ERROR
                     JobError.objects.create(job_id=job.id, message=errmsg)

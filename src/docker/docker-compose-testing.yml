@@ -127,6 +127,3 @@ services:
         environment:
             KANTELEHOST: web
 
-# Cannot use jobrunner since it depends on having a DB,
-# which is created by web test framework, which we do not know
-# when it is finished

@@ -24,25 +24,6 @@ const tablefields = [
   {id: 'lastactive', name: 'Last active', type: 'str', multi: false},
 ];
 
-const statecolors = {
-  storestate: {
-    cold: 'is-info',
-    purged: 'is-danger', 
-    complete: 'is-success', 
-    'active-only': 'is-warning', 
-    new: 'is-warning', 
-    empty: 'is-light',
-    broken: 'is-light',
-  },
-  jobstates: {
-    wait: 'has-text-grey-light',
-    pending: 'has-text-info',
-    error: 'has-text-danger', 
-    processing: 'has-text-warning', 
-    done: 'has-text-success',
-  },
-}
-
 const fixedbuttons = [
 ]
 
@@ -122,7 +103,7 @@ async function mergeProjects() {
 <a class="button" title="Merge projects to single (earliest) project" disabled>Merge projects</a>
 {/if}
 
-<Table tab="Projects" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedProjs} fetchUrl="/show/projects" findUrl="/find/projects" getdetails={getProjDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} statecolors={statecolors} on:detailview={showDetails} />
+<Table tab="Projects" bind:treatItems={treatItems} bind:notif={notif} bind:selected={selectedProjs} fetchUrl="/show/projects" findUrl="/find/projects" getdetails={getProjDetails} fixedbuttons={fixedbuttons} fields={tablefields} inactive={inactive} on:detailview={showDetails} />
 
 {#if detailsVisible}
 <Details closeWindow={() => {detailsVisible = false}} projId={detailsVisible} />

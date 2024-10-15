@@ -10,6 +10,8 @@ urlpatterns = [
     path('delete/', views.delete_analysis),
     path('stop/', views.stop_analysis),
     path('start/', views.start_analysis),
+    path('freeze/', views.freeze_analysis),
+    path('unfreeze/', views.unfreeze_analysis),
     path('undelete/', views.undelete_analysis),
     path('purge/', views.purge_analysis),
     path('dsets/<int:wfversion_id>/', views.get_datasets),
@@ -22,4 +24,6 @@ urlpatterns = [
     path('upload/', views.upload_servable_file, name='checkfileupload'),
     path('log/<int:nfs_id>', views.show_analysis_log),
     path('showfile/<int:file_id>', views.serve_analysis_file),
+    path('find/datasets/', views.find_datasets),
+    path('token/renew/', views.renew_token),
 ]

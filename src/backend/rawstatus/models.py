@@ -1,8 +1,12 @@
+from datetime import datetime
+from base64 import b64encode
+
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.db.models import Q
 
+from kantele import settings
 from jobs.models import Job
 
 
@@ -104,6 +108,14 @@ class StoredFile(models.Model):
 
 class UploadToken(models.Model):
     """A token to upload a specific file type for a specified time"""
+
+    class UploadFileType(models.IntegerChoices):
+        RAWFILE = 1, 'Raw file'
+        ANALYSIS = 2, 'Analysis result'
+        LIBRARY = 3, 'Shared file for all users'
+        USERFILE = 4, 'User upload'
+        # QC file for auto processing!? FIXME
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.CharField(max_length=36, unique=True) # UUID keys
     timestamp = models.DateTimeField(auto_now=True) # this can be updated
@@ -113,28 +125,34 @@ class UploadToken(models.Model):
     # ftype is encoded in token for upload, so need to bind Token to Filetype:
     filetype = models.ForeignKey(StoredFileType, on_delete=models.CASCADE)
     archive_only = models.BooleanField(default=False)
-    is_library = models.BooleanField(default=False)
+    uploadtype = models.IntegerField(choices=UploadFileType.choices)
 
     @staticmethod
-    def validate_token(token):
+    def validate_token(token, joinmodels):
         try:
-            upload = UploadToken.objects.select_related('filetype', 'producer').get(
+            upload = UploadToken.objects.select_related(*joinmodels).get(
                     token=token, expired=False)
         except UploadToken.DoesNotExist as e:
-            print('Token for user upload does not exist')
             return False
         else:
             if upload.expires < timezone.now():
-                print('Token expired')
                 upload.expired = True
                 upload.save()
                 return False
             elif upload.expired:
-                print('Token expired')
                 return False
             return upload
 
+    def parse_token_for_frontend(self):
+        ufts = self.UploadFileType
+        need_desc = int(self.uploadtype in [ufts.LIBRARY, ufts.USERFILE])
+        user_token = b64encode(f'{self.token}|{settings.KANTELEHOST}|{need_desc}'.encode('utf-8'))
+        return {'user_token': user_token.decode('utf-8'), 'expired': self.expired,
+                'expires': datetime.strftime(self.expires, '%Y-%m-%d')}
 
+    def invalidate(self):
+        self.expired = True
+        self.save()
 
 
 class UserFile(models.Model):

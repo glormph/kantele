@@ -139,6 +139,8 @@ def pause_job(request):
             job.joberror.delete()
     job.state = Jobstates.WAITING
     job.save()
+    jwrapper = jobmap[job.funcname](job.id) 
+    jwrapper.on_pause(job.kwargs)
     return JsonResponse({}) 
     
 
@@ -295,6 +297,7 @@ def analysis_run_done(request):
     if 'task' in data:
         set_task_done(data['task'])
     send_slack_message('{}: Analysis of {} is now finished'.format(data['user'], data['name']), 'general')
+    am.Analysis.objects.filter(pk=data['analysis_id']).update(editable=False)
     return HttpResponse()
 
 
@@ -314,7 +317,7 @@ def mzml_convert_or_refine_file_done(request):
     sfile.checked = True
     sfile.deleted = False
     sfile.save()
-    create_job('move_single_file', sf_id=sfile.id, dstsharename='storage',
+    create_job('move_single_file', sf_id=sfile.id, dstsharename=settings.PRIMARY_STORAGESHARENAME,
             dst_path=sfile.rawfile.datasetrawfile.dataset.storage_loc) 
     return HttpResponse()
 
@@ -338,7 +341,7 @@ def confirm_internal_file(request):
     """Stores the reporting of a transferred analysis result file,
     checks its md5"""
     data =  json.loads(request.POST['json'])
-    upload = UploadToken.validate_token(data['token'])
+    upload = UploadToken.validate_token(data['token'], [])
     if not upload:
         return HttpResponseForbidden()
     dstshare = ServerShare.objects.get(name=data['dstsharename'])
@@ -346,7 +349,7 @@ def confirm_internal_file(request):
     # Reruns lead to trying to store files multiple times, avoid that here:
     sfile, created = StoredFile.objects.get_or_create(rawfile_id=data['fn_id'], 
             md5=data['md5'],
-            defaults={'filetype': upload.filetype, 'servershare': dstshare, 
+            defaults={'filetype_id': upload.filetype_id, 'servershare': dstshare, 
                 'path': data['outdir'], 'checked': True, 'filename': data['filename']})
     if data['analysis_id'] and created:
         am.AnalysisResultFile.objects.create(analysis_id=data['analysis_id'], sfile=sfile)

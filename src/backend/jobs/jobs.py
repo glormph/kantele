@@ -56,6 +56,12 @@ class BaseJob:
     def post(self):
         pass
 
+    def on_error(self, **kwargs):
+        pass
+
+    def on_pause(self, **kwargs):
+        pass
+
     def queue_tasks(self):
         for task in self.run_tasks:
             args, kwargs = task[0], task[1]

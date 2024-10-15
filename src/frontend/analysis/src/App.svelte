@@ -1,24 +1,24 @@
 <script>
-/* TODO
-- click-removable datasets ?
-- 
-*/
 
 import { onMount } from 'svelte';
-import { flashtime } from '../../util.js'
+import { flashtime, statecolors, helptexts } from '../../util.js'
 import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
+import TokenInstructions from '../../file-inflow/src/TokenInstructions.svelte';
 
 let notif = {errors: {}, messages: {}, links: {}};
 let loadingItems = false;
-
 let runButtonActive = true;
 let postingAnalysis = false;
+let copiedToken = false;
 
 let analysis_id = existing_analysis ? existing_analysis.analysis_id : false;
+
 let wf = false;
 let dsets = {};
+let external_dsets = {};
 
+let dsetToAdd;
 let libfiles = {};
 let libfnorder = [];
 let fetched_resultfiles = [];
@@ -27,6 +27,7 @@ let resfn_arr = [];
 let resultfiles = {}
 let resultfnorder = [];
 let field_order = [];
+let dsnames = initial_dsnames;
 
 let base_analysis = {
   isComplement: false,
@@ -49,6 +50,26 @@ if (existing_analysis && existing_analysis.added_results) {
 }
 
 
+function addDataset() {
+  dsnames[dsetToAdd] = `Dataset ${dsetToAdd}`;
+  if (wf) {
+    fetchDatasetDetails([dsetToAdd]);
+  } else {
+    external_dsets[dsetToAdd] = 1;
+  }
+}
+
+
+function removeDataset(dsid) {
+  delete(dsnames[dsid]);
+  dsnames = dsnames;
+  if (dsid in dsets) {
+    delete(dsets[dsid]);
+    dsets = dsets;
+  }
+}
+
+
 function updateResultfiles() {
   /* Adds result files that are fetched, also loads them from
   any resultfiles (prev_resultfiles) that are implicit to the analysis
@@ -66,6 +87,11 @@ let config = {
   wfid: false,
   wfversion: false,
   analysisname: '',
+  editable: true,
+  external_results: false,
+  external_desc: '',
+  jobstate: false,
+  upload_token: false,
   flags: [],
   multicheck: [],
   isoquants: {}, // contain both isoquant and sampletable
@@ -79,17 +105,17 @@ function validate() {
   notif = {errors: {}, messages: {}, links: {}};
   const charRe = RegExp('^[a-z0-9_-]+$', 'i');
   if (!config.analysisname) {
-	  notif.errors['Analysisname must be filled in'] = 1;
-	} else if (!charRe.test(config.analysisname)) {
-		notif.errors['Analysisname may only contain a-z 0-9 _ -'] = 1;
-	}
-	if (!config.wfid) {
-		notif.errors['You must select a workflow'] = 1;
-	}
-  if (!config.wfversion) {
+    notif.errors['Analysisname must be filled in'] = 1;
+  } else if (!charRe.test(config.analysisname)) {
+    notif.errors['Analysisname may only contain a-z 0-9 _ -'] = 1;
+  }
+  if (!config.wfid && !config.external_results) {
+    notif.errors['You must select a workflow'] = 1;
+  }
+  if (!config.wfversion && !config.external_results) {
 		notif.errors['You must select a workflow version'] = 1;
 	}
-  if (!Object.keys(dsets).length) {
+  if (!Object.keys(dsets).length && !config.external_results) {
     notif.errors['No datasets are in this analysis, maybe they need some editing'] = 1;
   }
   Object.values(dsets).forEach(ds => {
@@ -114,11 +140,13 @@ function validate() {
     })
   })
 
-  wf.selectparams.forEach(selp => {
-    if (!config.inputparams[selp.id]) {
-      notif.errors[`Must select a value for ${selp.name}`] = 1;
-      }
-  });
+  if (!config.external_results) {
+    wf.selectparams.forEach(selp => {
+      if (!config.inputparams[selp.id]) {
+        notif.errors[`Must select a value for ${selp.name}`] = 1;
+        }
+    });
+  }
   return Object.keys(notif.errors).length === 0;
 }
 
@@ -143,8 +171,10 @@ async function storeAnalysis() {
   setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
   let post = {
     analysis_id: analysis_id,
+    upload_external: config.external_results,
+    external_description: config.external_desc,
     base_analysis: base_analysis,
-    dsids: Object.keys(dsets),
+    dsids: wf ? Object.keys(dsets) : Object.keys(external_dsets),
     dssetnames: Object.fromEntries(Object.entries(dsets)
       .filter(([x,ds]) => ds.allfilessamesample)
       .map(([dsid, ds]) => [dsid, ds.setname])),
@@ -167,7 +197,7 @@ async function storeAnalysis() {
       ISOQUANT_SAMPLETABLE: false,
     },
     wfid: config.wfid,
-    nfwfvid: config.wfversion.id,
+    nfwfvid: config.wfversion.id || false,
     analysisname: config.analysisname,
     // Most params are {param.id: value, param2.id: value}, but multicheck
     // is checkboxes and is thus {param.id: [value1.id, value2.id]}
@@ -185,11 +215,11 @@ async function storeAnalysis() {
         }))),
     },
   };
-  if ('ISOQUANT' in wf.components) {
+  if (wf && 'ISOQUANT' in wf.components) {
     post.components.ISOQUANT = config.isoquants;
   }
 
-  if ('ISOQUANT_SAMPLETABLE' in wf.components) {
+  if (wf && 'ISOQUANT_SAMPLETABLE' in wf.components) {
     // If data is purely labelfree this will be empty []
     const sampletable = Object.entries(config.isoquants).flatMap(([sname, isoq]) => 
       Object.entries(isoq.channels).map(([ch, sample]) => [ch, sname, sample[0], isoq.samplegroups[ch]]).sort((a, b) => {
@@ -227,6 +257,8 @@ async function storeAnalysis() {
       }
     } else {
       analysis_id = resp.analysis_id;
+      history.pushState({}, '', `/analysis/${analysis_id}/`);
+      config.upload_token = resp.token;
     }
   }
   postingAnalysis = false;
@@ -245,11 +277,40 @@ async function runAnalysis() {
     if (resp.error) {
       notif.errors[resp.error] = 1;
     } else {
-      window.location.href = '/?tab=searches';
+      window.location.href = '/#/analyses/';
     }
   }
 }
 
+
+async function freezeAnalysis() {
+  await storeAnalysis();
+  if (!Object.entries(notif.errors).filter(([k,v]) => v).length) {
+    notif.messages[`Freezing analysis ${config.analysisname}`] = 1;
+    const post = {
+      analysis_id: analysis_id,
+    }
+    const resp = await postJSON('/analysis/freeze/', post);
+    if (resp.error) {
+      notif.errors[resp.error] = 1;
+    } else {
+      config.editable = false;
+    }
+  }
+}
+
+
+async function unFreezeAnalysis() {
+  const post = {
+    analysis_id: analysis_id,
+  }
+  const resp = await postJSON('/analysis/unfreeze/', post);
+  if (resp.error) {
+    notif.errors[resp.error] = 1;
+  } else {
+    config.editable = true;
+  }
+}
 
 async function fetchWorkflow() {
   /* Fetch all info about a chosen workflow. Passes dsids as param
@@ -258,7 +319,7 @@ async function fetchWorkflow() {
   */
   notif = {errors: {}, messages: {}, links: {}};
   let url = new URL('/analysis/workflow', document.location)
-  const params = {dsids: dsids.join(','), wfvid: config.wfversion.id};
+  const params = {dsids: Object.keys(dsnames).join(','), wfvid: config.wfversion.id};
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   loadingItems = true;
@@ -290,14 +351,16 @@ async function fetchWorkflow() {
     });
   }
   updateResultfiles();
-  await fetchDatasetDetails(false);
+  if (Object.keys(dsnames).length) {
+    await fetchDatasetDetails(false);
+  }
 }
 
 
 async function fetchDatasetDetails(fetchdsids) {
   let url = new URL(`/analysis/dsets/${config.wfversion.id}/`, document.location)
   const params = {
-    dsids: fetchdsids ? fetchdsids.join(',') : dsids.join(','),
+    dsids: fetchdsids ? fetchdsids.join(',') : Object.keys(dsnames).join(','),
     anid: existing_analysis ? existing_analysis.analysis_id : 0,
   };
   url.search = new URLSearchParams(params).toString();
@@ -314,6 +377,7 @@ async function fetchDatasetDetails(fetchdsids) {
     Object.keys(result.dsets).forEach(x => {
       dsets[x] = result.dsets[x];
       dsets[x].changed = false;
+      dsnames[x] = dsets[x].storage;
       });
     Object.keys(dsets).forEach(x => {
       dsets[x].changed = false;
@@ -330,7 +394,7 @@ async function loadAnalysisResults() {
   }
   let url = new URL(`/analysis/resultfiles/load/${adding_analysis.selected}/`, document.location)
   const params = {
-    dsids: dsids.join(','),
+    dsids: Object.keys(dsnames).join(','),
     base_ana: base_analysis.selected || '0',
   };
   url.search = new URLSearchParams(params).toString();
@@ -484,6 +548,26 @@ function sortChannels(channels) {
 }
 
 
+async function renewToken() {
+  const post = {
+    analysis_id: analysis_id,
+  }
+  const resp = await postJSON('/analysis/token/renew/', post);
+  if (resp.error) {
+    notif.errors[resp.error] = 1;
+  } else {
+    config.upload_token = resp.token;
+  }
+}
+
+
+function copyToken() {
+  navigator.clipboard.writeTest(config.upload_token.user_token);
+  copiedToken = true;
+  setTimeout(() => {copiedToken = false;}, 2000);
+}
+
+
 function updateIsoquant(dsid_changed) {
   // Add new set, called when isobaric dataset gets new set name
   // FIXME Ideally handle if isobaric in wf in the dataset setname thing
@@ -532,17 +616,39 @@ function updateIsoquant(dsid_changed) {
   }
 }
 
+function clearWorkflow() {
+  config.wfid = false;
+  config.wfversion = false;
+  wf = false;
+  dsets = {};
+} 
+
 
 async function populate_analysis_and_fetch_wf() {
-  config.wfid = existing_analysis.wfid;
-  config.wfversion_id = existing_analysis.wfversion_id;
-  config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
-  await fetchWorkflow();
-  for (const key of ['analysisname', 'flags', 'inputparams', 'multicheck', 'fileparams', 'isoquants']) {
+  // Only runs in onMount
+  if (existing_analysis.wfid) {
+    config.wfid = existing_analysis.wfid;
+    config.wfversion_id = existing_analysis.wfversion_id;
+    config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
+    await fetchWorkflow();
+  }
+  for (const key of ['analysisname',
+      'jobstate',
+      'flags',
+      'inputparams',
+      'multicheck',
+      'fileparams',
+      'isoquants',
+      'editable',
+      'external_desc',
+      'external_results',
+      'upload_token']) {
     config[key] = existing_analysis[key];
   }
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
-  base_analysis = existing_analysis.base_analysis || base_analysis;
+  if (Object.keys(existing_analysis.base_analysis).length) {
+    base_analysis = existing_analysis.base_analysis;
+  }
   // FIXME now repopulate files with sample names if any
 }
 
@@ -558,9 +664,11 @@ onMount(async() => {
       // Populate dynamic select components by calling .inputdone()
       // Does not work if it is in populate_analysis, possibly is too fast
       // and values havent made it to selectval in the components yet
-      Object.keys(wf.fileparams).forEach(x => {
-        wf.fileparams[x].component.inputdone();
-      });
+      if (wf) {
+        Object.keys(wf.fileparams).forEach(x => {
+          wf.fileparams[x].component.inputdone();
+        });
+      }
       // wf.mfp: [{id: 1, components: []}, ]
       // cfg.mfp: {1: {0: 3, 1: 4}, ...}
       Object.entries(config.multifileparams).forEach(([paramid, ix_val]) => {
@@ -610,50 +718,137 @@ onMount(async() => {
 </div>
 
 <div class="content">
-	<div class="title is-5">Analysis </div>
-	<div class="field is-horizontal">
-    <div class="field-label is-normal">
-      <label class="label">Workflow:</label>
+  <div class="box">
+    {#if analysis_id}
+    <span class="icon-text">
+      {#if config.editable}
+      <a title="Click to freeze" on:click={freezeAnalysis}><span class="icon "><i class="fa fa-lock-open has-text-grey"></i></span></a>
+      {:else if config.external_results}
+      <a title="Click to edit" on:click={unFreezeAnalysis}><span class="icon "><i class="fa fa-lock has-text-grey"></i></span></a>
+      {/if}
+      <span class="tags has-addons">
+        <span class="tag">Analysis {config.editable ? 'editable' : 'frozen'}</span>
+        {#if config.jobstate}
+        <span class="tag {statecolors.tag[config.jobstate]}">{helptexts.jobstate[config.jobstate]}</span>
+        {:else}
+        <span class="tag is-grey-light">No job</span>
+        {/if}
+      </span>
+    </span>
+    {/if}
+    <h5 class="mt-3 title is-5">Analysis name</h5>
+    
+    <div class="field">
+      <input type="text" class="input" bind:value={config.analysisname} placeholder="Please enter analysis name">
     </div>
-    <div class="field-body">
+  </div>
+
+  <div class="box">
+    <label class="checkbox">
+      <input type="checkbox" bind:checked={config.external_results} />
+      Externally run analysis, upload results but don't run
+    </label>
+
+    {#if config.external_results}
+      {#if config.wfid}
       <div class="field">
-        <div class="select">
-          <select bind:value={config.wfid} on:change={e => wf = config.wfversion = false}>
-            <option disabled value={false}>Select workflow</option>
-            {#each wforder as wfid}
-            <option value={wfid}>{allwfs[wfid].name} </option>
-            {/each}
-          </select>
+        <button class="button is-small" on:click={clearWorkflow}>Dont use workflow</button>
+      </div>
+      {/if}
+    
+    <textarea class="textarea" bind:value={config.external_desc} placeholder="Describe your analysis, relevant info, versions etc, possibly command line invocation used"></textarea>
+
+    {#if config.external_results && config.editable}
+      {#if analysis_id}
+      <button title="Generate new token and invalidate any old tokens for this analysis" on:click={renewToken} class="button">
+        <span class="icon is-small"><i class="fa fa-sync"></i></span>
+        <span>New token</span>
+      </button>
+      {/if}
+
+      {#if config.upload_token}
+      <button on:click={copyToken} class="button">
+        {#if copiedToken}
+        <span class="icon is-small"><i class="fa fa-check has-text-success"></i></span>
+        {:else}
+        <span class="icon is-small"><i class="fa fa-copy"></i></span>
+        <span>Copy token</span>
+        {/if}
+      </button>
+      {/if}
+
+      {#if config.upload_token}
+      <div>
+        <input class="input" value={config.upload_token.user_token} readonly />
+        {#if config.upload_token.expired}
+        <span class="has-text-danger">Token has expired</span>
+        {:else}
+        This token will expire {config.upload_token.expires}
+        {/if}
+      </div>
+      <hr />
+      <TokenInstructions filetype="analysis output" />
+      {/if}
+    {/if}
+
+  {/if}
+  </div>
+
+  <div class="box">
+    <h5 class="title is-5">Datasets selected</h5>
+    <DynamicSelect placeholder='Find dataset to add' bind:selectval={dsetToAdd} on:selectedvalue={addDataset} niceName={x => x.name} fetchUrl="/analysis/find/datasets/" />
+    <div class="tags">
+    {#each Object.entries(dsnames) as [dsid, name]}
+      <span class="tag is-medium is-info">
+        {name}
+        <button class="delete is-small" on:click={e => removeDataset(dsid)}></button>
+      </span>
+    {/each}
+    {#if !Object.entries(dsnames).length}
+    No datasets selected
+    {/if}
+    </div>
+  </div>
+
+
+  <div class="box">
+    <div class="field is-horizontal">
+      <div class="field-label is-normal">
+        <label class="label">Workflow:</label>
+      </div>
+      <div class="field-body">
+        <div class="field">
+          <div class="select">
+            <select bind:value={config.wfid} on:change={e => wf = config.wfversion = false}>
+              <option disabled value={false}>Select workflow</option>
+              {#each wforder as wfid}
+              <option value={wfid}>{allwfs[wfid].name} </option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="field-label is-normal">
+        <label class="label">Workflow version:</label>
+      </div>
+      <div class="field-body">
+        <div class="field">
+          <div class="select" on:change={fetchWorkflow}>
+            <select bind:value={config.wfversion}>
+              <option disabled value={false}>Select workflow version</option>
+              {#if config.wfid}
+              {#each allwfs[config.wfid].versions as wfv}
+              <option value={wfv}>{wfv.date} -- {wfv.name}</option>
+              {/each}
+              {/if}
+            </select>
+          </div>
         </div>
       </div>
     </div>
-    <div class="field-label is-normal">
-      <label class="label">Workflow version:</label>
-    </div>
-    <div class="field-body">
-      <div class="field">
-        <div class="select" on:change={fetchWorkflow}>
-          <select bind:value={config.wfversion}>
-            <option disabled value={false}>Select workflow version</option>
-            {#if config.wfid}
-            {#each allwfs[config.wfid].versions as wfv}
-            <option value={wfv}>{wfv.date} -- {wfv.name}</option>
-            {/each}
-            {/if}
-          </select>
-        </div>
-      </div>
-    </div>
-	</div>
+  </div>
 
   {#if wf}
-	<div class="field">
-    <input type="text" class="input" bind:value={config.analysisname} placeholder="Please enter analysis name">
-    <div>Full name will be <code>{allwfs[config.wfid].wftype}_{config.analysisname}</code>
-    This will be the folder name for the output and prefixed to the output filenames
-    </div>
-	</div>
-
   <div class="box">
     <div class="title is-5">Fetch settings/files from a previous analysis</div>
     {#if wf && 'COMPLEMENT_ANALYSIS' in wf.components && base_analysis.selected}
@@ -674,10 +869,12 @@ onMount(async() => {
     </div>
     {/if}
     <DynamicSelect bind:intext={base_analysis.typedname} bind:selectval={base_analysis.selected} on:selectedvalue={e => loadBaseAnalysis()} niceName={x => x.name} fetchUrl="/analysis/baseanalysis/show/" />
-	</div>
+  </div>
   {/if}
 
-	<div class="title is-5">Datasets</div>
+  {#if Object.keys(dsets).length}
+ <div class="title is-5">Datasets details</div>
+  {/if}
   {#each Object.values(dsets) as ds}
   <div class="box">
     {#if ds.changed}
@@ -1002,17 +1199,19 @@ onMount(async() => {
     {/each}
 	</div>
   {/if}
+  {/if} 
 
-  {#if runButtonActive && (!existing_analysis || existing_analysis.editable)}
-  <a class="button is-primary" on:click={storeAnalysis}>Store analysis</a>
-  <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
+  {#if runButtonActive && (!existing_analysis || config.editable)}
+    {#if wf || config.external_results}
+      <a class="button is-primary" on:click={storeAnalysis}>Store analysis</a>
+      {#if config.external_results}
+        <a class="button is-primary" on:click={freezeAnalysis}>Freeze analysis</a>
+      {/if}
+    {:else if wf}
+      <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
+    {/if}
   {:else if postingAnalysis}
-	<a class="button is-primary is-loading">Store analysis</a>
-	<a class="button is-primary is-loading">Store and queue analysis</a>
-  {:else}
-	<a class="button is-primary" disabled>Store analysis</a>
-	<a class="button is-primary" disabled>Store and queue analysis</a>
+	<a class="button is-primary is-loading"></a>
   {/if}
 
-  {/if} 
 </div>

@@ -28,11 +28,11 @@ class BaseFilesTest(BaseTest):
         self.token= 'fghihj'
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
                 expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft)
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
         # expired token
         rm.UploadToken.objects.create(user=self.user, token=self.nottoken, 
                 expires=timezone.now() - timedelta(1), expired=False, 
-                producer=self.prod, filetype=self.ft)
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
 
         self.registered_raw, _ = rm.RawFile.objects.get_or_create(name='file1', producer=self.prod,
                 source_md5='b7d55c322fa09ecd8bea141082c5419d',
@@ -109,7 +109,8 @@ class TransferStateTest(BaseFilesTest):
                 defaults={'filename': usrfraw.name, 'servershare': self.sstmp,
                     'path': '', 'checked': True})
         usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
-                expired=False, producer=self.prod, filetype=uft, defaults={
+                expired=False, producer=self.prod, filetype=uft,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE, defaults={
                     'expires': timezone.now() + timedelta(1)})
         userfile, _ = rm.UserFile.objects.get_or_create(sfile=sfusr,
                 description='This is a userfile', upload=usedtoken)
@@ -181,7 +182,7 @@ class TransferStateTest(BaseFilesTest):
         # where it is archived and purged (non-accessible)
         uploadtoken = rm.UploadToken.objects.create(user=self.user, token='archiveonly',
                 expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft, archive_only=True)
+                producer=self.prod, filetype=self.ft, archive_only=True, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
         sf = self.doneraw.storedfile_set.get()
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': uploadtoken.token, 'fnid': sf.rawfile_id})
@@ -273,7 +274,7 @@ class TestFileTransfer(BaseFilesTest):
         with open(os.path.join(settings.TMP_UPLOADPATH, upfile)) as fp:
             self.assertEqual(fp.read(), infile_contents)
 
-    def do_transfer_file(self, libdesc=False, userdesc=False, token=False, fname=False):
+    def do_transfer_file(self, desc=False, token=False, fname=False):
         # FIXME maybe break up, function getting overloaded
         '''Tries to upload file and checks if everything is OK'''
         fn = 'test_upload.txt'
@@ -285,10 +286,8 @@ class TestFileTransfer(BaseFilesTest):
         with open(f'rawstatus/{fn}') as fp:
             stddata = {'fn_id': self.registered_raw.pk, 'token': token,
                     'filename': fname, 'file': fp}
-            if libdesc:
-                stddata['libdesc'] = libdesc
-            elif userdesc:
-                stddata['userdesc'] = userdesc
+            if desc:
+                stddata['desc'] = desc
             resp = self.cl.post(self.url, data=stddata)
             fp.seek(0)
             uploaded_contents = fp.read()
@@ -303,7 +302,7 @@ class TestFileTransfer(BaseFilesTest):
         self.assertEqual(resp.status_code, 400)
         # Missing client ID /token (False)
         stddata = {'fn_id': self.registered_raw.pk, 'token': False,
-                'libdesc': False, 'userdesc': False, 'filename': self.registered_raw.name}
+                'desc': False, 'filename': self.registered_raw.name}
         resp = self.cl.post(self.url, data=stddata)
         self.assertEqual(resp.status_code, 403)
         # Wrong token
@@ -371,9 +370,10 @@ class TestFileTransfer(BaseFilesTest):
 
     def test_libfile(self):
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token='libfile',
+                uploadtype=rm.UploadToken.UploadFileType.LIBRARY,
                 expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft, is_library=True)
-        resp, upload_content = self.do_transfer_file(libdesc='This is a libfile', token='libfile')
+                producer=self.prod, filetype=self.ft)
+        resp, upload_content = self.do_transfer_file(desc='This is a libfile', token='libfile')
         self.do_check_okfile(resp, upload_content)
         libs = am.LibraryFile.objects.filter(sfile__rawfile=self.registered_raw, description='This is a libfile')
         self.assertEqual(libs.count(), 1)
@@ -382,8 +382,9 @@ class TestFileTransfer(BaseFilesTest):
         token = 'userfile'
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
                 expires=timezone.now() + timedelta(1), expired=False,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE,
                 producer=self.prod, filetype=self.uft)
-        resp, upload_content = self.do_transfer_file(userdesc='This is a userfile', token=token)
+        resp, upload_content = self.do_transfer_file(desc='This is a userfile', token=token)
         self.do_check_okfile(resp, upload_content)
         ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.registered_raw,
                 description='This is a userfile', upload__token=token)
@@ -394,10 +395,11 @@ class TestFileTransfer(BaseFilesTest):
         token = 'userfilefail'
         uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
                 expires=timezone.now() + timedelta(1), expired=False,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE,
                 producer=self.prod, filetype=self.uft)
         resp, upload_content = self.do_transfer_file(token=token)
         self.assertEqual(resp.status_code, 403)
-        self.assertIn('User file needs a description', resp.json()['error'])
+        self.assertIn('Library or user files need a description', resp.json()['error'])
 
 #        elif self.uploadtoken.is_library and not libdesc:
 #            self.assertEqual(resp.status_code, 403)
@@ -471,7 +473,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
     zipsizes = {'kantele_upload.sh': 337,
             'kantele_upload.bat': 185,
-            'upload.py': 26072,
+            'upload.py': 25735,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 689,

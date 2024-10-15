@@ -188,7 +188,8 @@ class BaseTest(TestCase):
                 defaults={'filename': self.usrfraw.name, 'servershare': self.sstmp,
                     'path': '', 'checked': True})
         self.usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
-                expired=False, producer=self.prod, filetype=self.uft, defaults={
+                expired=False, producer=self.prod, filetype=self.uft,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE, defaults={
                     'expires': timezone.now() + timedelta(1)})
         self.userfile, _ = rm.UserFile.objects.get_or_create(sfile=self.sfusr,
                 description='This is a userfile', upload=self.usedtoken)

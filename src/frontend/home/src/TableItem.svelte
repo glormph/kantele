@@ -2,17 +2,18 @@
 
 import { createEventDispatcher } from 'svelte';
 const dispatch = createEventDispatcher();
-import { flashtime } from '../../util.js'
+import { flashtime, statecolors, helptexts } from '../../util.js'
 
 export let value;
 export let field;
 export let rowid;
 export let help = '';
 export let icon;
-export let color;
 export let inactive;
 
 let confirmReady = false;
+let color = statecolors[field.id];
+let helptext = helptexts[field.id] ? helptexts[field.id][value] : false;
 
 function setConfirm() {
   confirmReady = true;
@@ -40,7 +41,9 @@ function setConfirm() {
 <span title={help} class={`icon is-small is-info`}><i class={`fa fa-${icon}`}></i></span>
 
 {:else if field.type === 'state'}
-<span class={`icon is-small ${color[value]}`}><i class="fa fa-square"></i></span>
+<a title={helptext}>
+  <span class={`icon is-small ${color[value]}`}><i class="fa fa-square"></i></span>
+</a>
 
 {:else if field.type === 'button'}
 
