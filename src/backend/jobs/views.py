@@ -317,7 +317,7 @@ def mzml_convert_or_refine_file_done(request):
     sfile.checked = True
     sfile.deleted = False
     sfile.save()
-    create_job('move_single_file', sf_id=sfile.id, dstsharename='storage',
+    create_job('move_single_file', sf_id=sfile.id, dstsharename=settings.PRIMARY_STORAGESHARENAME,
             dst_path=sfile.rawfile.datasetrawfile.dataset.storage_loc) 
     return HttpResponse()
 

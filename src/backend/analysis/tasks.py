@@ -25,7 +25,7 @@ from analysis.models import UniProtFasta
 def check_ensembl_uniprot_fasta_download(self, dbname, version, organism, dbtype):
     """Checks if there is a new version of ENSEMBL data,
     downloads it to system over FTP"""
-    token = check_in_transfer_client(self.request.id, False, 'database')
+    token = check_in_transfer_client(self.request.id, False, settings.DBFA_FT_NAME)
     dstpath = os.path.join(settings.SHAREMAP[settings.PRIMARY_STORAGESHARENAME],
             settings.LIBRARY_FILE_PATH)
     doneurl = urljoin(settings.KANTELEHOST, reverse('jobs:internalfiledone'))
@@ -188,7 +188,7 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
         raise
     token = False
     for ofile in outfiles:
-        token = check_in_transfer_client(self.request.id, token, 'analysis_output')
+        token = check_in_transfer_client(self.request.id, token, settings.ANALYSIS_FT_NAME)
         regfile = register_resultfile(os.path.basename(ofile), ofile, token)
         if not regfile:
             continue
@@ -251,7 +251,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
         raise
     token = False
     for fn in outfiles:
-        token = check_in_transfer_client(self.request.id, token, 'analysis_output')
+        token = check_in_transfer_client(self.request.id, token, settings.ANALYSIS_FT_NAME)
         sf_id, newname = os.path.basename(fn).split('___')
         fdata = {'file_id': sf_id, 'newname': newname, 'md5': calc_md5(fn)}
         transfer_resultfile(outfullpath, run['runname'], fn, run['dstsharename'], fdata, fileurl, token,
@@ -530,7 +530,7 @@ def transfer_resultfile(outfullpath, outpath, fn, dstsharename, regfile, url, to
         postdata['md5'] = regfile['md5']
     if analysis_id:
         # Not for refine mzMLs
-        postdata.update({'ftype': 'analysis_output', 'analysis_id': analysis_id})
+        postdata.update({'ftype': settings.ANALYSIS_FT_NAME, 'analysis_id': analysis_id})
         # first check if upload file is OK:
         resp = requests.post(checksrvurl, json={'fname': fname, 'client_id': settings.APIKEY})
         if resp.status_code == 200:

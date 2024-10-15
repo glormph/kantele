@@ -65,9 +65,10 @@ SHAREMAP = {TMPSHARENAME: TMPSHARE,
             **{name: share for name, share in zip(STORAGESHARENAMES, STORAGESHARES)}
             }
 TMPPATH = ''
+ARCHIVEPATH = ''
 
 NGINX_ANALYSIS_REDIRECT = os.environ.get('NGINX_ANALYSIS_REDIRECT')
-SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html']
+SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html', 'report.html']
 
 SLACK_BASE = 'https://hooks.slack.com/services/'
 SLACK_WORKSPACE = os.environ.get('SLACK_WORKSPACE')
@@ -92,7 +93,7 @@ MAX_MZML_LC_STORAGE_TIME = int(os.environ.get('MAX_MZML_LC_STORAGE_TIME', -1))
 MAX_MZML_QC_STORAGE_TIME = int(os.environ.get('MAX_MZML_QC_STORAGE_TIME', -1))
 
 # Upload token lifespan
-MAX_TIME_UPLOADTOKEN = 8 * 3600 # for user uploads
+MAX_TIME_UPLOADTOKEN = 24 * 3600 # for user uploads
 MAX_TIME_PROD_TOKEN = 30 * 24 * 3600 # for internal production instruments
 TOKEN_RENEWAL_WINDOW_DAYS = 7
 
@@ -128,8 +129,10 @@ LIBRARY_FILE_PATH = 'databases'
 ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE', False)
 NF_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 
-# hardcoded name for fasta DBs
+# hardcoded name for fasta DBs, analysis output
 DBFA_FT_NAME = 'database'
+ANALYSIS_FT_NAME = 'analysis_output'
+
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 
 # django
