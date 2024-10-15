@@ -286,7 +286,7 @@ class ExternalAnalysis(models.Model):
     analysis = models.OneToOneField(Analysis, on_delete=models.CASCADE)
     description = models.TextField()
     # Deleting tokens happens, and we shouldnt lose the external analysis for it
-    last_token = models.ForeignKey(filemodels.UploadToken, on_delete=models.PROTECT)
+    last_token = models.OneToOneField(filemodels.UploadToken, on_delete=models.PROTECT)
 
 
 class NextflowSearch(models.Model):
