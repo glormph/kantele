@@ -243,7 +243,7 @@ def get_analysis(request, anid):
             'wfversion_id': False,
             'wfid': False,
             'external_results': False,
-            'base_analysis': False,
+            'base_analysis': {},
             }
     dsets = {x.dataset_id: format_dset_tag(x.dataset) for x in ana.datasetanalysis_set.select_related('dataset').all()}
     prev_resultfiles_ids = get_prev_resultfiles(dsets.keys(), only_ids=True)

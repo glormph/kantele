@@ -124,7 +124,7 @@ def rsync_transfer_file(self, sfid, srcpath, dstpath, dstsharename, do_unzip, st
     on its relevant file, in case the transferred file is corrupt'''
     # FIXME need to take care of e.g. zipped uploads which do not contain relevant file
     # (use case e.g. microscopy images), unlike e.g. .d folders from Bruker.
-    ssh_host = urlsplit(settings.KANTELEHOST).netloc
+    ssh_host = settings.RSYNC_HOST
     ssh_srcpath = f'{settings.RSYNC_SSHUSER}@{ssh_host}:{srcpath}'
     dstfpath = os.path.join(settings.SHAREMAP[dstsharename], dstpath)
     fulldir, fn = os.path.split(dstfpath)

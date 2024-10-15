@@ -647,7 +647,9 @@ async function populate_analysis_and_fetch_wf() {
     config[key] = existing_analysis[key];
   }
   Object.assign(config.multifileparams, existing_analysis.multifileparams);
-  base_analysis = existing_analysis.base_analysis || base_analysis;
+  if (Object.keys(existing_analysis.base_analysis).length) {
+    base_analysis = existing_analysis.base_analysis;
+  }
   // FIXME now repopulate files with sample names if any
 }
 
