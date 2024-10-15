@@ -4,32 +4,20 @@ import { getCookie, postJSON } from '../../datasets/src/funcJSON.js'
 import TokenInstructions from './TokenInstructions.svelte'
 
 let ft_selected = false;
+let upl_type;
 let token = false;
 let onlyArchive = false;
-let isLibrary = false;
 let uploaddesc = '';
 let selectedFile = [];
 let uploadSuccess;
 let uploadError;
 let uploadRunning;
 let copiedToken = false;
-
-function get_upload_type() {
-  let upl_type;
-  if (ft_selected.israw) {
-    upl_type = rawfile_id;
-  } else if (isLibrary) {
-    upl_type = rawfile_id;
-  } else {
-    upl_type = userfile_id;
-  }
-  return upl_type;
-}
-
+const descfts = new Set([libfile_id, userfile_id]);
 
 async function createToken() {
   const resp = await postJSON('../token/', {ftype_id: ft_selected.id,
-    archive_only: onlyArchive, uploadtype: get_upload_type()});
+    archive_only: onlyArchive, uploadtype: upl_type});
   if (resp.error) {
     console.log('error');
     // FIXME
@@ -40,7 +28,7 @@ async function createToken() {
 }
 
 function copyToken() {
-  navigator.clipboard.writeTest(token);
+  navigator.clipboard.writeText(token);
   copiedToken = true;
   setTimeout(() => {copiedToken = false;}, 2000);
 }
@@ -53,7 +41,7 @@ async function uploadFile() {
   fdata.append('desc', uploaddesc);
   fdata.append('ftype_id', ft_selected.id);
   fdata.append('archive_only', onlyArchive ? '1' : '0');
-  fdata.append('uploadtype', get_upload_type());
+  fdata.append('uploadtype', upl_type);
   const csrftoken = getCookie('csrftoken');
   let resp = await fetch('/files/upload/userfile/', {
     method: 'POST',
@@ -62,7 +50,7 @@ async function uploadFile() {
     headers: {'X-CSRFToken': csrftoken},
   })
   uploadRunning = false;
-  let jresp;
+  let jresp = {success: false};
   try {
     jresp = await resp.json();
   } catch {
@@ -167,11 +155,14 @@ async function uploadFile() {
       </div>
 
       <div clas="field">
-        <div class="checkbox">
-          {#if ft_selected && !ft_selected.israw}
-          <input type="checkbox" bind:checked={isLibrary}>
-          <label clas="checkbox">Library file shared with everyone (e.g. FASTA, not raw data)</label>
-          {/if}
+        <div class="select">
+          <select bind:value={upl_type}>
+            <option value={userfile_id}>User file</option>
+            <option value={libfile_id}>Library (shared with everyone)</option>
+            {#if ft_selected && ft_selected.israw}
+            <option value={rawfile_id}>Raw data (to tmp)</option>
+            {/if}
+          </select>
         </div>
       </div>
 
@@ -222,7 +213,7 @@ async function uploadFile() {
             </label>
           </div>
           </div>
-          {#if !ft_selected.israw}
+          {#if descfts.has(upl_type)}
           <div class="field">
             <input class="input" bind:value={uploaddesc} type="text" placeholder="Description">
           </div>

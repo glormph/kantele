@@ -562,7 +562,7 @@ async function renewToken() {
 
 
 function copyToken() {
-  navigator.clipboard.writeTest(config.upload_token.user_token);
+  navigator.clipboard.writeText(config.upload_token.user_token);
   copiedToken = true;
   setTimeout(() => {copiedToken = false;}, 2000);
 }

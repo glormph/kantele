@@ -150,14 +150,13 @@ def browser_userupload(request):
         uploadtype = int(data['uploadtype'])
     except (ValueError, KeyError):
         return JsonResponse({'success': False, 'msg': 'Bad request, contact admin'}, status=400)
-    if not ftype.is_rawdata:
+    uft = UploadToken.UploadFileType
+    if uploadtype in [uft.LIBRARY, uft.USERFILE]:
         desc = str(data.get('desc', '').strip())
         if desc == '':
             return JsonResponse({'success': False, 'msg': 'A description for this file is required'})
     elif ftype.is_folder:
         return JsonResponse({'success': False, 'msg': 'Cannot upload folder datatypes through browser'})
-    elif uploadtype != UploadToken.UploadFileType.RAWFILE:
-        return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library files, contact admin! This should not happen.'})
 
     # create userfileupload model (incl. fake token)
     producer = Producer.objects.get(shortname='admin')
@@ -318,17 +317,22 @@ def request_upload_token(request):
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
     except KeyError:
         producer = Producer.objects.get(shortname='admin')
+        try:
+            uploadtype = UploadToken.UploadFileType(data['uploadtype'])
+        except KeyError:
+            return JsonResponse({'error': True, 'error': 'Need to specify upload type, contact '
+                'admin'}, status=403)
+    else:
+        uploadtype = UploadToken.UploadFileType.RAWFILE
     try:
         selected_ft = StoredFileType.objects.get(pk=data['ftype_id'])
     except StoredFileType.DoesNotExist:
         return JsonResponse({'error': True, 'error': 'Cannot use that file type'}, status=403)
-    if selected_ft.is_rawdata and int(data['uploadtype']) != UploadToken.UploadFileType.RAWFILE:
-        return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library /etc files'})
-    elif int(data['uploadtype']) not in [UploadToken.UploadFileType.RAWFILE,
+    if uploadtype not in [UploadToken.UploadFileType.RAWFILE,
             UploadToken.UploadFileType.USERFILE, UploadToken.UploadFileType.LIBRARY]:
-        return JsonResponse({'success': False, 'msg': 'Cannot upload raw files as user/library /etc files'})
+        return JsonResponse({'success': False, 'msg': 'Can only upload raw, library, user files '})
 
-    ufu = create_upload_token(data['ftype_id'], request.user.id, producer, data['uploadtype'], data['archive_only'])
+    ufu = create_upload_token(data['ftype_id'], request.user.id, producer, uploadtype, data['archive_only'])
     return JsonResponse(ufu.parse_token_for_frontend())
 
 
