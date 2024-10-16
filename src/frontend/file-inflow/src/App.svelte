@@ -28,7 +28,7 @@ async function createToken() {
 }
 
 function copyToken() {
-  navigator.clipboard.writeText(token);
+  navigator.clipboard.writeTest(token.user_token);
   copiedToken = true;
   setTimeout(() => {copiedToken = false;}, 2000);
 }
