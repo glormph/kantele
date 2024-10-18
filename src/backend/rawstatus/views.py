@@ -230,9 +230,9 @@ def browser_userupload(request):
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
             filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
     create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
-    if not ftype.is_rawdata and upload.is_library:
+    if upload.uploadtype == UploadToken.UploadFileType.LIBRARY:
         LibraryFile.objects.create(sfile=sfile, description=desc)
-    elif not ftype.is_rawdata:
+    elif upload.uploadtype == UploadToken.UploadFileType.USERFILE:
         UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
     dstfn = process_file_confirmed_ready(sfile.rawfile, sfile, upload.archive_only)
     return JsonResponse({'success': True, 'msg': 'Succesfully uploaded file to '
