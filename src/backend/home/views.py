@@ -935,7 +935,7 @@ def refine_mzmls(request):
         if error := move_dset_project_servershare(dset, settings.PRIMARY_STORAGESHARENAME):
             return JsonResponse({'error': error}, status=403)
     # FIXME get analysis if it does exist, in case someone reruns?
-    analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}')
+    analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}', editable=False)
     job = create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=data['wfid'],
             dstshare_id=res_share.pk, dbfn_id=data['dbid'], qtype=dset.quantdataset.quanttype.shortname)
     uwf = anmodels.UserWorkflow.objects.get(nfwfversionparamsets=data['wfid'],

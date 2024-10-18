@@ -8,7 +8,7 @@ import TokenInstructions from '../../file-inflow/src/TokenInstructions.svelte';
 
 let notif = {errors: {}, messages: {}, links: {}};
 let loadingItems = false;
-let runButtonActive = true;
+let runButtonActive = false;
 let postingAnalysis = false;
 let copiedToken = false;
 
@@ -319,7 +319,7 @@ async function fetchWorkflow() {
   */
   notif = {errors: {}, messages: {}, links: {}};
   let url = new URL('/analysis/workflow', document.location)
-  const params = {dsids: Object.keys(dsnames).join(','), wfvid: config.wfversion.id};
+  const params = {dsids: Object.keys(dsnames).join(','), wfvid: config.wfversion_id};
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   loadingItems = true;
@@ -629,7 +629,10 @@ async function populate_analysis_and_fetch_wf() {
   if (existing_analysis.wfid) {
     config.wfid = existing_analysis.wfid;
     config.wfversion_id = existing_analysis.wfversion_id;
-    config.wfversion = allwfs[existing_analysis.wfid].versions.filter(x => x.id === existing_analysis.wfversion_id)[0];
+    if (existing_analysis.wfid in allwfs) {
+      config.wfversion = allwfs[existing_analysis.wfid].versions.filter(
+        x => x.id === existing_analysis.wfversion_id)[0];
+    }
     await fetchWorkflow();
   }
   for (const key of ['analysisname',
@@ -677,6 +680,7 @@ onMount(async() => {
           mfp.components[ix].inputdone();
         });
       });
+      runButtonActive = true;
     }
   }
 })
@@ -721,19 +725,23 @@ onMount(async() => {
   <div class="box">
     {#if analysis_id}
     <span class="icon-text">
-      {#if config.editable}
-      <a title="Click to freeze" on:click={freezeAnalysis}><span class="icon "><i class="fa fa-lock-open has-text-grey"></i></span></a>
-      {:else if config.external_results}
-      <a title="Click to edit" on:click={unFreezeAnalysis}><span class="icon "><i class="fa fa-lock has-text-grey"></i></span></a>
-      {/if}
-      <span class="tags has-addons">
-        <span class="tag">Analysis {config.editable ? 'editable' : 'frozen'}</span>
-        {#if config.jobstate}
-        <span class="tag {statecolors.tag[config.jobstate]}">{helptexts.jobstate[config.jobstate]}</span>
-        {:else}
-        <span class="tag is-grey-light">No job</span>
+      {#if !runButtonActive}
+        <span class="has-icon"><i class="fa fa-spinner fa-spin"></i></span> 
+      {:else}
+        {#if config.editable}
+        <a title="Click to freeze" on:click={freezeAnalysis}><span class="icon "><i class="fa fa-lock-open has-text-grey"></i></span></a>
+        {:else if config.external_results}
+        <a title="Click to edit" on:click={unFreezeAnalysis}><span class="icon "><i class="fa fa-lock has-text-grey"></i></span></a>
         {/if}
-      </span>
+        <span class="tags has-addons">
+          <span class="tag">Analysis {config.editable ? 'editable' : 'frozen'}</span>
+          {#if config.jobstate}
+          <span class="tag {statecolors.tag[config.jobstate]}">{helptexts.jobstate[config.jobstate]}</span>
+          {:else}
+          <span class="tag is-grey-light">No job</span>
+          {/if}
+        </span>
+      {/if}
     </span>
     {/if}
     <h5 class="mt-3 title is-5">Analysis name</h5>
@@ -836,7 +844,7 @@ onMount(async() => {
           <div class="select" on:change={fetchWorkflow}>
             <select bind:value={config.wfversion}>
               <option disabled value={false}>Select workflow version</option>
-              {#if config.wfid}
+              {#if config.wfid && config.wfid in allwfs}
               {#each allwfs[config.wfid].versions as wfv}
               <option value={wfv}>{wfv.date} -- {wfv.name}</option>
               {/each}
@@ -846,6 +854,9 @@ onMount(async() => {
         </div>
       </div>
     </div>
+    {#if !(config.wfid in allwfs)}
+    <p class="has-text-danger">Workflow used is not selectable in interface</p>
+    {/if}
   </div>
 
   {#if wf}
@@ -1206,9 +1217,9 @@ onMount(async() => {
       <a class="button is-primary" on:click={storeAnalysis}>Store analysis</a>
       {#if config.external_results}
         <a class="button is-primary" on:click={freezeAnalysis}>Freeze analysis</a>
+      {:else}
+        <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
       {/if}
-    {:else if wf}
-      <a class="button is-primary" on:click={runAnalysis}>Store and queue analysis</a>
     {/if}
   {:else if postingAnalysis}
 	<a class="button is-primary is-loading"></a>

@@ -142,9 +142,9 @@ def browser_userupload(request):
         ftype = StoredFileType.objects.get(user_uploadable=True, pk=int(data['ftype_id']))
     except ValueError:
         return JsonResponse({'success': False, 'msg': 'Please select a file type '
-        f'{data["ftype_id"]}'})
+        f'{data["ftype_id"]}'}, status=400)
     except StoredFileType.DoesNotExist:
-        return JsonResponse({'success': False, 'msg': 'Illegal file type to upload'})
+        return JsonResponse({'success': False, 'msg': 'Illegal file type to upload'}, status=403)
     try:
         archive_only = bool(int(data['archive_only']))
         uploadtype = int(data['uploadtype'])
@@ -154,9 +154,9 @@ def browser_userupload(request):
     if uploadtype in [uft.LIBRARY, uft.USERFILE]:
         desc = str(data.get('desc', '').strip())
         if desc == '':
-            return JsonResponse({'success': False, 'msg': 'A description for this file is required'})
+            return JsonResponse({'success': False, 'msg': 'A description for this file is required'}, status=400)
     elif ftype.is_folder:
-        return JsonResponse({'success': False, 'msg': 'Cannot upload folder datatypes through browser'})
+        return JsonResponse({'success': False, 'msg': 'Cannot upload folder datatypes through browser'}, status=403)
 
     # create userfileupload model (incl. fake token)
     producer = Producer.objects.get(shortname='admin')

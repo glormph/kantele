@@ -61,7 +61,10 @@ def load_analysis_resultfiles(request, anid):
     except am.Analysis.DoesNotExist:
         return JsonResponse({'error': 'Base analysis not found'}, status=403)
     analysis_date = datetime.strftime(ana.date, '%Y-%m-%d')
-    dsids = [int(x) for x in request.GET['dsids'].split(',')]
+    try:
+        dsids = [int(x) for x in request.GET['dsids'].split(',')]
+    except ValueError:
+        dsids = []
     base_ana_id = int(request.GET['base_ana']) or False
     analysis_prev_resfiles_ids = get_prev_resultfiles(dsids, only_ids=True)
     if base_ana_id:
@@ -70,12 +73,15 @@ def load_analysis_resultfiles(request, anid):
     else:
         base_ana_resfiles_ids = []
     already_loaded_files = analysis_prev_resfiles_ids + base_ana_resfiles_ids
-    ananame = aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype)
+    if hasattr(ana, 'nextflowsearch'):
+        wftype = ana.nextflowsearch.workflow.wftype
+    else:
+        wftype = am.UserWorkflow.WFTypeChoices.USER
+    ananame = aj.get_ana_fullname(ana, wftype)
     anadate = datetime.strftime(ana.date, '%Y-%m-%d')
     resultfiles = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': ananame, 'date': anadate}
         for x in ana.analysisresultfile_set.exclude(sfile__pk__in=already_loaded_files)]
-    return JsonResponse({'analysisname': aj.get_ana_fullname(ana, ana.nextflowsearch.workflow.wftype),
-        'date': analysis_date, 'fns': resultfiles})
+    return JsonResponse({'analysisname': ananame, 'date': analysis_date, 'fns': resultfiles})
 
 
 @require_GET
@@ -93,6 +99,9 @@ def load_base_analysis(request, wfversion_id, baseanid):
         added_ana_ids = [int(x) for x in request.GET['added_ana_ids'].split(',') if x]
     except KeyError:
         return JsonResponse({'error': 'Something wrong when asking for base analysis, contact admin'}, status=400)
+    except ValueError:
+        new_ana_dsids = []
+        added_ana_ids = []
     try:
         new_pset_id = am.NextflowWfVersionParamset.objects.values('paramset_id').get(pk=wfversion_id)['paramset_id']
     except am.NextflowWfVersionParamset.DoesNotExist:
@@ -388,12 +397,17 @@ def get_base_analyses(request):
             subquery |= Q(nextflowsearch__workflow__wftype__in=match_wftypes)
             query &= subquery
         resp = {}
-        for x in am.Analysis.objects.select_related('nextflowsearch__workflow').filter(query,
-                nextflowsearch__isnull=False, deleted=False):
-            resp[x.id] = {'id': x.id, 'name': '{} - {} - {} - {} - {}'.format(
-                aj.get_ana_fullname(x, x.nextflowsearch.workflow.wftype),
-                x.nextflowsearch.workflow.name, x.nextflowsearch.nfwfversionparamset.update,
-                x.user.username, datetime.strftime(x.date, '%Y%m%d'))}
+        for x in am.Analysis.objects.select_related('nextflowsearch__workflow',
+                'nextflowsearch__nfwfversionparamset').filter(query, deleted=False):
+                        # nextflowsearch__isnull=False, 
+            if hasattr(x, 'nextflowsearch'):
+                txt = (f'{aj.get_ana_fullname(x, x.nextflowsearch.workflow.wftype)} - '
+                        f'{x.nextflowsearch.workflow.name, x.nextflowsearch.nfwfversionparamset.update}')
+            else:
+
+                txt = f'{aj.get_ana_fullname(x, am.UserWorkflow.WFTypeChoices.USER)}'
+            resp[x.id] = {'id': x.id,
+            'name': f'{txt} - {x.user.username} - {datetime.strftime(x.date, "%Y%m%d")}'}
         return JsonResponse(resp)
     else:
         return JsonResponse({'error': 'Need to specify search string to base analysis search'})
