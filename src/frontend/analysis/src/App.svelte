@@ -8,7 +8,7 @@ import TokenInstructions from '../../file-inflow/src/TokenInstructions.svelte';
 
 let notif = {errors: {}, messages: {}, links: {}};
 let loadingItems = false;
-let runButtonActive = false;
+let runButtonActive = true;
 let postingAnalysis = false;
 let copiedToken = false;
 
@@ -319,7 +319,7 @@ async function fetchWorkflow() {
   */
   notif = {errors: {}, messages: {}, links: {}};
   let url = new URL('/analysis/workflow', document.location)
-  const params = {dsids: Object.keys(dsnames).join(','), wfvid: config.wfversion_id};
+  const params = {dsids: Object.keys(dsnames).join(','), wfvid: config.wfversion.id};
   url.search = new URLSearchParams(params).toString();
   const result = await getJSON(url);
   loadingItems = true;
@@ -628,7 +628,6 @@ async function populate_analysis_and_fetch_wf() {
   // Only runs in onMount
   if (existing_analysis.wfid) {
     config.wfid = existing_analysis.wfid;
-    config.wfversion_id = existing_analysis.wfversion_id;
     if (existing_analysis.wfid in allwfs) {
       config.wfversion = allwfs[existing_analysis.wfid].versions.filter(
         x => x.id === existing_analysis.wfversion_id)[0];
@@ -663,6 +662,7 @@ onMount(async() => {
     });
   } else {
     if (existing_analysis) {
+      runButtonActive = false;
       await populate_analysis_and_fetch_wf();
       // Populate dynamic select components by calling .inputdone()
       // Does not work if it is in populate_analysis, possibly is too fast
@@ -854,7 +854,7 @@ onMount(async() => {
         </div>
       </div>
     </div>
-    {#if !(config.wfid in allwfs)}
+    {#if config.wfid && !(config.wfid in allwfs)}
     <p class="has-text-danger">Workflow used is not selectable in interface</p>
     {/if}
   </div>
