@@ -706,19 +706,23 @@ def get_added_analysis_contents(afp, prev_or_base_resultfns, added_results):
             and afp.sfile.analysisresultfile.analysis_id not in added_results):
         arf = afp.sfile.analysisresultfile
         arf_date = datetime.strftime(arf.analysis.date, '%Y-%m-%d')
-        arf_ananame = aj.get_ana_fullname(arf.analysis, arf.analysis.nextflowsearch.workflow.wftype)
+        if hasattr(arf.analysis, 'nextflowsearch'):
+            wftype = arf.analysis.nextflowsearch.workflow.wftype
+        else:
+            wftype = am.UserWorkflow.WFTypeChoices.USER
+        arf_ananame = aj.get_ana_fullname(arf.analysis, wftype)
         arf_fns = [{'id': x.sfile_id, 'fn': x.sfile.filename, 'ana': arf_ananame,
             'date': arf_date} for x in arf.analysis.analysisresultfile_set.all()]
         added_results[arf.analysis_id] = {'analysisname': arf_ananame, 'date': arf_date, 'fns': arf_fns}
 
 
 @login_required
-def show_analysis_log(request, nfs_id):
+def show_analysis_log(request, ana_id):
     try:
-        nfs = am.NextflowSearch.objects.get(pk=nfs_id)
-    except am.NextflowSearch.DoesNotExist:
+        ana = am.Analysis.objects.get(pk=ana_id)
+    except am.Analysis.DoesNotExist:
         return HttpResponseNotFound()
-    return HttpResponse('\n'.join(nfs.analysis.log), content_type="text/plain")
+    return HttpResponse('\n'.join(ana.log), content_type="text/plain")
 
  
 @login_required
