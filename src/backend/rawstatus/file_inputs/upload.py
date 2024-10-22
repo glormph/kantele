@@ -128,7 +128,8 @@ def check_in_instrument(config, configfn, logger):
         result = tokenresp.json()
         logger.info(f'Got a new token from server, which will expire on {result["expires"]}')
         token_state = 'new'
-        config['token'] = result['token']
+        token, _h, _d = b64decode(result['user_token']).decode('utf-8').split('|')
+        config['token'] = token
     elif clid:
         # Validate/renew existing token
         loginresp = session.get(loginurl, verify=certifi.where())
