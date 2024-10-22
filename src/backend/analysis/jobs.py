@@ -197,7 +197,7 @@ class RunNextflowWorkflow(MultiFileJob):
 
     def set_error(self, job, *, errmsg):
         super().set_error(job, errmsg=errmsg)
-        models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
+        models.Analysis.objects.filter(pk=job.kwargs['analysis_id']).update(editable=True)
 
     def on_pause(self, **kwargs):
         models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
