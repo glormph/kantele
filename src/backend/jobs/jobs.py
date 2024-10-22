@@ -4,7 +4,7 @@ import requests
 from celery import states
 
 from kantele import settings
-from jobs.models import Task, Job
+from jobs.models import Task, Job, JobError
 from rawstatus.models import StoredFile
 from datasets import models as dm
 
@@ -56,8 +56,11 @@ class BaseJob:
     def post(self):
         pass
 
-    def on_error(self, **kwargs):
-        pass
+    def set_error(self, job, *, errmsg):
+        job.state = Jobstates.ERROR
+        job.save()
+        if errmsg:
+            JobError.objects.create(job_id=job.id, message=errmsg)
 
     def on_pause(self, **kwargs):
         pass

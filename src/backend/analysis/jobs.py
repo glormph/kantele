@@ -195,11 +195,12 @@ class RunNextflowWorkflow(MultiFileJob):
                 'rawfile__datasetrawfile__dataset_id',
                 'rawfile__datasetrawfile__quantfilechannel__channel__channel__name')
 
-    def on_error(self, **kwargs):
-        analysis = models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
+    def set_error(self, job, *, errmsg):
+        super().set_error(job, errmsg=errmsg)
+        models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
 
     def on_pause(self, **kwargs):
-        analysis = models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
+        models.Analysis.objects.filter(pk=kwargs['analysis_id']).update(editable=True)
 
     def process(self, **kwargs):
         analysis = models.Analysis.objects.select_related('user', 'nextflowsearch__workflow').get(pk=kwargs['analysis_id'])

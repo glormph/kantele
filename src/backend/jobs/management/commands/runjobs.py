@@ -11,7 +11,7 @@ from django.core.management.base import BaseCommand
 from time import sleep
 
 from kantele import settings
-from jobs.models import Task, Job, JobError, TaskChain
+from jobs.models import Task, Job
 from jobs.jobs import Jobstates
 from jobs.views import send_slack_message
 from jobs import jobs as jj
@@ -91,9 +91,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
             if tasks.filter(state=states.FAILURE).count():
                 print(f'Failed tasks for job {job.id}, setting to error')
                 send_slack_message(f'Tasks for job {job.id} failed: {job.funcname}', 'kantele')
-                job.state = Jobstates.ERROR
-                job.save()
-                jwrapper.on_error(job.kwargs)
+                jwrapper.set_error(job, errmsg=False)
             elif tasks.count() == tasks.filter(state=states.SUCCESS).count():
                 print(f'All tasks finished, job {job.id} done')
                 job.state = Jobstates.DONE
@@ -123,22 +121,19 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 active_jobs.add(job.id)
                 job.state = Jobstates.PROCESSING
                 if errmsg := jwrapper.check_error(**job.kwargs):
-                    job.state = Jobstates.ERROR
-                    JobError.objects.create(job_id=job.id, message=errmsg)
-                    job.save()
+                    jwrapper.set_error(job, errmsg=errmsg)
                 else:
                     try:
                         jwrapper.run(**job.kwargs)
                     except RuntimeError as e:
                         print('Error occurred, trying again automatically in next round')
-                        job.state = Jobstates.ERROR
-                        JobError.objects.create(job_id=job.id, message=e)
+                        jwrapper.set_error(job, errmsg=e)
                     except Exception as e:
                         print(f'Error occurred: {e} --- not executing this job')
-                        job.state = Jobstates.ERROR
-                        JobError.objects.create(job_id=job.id, message=e)
+                        jwrapper.set_error(job, errmsg=e)
                         if not settings.TESTING:
                             send_slack_message('Job {} failed in job runner: {}'.format(job.id, job.funcname), 'kantele')
-                    finally:
+                    else:
+                        # PROCESSING state update saved here:
                         job.save()
     return job_fn_map, job_ds_map, active_jobs
