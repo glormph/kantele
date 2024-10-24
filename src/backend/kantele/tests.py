@@ -106,6 +106,8 @@ class BaseTest(TestCase):
         self.f3path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
         fn3 = 'raw3.raw'
         f3size = os.path.getsize(os.path.join(self.f3path, fn3))
+        # Important, the md5 here is fake, since the raw fn3 is also used in actual transfer
+        # of a new file in tests
         self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,
                 source_md5='f3_fakemd5',
                 size=f3size, date=timezone.now(), claimed=True)

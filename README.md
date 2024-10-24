@@ -105,7 +105,7 @@ development and testing. The directory contains:
 - `analysisfiles` - analysis results go here, currently only work in prod
 - `db` - database persistence
 - `test` - contain filesystem fixtures for tests
-- `teststorage` - empty, gitignored, used as a fresh fixture workdir in testing
+- `teststorage` - empty, gitignored, used as a fresh fixture workdir in testing, populated by shutil.copytree in base test
 - `storage` - used in develop/stage as a storage unit
 - `newstorage` - for simulating a second storage unit
 - `uploads` - where uploads go in the nginx container

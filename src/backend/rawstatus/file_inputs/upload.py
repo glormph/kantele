@@ -185,12 +185,13 @@ def transfer_file(url, fpath, fn_id, token, desc, cookies, host):
     # use fpath/basename instead of fname, to get the
     # zipped file name if needed, instead of the normal fn
     filename = os.path.basename(fpath)
-    logging.info(f'Transferring {fpath} to {host}')
+    logging.info(f'Uploading {fpath} to {host}')
     stddata = {'fn_id': f'{fn_id}', 'token': token, 'filename': filename}
     if desc:
         stddata['desc'] = desc
     with open(fpath, 'rb') as fp:
         stddata['file'] = (filename, fp)
+        # MultipartEncoder from requests_toolbelt can stream large files, unlike requests (2024)
         mpedata = MultipartEncoder(fields=stddata)
         headers = get_csrf(cookies, host)
         headers['Content-Type'] = mpedata.content_type
@@ -285,7 +286,7 @@ def log_listener(log_q):
 
 
 def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, donebox,
-        kantelehost, clientname, descriptions):
+        skipbox, kantelehost, clientname, descriptions):
     '''This process does the registration and the transfer of files'''
     # Start getting the leftovers from previous run
     fnstate_url = urljoin(kantelehost, 'files/transferstate/')
@@ -326,6 +327,8 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                     resp_j = resp.json()
                     logger.info(f'File {fndata["fname"]} matches remote file '
                             f'{resp_j["remote_name"]} with ID {resp_j["file_id"]}')
+                    if resp_j['msg']:
+                        logger.info(resp_j['msg'])
                     fndata['fn_id'] = resp_j['file_id']
                 elif resp.status_code == 403:
                     resp_j = resp.json()
@@ -386,9 +389,10 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                     try:
                         shutil.move(file_done, donepath)
                     except FileNotFoundError:
-                        logger.warning(f'Could not move {file_done} from outbox to {donepath}')
-                        raise
+                        logger.warning(f'Could not move {file_done} from outbox to {donepath}, '
+                                'because it was not found in outbox')
                     finally:
+                        # Done queue keeps them out of instrument_collect outbox scan ledger
                         regdoneq.put(cts_id)
                 del(ledger[cts_id])
                 ledgerchanged = True
@@ -431,9 +435,25 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                     result = resp.json()
                 if resp.status_code != 200:
                     logger.error(result['error'])
-                    if 'problem' in result and result['problem'] == 'NOT_REGISTERED':
-                        fndata['md5'] = False
+                    if 'problem' in result:
+                        if result['problem'] == 'NOT_REGISTERED':
+                            # Re-register in next round
+                            fndata['md5'] = False
+                            # Remove file from collect ledger so it can be
+                            # rediscovered
+                            regdoneq.put(cts_id)
+                        elif result['problem'] == 'ALREADY_EXISTS':
+                            put_in_skipbox(skipbox, fndata, regdoneq, logger)
+                        elif result['problem'] == 'NO_RSYNC':
+                            put_in_skipbox(skipbox, fndata, regdoneq, logger)
+                        elif result['problem'] == 'RSYNC_PENDING':
+                            # Do nothing, but print to user
+                            pass
+                        elif result['problem'] == 'MULTIPLE_ENTRIES':
+                            put_in_skipbox(skipbox, fndata, regdoneq, logger)
+                        logger.warning(result['error'])
                     else:
+                        print('Error trying to upload file, contact admin')
                         sys.exit(1)
                 else:
                     logger.info(f'Succesful transfer of file {fndata["fpath"]}')
@@ -449,11 +469,34 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
         sleep(3)
 
 
-def start_processes(regq, regdoneq, logqueue, ledger, config, configfn, donebox, host, hostname,
+def put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger):
+    if fndata['is_dir']:
+        # Zipped intermediate files are removed here
+        if os.path.exists(fndata['fpath']):
+            os.remove(fndata['fpath'])
+        file_done = fndata['nonzipped_path']
+    else:
+        file_done = fndata['fpath']
+    if skipbox:
+        logger.info(f'Removing file {fndata["fname"]} from outbox')
+        skippath = os.path.join(skipbox, fndata['fname'])
+        try:
+            shutil.move(file_done, skippath)
+        except FileNotFoundError:
+            logger.warning(f'Could not move {file_done} from outbox to {skippath}, '
+                    'because it was not found in outbox')
+        finally:
+            # Done queue keeps them out of instrument_collect outbox scan ledger
+            regdoneq.put(cts_id)
+    cts_id = get_fndata_id(fndata)
+    del(ledger[cts_id])
+
+
+def start_processes(regq, regdoneq, logqueue, ledger, config, configfn, donebox, skipbox, host, hostname,
         descriptions):
     processes = []
     register_p = Process(target=register_and_transfer, args=(regq, regdoneq, logqueue, ledger,
-        config, configfn, donebox, host, hostname, descriptions))
+        config, configfn, donebox, skipbox, host, hostname, descriptions))
     register_p.start()
     logproc = Process(target=log_listener, args=(logqueue,))
     logproc.start()
@@ -473,6 +516,8 @@ def main():
             help='File to upload')
     parser.add_argument('--config', dest='configfn', default=False, type=str,
             help='Config file if any')
+    parser.add_argument('--token', dest='token', default=False, type=str,
+            help='Token for scripting')
     args = parser.parse_args()
 
     regdoneq = Queue()
@@ -491,10 +536,18 @@ def main():
     logger = logging.getLogger(f'{clientname}.producer.main')
     descriptions = {}
 
-    if not config.get('client_id', False):
+    if config.get('client_id', False):
+        # Instrument
+        config['is_manual'] = False
+        checkerr = check_in_instrument(config, args.configfn, logger)
+        if checkerr:
+            # No logger process running yet, so print here
+            print(checkerr)
+            sys.exit(1)
+    else:
         # Parse token gotten from web UI, this is needed so Kantele knows
         # which filetype were uploading, and it will contain the upload location
-        webtoken = input('Please provide token from web interface: ').strip()
+        webtoken = args.token or input('Please provide token from web interface: ').strip()
         try:
             token, kantelehost, need_desc = b64decode(webtoken).decode('utf-8').split('|')
         except ValueError:
@@ -507,16 +560,6 @@ def main():
             if int(need_desc):
                 descriptions[fn] = input(f'Please enter a description for your file {fn}: ')
         config.update({'host': kantelehost, 'token': token, 'is_manual': True})
-    elif args.configfn:
-        config['is_manual'] = False
-        checkerr = check_in_instrument(config, args.configfn, logger)
-        if checkerr:
-            # No logger process running yet
-            print(checkerr)
-            sys.exit(1)
-    else:
-        print('Client ID specified but no JSON config file passed to --config, exiting')
-        sys.exit(1)
 
     outbox = config.get('outbox', False)
 
@@ -531,23 +574,26 @@ def main():
     if outbox:
         donebox = config.get('donebox') or os.path.join(outbox, os.path.pardir, 'donebox')
         zipbox = config.get('zipbox') or os.path.join(outbox, os.path.pardir, 'zipbox')
+        skipbox = config.get('skipbox') or os.path.join(outbox, os.path.pardir, 'skipbox')
         # for instruments, setup collection/MD5 process
         # otherwise we use a single shot MD5er
         if not os.path.exists(outbox):
             os.makedirs(outbox)
         if not os.path.exists(donebox):
             os.makedirs(donebox)
+        if not os.path.exists(skipbox):
+            os.makedirs(skipbox)
         # watch outbox for incoming files
         collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger,
             outbox, zipbox, clientname, config.get('raw_is_folder'), config.get('md5_stable_fns')))
         processes = [collect_p]
         collect_p.start()
         processes.extend(start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
-            donebox, config['host'], clientname, descriptions))
+            donebox, skipbox, config['host'], clientname, descriptions))
     elif args.files:
         print('New files found, calculating checksum')
         # Multi file upload by user with token from web GUI
-        donebox = False
+        donebox, skipbox = False, False
         # FIXME filetype and raw_is_folder should be dynamic, in token
         # maybe raw_is_folder ALWAYS dynamic
         # First populate ledger for caching
@@ -561,13 +607,13 @@ def main():
                 files_found.append((fndata_id, fndata))
         if len(files_found) < len(args.files):
             sys.exit(1)
-        if ledger or ledger.keys() != set(x[0] for x in files_found):
+        if ledger and ledger.keys() != set(x[0] for x in files_found):
             # Delete ledger if fndata_id s do not match, otherwise use cache
             ledger = {x[0]: x[1] for x in files_found}
             # TODO cannot zip yet, there is no "zipbox", maybe make it workdir
             # FIXME align this with collector process
         processes = start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
-                donebox, config['host'], clientname, descriptions)
+                donebox, skipbox, config['host'], clientname, descriptions)
         for upload_fnid, fndata in ledger.items():
             if fndata['is_dir'] and 'nonzipped_path' not in fndata:
                 zipname = os.path.join(zipbox, os.path.basename(fndata['fpath']))

@@ -527,15 +527,46 @@ def transfer_file(request):
         errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
         return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
     sfns = StoredFile.objects.filter(rawfile_id=fn_id)
-    if sfns.count():
+    expect_created = False
+    if sfns.filter(checked=True).count():
         # By default do not overwrite, although deleted files could trigger this
         # as well. In that case, have admin remove the files from DB.
         # TODO create exception for that if ever needed? data['overwrite'] = True?
         # Also look at below get_or_create call and checking created
         return JsonResponse({'error': 'This file is already in the '
             f'system: {sfns.first().filename}, if you are re-uploading a previously '
-            'deleted file, consider reactivating from backup, or contact admin'}, status=403)
+            'deleted file, consider reactivating from backup, or contact admin',
+            'problem': 'ALREADY_EXISTS'}, status=409)
 
+    elif sfns.filter(checked=False).count() > 1:
+        return JsonResponse({'error': 'This file is already in the '
+            f'system: {sfns.first().filename} and it has multiple DB entries. That '
+            'should not happen, please contact admin',
+            'problem': 'MULTIPLE_ENTRIES'}, status=409)
+
+    elif sfns.filter(checked=False).count() == 1:
+        # Re-transferring a failed file
+        sfn = sfns.get()
+        up_dst = rsjobs.create_upload_dst_web(rawfn.pk, sfn.filetype.filetype)
+        rsync_jobs = jm.Job.objects.filter(funcname='rsync_transfer',
+                kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst).order_by('timestamp')
+        # fetching from DB here to avoid race condition in if/else block
+        try:
+            last_rsjob = rsync_jobs.last()
+        except jm.Job.DoesNotExist:
+            last_rsjob = False
+        if not last_rsjob:
+            return JsonResponse({'error': 'This file is already in the '
+                f'system: {sfns.first().filename}, but there is no job to put it in the '
+                'storage. Please contact admin', 'problem': 'NO_RSYNC'}, status=409)
+        elif last_rsjob.state not in jobutil.JOBSTATES_DONE:
+            return JsonResponse({'error': 'This file is already in the '
+                f'system: {sfns.first().filename}, and it is queued for transfer to storage '
+                'If this is taking too long, please contact admin',
+                'problem': 'RSYNC_PENDING'}, status=403)
+        else:
+            # Overwrite sf with rsync done and checked=False, corrupt -> retransfer
+            expect_created = True
 
     # Has the filename changed between register and transfer? Assume user has stopped the upload,
     # corrected the name, and also change the rawname
@@ -609,8 +640,7 @@ def transfer_file(request):
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
             defaults={'servershare': dstshare, 'path': dstpath, 'filename': fname})
     if not created:
-        # This could happen in the future when there is some kind of bypass of the above
-        # check sfns.count(). 
+        # Is this possible? Above checking with sfns.count() for both checked and non-checekd
         print('File already registered as transferred')
     elif upload.uploadtype == UploadToken.UploadFileType.LIBRARY:
         LibraryFile.objects.create(sfile=file_trf, description=desc)
@@ -724,6 +754,7 @@ def download_instrument_package(request):
             'outbox': f'{datadisk}:\outbox',
             'zipbox': f'{datadisk}:\zipbox',
             'donebox': f'{datadisk}:\donebox',
+            'skipbox': f'{datadisk}:\skipbox',
             'producerhostname': prod.name,
             'client_id': prod.client_id,
             'filetype_id': prod.msinstrument.filetype_id,

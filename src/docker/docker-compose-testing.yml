@@ -6,6 +6,7 @@ services:
             - storage_mvfiles
             - storage_downloads
             - tulos_ingester
+            - upload_bay_rsync
         extends:
             file: docker-compose-base.yml
             service: web
@@ -38,6 +39,8 @@ services:
             RABBITHOST: mq
             TMPSHARE: /storage/tmp
             STORAGESHARES: '/storage/oldstorage,/storage/newstorage'
+            TMP_UPLOADPATH: /storage/uploads
+            HOST_UPLOADDIR: /storage/uploads
     
     db: 
         image: postgres:14.3
@@ -104,12 +107,15 @@ services:
             - type: bind
               source: ../../data/teststorage
               target: /storage
+            - "./test_rsync_sshkey:/kantelessh/rsync_key"
         environment:
             KANTELEHOST: web
             TMPSHARE: '/storage/tmp'
             WEBSHARE: '/storage/web'
             ANALYSISSHARE: '/storage/analysis'
             STORAGESHARES: '/storage/oldstorage,/storage/newstorage'
+            RSYNC_SSHPORT: "${RSYNC_SSHPORT}"
+            HOST_UPLOADDIR: /storage/uploads
 
     analysis:
         extends:
@@ -127,3 +133,17 @@ services:
         environment:
             KANTELEHOST: web
 
+    upload_bay_rsync:
+        image: rsync_stor
+        build:
+            context: ../
+            dockerfile: ./docker/Dockerfile
+            target: rsync_storage
+            args:
+                USER_ID: "${USER_ID:-You must run export USER_ID}"
+                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
+        volumes:
+            - ./test_rsync_sshkey.pub:/home/kantele/.ssh/authorized_keys
+            - type: bind
+              source: ../../data/teststorage
+              target: /storage
