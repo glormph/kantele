@@ -201,12 +201,10 @@ def browser_userupload(request):
 
     # Get the file path and share dependent on the upload type
     ufiletypes = UploadToken.UploadFileType
-    check_dup = False
     if upload.uploadtype == ufiletypes.RAWFILE:
         dstpath = settings.TMPPATH
         dstsharename = settings.TMPSHARENAME
         fname = upfile.name
-        check_dup = True
     elif upload.uploadtype == ufiletypes.LIBRARY:
         dstsharename = settings.PRIMARY_STORAGESHARENAME
         fname = f'{raw["file_id"]}_{upfile.name}'
@@ -220,12 +218,14 @@ def browser_userupload(request):
             'or user type'}, status=403)
 
     dstshare = ServerShare.objects.get(name=dstsharename)
-    if check_dup:
-        if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
-            return JsonResponse({'error': 'Another file in the system has the same name '
-                f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
-                'Please investigate, possibly change the file name or location of this or the other '
-                'file to enable transfer without overwriting.'}, status=403)
+    if upload.uploadtype == ufiletypes.RAWFILE and StoredFile.objects.filter(filename=fname, path=dstpath,
+            servershare=dstshare, deleted=False).exclude(rawfile__source_md5=raw.source_md5).exists():
+        return JsonResponse({'error': 'Another file in the system has the same name '
+            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+            'Please investigate, possibly change the file name or location of this or the other '
+            'file to enable transfer without overwriting.', 'problem': 'DUPLICATE_EXISTS'},
+            status=403)
+
     # All good, get the file to storage
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
             filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
@@ -527,7 +527,6 @@ def transfer_file(request):
         errmsg = 'File with ID {} has not been registered yet, cannot transfer'.format(fn_id)
         return JsonResponse({'state': 'error', 'problem': 'NOT_REGISTERED', 'error': errmsg}, status=403)
     sfns = StoredFile.objects.filter(rawfile_id=fn_id)
-    expect_created = False
     if sfns.filter(checked=True).count():
         # By default do not overwrite, although deleted files could trigger this
         # as well. In that case, have admin remove the files from DB.
@@ -566,7 +565,7 @@ def transfer_file(request):
                 'problem': 'RSYNC_PENDING'}, status=403)
         else:
             # Overwrite sf with rsync done and checked=False, corrupt -> retransfer
-            expect_created = True
+            pass
 
     # Has the filename changed between register and transfer? Assume user has stopped the upload,
     # corrected the name, and also change the rawname
@@ -603,7 +602,7 @@ def transfer_file(request):
 
     dstshare = ServerShare.objects.get(name=dstsharename)
     if check_dup and StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare,
-            checked=True).exists():
+            deleted=False).exclude(rawfile__source_md5=rawfn.source_md5).exists():
         return JsonResponse({'error': 'Another file in the system has the same name '
             f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
             'Please investigate, possibly change the file name or location of this or the other '

@@ -423,6 +423,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
                         desc, cookies, kantelehost)
             except subprocess.CalledProcessError:
+                # FIXME wrong exception!
                 logger.warning(f'Could not transfer {fndata["fpath"]}')
             else:
                 if resp.status_code == 500:
@@ -441,7 +442,6 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                             # Remove file from collect ledger so it can be
                             # rediscovered
                             regdoneq.put(cts_id)
-                            logger.warning(result['error'])
                         elif result['problem'] == 'ALREADY_EXISTS':
                             put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger)
                         elif result['problem'] == 'NO_RSYNC':
@@ -455,7 +455,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                             put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger)
                         logger.warning(result['error'])
                     else:
-                        print('Error trying to upload file, contact admin')
+                        logger.error(f'{result.get("error")} - Error trying to upload file, contact admin')
                         sys.exit(1)
                 else:
                     logger.info(f'Succesful transfer of file {fndata["fpath"]}')
@@ -479,8 +479,9 @@ def put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger):
         file_done = fndata['nonzipped_path']
     else:
         file_done = fndata['fpath']
+    cts_id = get_fndata_id(fndata)
     if skipbox:
-        logger.info(f'Removing file {fndata["fname"]} from outbox')
+        logger.info(f'Moving file {fndata["fname"]} to skipbox')
         skippath = os.path.join(skipbox, fndata['fname'])
         try:
             shutil.move(file_done, skippath)
@@ -490,7 +491,6 @@ def put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger):
         finally:
             # Done queue keeps them out of instrument_collect outbox scan ledger
             regdoneq.put(cts_id)
-    cts_id = get_fndata_id(fndata)
     del(ledger[cts_id])
 
 

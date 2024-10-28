@@ -3,6 +3,7 @@ import re
 import json
 import shutil
 import zipfile
+import signal
 from time import sleep
 from io import BytesIO
 from base64 import b64encode
@@ -55,9 +56,19 @@ class TestUploadScript(BaseIntegrationTest):
         self.user_token = b64encode(f'{self.token}|{self.live_server_url}|{need_desc}'.encode('utf-8')).decode('utf-8')
         self.actual_md5 = 'd336e29e4f9e9ef20b943c63a513756d'
 
-    def run_script(self, fullpath):
-        cmd = ['python3', 'rawstatus/file_inputs/upload.py', '--files', fullpath, '--token', self.user_token]
-        return subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    def tearDown(self):
+        super().tearDown()
+        if os.path.exists('ledger.json'):
+            os.unlink('ledger.json')
+
+    def run_script(self, fullpath, *, config=False, session=False):
+        cmd = ['python3', 'rawstatus/file_inputs/upload.py']
+        if config:
+            cmd.extend(['--config', config])
+        else:
+            cmd.extend(['--files', fullpath, '--token', self.user_token])
+        return subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
+                start_new_session=session)
 
     def test_transferstate_done(self):
         # Have ledger with f3sf md5 so system thinks it's already done
@@ -170,27 +181,47 @@ class TestUploadScript(BaseIntegrationTest):
         self.f3sf.save()
         lastraw = rm.RawFile.objects.last()
         lastsf = rm.StoredFile.objects.last()
+        tmpdir = mkdtemp()
+        outbox = os.path.join(tmpdir, 'testoutbox')
+        os.makedirs(outbox, exist_ok=True)
+        shutil.copy(fullp, os.path.join(outbox, self.f3sf.filename))
+        timestamp = os.path.getctime(os.path.join(outbox, self.f3sf.filename))
+        with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
+            json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
-        sp = self.run_script(fullp)
-        spout, sperr = sp.communicate()
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'filetype_id': self.ft.pk}, fp)
+        self.assertFalse(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
+
+        sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
+        sleep(2)
+        sp.terminate()
+        # Properly kill children since upload.py uses multiprocessing
+        os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+        spout, sperr = sp.stdout.read(), sp.stderr.read()
         newraw = rm.RawFile.objects.last()
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newraw.pk, lastraw.pk + 1)
         self.assertEqual(newsf.pk, lastsf.pk)
-        explines = ['Registering 1 new file(s)', 
+        explines = [f'Checking for new files in {outbox}',
+                f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
+                'Registering 1 new file(s)',
                 f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
                 f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
                 f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
-                f'Uploading {fullp} to {self.live_server_url}',
+                f'Uploading {os.path.join(outbox, newraw.name)} to {self.live_server_url}',
+                f'Moving file {newraw.name} to skipbox',
                 f'Another file in the system has the same name and is stored in the same path '
                 f'({self.f3sf.servershare.name} - {self.f3sf.path}/{self.f3sf.filename}. Please '
                 'investigate, possibly change the file name or location of this or the other file '
                 'to enable transfer without overwriting.']
         for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - .producer.inboxcollect - ', '', out)
             out = re.sub('.* - WARNING - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
+        self.assertTrue(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
 
     def test_transfer_file_namechanged(self):
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
@@ -242,8 +273,6 @@ class TestUploadScript(BaseIntegrationTest):
         self.f3sf.checked = True
         self.f3sf.save()
         spout, sperr = sp.communicate()
-        print(sperr.decode('utf-8'))
-        print(spout.decode('utf-8'))
         explines = [f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
                 f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: wait',
                 f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
@@ -543,20 +572,14 @@ class TestFileTransfer(BaseFilesTest):
         '''Transfer already existing file, e.g. overwrites of previously
         found to be corrupt file'''
         # Create storedfile which is the existing file w same md5, to get 403:
-        rm.StoredFile.objects.create(rawfile=self.registered_raw, filetype=self.ft,
+        sf = rm.StoredFile.objects.create(rawfile=self.registered_raw, filetype=self.ft,
                 md5=self.registered_raw.source_md5, servershare=self.sstmp, path='',
                 filename=self.registered_raw.name)
         resp, upload_content = self.do_transfer_file()
-        self.assertEqual(resp.status_code, 403)
-        try:
-            self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
-            f'{self.registered_raw.name}, if you are re-uploading a previously '
-            'deleted file, consider reactivating from backup, or contact admin'})
-        except AssertionError:
-            self.assertEqual(resp.json(), {'error': 'Another file in the system has the same name '
-        f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}. '
-        'Please investigate, possibly change the file name or location of this or the other '
-        'file to enable transfer without overwriting.'})
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json(), {'error': f'This file is already in the system: {sf.filename}, '
+            'but there is no job to put it in the storage. Please contact admin', 'problem': 'NO_RSYNC'})
+        # FIXME also test rsync pending,and already_exist
 
     def test_transfer_same_name(self):
         # Test trying to upload file with same name/path but diff MD5
@@ -567,15 +590,10 @@ class TestFileTransfer(BaseFilesTest):
                 filename=other_raw.name)
         resp, upload_content = self.do_transfer_file()
         self.assertEqual(resp.status_code, 403)
-        try:
-            self.assertEqual(resp.json(), {'error': 'This file is already in the system: '
-            f'{self.registered_raw.name}, if you are re-uploading a previously '
-            'deleted file, consider reactivating from backup, or contact admin'})
-        except AssertionError:
-            self.assertEqual(resp.json(), {'error': 'Another file in the system has the same name '
-        f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}. '
-        'Please investigate, possibly change the file name or location of this or the other '
-        'file to enable transfer without overwriting.'})
+        self.assertEqual(resp.json(), {'error': 'Another file in the system has the same name '
+            f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}. '
+            'Please investigate, possibly change the file name or location of this or the other '
+            'file to enable transfer without overwriting.', 'problem': 'DUPLICATE_EXISTS'})
 
     def test_transfer_file_namechanged(self):
         fname = 'newname'
@@ -691,7 +709,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
     zipsizes = {'kantele_upload.sh': 337,
             'kantele_upload.bat': 185,
-            'upload.py': 26075,
+            'upload.py': 28759,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 689,
