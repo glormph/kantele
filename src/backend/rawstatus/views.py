@@ -355,7 +355,7 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, claimed):
         stored = True if nrsfn else False
         state = 'registered' if nrsfn else 'error'
         msg = (f'File {rawfn.name} is already registered and has MD5 '
-                '{rawfn.source_md5}. Already stored = {stored}')
+                f'{rawfn.source_md5}. Already stored = {stored}')
     else:
         stored, state, msg = False, 'registered', False
     return {'file_id': rawfn.id, 'state': state, 'stored': stored, 
@@ -385,20 +385,20 @@ def get_files_transferstate(request):
         # is wrong here (unlikely right?)
         return JsonResponse({'error': f'File with ID {rfn.id} is not from producer  {upload.producer.name}'}, status=403)
     # FIXME if somehow really bad timing, there will be multiple sfns?
-    sfns = rfn.storedfile_set.filter(filetype_id=upload.filetype_id, mzmlfile__isnull=True)
+    sfns = rfn.storedfile_set.filter(filetype_id=upload.filetype_id)
     if not sfns.count():
         # has not been reported as transferred,
         tstate = 'transfer'
-    elif sfns.count() > 1:
+    elif sfns.filter(mzmlfile__isnull=True).count() > 1:
         # Now behaviour specifies there can only be one copy of a raw file
         # What happens if there is a copy e.g. on a different server?
         errmsg = 'Problem, there are multiple stored files with that raw file ID'
-        print(errmsg)
         return JsonResponse({'error': errmsg}, status=409)
     else:
         # File in system, should be transferred and being rsynced/unzipped, or
         # errored, or done.
-        sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').get()
+        sfn = sfns.select_related('filetype', 'userfile', 'libraryfile').filter(
+                mzmlfile__isnull=True).get()
         up_dst = rsjobs.create_upload_dst_web(rfn.pk, sfn.filetype.filetype)
         rsync_jobs = jm.Job.objects.filter(funcname='rsync_transfer',
                 kwargs__sf_id=sfn.pk, kwargs__src_path=up_dst).order_by('timestamp')
@@ -602,12 +602,13 @@ def transfer_file(request):
             'This should not happen, contact admin'}, status=403)
 
     dstshare = ServerShare.objects.get(name=dstsharename)
-    if check_dup:
-        if StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare).exists():
-            return JsonResponse({'error': 'Another file in the system has the same name '
-                f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
-                'Please investigate, possibly change the file name or location of this or the other '
-                'file to enable transfer without overwriting.'}, status=403)
+    if check_dup and StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare,
+            checked=True).exists():
+        return JsonResponse({'error': 'Another file in the system has the same name '
+            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+            'Please investigate, possibly change the file name or location of this or the other '
+            'file to enable transfer without overwriting.', 'problem': 'DUPLICATE_EXISTS'},
+            status=403)
 
     # All clear, do the upload storing:
     upfile = request.FILES['file']
@@ -634,7 +635,7 @@ def transfer_file(request):
         dighash = dighash.hexdigest() 
         if dighash != rawfn.source_md5:
             os.unlink(upload_dst)
-            return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'})
+            return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'}, status=409)
     os.chmod(upload_dst, 0o644)
     file_trf, created = StoredFile.objects.get_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,

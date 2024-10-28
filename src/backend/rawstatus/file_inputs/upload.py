@@ -434,7 +434,6 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 else:
                     result = resp.json()
                 if resp.status_code != 200:
-                    logger.error(result['error'])
                     if 'problem' in result:
                         if result['problem'] == 'NOT_REGISTERED':
                             # Re-register in next round
@@ -442,15 +441,18 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                             # Remove file from collect ledger so it can be
                             # rediscovered
                             regdoneq.put(cts_id)
+                            logger.warning(result['error'])
                         elif result['problem'] == 'ALREADY_EXISTS':
-                            put_in_skipbox(skipbox, fndata, regdoneq, logger)
+                            put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger)
                         elif result['problem'] == 'NO_RSYNC':
-                            put_in_skipbox(skipbox, fndata, regdoneq, logger)
+                            put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger)
                         elif result['problem'] == 'RSYNC_PENDING':
                             # Do nothing, but print to user
                             pass
                         elif result['problem'] == 'MULTIPLE_ENTRIES':
-                            put_in_skipbox(skipbox, fndata, regdoneq, logger)
+                            put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger)
+                        elif result['problem'] == 'DUPLICATE_EXISTS':
+                            put_in_skipbox(skipbox, fndata, regdoneq, ledger, logger)
                         logger.warning(result['error'])
                     else:
                         print('Error trying to upload file, contact admin')
@@ -607,7 +609,7 @@ def main():
                 files_found.append((fndata_id, fndata))
         if len(files_found) < len(args.files):
             sys.exit(1)
-        if ledger and ledger.keys() != set(x[0] for x in files_found):
+        if ledger.keys() != set(x[0] for x in files_found):
             # Delete ledger if fndata_id s do not match, otherwise use cache
             ledger = {x[0]: x[1] for x in files_found}
             # TODO cannot zip yet, there is no "zipbox", maybe make it workdir

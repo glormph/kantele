@@ -53,6 +53,11 @@ class TestUploadScript(BaseIntegrationTest):
         need_desc = 0
         #need_desc = int(self.uploadtype in [ufts.LIBRARY, ufts.USERFILE])
         self.user_token = b64encode(f'{self.token}|{self.live_server_url}|{need_desc}'.encode('utf-8')).decode('utf-8')
+        self.actual_md5 = 'd336e29e4f9e9ef20b943c63a513756d'
+
+    def run_script(self, fullpath):
+        cmd = ['python3', 'rawstatus/file_inputs/upload.py', '--files', fullpath, '--token', self.user_token]
+        return subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
     def test_transferstate_done(self):
         # Have ledger with f3sf md5 so system thinks it's already done
@@ -69,16 +74,12 @@ class TestUploadScript(BaseIntegrationTest):
                 'size': self.f3raw.size,
                 'fn_id': self.f3raw.pk,
                 }}, fp)
-
+        # Check bakcup jobs before and after
         pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
             'sf_id': self.f3sf.pk, 'isdir': self.f3sf.filetype.is_folder})
         self.assertEqual(pdcjobs.count(), 0)
         self.assertEqual(rm.PDCBackedupFile.objects.filter(success=True, is_dir=self.f3sf.filetype.is_folder, storedfile=self.f3sf).count(), 0)
-#        configfn = 'config.json'
-#        with open(configfn, 'w') as fp:
-#            json.dump({'client_id': self.f3raw.producer.client_id, 'token': self.token,
-#                'host': self.live_server_url, 'filetype_id': self.f3sf.filetype_id,
-#                }, fp)
+        # Can use subproc run here since the process will finish - no need to sleep/run jobs
         cmd = ['python3', 'rawstatus/file_inputs/upload.py', '--files', fullp, '--token', self.user_token]
         sp = subprocess.run(cmd, stderr=subprocess.PIPE)
         explines = [f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
@@ -89,15 +90,24 @@ class TestUploadScript(BaseIntegrationTest):
 
     def test_new_file(self):
         # Use same file as f3sf but actually take its md5 and therefore it is new
+        # Testing all the way from register to upload
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
-        cmd = ['python3', 'rawstatus/file_inputs/upload.py', '--files', fullp, '--token', self.user_token]
-        sp = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        old_raw = rm.RawFile.objects.last()
+        sp = self.run_script(fullp)
+        # Give time for running script, so job is created before running it etc
         sleep(1)
-        self.run_job()
-        self.run_job()
-        spout, sperr = sp.communicate()
         new_raw = rm.RawFile.objects.last()
+        self.assertEqual(new_raw.pk, old_raw.pk + 1)
+        sf = rm.StoredFile.objects.last()
+        self.assertEqual(sf.filename, self.f3sf.filename)
+        self.assertEqual(sf.path, settings.TMPPATH)
+        self.assertEqual(sf.servershare.name, settings.TMPSHARENAME)
+        self.assertFalse(sf.checked)
+        self.run_job()
+        sf.refresh_from_db()
+        self.assertTrue(sf.checked)
+        spout, sperr = sp.communicate()
         explines = ['Registering 1 new file(s)', 
                 f'File {new_raw.name} matches remote file {new_raw.name} with ID {new_raw.pk}',
                 f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
@@ -110,9 +120,144 @@ class TestUploadScript(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
+
+    def test_transfer_again(self):
+        '''Transfer already existing file, e.g. overwrites of previously
+        found to be corrupt file. It needs to be checked=False for that'''
+        # Actual raw3 fn md5:
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        self.f3raw.source_md5 = self.actual_md5
+        self.f3raw.claimed = False
+        self.f3raw.save()
+        self.f3sf.checked = False
+        self.f3sfmz.delete()
+        self.f3sf.servershare = self.sstmp
+        self.f3sf.path = settings.TMPPATH
+        self.f3sf.save()
+        jm.Job.objects.create(funcname='rsync_transfer', kwargs={'sf_id': self.f3sf.pk,
+            'src_path': os.path.join(settings.TMP_UPLOADPATH, f'{self.f3raw.pk}.{self.f3sf.filetype.filetype}')},
+            timestamp=timezone.now(), state=jj.Jobstates.DONE)
+        sp = self.run_script(fullp)
+        sleep(1)
+        self.f3sf.refresh_from_db()
+        self.assertFalse(self.f3sf.checked)
+        self.run_job()
+        spout, sperr = sp.communicate()
+        self.f3sf.refresh_from_db()
+        self.assertTrue(self.f3sf.checked)
+        self.assertEqual(self.f3sf.md5, self.f3raw.source_md5)
+        explines = ['Registering 1 new file(s)', 
+                f'File {self.f3raw.name} matches remote file {self.f3raw.name} with ID {self.f3raw.pk}',
+                f'File {self.f3raw.name} is already registered and has MD5 {self.f3raw.source_md5}. Already stored = False',
+                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
+                f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: transfer',
+                f'Uploading {fullp} to {self.live_server_url}',
+                f'Succesful transfer of file {fullp}',
+                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
+                f'State for file with ID {self.f3raw.pk} was "done"']
+        for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            self.assertEqual(out, exp)
+
+    def test_transfer_same_name(self):
+        # Test trying to upload file with same name/path but diff MD5
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        self.f3sf.servershare = self.sstmp
+        self.f3sf.path = settings.TMPPATH
+        self.f3sf.save()
+        lastraw = rm.RawFile.objects.last()
+        lastsf = rm.StoredFile.objects.last()
+
+        sp = self.run_script(fullp)
+        spout, sperr = sp.communicate()
+        newraw = rm.RawFile.objects.last()
+        newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newraw.pk, lastraw.pk + 1)
+        self.assertEqual(newsf.pk, lastsf.pk)
+        explines = ['Registering 1 new file(s)', 
+                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
+                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
+                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
+                f'Uploading {fullp} to {self.live_server_url}',
+                f'Another file in the system has the same name and is stored in the same path '
+                f'({self.f3sf.servershare.name} - {self.f3sf.path}/{self.f3sf.filename}. Please '
+                'investigate, possibly change the file name or location of this or the other file '
+                'to enable transfer without overwriting.']
+        for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - WARNING - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            self.assertEqual(out, exp)
+
+    def test_transfer_file_namechanged(self):
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        rawfn = rm.RawFile.objects.create(source_md5=self.actual_md5, name='fake_oldname',
+                producer=self.prod, size=123, date=timezone.now(), claimed=False)
+        lastsf = rm.StoredFile.objects.last()
+        sp = self.run_script(fullp)
+        sleep(1)
+        self.run_job()
+        spout, sperr = sp.communicate()
+        newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newsf.pk, lastsf.pk + 1)
+        self.assertEqual(rawfn.pk, newsf.rawfile_id)
+        self.assertEqual(newsf.filename, self.f3sf.filename)
+        rawfn.refresh_from_db()
+        self.assertEqual(rawfn.name, self.f3sf.filename)
+
+    def test_rsync_not_finished_yet(self):
+        # Have ledger with f3sf md5 so system uses that file
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        self.f3raw.claimed = False
+        self.f3raw.save()
+        self.f3sf.checked = False
+        self.f3sfmz.delete()
+        self.f3sf.servershare = self.sstmp
+        self.f3sf.path = settings.TMPPATH
+        self.f3sf.save()
+        timestamp = os.path.getctime(fullp)
+        cts_id = f'{timestamp}__{self.f3raw.size}'
+        with open('ledger.json', 'w') as fp:
+            json.dump({cts_id: {'md5': self.f3sf.md5,
+                'is_dir': False,
+                'fname': self.f3sf.filename,
+                'fpath': fullp,
+                'prod_date': timestamp,
+                'size': self.f3raw.size,
+                'fn_id': self.f3raw.pk,
+                }}, fp)
+        # Rsync job to wait for
+        job = jm.Job.objects.create(funcname='rsync_transfer', kwargs={'sf_id': self.f3sf.pk,
+            'src_path': os.path.join(settings.TMP_UPLOADPATH, f'{self.f3raw.pk}.{self.f3sf.filetype.filetype}')},
+            timestamp=timezone.now(), state=jj.Jobstates.PROCESSING)
+        sp = self.run_script(fullp)
+        sleep(1)
+        job.state = jj.Jobstates.DONE
+        job.save()
+        self.f3sf.checked = True
+        self.f3sf.save()
+        spout, sperr = sp.communicate()
+        print(sperr.decode('utf-8'))
+        print(spout.decode('utf-8'))
+        explines = [f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
+                f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: wait',
+                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
+                f'State for file with ID {self.f3raw.pk} was "done"']
+        for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
+            self.assertEqual(re.sub('.*producer.worker - ', '', out), exp)
+#    def test_libfile(self):
+#    
+#    def test_userfile(self):
+#    
+#   def test_analysisfile(self):
  
 
-class OldTransferStateTest(BaseFilesTest):
+class TransferStateTest(BaseFilesTest):
     url = '/files/transferstate/'
 
     def setUp(self):
