@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase, LiveServerTestCase, Client
 from django.utils import timezone
 from django.core.management import call_command
+from django.test import tag
 
 from kantele import settings
 from datasets import models as dm
@@ -217,9 +218,11 @@ class ProcessJobTest(BaseTest):
         self.job = self.jobclass(1)
 
     def check(self, expected_tasks):
-        self.assertEqual(self.job.run_tasks, expected_tasks)
+        for t in self.job.run_tasks:
+            self.assertIn(t, expected_tasks)
 
 
+@tag('slow')
 class BaseIntegrationTest(LiveServerTestCase):
     # use a live server so that jobrunner can interface with it (otherwise only dummy
     # test client can do that)

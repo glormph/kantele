@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.test import tag
 
 
+@tag('mstulos')
 class BaseTC(BaseIntegrationTest):
     def setUp(self):
         super().setUp()
@@ -130,7 +131,6 @@ class BaseTC(BaseIntegrationTest):
 class TestUploadAnalysis(BaseTC):
     jobname = 'ingest_search_results'
 
-    @tag('mstulos')
     def test_with_genes(self):
         self.url = f'/mstulos/add/{self.nfs.pk}/'
         resp = self.post_json({})

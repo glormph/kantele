@@ -1,0 +1,38 @@
+{"target": {
+	"web": {
+		"cache-from": ["type=gha"],
+		"cache-to": ["type=gha"],
+		"output": ["type=docker"]
+	},
+	"db": {
+		"cache-from": ["type=gha"],
+		"cache-to": ["type=gha"],
+		"output": ["type=docker"]
+	},
+	"mq": {
+		"cache-from": ["type=gha"],
+		"cache-to": ["type=gha"],
+		"output": ["type=docker"]
+	},
+	"storage_mvfiles": {
+		"cache-from": ["type=gha"],
+		"cache-to": ["type=gha"],
+		"output": ["type=docker"]
+	},
+	"tulos_ingester": {
+		"cache-from": ["type=gha"],
+		"cache-to": ["type=gha"],
+		"output": ["type=docker"]
+	},
+	"storage_downloads": {
+		"cache-from": ["type=gha"],
+		"cache-to": ["type=gha"],
+		"output": ["type=docker"]
+	},
+	"upload_bay_rsync": {
+		"cache-from": ["type=gha"],
+		"cache-to": ["type=gha"],
+		"output": ["type=docker"]
+	}
+}
+}
