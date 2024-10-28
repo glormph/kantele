@@ -110,7 +110,7 @@ class TestDownloadedFile(BaseJobTest):
         self.assertEqual(resp.status_code, 403)
 
     def test_md5_but_not_unzip(self):
-        with open(self.fpath, 'w') as fp:
+        with open(os.path.join(settings.TMP_UPLOADPATH, self.fpath), 'w') as fp:
             # touch a file
             pass
         resp = self.cl.post(self.url, content_type='application/json', data={
@@ -127,7 +127,7 @@ class TestDownloadedFile(BaseJobTest):
 
 
     def test_no_md5_but_unzip(self):
-        with open(self.fpath, 'w') as fp:
+        with open(os.path.join(settings.TMP_UPLOADPATH, self.fpath), 'w') as fp:
             # touch a file
             pass
         resp = self.cl.post(self.url, content_type='application/json', data={
