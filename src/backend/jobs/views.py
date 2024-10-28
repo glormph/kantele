@@ -140,7 +140,7 @@ def pause_job(request):
     job.state = Jobstates.WAITING
     job.save()
     jwrapper = jobmap[job.funcname](job.id) 
-    jwrapper.on_pause(job.kwargs)
+    jwrapper.on_pause(**job.kwargs)
     return JsonResponse({}) 
     
 
