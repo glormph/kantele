@@ -107,7 +107,7 @@ class TestUploadScript(BaseIntegrationTest):
         old_raw = rm.RawFile.objects.last()
         sp = self.run_script(fullp)
         # Give time for running script, so job is created before running it etc
-        sleep(1)
+        sleep(4)
         new_raw = rm.RawFile.objects.last()
         self.assertEqual(new_raw.pk, old_raw.pk + 1)
         sf = rm.StoredFile.objects.last()
@@ -152,7 +152,7 @@ class TestUploadScript(BaseIntegrationTest):
             'src_path': os.path.join(settings.TMP_UPLOADPATH, f'{self.f3raw.pk}.{self.f3sf.filetype.filetype}')},
             timestamp=timezone.now(), state=jj.Jobstates.DONE)
         sp = self.run_script(fullp)
-        sleep(2)
+        sleep(4)
         self.f3sf.refresh_from_db()
         self.assertFalse(self.f3sf.checked)
         self.run_job()
@@ -232,7 +232,7 @@ class TestUploadScript(BaseIntegrationTest):
                 producer=self.prod, size=123, date=timezone.now(), claimed=False)
         lastsf = rm.StoredFile.objects.last()
         sp = self.run_script(fullp)
-        sleep(2)
+        sleep(4)
         self.run_job()
         spout, sperr = sp.communicate(timeout=10)
         newsf = rm.StoredFile.objects.last()
