@@ -35,6 +35,13 @@ jobs:
         needs: linting
         steps:
             - uses: actions/checkout@v4
+            - name: Setup buildx
+              uses: docker/setup-buildx-action@v3
+            - name: Get USER_ID to env
+              run: echo "USER_ID=$(id -u)" >> $GITHUB_ENV
+            - name: Get GROUP_ID to env
+              run: echo "GROUP_ID=$(id -g)" >> $GITHUB_ENV
+            - run: docker buildx bake --file src/docker/testing-bake.yml --file src/docker/docker-compose-gha-cache.json
             - run: bash .github/run_tests_integration.sh
 
     unit-tests:
