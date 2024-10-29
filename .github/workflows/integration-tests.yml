@@ -60,11 +60,11 @@ jobs:
                 password: ${{ secrets.GITHUB_TOKEN }}
             - run: docker buildx bake --file src/docker/testing-bake.yml --file src/docker/docker-compose-gha-cache.json
             - run: |
-    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
-      up --detach db mq
-    sleep 5 # DB needs to be up or app crashes trying to connect
-    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
-      run --use-aliases web python manage.py test --tag slow --exclude-tag mstulos
+                docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+                  up --detach db mq
+                sleep 5 # DB needs to be up or app crashes trying to connect
+                docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+                  run --use-aliases web python manage.py test --tag slow --exclude-tag mstulos
 
     unit-tests:
         runs-on: ubuntu-latest
@@ -79,8 +79,8 @@ jobs:
             - run: docker buildx bake --file src/docker/testing-bake.yml --file src/docker/docker-compose-gha-cache.json
             - uses: actions/checkout@v4
             - run: |
-    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
-      up --detach db mq
-    sleep 5 # DB needs to be up or app crashes trying to connect
-    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
-      run --use-aliases web python manage.py test --exclude-tag slow
+                docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+                  up --detach db mq
+                sleep 5 # DB needs to be up or app crashes trying to connect
+                docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+                  run --use-aliases web python manage.py test --exclude-tag slow
