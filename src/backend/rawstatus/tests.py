@@ -150,7 +150,7 @@ class TestUploadScript(BaseIntegrationTest):
             'src_path': os.path.join(settings.TMP_UPLOADPATH, f'{self.f3raw.pk}.{self.f3sf.filetype.filetype}')},
             timestamp=timezone.now(), state=jj.Jobstates.DONE)
         sp = self.run_script(fullp)
-        sleep(1)
+        sleep(2)
         self.f3sf.refresh_from_db()
         self.assertFalse(self.f3sf.checked)
         self.run_job()
@@ -194,7 +194,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertFalse(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
 
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
-        sleep(2)
+        sleep(4)
         sp.terminate()
         # Properly kill children since upload.py uses multiprocessing
         os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
@@ -230,7 +230,7 @@ class TestUploadScript(BaseIntegrationTest):
                 producer=self.prod, size=123, date=timezone.now(), claimed=False)
         lastsf = rm.StoredFile.objects.last()
         sp = self.run_script(fullp)
-        sleep(1)
+        sleep(2)
         self.run_job()
         spout, sperr = sp.communicate()
         newsf = rm.StoredFile.objects.last()
