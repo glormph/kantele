@@ -117,7 +117,13 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertFalse(sf.checked)
         self.run_job()
         sf.refresh_from_db()
-        spout, sperr = sp.communicate(timeout=10)
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
         print(sperr.decode('utf-8'))
         print(spout.decode('utf-8'))
         self.assertTrue(sf.checked)
@@ -156,7 +162,15 @@ class TestUploadScript(BaseIntegrationTest):
         self.f3sf.refresh_from_db()
         self.assertFalse(self.f3sf.checked)
         self.run_job()
-        spout, sperr = sp.communicate(timeout=10)
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+        print(sperr.decode('utf-8'))
+        print(spout.decode('utf-8'))
         self.f3sf.refresh_from_db()
         self.assertTrue(self.f3sf.checked)
         self.assertEqual(self.f3sf.md5, self.f3raw.source_md5)
@@ -234,7 +248,15 @@ class TestUploadScript(BaseIntegrationTest):
         sp = self.run_script(fullp)
         sleep(4)
         self.run_job()
-        spout, sperr = sp.communicate(timeout=10)
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+        print(sperr.decode('utf-8'))
+        print(spout.decode('utf-8'))
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newsf.pk, lastsf.pk + 1)
         self.assertEqual(rawfn.pk, newsf.rawfile_id)
