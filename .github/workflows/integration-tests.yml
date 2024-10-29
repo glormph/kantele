@@ -22,13 +22,13 @@ jobs:
             - run: |
                 echo docker compose --env-file src/docker/.compose.testing.env \
                 -f src/docker/docker-compose-testing.yml run web pylint \
-                -E --disable E1101,E0307 --ignore-paths '.*\/migrations\/[0-9]+.*.py' \ 
-                analysis datasets dashboard home jobs kantele rawstatus
+                -E --disable E1101,E0307 --ignore-paths \
+                '.*\/migrations\/[0-9]+.*.py' analysis datasets dashboard home jobs kantele rawstatus
             - run: |
                 docker compose --env-file src/docker/.compose.testing.env \
                 -f src/docker/docker-compose-testing.yml run web pylint \
-                -E --disable E1101,E0307 --ignore-paths '.*\/migrations\/[0-9]+.*.py' \ 
-                analysis datasets dashboard home jobs kantele rawstatus
+                -E --disable E1101,E0307 --ignore-paths \
+                '.*\/migrations\/[0-9]+.*.py' analysis datasets dashboard home jobs kantele rawstatus
 
     integration-tests:
         runs-on: ubuntu-latest
