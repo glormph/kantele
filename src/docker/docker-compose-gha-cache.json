@@ -1,37 +1,37 @@
 {"target": {
 	"web": {
-		"cache-from": ["type=gha"],
-		"cache-to": ["type=gha"],
+		"cache-from": ["type=registry,ref=ghcr.io/glormph/kantele-web:cache"],
+		"cache-to": ["type=registry,ref=ghcr.io/glormph/kantele-web:cache"],
 		"output": ["type=docker"]
 	},
 	"db": {
-		"cache-from": ["type=gha"],
-		"cache-to": ["type=gha"],
+		"cache-from": ["type=registry,ref=ghcr.io/glormph/kantele-db:cache"],
+		"cache-to": ["type=registry,ref=ghcr.io/glormph/kantele-db:cache"],
 		"output": ["type=docker"]
 	},
 	"mq": {
-		"cache-from": ["type=gha"],
-		"cache-to": ["type=gha"],
+		"cache-from": ["type=registry,ref=ghcr.io/glormph/kantele-mq:cache"],
+		"cache-to": ["type=registry,ref=ghcr.io/glormph/kantele-mq:cache"],
 		"output": ["type=docker"]
 	},
 	"storage_mvfiles": {
-		"cache-from": ["type=gha"],
-		"cache-to": ["type=gha"],
+		"cache-from": ["type=registry,ref=ghcr.io/glormph/kantele-stor:cache"],
+		"cache-to": ["type=registry,ref=ghcr.io/glormph/kantele-stor:cache"],
 		"output": ["type=docker"]
 	},
 	"tulos_ingester": {
-		"cache-from": ["type=gha"],
-		"cache-to": ["type=gha"],
+		"cache-from": ["type=registry,ref=ghcr.io/glormph/kantele-stor:cache"],
+		"cache-to": ["type=registry,ref=ghcr.io/glormph/kantele-stor:cache"],
 		"output": ["type=docker"]
 	},
 	"storage_downloads": {
-		"cache-from": ["type=gha"],
-		"cache-to": ["type=gha"],
+		"cache-from": ["type=registry,ref=ghcr.io/glormph/kantele-stor:cache"],
+		"cache-to": ["type=registry,ref=ghcr.io/glormph/kantele-stor:cache"],
 		"output": ["type=docker"]
 	},
 	"upload_bay_rsync": {
-		"cache-from": ["type=gha"],
-		"cache-to": ["type=gha"],
+		"cache-from": ["type=registry,ref=ghcr.io/glormph/kantele-rsync:cache"],
+		"cache-to": ["type=registry,ref=ghcr.io/glormph/kantele-rsync:cache"],
 		"output": ["type=docker"]
 	}
 }
