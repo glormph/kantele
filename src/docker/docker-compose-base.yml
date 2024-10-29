@@ -4,8 +4,8 @@ services:
     web:
         image: kantele_web
         build:
-            context: .
-            dockerfile: ./src/docker/Dockerfile
+            context: ../
+            dockerfile: ./docker/Dockerfile
             target: django
             args:
                 USER_ID: "${USER_ID:-You must run export USER_ID}"
