@@ -22,12 +22,12 @@ jobs:
             - name: Get GROUP_ID to env
               run: echo "GROUP_ID=$(id -g)" >> $GITHUB_ENV
 
-	    - name: Login to Docker Registry
-	      uses: docker/login-action@v3
-	      with:
-		registry: ghcr.io
-		username: ${{ github.actor }}
-		password: ${{ secrets.GITHUB_TOKEN }}
+            - name: Login to Docker Registry
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
 
             - run: docker buildx bake --file src/docker/testing-bake.yml --file src/docker/docker-compose-gha-cache.json
             - run: |
@@ -52,12 +52,12 @@ jobs:
               run: echo "USER_ID=$(id -u)" >> $GITHUB_ENV
             - name: Get GROUP_ID to env
               run: echo "GROUP_ID=$(id -g)" >> $GITHUB_ENV
-	    - name: Login to Docker Registry
-	      uses: docker/login-action@v3
-	      with:
-		registry: ghcr.io
-		username: ${{ github.actor }}
-		password: ${{ secrets.GITHUB_TOKEN }}
+            - name: Login to Docker Registry
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
             - run: docker buildx bake --file src/docker/testing-bake.yml --file src/docker/docker-compose-gha-cache.json
             - run: bash .github/run_tests_integration.sh
 
