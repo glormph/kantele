@@ -117,8 +117,10 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertFalse(sf.checked)
         self.run_job()
         sf.refresh_from_db()
+        spout, sperr = sp.communicate(timeout=10)
+        print(sperr.decode('utf-8'))
+        print(spout.decode('utf-8'))
         self.assertTrue(sf.checked)
-        spout, sperr = sp.communicate()
         explines = ['Registering 1 new file(s)', 
                 f'File {new_raw.name} matches remote file {new_raw.name} with ID {new_raw.pk}',
                 f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
@@ -154,7 +156,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.f3sf.refresh_from_db()
         self.assertFalse(self.f3sf.checked)
         self.run_job()
-        spout, sperr = sp.communicate()
+        spout, sperr = sp.communicate(timeout=10)
         self.f3sf.refresh_from_db()
         self.assertTrue(self.f3sf.checked)
         self.assertEqual(self.f3sf.md5, self.f3raw.source_md5)
@@ -232,7 +234,7 @@ class TestUploadScript(BaseIntegrationTest):
         sp = self.run_script(fullp)
         sleep(2)
         self.run_job()
-        spout, sperr = sp.communicate()
+        spout, sperr = sp.communicate(timeout=10)
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newsf.pk, lastsf.pk + 1)
         self.assertEqual(rawfn.pk, newsf.rawfile_id)
@@ -272,7 +274,7 @@ class TestUploadScript(BaseIntegrationTest):
         job.save()
         self.f3sf.checked = True
         self.f3sf.save()
-        spout, sperr = sp.communicate()
+        spout, sperr = sp.communicate(timeout=10)
         explines = [f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
                 f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: wait',
                 f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
