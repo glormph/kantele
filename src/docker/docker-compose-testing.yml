@@ -1,25 +1,25 @@
 services:
     web:
-        depends_on:
-            - db
-            - mq
-            - storage_mvfiles
-            - storage_downloads
-            - tulos_ingester
-            - upload_bay_rsync
-        extends:
-            file: docker-compose-base.yml
-            service: web
+      #        depends_on:
+      #            - db
+      #            - mq
+      #            - storage_mvfiles
+      #            - storage_downloads
+      #            - tulos_ingester
+      #            - upload_bay_rsync
+      #        extends:
+      #            file: src/docker/docker-compose-base.yml
+      #            service: web
         image: django_test
         build:
-            context: ../
-            dockerfile: ./docker/Dockerfile
+            context: ./
+            dockerfile: ./src/docker/Dockerfile
             target: django_test
             args:
                 USER_ID: "${USER_ID:-You must run export USER_ID}"
                 GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
         env_file:
-            - testing.env
+            - src/docker/testing.env
         volumes:
             - type: bind
               source: ../backend
@@ -53,17 +53,17 @@ services:
         volumes:
             - "./create_kantele_db.sh:/docker-entrypoint-initdb.d/create_kantele_db.sh"
 
-    mq:
-        extends:
-            file: docker-compose-base.yml
-            service: mq
+              #mq:
+      #        extends:
+      #            file: src/docker/docker-compose-base.yml
+      #            service: mq
 
     storage_mvfiles:
         extends:
-            file: docker-compose-dev.yml
+            file: src/docker/docker-compose-dev.yml
             service: storage
         env_file:
-            - testing.env
+            - src/docker/testing.env
         command: celery -A kantele worker -Q mv_md5_storage -n storage_mv.%h --concurrency=1
         volumes:
             # Overwrite dev storage here
@@ -79,9 +79,9 @@ services:
 
     tulos_ingester:
       env_file:
-        - testing.env
+        - src/docker/testing.env
       extends:
-        file: docker-compose-dev.yml
+        file: src/docker/docker-compose-dev.yml
         service: storage
       volumes:
           # Overwrite dev storage here
@@ -97,10 +97,10 @@ services:
 
     storage_downloads:
         extends:
-            file: docker-compose-dev.yml
+            file: src/docker/docker-compose-dev.yml
             service: storage
         env_file:
-            - testing.env
+            - src/docker/testing.env
         command: celery -A kantele worker -Q file_download -n storage_downloads.%h --concurrency=1
         volumes:
           # Overwrite dev storage here
@@ -117,27 +117,27 @@ services:
             RSYNC_SSHPORT: "${RSYNC_SSHPORT}"
             HOST_UPLOADDIR: /storage/uploads
 
-    analysis:
-        extends:
-            file: docker-compose-base.yml
-            service: web
-        depends_on:
-            - web
-        command: celery -A kantele worker -Q test_analysis -n analysis.%h --concurrency=1
-        env_file:
-            - testing.env
-        volumes:
-            - type: bind
-              source: ../backend
-              target: /kantele
-        environment:
-            KANTELEHOST: web
+              #    analysis:
+              #      #        extends:
+              #      #            file: src/docker/docker-compose-base.yml
+              #      #            service: web
+              #        depends_on:
+              #            - web
+              #        command: celery -A kantele worker -Q test_analysis -n analysis.%h --concurrency=1
+              #        env_file:
+              #            - src/docker/testing.env
+              #        volumes:
+              #            - type: bind
+              #              source: ../backend
+              #              target: /kantele
+              #        environment:
+              #            KANTELEHOST: web
 
     upload_bay_rsync:
         image: rsync_stor
         build:
-            context: ../
-            dockerfile: ./docker/Dockerfile
+            context: ./
+            dockerfile: ./src/docker/Dockerfile
             target: rsync_storage
             args:
                 USER_ID: "${USER_ID:-You must run export USER_ID}"
