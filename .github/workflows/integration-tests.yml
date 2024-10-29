@@ -59,11 +59,28 @@ jobs:
                 username: ${{ github.actor }}
                 password: ${{ secrets.GITHUB_TOKEN }}
             - run: docker buildx bake --file src/docker/testing-bake.yml --file src/docker/docker-compose-gha-cache.json
-            - run: bash .github/run_tests_integration.sh
+            - run: |
+    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+      up --detach db mq
+    sleep 5 # DB needs to be up or app crashes trying to connect
+    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+      run --use-aliases web python manage.py test --tag slow --exclude-tag mstulos
 
     unit-tests:
         runs-on: ubuntu-latest
         needs: linting
         steps:
+            - name: Login to Docker Registry to get bake cache
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
+            - run: docker buildx bake --file src/docker/testing-bake.yml --file src/docker/docker-compose-gha-cache.json
             - uses: actions/checkout@v4
-            - run: bash .github/run_tests_unit.sh
+            - run: |
+    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+      up --detach db mq
+    sleep 5 # DB needs to be up or app crashes trying to connect
+    docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
+      run --use-aliases web python manage.py test --exclude-tag slow
