@@ -917,9 +917,11 @@ def refine_mzmls(request):
     elif not nr_exist_mzml or nr_exist_mzml < nr_dsrs:
         return JsonResponse({'error': 'Need to create normal mzMLs before refining'}, status=403)
     # Check DB
-    if filemodels.StoredFile.objects.filter(pk=data['dbid'],
-            filetype__name=settings.DBFA_FT_NAME).count() != 1:
-        return JsonResponse({'error': 'Wrong database to refine with'}, status=403)
+    if dbid := data.get('dbid'):
+        if filemodels.StoredFile.objects.filter(pk=dbid, filetype__name=settings.DBFA_FT_NAME).count() != 1:
+            return JsonResponse({'error': 'Wrong database to refine with'}, status=403)
+    else:
+        return JsonResponse({'error': 'Must pass a database to refine with'}, status=400)
     # Check WF
     if anmodels.NextflowWfVersionParamset.objects.filter(pk=data['wfid'],
            userworkflow__name__icontains='refine',
@@ -937,7 +939,7 @@ def refine_mzmls(request):
     # FIXME get analysis if it does exist, in case someone reruns?
     analysis = anmodels.Analysis.objects.create(user=request.user, name=f'refine_dataset_{dset.pk}', editable=False)
     job = create_job('refine_mzmls', dset_id=dset.pk, analysis_id=analysis.id, wfv_id=data['wfid'],
-            dstshare_id=res_share.pk, dbfn_id=data['dbid'], qtype=dset.quantdataset.quanttype.shortname)
+            dstshare_id=res_share.pk, dbfn_id=dbid, qtype=dset.quantdataset.quanttype.shortname)
     uwf = anmodels.UserWorkflow.objects.get(nfwfversionparamsets=data['wfid'],
             wftype=anmodels.UserWorkflow.WFTypeChoices.SPEC)
     anmodels.NextflowSearch.objects.update_or_create(analysis=analysis, defaults={

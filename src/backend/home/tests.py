@@ -200,22 +200,28 @@ class TestRefineMzmls(MzmlTests):
         self.assertIn('does not exist or is deleted', resp.json()['error'])
         dm.DatasetRawFile.objects.create(dataset=self.ds, rawfile=self.timsraw)
         resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
-            'dsid': self.ds.pk})
+            'dsid': self.ds.pk, 'dbid': self.sflib.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('contains data from multiple instrument types', resp.json()['error'])
 
-    def test_existing_mzmls(self):
+    def test_existing_mzmls_no_db(self):
         # no mzMLs exist yet
         resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
             'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('Need to create normal mzMLs', resp.json()['error'])
 
+        # Not passed a db
+        am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
+        resp = self.cl.post(self.url, content_type='application/json', data={'pwiz_id': self.pw.pk,
+            'dsid': self.ds.pk})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual('Must pass a database to refine with', resp.json()['error'])
+
         # refined exists already
         refinedsf = rm.StoredFile.objects.create(rawfile=self.qeraw, filename=f'{self.qeraw.name}_refined',
                 servershare=self.ds.storageshare, path=self.storloc, md5='refined_md5', checked=True, filetype=self.ft)
         am.MzmlFile.objects.create(sfile=refinedsf, pwiz=self.pw, refined=True)
-        am.MzmlFile.objects.create(sfile=self.qesf, pwiz=self.pw)
         resp = self.cl.post(self.url, content_type='application/json', data={'dsid': self.ds.pk})
         self.assertEqual(resp.status_code, 403)
 
