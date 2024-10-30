@@ -1,5 +1,5 @@
-name: integration-tests
-run-name: Run integration tests
+name: lint-and-test
+run-name: Run linting and tests
 on:
     push:
         branches:
@@ -22,7 +22,7 @@ jobs:
             - name: Get GROUP_ID to env
               run: echo "GROUP_ID=$(id -g)" >> $GITHUB_ENV
 
-            - name: Login to Docker Registry
+            - name: Login to Docker Registry, bake/cache
               uses: docker/login-action@v3
               with:
                 registry: ghcr.io
@@ -47,7 +47,7 @@ jobs:
               run: echo "USER_ID=$(id -u)" >> $GITHUB_ENV
             - name: Get GROUP_ID to env
               run: echo "GROUP_ID=$(id -g)" >> $GITHUB_ENV
-            - name: Login to Docker Registry
+            - name: Login to Docker Registry to get bake cache
               uses: docker/login-action@v3
               with:
                 registry: ghcr.io
@@ -59,7 +59,7 @@ jobs:
                   up --detach db mq
                 sleep 5 # DB needs to be up or app crashes trying to connect
                 docker compose --env-file  src/docker/.compose.testing.env -f src/docker/docker-compose-testing.yml \
-                  run --use-aliases web python manage.py test --tag slow --exclude-tag mstulos
+                  run --use-aliases web python manage.py test --tag slow --exclude-tag mstulos || docker compose --env-file src/docker.compose.testing.env -f src/docker/docker-compose-testing.yml logs storage_mvfiles storage_downloads
 
     unit-tests:
         runs-on: ubuntu-latest
