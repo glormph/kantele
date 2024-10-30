@@ -27,7 +27,9 @@ USER root
 RUN apt-get install -y rsync
 RUN pip install pylint
 USER kantele
-RUN mkdir /home/kantele/.ssh && chmod 700 /home/kantele/.ssh
+RUN mkdir /kantelessh && chmod 700 /kantelessh
+COPY docker/test_rsync_sshkey /kantelessh/rsync_key
+RUN chmod 600 /kantelessh/rsync_key
 
 # Build django static for the nginx prod container
 FROM django AS django_static

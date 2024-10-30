@@ -107,7 +107,6 @@ services:
             - type: bind
               source: ../../data/teststorage
               target: /storage
-            - "./test_rsync_sshkey:/kantelessh/rsync_key"
         environment:
             KANTELEHOST: web
             TMPSHARE: '/storage/tmp'
