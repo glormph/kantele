@@ -2,29 +2,30 @@
 #
 
 services:
-    storage:
-        image: django_test
-        build:
-            context: "${BUILD_CONTEXT_DEV:-../}"
-            dockerfile: ./docker/Dockerfile
-            target: django_test
-            args:
-                USER_ID: "${USER_ID:-You must run export USER_ID}"
-                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
-        volumes:
-            - ../../data/storage:/storage
-            - ../../data/newstorage:/newstorage
-            - ../../data/analysisfiles:/analysisfiles
-            - ../backend:/kantele
-        environment:
-            APIKEY: "${APIKEY_STORAGE}"
-            KANTELEHOST: nginx
-            PROTOCOL: http
-            TMPSHARE: '/s3storage/tmp'
-            ANALYSISSHARE: /analysisfiles
-            RABBITHOST: mq
-            RABBIT_VHOST: "${RABBIT_VHOST}"
-            RABBITUSER: "${RABBITUSER:-guest}"
-            RABBITPASS: "${RABBITPASS:-guest}"
-            STORAGESHARES: '/storage,/newstorage'
-            PRIMARY_STORAGE: s3storage
+  storage:
+    image: django_test
+    build:
+      context: "${BUILD_CONTEXT_DEV:-../}"
+        #context: ../../
+      dockerfile: ./docker/Dockerfile
+      target: django_test
+      args:
+        USER_ID: "${USER_ID:-You must run export USER_ID}"
+        GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
+    volumes:
+      - ../../data/storage:/storage
+      - ../../data/newstorage:/newstorage
+      - ../../data/analysisfiles:/analysisfiles
+      - ../backend:/kantele
+    environment:
+      APIKEY: "${APIKEY_STORAGE}"
+      KANTELEHOST: nginx
+      PROTOCOL: http
+      TMPSHARE: '/s3storage/tmp'
+      ANALYSISSHARE: /analysisfiles
+      RABBITHOST: mq
+      RABBIT_VHOST: "${RABBIT_VHOST}"
+      RABBITUSER: "${RABBITUSER:-guest}"
+      RABBITPASS: "${RABBITPASS:-guest}"
+      STORAGESHARES: '/storage,/newstorage'
+      PRIMARY_STORAGE: s3storage

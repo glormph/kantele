@@ -26,8 +26,9 @@ FROM django AS django_test
 USER root
 RUN apt-get install -y rsync
 RUN pip install pylint
+RUN mkdir /kantelessh && chmod 700 /kantelessh && chown kantele: /kantelessh
 USER kantele
-RUN mkdir /home/kantele/.ssh && chmod 700 /home/kantele/.ssh
+COPY docker/test_rsync_sshkey /kantelessh/rsync_key
 
 # Build django static for the nginx prod container
 FROM django AS django_static
@@ -36,7 +37,7 @@ RUN python manage.py collectstatic --no-input
 
 # Compile node frontend stuff for prod container
 FROM node:18 AS build_frontend
-COPY ./frontend /src/frontend
+COPY frontend /src/frontend
 RUN cd /src/frontend/analysis && npm install && npm run build
 RUN cd /src/frontend/dashboard && npm install && npm run build
 RUN cd /src/frontend/datasets && npm install && npm run build

@@ -60,7 +60,7 @@ services:
 
     storage_mvfiles:
         extends:
-            file: docker-compose-dev.yml
+            file: ./docker-compose-dev.yml
             service: storage
         env_file:
             - testing.env
@@ -81,7 +81,7 @@ services:
       env_file:
         - testing.env
       extends:
-        file: docker-compose-dev.yml
+        file: ./docker-compose-dev.yml
         service: storage
       volumes:
           # Overwrite dev storage here
@@ -97,7 +97,7 @@ services:
 
     storage_downloads:
         extends:
-            file: docker-compose-dev.yml
+            file: ./docker-compose-dev.yml
             service: storage
         env_file:
             - testing.env
@@ -107,7 +107,6 @@ services:
             - type: bind
               source: ../../data/teststorage
               target: /storage
-            - "./test_rsync_sshkey:/kantelessh/rsync_key"
         environment:
             KANTELEHOST: web
             TMPSHARE: '/storage/tmp'
@@ -117,21 +116,21 @@ services:
             RSYNC_SSHPORT: "${RSYNC_SSHPORT}"
             HOST_UPLOADDIR: /storage/uploads
 
-    analysis:
-        extends:
-            file: docker-compose-base.yml
-            service: web
-        depends_on:
-            - web
-        command: celery -A kantele worker -Q test_analysis -n analysis.%h --concurrency=1
-        env_file:
-            - testing.env
-        volumes:
-            - type: bind
-              source: ../backend
-              target: /kantele
-        environment:
-            KANTELEHOST: web
+              #    analysis:
+              #      #        extends:
+              #      #            file: docker-compose-base.yml
+              #      #            service: web
+              #        depends_on:
+              #            - web
+              #        command: celery -A kantele worker -Q test_analysis -n analysis.%h --concurrency=1
+              #        env_file:
+              #            - src/docker/testing.env
+              #        volumes:
+              #            - type: bind
+              #              source: ../backend
+              #              target: /kantele
+              #        environment:
+              #            KANTELEHOST: web
 
     upload_bay_rsync:
         image: rsync_stor

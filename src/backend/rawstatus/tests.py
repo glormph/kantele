@@ -107,7 +107,7 @@ class TestUploadScript(BaseIntegrationTest):
         old_raw = rm.RawFile.objects.last()
         sp = self.run_script(fullp)
         # Give time for running script, so job is created before running it etc
-        sleep(1)
+        sleep(2)
         new_raw = rm.RawFile.objects.last()
         self.assertEqual(new_raw.pk, old_raw.pk + 1)
         sf = rm.StoredFile.objects.last()
@@ -117,8 +117,16 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertFalse(sf.checked)
         self.run_job()
         sf.refresh_from_db()
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+            print(sperr.decode('utf-8'))
+            raise
         self.assertTrue(sf.checked)
-        spout, sperr = sp.communicate()
         explines = ['Registering 1 new file(s)', 
                 f'File {new_raw.name} matches remote file {new_raw.name} with ID {new_raw.pk}',
                 f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
@@ -126,11 +134,14 @@ class TestUploadScript(BaseIntegrationTest):
                 f'Uploading {fullp} to {self.live_server_url}',
                 f'Succesful transfer of file {fullp}',
                 f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
-                f'State for file with ID {new_raw.pk} was "done"']
-        for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines, explines):
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
+        lastexp = f'State for file with ID {new_raw.pk} was "done"'
+        self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
 
     def test_transfer_again(self):
         '''Transfer already existing file, e.g. overwrites of previously
@@ -154,7 +165,15 @@ class TestUploadScript(BaseIntegrationTest):
         self.f3sf.refresh_from_db()
         self.assertFalse(self.f3sf.checked)
         self.run_job()
-        spout, sperr = sp.communicate()
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+            print(sperr.decode('utf-8'))
+            raise
         self.f3sf.refresh_from_db()
         self.assertTrue(self.f3sf.checked)
         self.assertEqual(self.f3sf.md5, self.f3raw.source_md5)
@@ -166,11 +185,14 @@ class TestUploadScript(BaseIntegrationTest):
                 f'Uploading {fullp} to {self.live_server_url}',
                 f'Succesful transfer of file {fullp}',
                 f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file with ID {self.f3raw.pk} was "done"']
-        for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines, explines):
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
+        lastexp = f'State for file with ID {self.f3raw.pk} was "done"'
+        self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
 
     def test_transfer_same_name(self):
         # Test trying to upload file with same name/path but diff MD5
@@ -232,7 +254,15 @@ class TestUploadScript(BaseIntegrationTest):
         sp = self.run_script(fullp)
         sleep(1)
         self.run_job()
-        spout, sperr = sp.communicate()
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+            print(sperr.decode('utf-8'))
+            raise
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newsf.pk, lastsf.pk + 1)
         self.assertEqual(rawfn.pk, newsf.rawfile_id)
@@ -272,7 +302,15 @@ class TestUploadScript(BaseIntegrationTest):
         job.save()
         self.f3sf.checked = True
         self.f3sf.save()
-        spout, sperr = sp.communicate()
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+            print(sperr.decode('utf-8'))
+            raise
         explines = [f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
                 f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: wait',
                 f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
