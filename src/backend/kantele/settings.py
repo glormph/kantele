@@ -129,9 +129,13 @@ LIBRARY_FILE_PATH = 'databases'
 ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE', False)
 NF_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 
-# hardcoded name for fasta DBs, analysis output
+# hardcoded name for filetypes fasta DBs, analysis output
 DBFA_FT_NAME = 'database'
 ANALYSIS_FT_NAME = 'analysis_output'
+THERMORAW = 'thermo_raw_file'
+BRUKERRAW = 'bruker_raw_file'
+BRUKERKEY = os.environ.get('BRUKERKEY') # e.g. Description, SampleName
+THERMOKEY = os.environ.get('THERMOKEY') # e.g. SampleID
 
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 

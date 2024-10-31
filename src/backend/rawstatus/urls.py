@@ -18,4 +18,5 @@ urlpatterns = [
    path('undelete/', views.restore_file_from_cold),
    path('datainflow/', views.inflow_page, name='inflow'),
    path('datainflow/download/', views.download_instrument_package),
+   path('classifiedraw/', views.classified_rawfile_treatment, name='classifiedraw'),
 ]

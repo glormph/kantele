@@ -352,11 +352,12 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
         trffns, ledgerchanged = [], False
         to_process = [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]
         for cts_id, fnid, fndata in to_process:
+            desc = descriptions.get(fndata['fpath'], False)
             logger.info(f'Checking remote state for file {fndata["fname"]} with ID {fnid}')
             try:
                 resp = requests.post(fnstate_url, cookies=cookies,
                         headers=get_csrf(cookies, kantelehost),
-                        json={'fnid': fnid, 'token': config['token']},
+                        json={'fnid': fnid, 'token': config['token'], 'desc': desc},
                         verify=certifi.where())
             except requests.exceptions.ConnectionError:
                 logger.error('Cannot connect to kantele server to request state '
@@ -418,10 +419,9 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             if cts_id not in ledger:
                 logger.warning(f'Could not find file with ID {fndata["fn_id"]} locally')
                 continue
-            desc = descriptions.get(fndata['fpath'], False)
             try:
                 resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
-                        desc, cookies, kantelehost)
+                        cookies, kantelehost)
             except subprocess.CalledProcessError:
                 # FIXME wrong exception!
                 logger.warning(f'Could not transfer {fndata["fpath"]}')

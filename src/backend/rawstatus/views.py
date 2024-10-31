@@ -21,6 +21,7 @@ import requests
 from hashlib import md5
 from urllib.parse import urlsplit
 from Bio import SeqIO
+from celery import states as taskstates
 
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
@@ -151,11 +152,12 @@ def browser_userupload(request):
     except (ValueError, KeyError):
         return JsonResponse({'success': False, 'msg': 'Bad request, contact admin'}, status=400)
     uft = UploadToken.UploadFileType
-    if uploadtype in [uft.LIBRARY, uft.USERFILE]:
-        desc = str(data.get('desc', '').strip())
-        if desc == '':
+    desc = str(data.get('desc', '').strip())
+    if desc == '':
+        desc = False
+        if uploadtype in [uft.LIBRARY, uft.USERFILE]:
             return JsonResponse({'success': False, 'msg': 'A description for this file is required'}, status=400)
-    elif ftype.is_folder:
+    if ftype.is_folder:
         return JsonResponse({'success': False, 'msg': 'Cannot upload folder datatypes through browser'}, status=403)
 
     # create userfileupload model (incl. fake token)
@@ -230,11 +232,7 @@ def browser_userupload(request):
     sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
             filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
     create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
-    if upload.uploadtype == UploadToken.UploadFileType.LIBRARY:
-        LibraryFile.objects.create(sfile=sfile, description=desc)
-    elif upload.uploadtype == UploadToken.UploadFileType.USERFILE:
-        UserFile.objects.create(sfile=sfile, description=desc, upload=upload)
-    dstfn = process_file_confirmed_ready(sfile.rawfile, sfile, upload.archive_only)
+    dstfn = process_file_confirmed_ready(sfile.rawfile, sfile, upload, desc)
     return JsonResponse({'success': True, 'msg': 'Succesfully uploaded file to '
         f'become {dstfn} File will be accessible on storage soon.'})
 
@@ -367,7 +365,7 @@ def get_or_create_rawfile(md5, fn, producer, size, file_date, claimed):
 def get_files_transferstate(request):
     data =  json.loads(request.body.decode('utf-8'))
     try:
-        token, fnid = data['token'], data['fnid']
+        token, fnid, desc = data['token'], data['fnid'], data['desc']
     except KeyError as error:
         print(f'Request to get transferstate with missing parameter, {error}')
         return JsonResponse({'error': 'Bad request'}, status=400)
@@ -375,8 +373,14 @@ def get_files_transferstate(request):
     upload = UploadToken.validate_token(token, ['producer'])
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
+    elif upload.uploadtype in [UploadToken.UploadFileType.LIBRARY, UploadToken.UploadFileType.USERFILE] and not desc:
+        return JsonResponse({'error': 'Library or user files need a description'}, status=403)
+    elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS and not hasattr(upload, 'externalanalysis'):
+        # FIXME can we upload proper analysis files here too??? In theory, yes! At a speed cost
+        return JsonResponse({'error': 'Analysis result uploads need an analysis_id to put them in'}, status=403)
+
     # Also do registration here? if MD5? prob not.
-    rfn = RawFile.objects.filter(pk=fnid)
+    rfn = RawFile.objects.filter(pk=fnid).select_related('producer')
     if not rfn.count():
         return JsonResponse({'error': f'File with ID {fnid} cannot be found in system'}, status=404)
     rfn = rfn.get()
@@ -417,7 +421,7 @@ def get_files_transferstate(request):
             tstate = 'done'
             if not PDCBackedupFile.objects.filter(storedfile_id=sfn.id):
                 # No already-backedup PDC file, then do some processing work
-                process_file_confirmed_ready(rfn, sfn, upload.archive_only)
+                process_file_confirmed_ready(rfn, sfn, upload, desc)
         # FIXME this is too hardcoded data model which will be changed one day,
         # needs to be in Job class abstraction!
 
@@ -451,7 +455,46 @@ def get_files_transferstate(request):
     return JsonResponse(response)
 
 
-def process_file_confirmed_ready(rfn, sfn, archive_only):
+def classified_rawfile_treatment(request):
+    '''Task calls this after reading a raw file for classification'''
+    data = json.loads(request.body.decode('utf-8'))
+    tasks = jm.Task.objects.filter(asyncid=data['task_id'])
+    # If task is force-retried, and there was another task running, that other task will
+    # get 403 here
+    if tasks.count() != 1:
+        return HttpResponseForbidden()
+    try:
+        token, fnid, is_qc, dsid = data['token'], data['fnid'], data['qc'], data['dset_id']
+    except KeyError as error:
+        return JsonResponse({'error': 'Bad request'}, status=400)
+    upload = UploadToken.validate_token(token, [])
+    if not upload:
+        return JsonResponse({'error': 'Token invalid or expired'}, status=403)
+    ufts = UploadToken.UploadFileType
+    sfn = StoredFile.objects.filter(pk=fnid).select_related('rawfile__producer')
+    if is_qc:
+        if sfn.rawfile.claimed:
+            # This file has already been classified or otherwise picked up
+            return HttpResponseForbidden()
+        sfn.rawfile.claimed = True
+        sfn.rawfile.save()
+        create_job('move_single_file', sf_id=sfn.pk,
+                dstsharename=settings.PRIMARY_STORAGESHARENAME,
+                dst_path=os.path.join(settings.QC_STORAGE_DIR, sfn.rawfile.producer.name))
+        staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
+        if staff_ops.exists():
+            user_op = staff_ops.first()
+        else:
+            user_op = dsmodels.Operator.objects.first()
+        run_singlefile_qc(sfn.rawfile, sfn, user_op)
+    elif dsid:
+        # FIXME how to associate with dataset and make files "pending" so a user must first
+        # authorize the move?
+        pass
+    updated = jm.Task.objects.filter(asyncid=data['task_id']).update(state=taskstates.SUCCESS)
+
+
+def process_file_confirmed_ready(rfn, sfn, upload, desc):
     """Processing of backup, QC, library/userfile after transfer has succeeded
     (MD5 checked) for newly arrived MS other raw data files (not for analysis etc)
     Files that are for archiving only are also deleted from the archive share after
@@ -459,38 +502,66 @@ def process_file_confirmed_ready(rfn, sfn, archive_only):
     """
     is_ms = hasattr(rfn.producer, 'msinstrument')
     is_active_ms = is_ms and rfn.producer.internal and rfn.producer.msinstrument.active
-    fn = sfn.filename
-    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
-        rfn.claimed = True
-        rfn.save()
-        create_job('move_single_file', sf_id=sfn.id,
-                dstsharename=settings.PRIMARY_STORAGESHARENAME,
-                dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
-        staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
-        if staff_ops.exists():
-            user_op = staff_ops.first()
-        else:
-            user_op = dsmodels.Operator.objects.first()
-        run_singlefile_qc(sfn.rawfile, sfn, user_op)
-        newname = fn
-    elif hasattr(sfn, 'libraryfile'):
-        newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
-        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
-                newname=newname)
-    elif hasattr(sfn, 'userfile'):
-        newname = f'userfile_{rfn.id}_{rfn.name}'
-        # FIXME can we move a folder!?
-        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
-                newname=newname)
+    newname = sfn.filename
+    if is_active_ms and upload.uploadtype == UploadToken.UploadFileType.RAWFILE:
+        create_job('classify_msrawfile', sf_id=sfn.pk, token=upload.token)
+        # No backup before the classify job etc
     else:
-        newname = sfn.filename
-    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
-    if archive_only:
-        # This purge job only runs when the PDC job is confirmed, w need_archive
-        sfn.deleted = True
-        sfn.save()
-        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
+        if upload.uploadtype == UploadToken.UploadFileType.LIBRARY:
+            LibraryFile.objects.create(sfile=sfn, description=desc)
+            newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
+            create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
+                    newname=newname)
+        elif upload.uploadtype == UploadToken.UploadFileType.USERFILE:
+            UserFile.objects.create(sfile=sfn, description=desc, upload=upload)
+            newname = f'userfile_{rfn.id}_{rfn.name}'
+            # FIXME can we move a folder!?
+            create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
+                    newname=newname)
+        elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS:
+            AnalysisResultFile.objects.create(sfile=sfn, analysis=upload.externalanalysis.analysis)
+        create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
+        if upload.archive_only:
+            # This archive_only is for sens data but we should probably have a completely
+            # different track for that TODO
+            # This purge job only runs when the PDC job is confirmed, w need_archive
+            sfn.deleted = True
+            sfn.save()
+            create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     return newname
+    ############
+#    fn = sfn.filename
+#    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
+#        rfn.claimed = True
+#        rfn.save()
+#        create_job('move_single_file', sf_id=sfn.id,
+#                dstsharename=settings.PRIMARY_STORAGESHARENAME,
+#                dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
+#        staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
+#        if staff_ops.exists():
+#            user_op = staff_ops.first()
+#        else:
+#            user_op = dsmodels.Operator.objects.first()
+#        run_singlefile_qc(sfn.rawfile, sfn, user_op)
+#        newname = fn
+#    elif hasattr(sfn, 'libraryfile'):
+#        newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
+#        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
+#                newname=newname)
+#    elif hasattr(sfn, 'userfile'):
+#        newname = f'userfile_{rfn.id}_{rfn.name}'
+#        # FIXME can we move a folder!?
+#        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
+#                newname=newname)
+#    else:
+#        newname = sfn.filename
+#    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
+#    if archive_only:
+#        # This purge job only runs when the PDC job is confirmed, w need_archive
+#        sfn.deleted = True
+#        sfn.save()
+#        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
+#    return newname
 
 
 @require_POST
@@ -511,15 +582,9 @@ def transfer_file(request):
         print('POST request to transfer_file with incorrect fn_id, '
               '{}'.format(error))
         return JsonResponse({'error': 'Bad request'}, status=400)
-    desc = data.get('desc', False)
     upload = UploadToken.validate_token(token, ['filetype', 'externalanalysis__analysis'])
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
-    elif upload.uploadtype in [UploadToken.UploadFileType.LIBRARY, UploadToken.UploadFileType.USERFILE] and not desc:
-        return JsonResponse({'error': 'Library or user files need a description'}, status=403)
-    elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS and not hasattr(upload, 'externalanalysis'):
-        # FIXME can we upload proper analysis files here too??? In theory, yes! At a speed cost
-        return JsonResponse({'error': 'Analysis result uploads need an analysis_id to put them in'}, status=403)
     # First check if everything is OK wrt rawfile/storedfiles
     try:
         rawfn = RawFile.objects.get(pk=fn_id)
@@ -642,12 +707,6 @@ def transfer_file(request):
     if not created:
         # Is this possible? Above checking with sfns.count() for both checked and non-checekd
         print('File already registered as transferred')
-    elif upload.uploadtype == UploadToken.UploadFileType.LIBRARY:
-        LibraryFile.objects.create(sfile=file_trf, description=desc)
-    elif upload.uploadtype == UploadToken.UploadFileType.USERFILE:
-        UserFile.objects.create(sfile=file_trf, description=desc, upload=upload)
-    elif upload.uploadtype == UploadToken.UploadFileType.ANALYSIS:
-        AnalysisResultFile.objects.create(sfile=file_trf, analysis=upload.externalanalysis.analysis)
     create_job('rsync_transfer', sf_id=file_trf.pk, src_path=upload_dst)
     return JsonResponse({'fn_id': fn_id, 'state': 'ok'})
 

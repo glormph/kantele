@@ -4,11 +4,12 @@ import requests
 import shutil
 import subprocess
 import zipfile
+import sqlite3
 from ftplib import FTP
 from urllib.parse import urljoin, urlsplit
 from time import sleep
 from datetime import datetime
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from django.urls import reverse
 
@@ -390,3 +391,58 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id, isdir):
             self.retry(countdown=60)
         except MaxRetriesExceededError:
             raise
+
+
+@shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
+def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
+    path = os.path.join(settings.SHAREMAP[servershare], path)
+    fpath = os.path.join(path, fname)
+    val = False
+    if ftypename == settings.THERMORAW:
+        with TemporaryDirectory() as tmpdir:
+           # FIXME docker recipe somewhere, either in deploy or on ghcr.iop# chambm/dotnet-wine + ScanHeadsman.exe
+           # 
+            with open(os.path.join(tmpdir, 'outfn.sum.tsv')) as fp:
+                header = next(fp).strip().split(',')
+                line = next(fp).strip().split(',')
+            try:
+                val = line[header.index(settings.THERMOKEY)]
+            except IndexError:
+                taskfail_update_db(self.request.id)
+                raise
+    # docker run -v {path}:/rawfiles -v {tmpdir}:/outfns {settings.THERMOREAD_DOCKER} wine ScanHeadsman.exe -d0 -i /rawfiles/{fname} -o /outfns/outfn
+        
+    elif ftypename == settings.BRUKERRAW:
+        con = sqlite3.Connection(os.path.join(fpath, 'analysis.tdf'))
+        cur = con.execute('SELECT Value FROM GlobalMetadata WHERE Key=?', settings.BRUKERKEY)
+        try:
+            val = cur.fetchone()[0]
+        except: # FIXME which exception (wrong key name)
+            taskfail_update_db(self.request.id)
+            raise
+
+    # Parse what was found
+    if val == 'QC':
+        is_qc, dset_id = True, False
+    elif val:
+        is_qc = False
+        try:
+            dset_id = int(val)
+        except ValueError:
+            dset_id = False
+    else:
+        # FIXME test also non-classified files
+        is_qc, dset_id = False, False
+
+    url = urljoin(settings.KANTELEHOST, reverse('files:classifiedraw'))
+    postdata = {'token': token, 'fnid': fnid, 'qc': is_qc, 'dset_id': dset_id,
+            'task_id': self.request.id}
+    try:
+        update_db(url, json=postdata)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            raise
+
+
