@@ -491,6 +491,14 @@ def classified_rawfile_treatment(request):
         # FIXME how to associate with dataset and make files "pending" so a user must first
         # authorize the move?
         pass
+    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
+    if upload.archive_only:
+        # This archive_only is for sens data but we should probably have a completely
+        # different track for that TODO
+        # This purge job only runs when the PDC job is confirmed, w need_archive
+        sfn.deleted = True
+        sfn.save()
+        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     updated = jm.Task.objects.filter(asyncid=data['task_id']).update(state=taskstates.SUCCESS)
 
 

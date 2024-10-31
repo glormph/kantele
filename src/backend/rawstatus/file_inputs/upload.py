@@ -181,14 +181,12 @@ def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **
             verify=certifi.where())
 
 
-def transfer_file(url, fpath, fn_id, token, desc, cookies, host):
+def transfer_file(url, fpath, fn_id, token, cookies, host):
     # use fpath/basename instead of fname, to get the
     # zipped file name if needed, instead of the normal fn
     filename = os.path.basename(fpath)
     logging.info(f'Uploading {fpath} to {host}')
     stddata = {'fn_id': f'{fn_id}', 'token': token, 'filename': filename}
-    if desc:
-        stddata['desc'] = desc
     with open(fpath, 'rb') as fp:
         stddata['file'] = (filename, fp)
         # MultipartEncoder from requests_toolbelt can stream large files, unlike requests (2024)
@@ -427,8 +425,8 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 logger.warning(f'Could not transfer {fndata["fpath"]}')
             else:
                 if resp.status_code == 500:
-                    result = {'error': 'Kantele server error when transferring file '
-                        'state, please contact administrator'}
+                    result = {'error': 'Kantele server error when transferring file, '
+                        'please contact administrator'}
                 elif resp.status_code == 413:
                     result = {'error': 'File to transfer too large for Kantele server! '
                             'Please contact administrator'}

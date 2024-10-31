@@ -86,10 +86,11 @@ class TestUploadScript(BaseIntegrationTest):
                 'fn_id': self.f3raw.pk,
                 }}, fp)
         # Check bakcup jobs before and after
-        pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
-            'sf_id': self.f3sf.pk, 'isdir': self.f3sf.filetype.is_folder})
-        self.assertEqual(pdcjobs.count(), 0)
-        self.assertEqual(rm.PDCBackedupFile.objects.filter(success=True, is_dir=self.f3sf.filetype.is_folder, storedfile=self.f3sf).count(), 0)
+        cmsjobs = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs={
+            'sf_id': self.f3sf.pk, 'token': self.token})
+        self.assertEqual(cmsjobs.count(), 0)
+        # FIXME test PDC job? When?k
+        #self.assertEqual(rm.PDCBackedupFile.objects.filter(success=True, is_dir=self.f3sf.filetype.is_folder, storedfile=self.f3sf).count(), 0)
         # Can use subproc run here since the process will finish - no need to sleep/run jobs
         cmd = ['python3', 'rawstatus/file_inputs/upload.py', '--files', fullp, '--token', self.user_token]
         sp = subprocess.run(cmd, stderr=subprocess.PIPE)
@@ -97,7 +98,7 @@ class TestUploadScript(BaseIntegrationTest):
                 f'State for file with ID {self.f3raw.pk} was "done"']
         for out, exp in zip(sp.stderr.decode('utf-8').strip().split('\n'), explines):
             self.assertEqual(re.sub('.*producer.worker - ', '', out), exp)
-        self.assertEqual(pdcjobs.count(), 1)
+        self.assertEqual(cmsjobs.count(), 1)
 
     def test_new_file(self):
         # Use same file as f3sf but actually take its md5 and therefore it is new
@@ -115,6 +116,9 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertEqual(sf.path, settings.TMPPATH)
         self.assertEqual(sf.servershare.name, settings.TMPSHARENAME)
         self.assertFalse(sf.checked)
+        # Run rsync
+        self.run_job()
+        # Run classify
         self.run_job()
         sf.refresh_from_db()
         try:
@@ -253,6 +257,9 @@ class TestUploadScript(BaseIntegrationTest):
         lastsf = rm.StoredFile.objects.last()
         sp = self.run_script(fullp)
         sleep(1)
+        # Run the rsync
+        self.run_job()
+        # Run the raw classification
         self.run_job()
         try:
             spout, sperr = sp.communicate(timeout=10)
@@ -350,12 +357,12 @@ class TransferStateTest(BaseFilesTest):
     def test_transferstate_done(self):
         sf = self.doneraw.storedfile_set.get()
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.doneraw.id})
+                data={'token': self.token, 'fnid': self.doneraw.id, 'desc': False})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
-        pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
-            'sf_id': sf.pk, 'isdir': sf.filetype.is_folder})
-        self.assertEqual(pdcjobs.count(), 1)
+        cmsjobs = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs={
+            'sf_id': sf.pk, 'token': self.token})
+        self.assertEqual(cmsjobs.count(), 1)
 
     def test_trfstate_done_libfile(self):
         '''Test if state done is correctly reported for uploaded library file,
@@ -367,14 +374,21 @@ class TransferStateTest(BaseFilesTest):
         sflib = rm.StoredFile.objects.create(rawfile=libraw, md5=libraw.source_md5,
                 filetype=self.ft, checked=True, filename=libraw.name,
                     servershare=self.sstmp, path='')
-        lf = am.LibraryFile.objects.create(sfile=sflib, description='This is a libfile')
+        libq = am.LibraryFile.objects.filter(sfile=sflib, description='This is a libfile')
+        self.assertFalse(libq.exists())
+        libtoken = rm.UploadToken.objects.create(user=self.user, token='libtoken123',
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.LIBRARY)
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': libraw.id})
+                data={'token': libtoken.token, 'fnid': libraw.id, 'desc': 'This is a libfile'})
+        self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
+        self.assertTrue(libq.exists())
         pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
             'sf_id': sflib.pk, 'isdir': sflib.filetype.is_folder})
         self.assertEqual(pdcjobs.count(), 1)
+        lf = libq.get()
         jobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={'sf_id': sflib.pk,
             'dst_path': settings.LIBRARY_FILE_PATH,
             'newname': f'libfile_{lf.pk}_{sflib.filename}'})
@@ -384,28 +398,26 @@ class TransferStateTest(BaseFilesTest):
         '''Test if state done is correctly reported for uploaded userfile,
         and that archiving and move jobs exist for it'''
         # Create userfile during upload
-        usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone',
-                producer=self.prod, source_md5='usrfmd5', size=100, 
-                defaults={'claimed': True, 'date': timezone.now()})
-        uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
-                is_rawdata=False)
-        sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=usrfraw,
-                md5=usrfraw.source_md5, filetype=uft,
-                defaults={'filename': usrfraw.name, 'servershare': self.sstmp,
-                    'path': '', 'checked': True})
-        usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
-                expired=False, producer=self.prod, filetype=uft,
-                uploadtype=rm.UploadToken.UploadFileType.USERFILE, defaults={
-                    'expires': timezone.now() + timedelta(1)})
-        userfile, _ = rm.UserFile.objects.get_or_create(sfile=sfusr,
-                description='This is a userfile', upload=usedtoken)
+        usrfraw = rm.RawFile.objects.create(name='usrfiledone', producer=self.prod,
+                source_md5='newusrfmd5', size=100, claimed=True, date=timezone.now())
+        sfusr = rm.StoredFile.objects.create(rawfile=usrfraw, md5=usrfraw.source_md5, filetype=self.uft,
+                filename=usrfraw.name, servershare=self.sstmp, path='', checked=True)
+        usertoken = rm.UploadToken.objects.create(user=self.user, token='usrffailtoken',
+                expired=False, producer=self.prod, filetype=self.uft,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE, 
+                expires=timezone.now() + timedelta(1))
+        desc = 'This is a userfile'
+        ufq = rm.UserFile.objects.filter(sfile=sfusr, description=desc, upload=usertoken)
+        self.assertFalse(ufq.exists())
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': usedtoken.token, 'fnid': usrfraw.pk})
+                data={'token': usertoken.token, 'fnid': usrfraw.pk, 'desc': desc})
         rj = resp.json()
+        self.assertTrue(ufq.exists())
         self.assertEqual(rj['transferstate'], 'done')
         pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
             'sf_id': sfusr.pk, 'isdir': sfusr.filetype.is_folder})
         self.assertEqual(pdcjobs.count(), 1)
+        userfile = ufq.get()
         jobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={'sf_id': sfusr.pk,
             'dst_path': settings.USERFILEDIR,
             'newname': f'userfile_{usrfraw.pk}_{sfusr.filename}'})
@@ -413,7 +425,7 @@ class TransferStateTest(BaseFilesTest):
 
     def test_transferstate_transfer(self):
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.registered_raw.id})
+                data={'token': self.token, 'fnid': self.registered_raw.id, 'desc': False})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'transfer')
 
@@ -424,7 +436,7 @@ class TransferStateTest(BaseFilesTest):
             'sf_id': self.trfsf.pk, 'src_path': upload_file,
             'dst_sharename': settings.TMPSHARENAME}, timestamp=timezone.now())
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.trfraw.id})
+                data={'token': self.token, 'fnid': self.trfraw.id, 'desc': False})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'wait')
         # TODO test for no-rsync-job exists (wait but talk to admin)
@@ -436,15 +448,15 @@ class TransferStateTest(BaseFilesTest):
         resp = self.cl.post(self.url, content_type='application/json', data={'hello': 'test'})
         self.assertEqual(resp.status_code, 400)
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': 'wrongid', 'fnid': 1})
+                data={'token': 'wrongid', 'fnid': 1, 'desc': False})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('invalid or expired', resp.json()['error'])
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': 99})
+                data={'token': self.token, 'fnid': 99, 'desc': False})
         self.assertEqual(resp.status_code, 404)
         # token expired
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.nottoken, 'fnid': 1})
+                data={'token': self.nottoken, 'fnid': 1, 'desc': False})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('invalid or expired', resp.json()['error'])
         # wrong producer
@@ -452,28 +464,24 @@ class TransferStateTest(BaseFilesTest):
         p2raw = rm.RawFile.objects.create(name='p2file1', producer=prod2, source_md5='p2rawmd5',
                 size=100, date=timezone.now(), claimed=False)
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': p2raw.id})
+                data={'token': self.token, 'fnid': p2raw.id, 'desc': False})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('is not from producer', resp.json()['error'])
         # raw with multiple storedfiles -> conflict
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.multisf1.rawfile_id})
+                data={'token': self.token, 'fnid': self.multisf1.rawfile_id, 'desc': False})
         self.assertEqual(resp.status_code, 409)
         self.assertIn('there are multiple', resp.json()['error'])
-
-    def test_transfer_archive_only(self):
-        # Check if file is deleted directly after upload with a purge job
-        # TODO check if file goes to designated sensititve data storage from 
-        # where it is archived and purged (non-accessible)
-        uploadtoken = rm.UploadToken.objects.create(user=self.user, token='archiveonly',
-                expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft, archive_only=True, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
-        sf = self.doneraw.storedfile_set.get()
+        # userfile without description
+        usertoken = rm.UploadToken.objects.create(user=self.user, token='usrffailtoken',
+                expired=False, producer=self.prod, filetype=self.uft,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE, 
+                expires=timezone.now() + timedelta(1))
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': uploadtoken.token, 'fnid': sf.rawfile_id})
-        jobs = jm.Job.objects.filter(funcname='purge_files', kwargs={'sf_ids': [sf.pk],
-            'need_archive': True})
-        self.assertEqual(jobs.count(), 1)
+                data={'token': usertoken.token, 'fnid': self.doneraw.id, 'desc': False})
+        rj = resp.json()
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual('Library or user files need a description', resp.json()['error'])
 
 
 class TestFileRegistered(BaseFilesTest):
@@ -641,44 +649,7 @@ class TestFileTransfer(BaseFilesTest):
         self.assertEqual(sf.filename, fname)
         self.registered_raw.refresh_from_db()
         self.assertEqual(self.registered_raw.name, fname)
-
-    def test_libfile(self):
-        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token='libfile',
-                uploadtype=rm.UploadToken.UploadFileType.LIBRARY,
-                expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft)
-        resp, upload_content = self.do_transfer_file(desc='This is a libfile', token='libfile')
-        self.do_check_okfile(resp, upload_content)
-        libs = am.LibraryFile.objects.filter(sfile__rawfile=self.registered_raw, description='This is a libfile')
-        self.assertEqual(libs.count(), 1)
     
-    def test_userfile(self):
-        token = 'userfile'
-        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
-                expires=timezone.now() + timedelta(1), expired=False,
-                uploadtype=rm.UploadToken.UploadFileType.USERFILE,
-                producer=self.prod, filetype=self.uft)
-        resp, upload_content = self.do_transfer_file(desc='This is a userfile', token=token)
-        self.do_check_okfile(resp, upload_content)
-        ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.registered_raw,
-                description='This is a userfile', upload__token=token)
-        self.assertEqual(ufiles.count(), 1)
-        ufiles.delete()
-    
-    def test_userlib_fail(self):
-        token = 'userfilefail'
-        uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
-                expires=timezone.now() + timedelta(1), expired=False,
-                uploadtype=rm.UploadToken.UploadFileType.USERFILE,
-                producer=self.prod, filetype=self.uft)
-        resp, upload_content = self.do_transfer_file(token=token)
-        self.assertEqual(resp.status_code, 403)
-        self.assertIn('Library or user files need a description', resp.json()['error'])
-
-#        elif self.uploadtoken.is_library and not libdesc:
-#            self.assertEqual(resp.status_code, 403)
-#            self.assertIn('Library file needs a description', resp.json()['error'])
-
 
 class TestArchiveFile(BaseFilesTest):
     url = '/files/archive/'
