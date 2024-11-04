@@ -132,8 +132,8 @@ NF_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 # hardcoded name for filetypes fasta DBs, analysis output
 DBFA_FT_NAME = 'database'
 ANALYSIS_FT_NAME = 'analysis_output'
-THERMORAW = 'thermo_raw_file'
-BRUKERRAW = 'bruker_raw_file'
+THERMORAW = os.environ.get('THERMORAW', 'thermo_raw_file')
+BRUKERRAW = os.environ.get('BRUKERRAW', 'bruker_raw_file')
 BRUKERKEY = os.environ.get('BRUKERKEY') # e.g. Description, SampleName
 THERMOKEY = os.environ.get('THERMOKEY') # e.g. SampleID
 PRODUCER_ADMIN_NAME = 'admin'

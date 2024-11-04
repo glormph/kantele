@@ -113,7 +113,7 @@ class ClassifyMSRawFile(SingleFileJob):
 
     def process(self, **kwargs):
         sfile = self.getfiles_query(**kwargs)
-        self.run_tasks.append(((kwargs['token'], sfile.id, sfile.filetype.filetype,
+        self.run_tasks.append(((kwargs['token'], sfile.id, sfile.filetype.name,
             sfile.servershare.name, sfile.path, sfile.filename), {}))
 
 

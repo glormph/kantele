@@ -2,6 +2,7 @@ import os
 import re
 import json
 import shutil
+import sqlite3
 import zipfile
 import signal
 from time import sleep
@@ -357,6 +358,85 @@ class TestUploadScriptManual(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             out = re.sub('.*producer.worker - ', '', out)
             self.assertEqual(out, exp)
+
+    def test_transfer_qc(self):
+        # Test trying to upload file with same name/path but diff MD5
+        self.token = 'prodtoken_noadminprod'
+        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
+        dm.Operator.objects.create(user=self.user) # need operator for QC jobs
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        con = sqlite3.Connection(os.path.join(fullp, 'analysis.tdf'))
+        con.execute(f'UPDATE GlobalMetadata SET Value="QC" WHERE Key="{settings.BRUKERKEY}"')
+        con.commit()
+        old_raw = rm.RawFile.objects.last()
+        tmpdir = mkdtemp()
+        outbox = os.path.join(tmpdir, 'testoutbox')
+        os.makedirs(outbox, exist_ok=True)
+        shutil.copytree(fullp, os.path.join(outbox, self.f3sf.filename))
+        timestamp = os.path.getctime(os.path.join(outbox, self.f3sf.filename))
+        lastraw = rm.RawFile.objects.last()
+        lastsf = rm.StoredFile.objects.last()
+        with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
+            json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
+
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'filetype_id': self.ft.pk}, fp)
+        sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
+        sleep(2)
+        newraw = rm.RawFile.objects.last()
+        newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newraw.pk, lastraw.pk + 1)
+        self.assertEqual(newsf.pk, lastsf.pk + 1)
+        self.assertFalse(newraw.claimed)
+        # Run rsync
+        self.run_job()
+        mvjobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={
+            'sf_id': newsf.pk, 'dstsharename': settings.PRIMARY_STORAGESHARENAME,
+            'dst_path': os.path.join(settings.QC_STORAGE_DIR, self.prod.name)})
+        qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
+                kwargs__params=['--instrument', self.msit.name])
+        self.assertEqual(mvjobs.count(), 0)
+        self.assertEqual(qcjobs.count(), 0)
+        # Run classify
+        self.run_job()
+        newraw.refresh_from_db()
+        self.assertTrue(newraw.claimed)
+        self.assertEqual(mvjobs.count(), 1)
+        self.assertEqual(qcjobs.count(), 1)
+        # Must kill this script, it will keep scanning outbox
+        try:
+            spout, sperr = sp.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+        zipboxpath = os.path.join(tmpdir, 'zipbox', f'{self.f3sf.filename}.zip')
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'Checking for new files in {outbox}',
+                f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
+                'Registering 1 new file(s)',
+                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
+                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
+                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
+                f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
+                f'Succesful transfer of file {zipboxpath}',
+                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
+                f'State for file with ID {newraw.pk} was "done"',
+                f'Removing file {newraw.name} from outbox',
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines , explines):
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - .producer.inboxcollect - ', '', out)
+            out = re.sub('.* - WARNING - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            self.assertEqual(out, exp)
+
 #    def test_libfile(self):
 #    
 #    def test_userfile(self):
