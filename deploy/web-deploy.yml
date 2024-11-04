@@ -20,6 +20,14 @@
             - ['container_env_vars.j2', '{{ kanteledir }}/src/docker/prod-container.env']
             - ['nginx_prod.conf.j2', '{{ kanteledir }}/src/docker/nginx.conf']
 
+      - name: Build compose images
+        ansible.builtin.command:
+            cmd: "docker buildx bake --file src/docker/prod-bake.yml"
+            chdir: "{{ kanteledir }}"
+        environment:
+            - USER_ID: '{{ kanteleuid }}'
+            - GROUP_ID: '{{ kantelegid }}'
+
       - name: Build and start production docker containers
         community.docker.docker_compose:
             project_src: '{{ kanteledir }}'
@@ -27,11 +35,9 @@
                 - '{{ kanteledir }}/src/docker/docker-compose-base.yml'
                 - '{{ kanteledir }}/src/docker/docker-compose-prod.yml'
             env_file: '{{ compose_env_file }}'
-            build: yes
+            build: false
             state: present
-        environment:
-            - USER_ID: '{{ kanteleuid }}'
-            - GROUP_ID: '{{ kantelegid }}'
+            restarted: true
 
       - name: Perform any outstanding migrations
         ansible.builtin.command:

@@ -5,7 +5,7 @@ services:
             - db
             - mq
         env_file:
-            - ./src/docker/prod-container.env
+            - ./prod-container.env
         logging:
             driver: syslog
             options:
@@ -23,13 +23,6 @@ services:
         depends_on:
             - web
         image: kantele_nginx
-        build:
-            context: ./
-            dockerfile: ./src/docker/Dockerfile
-            target: nginx_prod
-            args:
-                USER_ID: "${USER_ID:-You must run export USER_ID}"
-                GROUP_ID: "${GROUP_ID:-You must run export GROUP_ID}"
         volumes:
             - "${HOST_UPLOADPATH}:${CONTAINER_UPLOADPATH}"
             - "${HOST_ANALYSISFILES}:${CONTAINER_ANALYSISPATH}"
@@ -66,7 +59,7 @@ services:
             - mq
         network_mode: host
         env_file:
-            - ./src/docker/prod-container.env
+            - ./prod-container.env
         logging:
             driver: syslog
             options:
