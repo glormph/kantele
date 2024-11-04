@@ -48,14 +48,6 @@ def zipfolder(folder, arcname):
     return shutil.make_archive(arcname, 'zip', folder)
 
 
-def md5(fnpath):
-    hash_md5 = hashlib.md5()
-    with open(fnpath, 'rb') as fp:
-        for chunk in iter(lambda: fp.read(4096), b''):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
 def get_new_file_entry(fn, raw_is_folder):
     if raw_is_folder or os.path.isdir(fn):
         size = sum(os.path.getsize(os.path.join(wpath, subfile))
@@ -130,7 +122,7 @@ def check_in_instrument(config, configfn, logger):
         token_state = 'new'
         token, _h, _d = b64decode(result['user_token']).decode('utf-8').split('|')
         config['token'] = token
-    elif clid:
+    else:
         # Validate/renew existing token
         loginresp = session.get(loginurl, verify=certifi.where())
         valresp = session.post(urljoin(kantelehost, 'files/instruments/check/'),
@@ -138,16 +130,17 @@ def check_in_instrument(config, configfn, logger):
                 json={'token': config['token'], 'client_id': clid},
                 verify=certifi.where()
                 )
-        if valresp.status_code == 403:
+        if clid and valresp.status_code == 403:
+            # Only fetch new tokens if this is instrumewnt with client id
             logger.error('Token expired or invalid, will try to fetch new token')
             del(config['token'])
             # Call itself to get new fresh token
             token_state = check_in_instrument(config, configfn, logger)
             token_state = 'ok' # already new/saved in nested function call
         elif valresp.status_code == 500:
-            return 'Could not check in instrument due to server error, talk to admin'
+            return 'Could not check in with Kantele due to server error, talk to admin'
         elif valresp.status_code != 200:
-            return 'Could not check in instrument, server replied {resp["error"]}'
+            return f'Could not check in with Kantele, server replied {valresp.json()["error"]}'
         else:
             validated = valresp.json()
             if validated['newtoken']:
@@ -155,6 +148,8 @@ def check_in_instrument(config, configfn, logger):
                         f'{validated["expires"]}')
                 token_state = 'new'
                 config['token'] = validated['newtoken']
+            logger.info(f'Token OK, expires on {validated["expires"]}')
+            config['md5_stable_fns'] = validated['stablefiles']
     if token_state == 'new':
         with open(configfn, 'w') as fp:
             json.dump(config, fp)
@@ -226,21 +221,14 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
             newfn = False
             if not produced_fn['md5']:
                 newfn = True
-                if produced_fn['is_dir']:
-                    try:
-                        stable_fn = [x for x in md5_stable_fns
-                                if os.path.exists(os.path.join(produced_fn['fpath'], x))][0]
-                    except IndexError:
-                        logger.warning('This file is a directory, but we could not '
-                                'find a designated stable file inside it')
-                        continue
-                    md5path = os.path.join(produced_fn['fpath'], stable_fn)
-                else:
-                    md5path = produced_fn['fpath']
                 try:
-                    produced_fn['md5'] = md5(md5path)
+                    produced_fn['md5'] = md5(produced_fn['fpath'], produced_fn['is_dir'], md5_stable_fns)
                 except FileNotFoundError:
                     logger.warning('Could not find file in outbox to check MD5')
+                    continue
+                except IndexError:
+                    logger.warning('This file is a directory, but we could not '
+                            'find a designated stable file inside it')
                     continue
             if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
                 newfn = True
@@ -252,6 +240,19 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
             if newfn:
                 regq.put(produced_fn)
         sleep(5)
+
+
+def md5(fnpath, is_dir, md5_stable_fns):
+    if is_dir:
+        stable_fn = [x for x in md5_stable_fns if os.path.exists(os.path.join(fnpath, x))][0]
+        md5path = os.path.join(fnpath, stable_fn)
+    else:
+        md5path = fnpath
+    hash_md5 = hashlib.md5()
+    with open(md5path, 'rb') as fp:
+        for chunk in iter(lambda: fp.read(4096), b''):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 def proc_log_configure(queue):
@@ -539,11 +540,6 @@ def main():
     if config.get('client_id', False):
         # Instrument
         config['is_manual'] = False
-        checkerr = check_in_instrument(config, args.configfn, logger)
-        if checkerr:
-            # No logger process running yet, so print here
-            print(checkerr)
-            sys.exit(1)
     else:
         # Parse token gotten from web UI, this is needed so Kantele knows
         # which filetype were uploading, and it will contain the upload location
@@ -561,6 +557,12 @@ def main():
                 descriptions[fn] = input(f'Please enter a description for your file {fn}: ')
         config.update({'host': kantelehost, 'token': token, 'is_manual': True})
 
+    checkerr = check_in_instrument(config, args.configfn, logger)
+    if checkerr:
+        # No logger process running yet, so print here
+        print(checkerr)
+        sys.exit(1)
+
     outbox = config.get('outbox', False)
 
     # ledger for outboxes with multiple files to keep track in case 
@@ -572,9 +574,10 @@ def main():
         ledger = {}
 
     if outbox:
-        donebox = config.get('donebox') or os.path.join(outbox, os.path.pardir, 'donebox')
-        zipbox = config.get('zipbox') or os.path.join(outbox, os.path.pardir, 'zipbox')
-        skipbox = config.get('skipbox') or os.path.join(outbox, os.path.pardir, 'skipbox')
+        basedir = os.path.abspath(os.path.join(outbox, os.path.pardir))
+        donebox = config.get('donebox') or os.path.join(basedir, 'donebox')
+        zipbox = config.get('zipbox') or os.path.join(basedir, 'zipbox')
+        skipbox = config.get('skipbox') or os.path.join(basedir, 'skipbox')
         # for instruments, setup collection/MD5 process
         # otherwise we use a single shot MD5er
         if not os.path.exists(outbox):
@@ -592,6 +595,7 @@ def main():
             donebox, skipbox, config['host'], clientname, descriptions))
     elif args.files:
         print('New files found, calculating checksum')
+        zipbox = config.get('zipbox') or 'zipbox'
         # Multi file upload by user with token from web GUI
         donebox, skipbox = False, False
         # FIXME filetype and raw_is_folder should be dynamic, in token
@@ -615,17 +619,26 @@ def main():
         processes = start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
                 donebox, skipbox, config['host'], clientname, descriptions)
         for upload_fnid, fndata in ledger.items():
+            newfn = False
+            if not fndata['md5']:
+                try:
+                    fndata['md5'] = md5(fndata['fpath'], fndata['is_dir'], config['md5_stable_fns'])
+                except FileNotFoundError:
+                    logger.warning(f'Could not find file {fndata["fpath"]} specified to check MD5')
+                    continue
+                except IndexError:
+                    logger.warning(f'File {fndata["fpath"]} is a directory, but we could not '
+                            'find a designated stable file inside it')
+                    continue
+                else:
+                    newfn = True
             if fndata['is_dir'] and 'nonzipped_path' not in fndata:
                 zipname = os.path.join(zipbox, os.path.basename(fndata['fpath']))
                 fndata['nonzipped_path'] = fndata['fpath']
                 fndata['fpath'] = zipfolder(fndata['fpath'], zipname)
-            if not fndata['md5']:
-                try:
-                    fndata['md5'] = md5(fndata['fpath'])
-                except FileNotFoundError:
-                    logger.warning('Could not find file specified to check MD5')
-                else:
-                    regq.put(fndata)
+                newfn = True
+            if newfn:
+                regq.put(fndata)
             print('Finished checksum of file, will try to upload')
     else:
         print('No input files or outbox to watch was specified, exiting')

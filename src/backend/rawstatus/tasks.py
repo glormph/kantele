@@ -413,14 +413,29 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
     # docker run -v {path}:/rawfiles -v {tmpdir}:/outfns {settings.THERMOREAD_DOCKER} wine ScanHeadsman.exe -d0 -i /rawfiles/{fname} -o /outfns/outfn
         
     elif ftypename == settings.BRUKERRAW:
-        con = sqlite3.Connection(os.path.join(fpath, 'analysis.tdf'))
-        cur = con.execute('SELECT Value FROM GlobalMetadata WHERE Key=?', settings.BRUKERKEY)
+        try:
+            con = sqlite3.Connection(os.path.join(fpath, 'analysis.tdf'))
+        except sqlite3.OperationalError:
+            taskfail_update_db(self.request.id, msg='Cannot open database file, is the '
+                    f'categorization as {settings.BRUKERRAW} of the file correct?')
+            raise
+        try:
+            cur = con.execute('SELECT Value FROM GlobalMetadata WHERE Key=?', (settings.BRUKERKEY,))
+        except sqlite3.DatabaseError as e:
+            if e == 'file is not a database':
+                msg = 'This raw file is not an database, possibly it is corrupted'
+            elif e == 'no such table: GlobalMetadata':
+                msg = 'Could not find correct DB table GlobalMetadata in raw file, contact admin'
+            else:
+                msg = e
+            taskfail_update_db(self.request.id, msg=msg)
+            raise
         try:
             val = cur.fetchone()[0]
-        except: # FIXME which exception (wrong key name)
-            taskfail_update_db(self.request.id)
+        except TypeError:
+            taskfail_update_db(self.request.id, msg=f'Could not get value for key:{settings.BRUKERKEY}, '
+                    'is the file OK and the key correctly specified?')
             raise
-
     # Parse what was found
     if val == 'QC':
         is_qc, dset_id = True, False

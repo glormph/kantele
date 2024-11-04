@@ -76,12 +76,11 @@ class BaseTest(TestCase):
         self.pi, _ = dm.PrincipalInvestigator.objects.get_or_create(name='testpi')
 
         # File prep, producers etc
-        self.ft, _ = rm.StoredFileType.objects.get_or_create(name='testft', filetype='tst',
-                is_rawdata=True)
+        self.ft = rm.StoredFileType.objects.create(name='testft_bruker', filetype='tst',
+                is_rawdata=True, is_folder=True, stablefiles=['analysis.tdf'])
         self.prod = rm.Producer.objects.create(name='prod1', client_id='abcdefg', shortname='p1', internal=True)
-        msit, _ = rm.MSInstrumentType.objects.get_or_create(name='test')
-        rm.MSInstrument.objects.get_or_create(producer=self.prod, instrumenttype=msit,
-                filetype=self.ft)
+        self.msit = rm.MSInstrumentType.objects.create(name='test')
+        rm.MSInstrument.objects.create(producer=self.prod, instrumenttype=self.msit, filetype=self.ft)
         self.qt, _ = dm.QuantType.objects.get_or_create(name='testqt', shortname='testqtplex')
         self.qch, _ = dm.QuantChannel.objects.get_or_create(name='126')
         self.qtch, _ = dm.QuantTypeChannel.objects.get_or_create(quanttype=self.qt, channel=self.qch) 
@@ -105,8 +104,10 @@ class BaseTest(TestCase):
                 defaults={'email': 'contactname'})
         dm.DatasetOwner.objects.get_or_create(dataset=self.ds, user=self.user)
         self.f3path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
-        fn3 = 'raw3.raw'
-        f3size = os.path.getsize(os.path.join(self.f3path, fn3))
+        fn3 = 'raw3.raw' # directory to pretend its bruker file with analysis.tdf
+        f3size = sum(os.path.getsize(os.path.join(wpath, subfile))
+                for wpath, subdirs, files in os.walk(os.path.join(self.f3path, fn3))
+                    for subfile in files if subfile)
         # Important, the md5 here is fake, since the raw fn3 is also used in actual transfer
         # of a new file in tests
         self.f3raw = rm.RawFile.objects.create(name=fn3, producer=self.prod,

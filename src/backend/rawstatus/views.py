@@ -243,15 +243,15 @@ def browser_userupload(request):
 def instrument_check_in(request):
     '''Returns 200 at correct token or expiring token, in which case a new token
     will be issued'''
+    # FIXME need unit test
     # auto update producer would be nice, when it calls server at intervals, then downloads_automaticlly
     # a new version of itself?
     data = json.loads(request.body.decode('utf-8'))
-    response = {'newtoken': False}
     token = data.get('token', False)
+    client_id = data.get('client_id', False)
+    # analysis transfer client checks in with taskid
     taskid = data.get('task_id', False)
-    if not data.get('client_id', False):
-        return JsonResponse({'error': 'Bad request'}, status=400)
-    elif not any([token, taskid]):
+    if not any([token, taskid]):
         return JsonResponse({'error': 'Bad request'}, status=400)
     elif taskid and not data.get('ftype', False):
         return JsonResponse({'error': 'Bad request'}, status=400)
@@ -259,12 +259,25 @@ def instrument_check_in(request):
     upload = UploadToken.validate_token(token, ['producer']) if token else False
     task = jm.Task.objects.filter(asyncid=taskid).exclude(state__in=jobutil.JOBSTATES_DONE)
 
+    response = {'newtoken': False}
     uploadtype = UploadToken.UploadFileType.RAWFILE
-    if upload and upload.producer.client_id != data['client_id']:
-        # Keep the token bound to a client instrument
-        return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
-                status=403)
-    elif not upload and task.count():
+    if upload:
+        # producer is admin if there is no client id
+        if upload.producer.client_id != client_id and \
+                upload.producer.shortname != settings.PRODUCER_ADMIN_NAME:
+            # Keep the token bound to a client instrument
+            print(upload.producer.shortname, settings.PRODUCER_ADMIN_NAME)
+            return JsonResponse({'error': 'Token/client ID invalid or non-existing'}, status=403)
+        elif client_id and upload.expires > timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
+            upload.expired = True
+            upload.save()
+            newtoken = create_upload_token(upload.filetype_id, upload.user_id, upload.producer, uploadtype)
+            response.update({'newtoken': newtoken.token, 'expires': datetime.strftime(newtoken.expires, '%Y-%m-%d, %H:%M')})
+        else:
+            response.update({'newtoken': False, 'expires': datetime.strftime(upload.expires, '%Y-%m-%d, %H:%M')})
+        response['stablefiles'] = upload.filetype.stablefiles
+
+    elif task.count():
         # Token for a client on a controlled system like analysis server:
         # auth by client ID and task ID knowledge
         producer = Producer.objects.get(client_id=data['client_id'])
@@ -279,15 +292,10 @@ def instrument_check_in(request):
         else:
             user_op = dsmodels.Operator.objects.first()
         newtoken = create_upload_token(ftype.pk, user_op.user_id, producer, uploadtype)
-        response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
-    elif not upload:
-        return JsonResponse({'error': 'Token/client ID invalid or non-existing'},
-                status=403)
-    elif upload.expires > timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
-        upload.expired = True
-        upload.save()
-        newtoken = create_upload_token(upload.filetype_id, upload.user_id, upload.producer, uploadtype)
-        response.update({'newtoken': newtoken.token, 'expires': newtoken.expires})
+        response.update({'newtoken': newtoken.token, 'expires': datetime.strftime(newtoken.expires, '%Y-%m-%d, %H:%M')})
+
+    else:
+        return JsonResponse({'error': 'Token / task ID invalid or not existing'}, status=403)
     return JsonResponse(response)
 
  
@@ -314,7 +322,7 @@ def request_upload_token(request):
     except Producer.DoesNotExist:
         return JsonResponse({'error': True, 'error': 'Cannot use that file producer'}, status=403)
     except KeyError:
-        producer = Producer.objects.get(shortname='admin')
+        producer = Producer.objects.get(shortname=settings.PRODUCER_ADMIN_NAME)
         try:
             uploadtype = UploadToken.UploadFileType(data['uploadtype'])
         except KeyError:
@@ -471,7 +479,7 @@ def classified_rawfile_treatment(request):
     if not upload:
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     ufts = UploadToken.UploadFileType
-    sfn = StoredFile.objects.filter(pk=fnid).select_related('rawfile__producer')
+    sfn = StoredFile.objects.filter(pk=fnid).select_related('rawfile__producer').get()
     if is_qc:
         if sfn.rawfile.claimed:
             # This file has already been classified or otherwise picked up
@@ -500,6 +508,7 @@ def classified_rawfile_treatment(request):
         sfn.save()
         create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     updated = jm.Task.objects.filter(asyncid=data['task_id']).update(state=taskstates.SUCCESS)
+    return HttpResponse()
 
 
 def process_file_confirmed_ready(rfn, sfn, upload, desc):
@@ -642,8 +651,12 @@ def transfer_file(request):
 
     # Has the filename changed between register and transfer? Assume user has stopped the upload,
     # corrected the name, and also change the rawname
-    if fname != rawfn.name:
-        rawfn.name = fname
+    if upload.filetype.is_folder and len(upload.filetype.stablefiles) > 0:
+        nonzip_fname = fname.rstrip('.zip')
+    else:
+        nonzip_fname = fname
+    if nonzip_fname != rawfn.name:
+        rawfn.name = nonzip_fname
         rawfn.save()
     ufiletypes = UploadToken.UploadFileType
     # Now prepare file system info, check if duplicate name exists:
@@ -674,10 +687,10 @@ def transfer_file(request):
             'This should not happen, contact admin'}, status=403)
 
     dstshare = ServerShare.objects.get(name=dstsharename)
-    if check_dup and StoredFile.objects.filter(filename=fname, path=dstpath, servershare=dstshare,
+    if check_dup and StoredFile.objects.filter(filename=nonzip_fname, path=dstpath, servershare=dstshare,
             deleted=False).exclude(rawfile__source_md5=rawfn.source_md5).exists():
         return JsonResponse({'error': 'Another file in the system has the same name '
-            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+            f'and is stored in the same path ({dstshare.name} - {dstpath}/{nonzip_fname}. '
             'Please investigate, possibly change the file name or location of this or the other '
             'file to enable transfer without overwriting.', 'problem': 'DUPLICATE_EXISTS'},
             status=403)
@@ -827,7 +840,6 @@ def download_instrument_package(request):
             'filetype_id': prod.msinstrument.filetype_id,
             'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
             'host': settings.KANTELEHOST,
-            'md5_stable_fns': prod.msinstrument.filetype.stablefiles,
             })
         if 'configonly' in request.GET and request.GET['configonly'] == 'true':
             resp = HttpResponse(runtransferfile, content_type='application/json')

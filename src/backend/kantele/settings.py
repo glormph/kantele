@@ -136,6 +136,7 @@ THERMORAW = 'thermo_raw_file'
 BRUKERRAW = 'bruker_raw_file'
 BRUKERKEY = os.environ.get('BRUKERKEY') # e.g. Description, SampleName
 THERMOKEY = os.environ.get('THERMOKEY') # e.g. SampleID
+PRODUCER_ADMIN_NAME = 'admin'
 
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 

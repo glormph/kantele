@@ -827,7 +827,9 @@ class TestDeleteDataset(ProcessJobTest):
     jobclass = dj.DeleteActiveDataset
 
     def test_files(self):
-        # Delete both raw and mzML file
+        # Delete both raw and mzML file, pretend they are files
+        self.ft.is_folder = False
+        self.ft.save()
         kwargs = {'dset_id': self.ds.pk}
         self.job.process(**kwargs)
         exp_t = [
@@ -840,13 +842,11 @@ class TestDeleteDataset(ProcessJobTest):
 
     def test_is_dir(self):
         # Delete both raw and mzML file, where raw is a folder
-        self.ft.is_folder = True
-        self.ft.save()
         kwargs = {'dset_id': self.ds.pk}
         self.job.process(**kwargs)
         exp_t = [
                 ((self.f3sf.servershare.name, os.path.join(self.f3sf.path, self.f3sf.filename),
-                    self.f3sf.pk, True), {}),
+                    self.f3sf.pk, self.f3sf.filetype.is_folder), {}),
                 ((self.f3sfmz.servershare.name, os.path.join(self.f3sfmz.path, self.f3sfmz.filename),
                     self.f3sfmz.pk, False), {})
                 ]
