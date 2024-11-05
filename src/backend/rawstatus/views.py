@@ -831,14 +831,16 @@ def download_instrument_package(request):
         fname_prefix = prod.name
         # strip datadisk so only get first letter
         runtransferfile = json.dumps({
+            # FIXME some of these should go to instrument_checkin! So users can dynamically change it
             'outbox': f'{datadisk}:\outbox',
             'zipbox': f'{datadisk}:\zipbox',
             'donebox': f'{datadisk}:\donebox',
             'skipbox': f'{datadisk}:\skipbox',
-            'producerhostname': prod.name,
             'client_id': prod.client_id,
             'filetype_id': prod.msinstrument.filetype_id,
-            'is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
+            'acq_process_names': settings.PROCNAMES[prod.msinstrument.filetype.name],
+            'injection_waittime': int(settings.INJ_WAITTIMES[prod.msinstrument.filetype.name]),
+            'raw_is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
             'host': settings.KANTELEHOST,
             })
         if 'configonly' in request.GET and request.GET['configonly'] == 'true':

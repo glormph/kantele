@@ -38,6 +38,7 @@ from time import sleep, time
 from multiprocessing import Process, Queue, set_start_method
 import requests
 import certifi
+import psutil
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 LEDGERFN = 'ledger.json'
@@ -195,7 +196,36 @@ def get_fndata_id(fndata):
     return '{}__{}'.format(fndata['prod_date'], fndata['size'])
 
 
-def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, raw_is_folder, md5_stable_fns):
+def is_file_being_acquired(fnpath, procnames, waittime_sec, md5_stable_fns):
+    for proc in psutil.process_iter():
+        if proc.name() in procnames:
+            break
+        proc = False
+    if not proc:
+        # No acquisition program -> file is ready
+        return False
+    if md5_stable_fns:
+        try:
+            stable_fn = [x for x in md5_stable_fns if os.path.exists(os.path.join(fnpath, x))][0]
+        except IndexError:
+            # E.g. analysis.tdf not found -> MS is injecting
+            return f'No required "stable file" found inside {fnpath}'
+        else:
+            absfn = os.path.abspath(os.path.join(fnpath, stable_fn))
+    else:
+        absfn = os.path.abspath(fnpath)
+
+    if time() - os.path.getctime(absfn) < int(waittime_sec):
+        # Too early, file possibly still injecting
+        return f'File {fnpath} not older than {waittime_sec / 60} minutes yet'
+    if len([x for x in proc.open_files() if os.path.abspath(x.path) == absfn]):
+        return f'File {fnpath} is opened by {proc.name()}'
+    # Give it 5 seconds sleep in case
+    sleep(5)
+    return False
+
+
+def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, raw_is_folder, md5_stable_fns, procnames, inj_waittime):
     """Runs as process, periodically checks outbox,
     runs MD5 and if needed zip (folder) on newly discovered files,
     process own ledger is kept for new file adding,
@@ -211,6 +241,9 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
                 del(ledger[cts_id])
         logger.info(f'Checking for new files in {outbox}')
         for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
+            if acq_status := is_file_being_acquired(fn, procnames, inj_waittime, md5_stable_fns):
+                logger.info(f'Will wait until acquisition status ready, currently: {acq_status}')
+                continue
             # create somewhat unique identifier to filter against existing entries
             fndata = get_new_file_entry(fn, raw_is_folder)
             ct_size = get_fndata_id(fndata)
@@ -588,7 +621,8 @@ def main():
             os.makedirs(skipbox)
         # watch outbox for incoming files
         collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger,
-            outbox, zipbox, clientname, config.get('raw_is_folder'), config.get('md5_stable_fns')))
+            outbox, zipbox, clientname, config.get('raw_is_folder'), config.get('md5_stable_fns'),
+            config.get('acq_process_names'), config.get('injection_waittime')))
         processes = [collect_p]
         collect_p.start()
         processes.extend(start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,

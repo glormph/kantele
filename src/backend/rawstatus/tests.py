@@ -60,7 +60,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
         need_desc = 0
         #need_desc = int(self.uploadtype in [ufts.LIBRARY, ufts.USERFILE])
         self.user_token = b64encode(f'{self.token}|{self.live_server_url}|{need_desc}'.encode('utf-8')).decode('utf-8')
-        self.actual_md5 = 'ee977964f6063fae74c76ab5f5d894e8'
+        self.actual_md5 = 'dee94af7703a5beb01e8fdc84da018bb'
 
     def tearDown(self):
         super().tearDown()
@@ -244,7 +244,8 @@ class TestUploadScriptManual(BaseIntegrationTest):
             json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
                 'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
-                'filetype_id': self.ft.pk}, fp)
+                'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
+                'injection_waittime': 5}, fp)
         self.assertFalse(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
 
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
@@ -267,7 +268,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
                 f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Moving file {newraw.name} to skipbox',
                 f'Another file in the system has the same name and is stored in the same path '
-                f'({self.f3sf.servershare.name} - {self.f3sf.path}/{self.f3sf.filename}. Please '
+                f'({self.f3sf.servershare.name} - {self.f3sf.path}/{self.f3sf.filename}). Please '
                 'investigate, possibly change the file name or location of this or the other file '
                 'to enable transfer without overwriting.']
         for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
@@ -383,7 +384,8 @@ class TestUploadScriptManual(BaseIntegrationTest):
             json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
                 'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
-                'filetype_id': self.ft.pk}, fp)
+                'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
+                'injection_waittime': 5}, fp)
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
         sleep(2)
         newraw = rm.RawFile.objects.last()
@@ -437,6 +439,83 @@ class TestUploadScriptManual(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             self.assertEqual(out, exp)
 
+    def test_file_being_acquired(self):
+        # Test trying to upload file with same name/path but diff MD5
+        self.token = 'prodtoken_noadminprod'
+        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        old_raw = rm.RawFile.objects.last()
+        tmpdir = mkdtemp()
+        outbox = os.path.join(tmpdir, 'testoutbox')
+        os.makedirs(outbox, exist_ok=True)
+        shutil.copytree(fullp, os.path.join(outbox, self.f3sf.filename))
+        timestamp = os.path.getctime(os.path.join(outbox, self.f3sf.filename))
+        lastraw = rm.RawFile.objects.last()
+        lastsf = rm.StoredFile.objects.last()
+        with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
+            json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
+
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'filetype_id': self.ft.pk, 'acq_process_names': ['flock'],
+                'injection_waittime': 0}, fp)
+        # Lock analysis.tdf for 3 seconds to pretend we are the acquisition software
+        subprocess.Popen(f'flock {os.path.join(outbox, self.f3sf.filename, "analysis.tdf")} sleep 3', shell=True)
+        # Lock another file to simulate that the acquisition software stays open after acquiring
+        subprocess.Popen(f'flock manage.py sleep 20', shell=True)
+        sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
+        sleep(13)
+        newraw = rm.RawFile.objects.last()
+        newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newraw.pk, lastraw.pk + 1)
+        self.assertEqual(newsf.pk, lastsf.pk + 1)
+        # Run rsync
+        self.run_job()
+        mvjobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={
+            'sf_id': newsf.pk, 'dstsharename': settings.PRIMARY_STORAGESHARENAME,
+            'dst_path': os.path.join(settings.QC_STORAGE_DIR, self.prod.name)})
+        qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
+                kwargs__params=['--instrument', self.msit.name])
+        # Run classify
+        self.run_job()
+        newraw.refresh_from_db()
+        self.assertFalse(newraw.claimed)
+        # FIXME make this the dset-add job
+        #self.assertEqual(mvjobs.count(), 1)
+        self.assertEqual(qcjobs.count(), 0)
+        # Must kill this script, it will keep scanning outbox
+        try:
+            spout, sperr = sp.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+        print(sperr.decode('utf-8'))
+        zipboxpath = os.path.join(tmpdir, 'zipbox', f'{self.f3sf.filename}.zip')
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'Checking for new files in {outbox}',
+                f'Will wait until acquisition status ready, currently: File {os.path.join(outbox, newraw.name)} is opened by flock',
+                f'Checking for new files in {outbox}',
+                f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
+                'Registering 1 new file(s)',
+                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
+                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
+                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
+                f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
+                f'Succesful transfer of file {zipboxpath}',
+                # This is enough, afterwards the 'Checking new files in outbox' starts
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines , explines):
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - .producer.inboxcollect - ', '', out)
+            out = re.sub('.* - WARNING - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            self.assertEqual(out, exp)
 #    def test_libfile(self):
 #    
 #    def test_userfile(self):
@@ -908,7 +987,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
                 'producerhostname': self.prod.name,
                 'client_id': self.prod.client_id,
                 'filetype_id': self.prod.msinstrument.filetype_id,
-                'is_folder': 1 if self.prod.msinstrument.filetype.is_folder else 0,
+                'raw_is_folder': 1 if self.prod.msinstrument.filetype.is_folder else 0,
                 'host': settings.KANTELEHOST,
                 }.items():
             self.assertEqual(tfconfig[key], val)
