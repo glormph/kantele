@@ -14,6 +14,7 @@ RUN chdir /assets && wget https://files.pythonhosted.org/packages/60/ef/76811343
 RUN chdir /assets && wget https://files.pythonhosted.org/packages/fc/34/3030de6f1370931b9dbb4dad48f6ab1015ab1d32447850b9fc94e60097be/idna-3.4-py3-none-any.whl 
 RUN chdir /assets && wget https://files.pythonhosted.org/packages/db/51/a507c856293ab05cdc1db77ff4bc1268ddd39f29e7dc4919aa497f0adbec/charset_normalizer-2.1.1-py3-none-any.whl
 RUN chdir /assets && wget https://files.pythonhosted.org/packages/6f/de/5be2e3eed8426f871b170663333a0f627fc2924cc386cd41be065e7ea870/urllib3-1.26.12-py2.py3-none-any.whl
+RUN chdir /assets && wget https://files.pythonhosted.org/packages/11/91/87fa6f060e649b1e1a7b19a4f5869709fbf750b7c8c262ee776ec32f3028/psutil-6.1.0-cp37-abi3-win_amd64.whl
 COPY docker/setup.bat /assets/
 RUN cd /assets && zip producer.zip *.whl setup.bat && chown kantele:kantele producer.zip
 USER kantele

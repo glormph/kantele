@@ -978,7 +978,8 @@ class TestDownloadUploadScripts(BaseFilesTest):
         self.assertEqual(len(names), 10)
         for fn in ['requests-2.28.1-py3-none-any.whl', 'certifi-2022.9.14-py3-none-any.whl', 
                 'requests_toolbelt-0.9.1-py2.py3-none-any.whl', 'idna-3.4-py3-none-any.whl',
-                'charset_normalizer-2.1.1-py3-none-any.whl', 'urllib3-1.26.12-py2.py3-none-any.whl'
+                'charset_normalizer-2.1.1-py3-none-any.whl', 'urllib3-1.26.12-py2.py3-none-any.whl',
+                'psutil-6.1.0-cp37-abi3-win_amd64.whl',
                 ]:
             self.assertIn(fn, names)
         for key,val in {'outbox': f'{datadisk}\outbox',
