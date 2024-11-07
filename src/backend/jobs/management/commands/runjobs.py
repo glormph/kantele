@@ -38,7 +38,11 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
     jobs_not_finished = Job.objects.order_by('timestamp').exclude(
         state__in=jj.JOBSTATES_DONE + [Jobstates.WAITING])
     print(f'{jobs_not_finished.count()} jobs in queue, including errored jobs')
-    wait_jobs = Job.objects.filter(state=Jobstates.WAITING, pk__in=active_jobs).values('pk')
+    # Jobs that changed to waiting are excluded from active
+    # Jobs that are on HOLD also, because they will get added to active when encountered
+    # This way they will only seen as active to jobs after the held job
+    wait_jobs = Job.objects.filter(state=[Jobstates.WAITING, Jobstates.HOLD],
+            pk__in=active_jobs).values('pk')
     active_jobs.difference_update([x['pk'] for x in wait_jobs])
     for job in jobs_not_finished:
         # First check if job is new or already registered
@@ -101,6 +105,11 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 active_jobs.remove(job.id)
             else:
                 print(f'Job {job.id} continues processing, no failed tasks')
+
+        elif job.state == Jobstates.HOLD:
+            # When held job is found, add it to active (remove again at starting
+            # job loop) - so it will stop downstream jobs
+            active_jobs.add(job.id)
 
         # Pending jobs are trickier, wait queueing until any previous job on same files
         # is finished. Errored jobs thus block pending jobs if they are on same files.

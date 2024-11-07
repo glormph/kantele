@@ -11,7 +11,8 @@ from datasets import models as dm
 
 class Jobstates:
     # FIXME make in DB integer choices
-    WAITING = 'wait'
+    WAITING = 'wait' # jobs in wait can be skipped
+    HOLD = 'hold' # jobs in hold block other jobs
     PENDING = 'pending'
     QUEUED = 'queued'
     PROCESSING = 'processing'

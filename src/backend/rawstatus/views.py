@@ -480,10 +480,10 @@ def classified_rawfile_treatment(request):
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     ufts = UploadToken.UploadFileType
     sfn = StoredFile.objects.filter(pk=fnid).select_related('rawfile__producer').get()
+    if sfn.rawfile.claimed:
+        # This file has already been classified or otherwise picked up
+        return HttpResponse()
     if is_qc:
-        if sfn.rawfile.claimed:
-            # This file has already been classified or otherwise picked up
-            return HttpResponseForbidden()
         sfn.rawfile.claimed = True
         sfn.rawfile.save()
         create_job('move_single_file', sf_id=sfn.pk,
@@ -496,10 +496,27 @@ def classified_rawfile_treatment(request):
             user_op = dsmodels.Operator.objects.first()
         run_singlefile_qc(sfn.rawfile, sfn, user_op)
     elif dsid:
-        # FIXME how to associate with dataset and make files "pending" so a user must first
-        # authorize the move?
-        pass
-    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
+        # Make sure dataset exists
+        if not dsmodels.Dataset.objects.filter(pk=dsid).exists():
+            # TODO this needs logging
+            return HttpResponse()
+        # Make sure users cant use this file for something else:
+        sfn.rawfile.claimed = True
+        sfn.rawfile.save()
+        # Now make job
+        mvjob_kw = {'dset_id': dsid, 'rawfn_ids': [sfn.rawfile_id]}
+        if error := check_job_error('move_files_storage', **mvjob_kw):
+            # TODO this needs logging
+            print(error)
+            return HttpResponse()
+        job, _cr = jm.Job.objects.get_or_create(state=jobutil.Jobstates.HOLD,
+                funcname='move_files_storage', kwargs=mvjob_kw, timestamp=timezone.now())
+        if not _cr:
+            # Somehow script has already run!
+            return HttpResponse()
+
+    # For all files, even those not assoc to QC/Dset
+    create_job('create_pdc_archive', sf_id=sfn.pk, isdir=sfn.filetype.is_folder)
     if upload.archive_only:
         # This archive_only is for sens data but we should probably have a completely
         # different track for that TODO
