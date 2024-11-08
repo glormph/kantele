@@ -1304,8 +1304,8 @@ def accept_or_reject_dset_preassoc_files(request):
         deleted = jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD,
                 kwargs__dset_id=data['dataset_id'],
                 kwargs__rawfn_ids__in=[[x] for x in data['rejected_files']]).delete()
-    if deleted:
-        filemodels.RawFile.objects.filter(pk__in=data['rejected_files']).update(claimed=False)
+        if deleted:
+            filemodels.RawFile.objects.filter(pk__in=data['rejected_files']).update(claimed=False)
     # Now start jobs for accepted files
     if len(data['accepted_files']):
         jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD,

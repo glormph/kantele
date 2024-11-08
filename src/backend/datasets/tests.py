@@ -259,6 +259,80 @@ class UpdateFilesTest(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, '')
 
 
+class AcceptRejectPreassocFiles(BaseIntegrationTest):
+    url = '/datasets/save/files/pending/'
+
+    def setUp(self):
+        super().setUp()
+        self.tmpraw.claimed = True
+        self.tmpraw.save()
+        jm.Job.objects.create(funcname='move_files_storage', state=Jobstates.HOLD, kwargs={
+            'dset_id': self.ds.pk, 'rawfn_ids': [self.tmpraw.pk]}, timestamp=timezone.now())
+
+    def test_accept_all_files(self):
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 0)
+        resp = self.post_json({'dataset_id': self.ds.pk, 'accepted_files': [self.tmpraw.pk],
+            'rejected_files': []})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(newdsr.count(), 1)
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        self.tmpraw.refresh_from_db()
+        self.assertTrue(self.tmpraw.claimed)
+        self.run_job()
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
+        self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
+        self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
+            self.ds.storage_loc, self.tmpsf.filename)))
+    
+    def test_reject_all_files(self):
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 0)
+        resp = self.post_json({'dataset_id': self.ds.pk, 'rejected_files': [self.tmpraw.pk],
+            'accepted_files': []})
+        self.assertEqual(resp.status_code, 200)
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 0)
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        self.tmpraw.refresh_from_db()
+        self.assertFalse(self.tmpraw.claimed)
+        self.run_job()
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.sstmp.name],
+            self.tmpsf.filename)))
+    
+
+    def test_accept_some_files(self):
+        rejectraw = rm.RawFile.objects.create(name='reject.raw', producer=self.prod,
+                source_md5='rejectit_fakemd5', size=123, date=timezone.now(),
+                claimed=True)
+        jm.Job.objects.create(funcname='move_files_storage', state=Jobstates.HOLD, kwargs={
+            'dset_id': self.ds.pk, 'rawfn_ids': [rejectraw.pk]}, timestamp=timezone.now())
+        newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
+        self.assertEqual(newdsr.count(), 0)
+        resp = self.post_json({'dataset_id': self.ds.pk, 'accepted_files': [self.tmpraw.pk],
+            'rejected_files': [rejectraw.pk]})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(newdsr.count(), 1)
+        rejectdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=rejectraw)
+        self.assertEqual(rejectdsr.count(), 0)
+        self.assertEqual(self.tmpsf.servershare, self.sstmp)
+        self.assertEqual(self.tmpsf.path, '')
+        self.tmpraw.refresh_from_db()
+        self.assertTrue(self.tmpraw.claimed)
+        self.run_job()
+        self.tmpsf.refresh_from_db()
+        self.assertEqual(self.tmpsf.servershare, self.ssnewstore)
+        self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
+        self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
+            self.ds.storage_loc, self.tmpsf.filename)))
+
+
 class RenameProjectTest(BaseIntegrationTest):
     url = '/datasets/rename/project/'
 
