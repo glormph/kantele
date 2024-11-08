@@ -32,6 +32,7 @@ export const statecolors = {
   smallstatus: {
     active: 'has-text-primary',
     deleted: 'has-text-grey',
+    pending: 'has-text-danger',
   },
   // Analysis jobstate tags
   tag: {
