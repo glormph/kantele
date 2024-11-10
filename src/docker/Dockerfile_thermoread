@@ -1,0 +1,7 @@
+# For running scanheadsman in a dotnet docker using wine
+FROM chambm/wine-dotnet:4.7-x64
+ADD https://bitbucket.org/caetera/scanheadsman/downloads/ScanHeadsman-1.3.20220905.zip /scanheadsman.zip
+RUN mkdir /scanheadsman && cd /scanheadsman && unzip /scanheadsman.zip
+WORKDIR /scanheadsman
+
+

@@ -400,9 +400,12 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
     val = False
     if ftypename == settings.THERMORAW:
         with TemporaryDirectory() as tmpdir:
-           # FIXME docker recipe somewhere, either in deploy or on ghcr.iop# chambm/dotnet-wine + ScanHeadsman.exe
-           # 
-            with open(os.path.join(tmpdir, 'outfn.sum.tsv')) as fp:
+            cmd = ['docker', 'run', '-v', f'{fpath}:/rawfile/{fname}', '-v', f'{tmpdir}:/outdir',
+                    settings.THERMOREADER_DOCKER, *settings.THERMO_CLASSIFY_CMD, 
+                    '-i', f'/rawfile/{fname}', '-o', f'/outdir/outfn']
+            subprocess.run(cmd)
+            # TODO which errors do we get here?
+            with open(os.path.join(tmpdir, 'outfn.sum.csv')) as fp:
                 header = next(fp).strip().split(',')
                 line = next(fp).strip().split(',')
             try:
@@ -410,7 +413,6 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
             except IndexError:
                 taskfail_update_db(self.request.id)
                 raise
-    # docker run -v {path}:/rawfiles -v {tmpdir}:/outfns {settings.THERMOREAD_DOCKER} wine ScanHeadsman.exe -d0 -i /rawfiles/{fname} -o /outfns/outfn
         
     elif ftypename == settings.BRUKERRAW:
         try:
