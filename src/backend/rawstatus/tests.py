@@ -387,7 +387,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
                 'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
                 'injection_waittime': 5}, fp)
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
-        sleep(2)
+        sleep(3)
         newraw = rm.RawFile.objects.last()
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newraw.pk, lastraw.pk + 1)
@@ -989,7 +989,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
     zipsizes = {'kantele_upload.sh': 337,
             'kantele_upload.bat': 185,
-            'upload.py': 28768,
+            'upload.py': 30763,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 689,
@@ -1054,7 +1054,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
             names = zipfn.namelist()
             with zipfn.open('transfer_config.json') as tcfp:
                 tfconfig = json.load(tcfp)
-        self.assertEqual(len(names), 10)
+        self.assertEqual(len(names), 11)
         for fn in ['requests-2.28.1-py3-none-any.whl', 'certifi-2022.9.14-py3-none-any.whl', 
                 'requests_toolbelt-0.9.1-py2.py3-none-any.whl', 'idna-3.4-py3-none-any.whl',
                 'charset_normalizer-2.1.1-py3-none-any.whl', 'urllib3-1.26.12-py2.py3-none-any.whl',
@@ -1064,7 +1064,6 @@ class TestDownloadUploadScripts(BaseFilesTest):
         for key,val in {'outbox': f'{datadisk}\outbox',
                 'zipbox': f'{datadisk}\zipbox',
                 'donebox': f'{datadisk}\donebox',
-                'producerhostname': self.prod.name,
                 'client_id': self.prod.client_id,
                 'filetype_id': self.prod.msinstrument.filetype_id,
                 'raw_is_folder': 1 if self.prod.msinstrument.filetype.is_folder else 0,

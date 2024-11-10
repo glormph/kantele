@@ -182,21 +182,8 @@ class BaseTest(TestCase):
         filetype=self.ft, checked=True, filename=self.libraw.name, servershare=self.sstmp, path='')
         self.lf = am.LibraryFile.objects.create(sfile=self.sflib, description='This is a libfile')
 
-        # User files for input
-        self.usrfraw = rm.RawFile.objects.create(name='usrfiledone', producer=self.prod, 
-                source_md5='usrfmd5', size=100, claimed=True, date=timezone.now())
-        self.uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
-                is_rawdata=False)
-        self.sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=self.usrfraw,
-                md5=self.usrfraw.source_md5, filetype=self.uft,
-                defaults={'filename': self.usrfraw.name, 'servershare': self.sstmp,
-                    'path': '', 'checked': True})
-        self.usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
-                expired=False, producer=self.prod, filetype=self.uft,
-                uploadtype=rm.UploadToken.UploadFileType.USERFILE, defaults={
-                    'expires': timezone.now() + timedelta(1)})
-        self.userfile, _ = rm.UserFile.objects.get_or_create(sfile=self.sfusr,
-                description='This is a userfile', upload=self.usedtoken)
+#        # User files for input
+        self.uft = rm.StoredFileType.objects.create(name='ufileft', filetype='tst', is_rawdata=False)
 
         # Analysis files
         self.anaprod = rm.Producer.objects.create(name='analysisprod', client_id=settings.ANALYSISCLIENT_APIKEY, shortname='pana')
