@@ -1,5 +1,5 @@
 ---
-kantele_repo: https://github.com/glormph/kantele
+kantele_repo: https://github.com/lehtiolab/kantele
 qc_queue: qc_nextflow
 analysis_queue: nextflow
 mq_vhost: kantele_vhost
