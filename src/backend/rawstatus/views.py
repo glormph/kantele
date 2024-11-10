@@ -35,7 +35,7 @@ from datasets import models as dsmodels
 from dashboard import models as dashmodels
 from jobs import models as jm
 from jobs import jobs as jobutil
-from jobs.jobutil import create_job
+from jobs.jobutil import create_job, check_job_error
 
 
 def inflow_page(request):
