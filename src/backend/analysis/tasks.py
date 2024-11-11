@@ -45,8 +45,8 @@ def check_ensembl_uniprot_fasta_download(self, dbname, version, organism, dbtype
             if regresp:
                 fa_data.update({'desc': desc, 'dbtype': dbtype})
                 transfer_resultfile(dstpath, settings.LIBRARY_FILE_PATH, wfp.name, 
-                        settings.PRIMARY_STORAGESHARENAME, regresp, doneurl, token, self.request.id,
-                        is_fasta=fa_data)
+                        settings.PRIMARY_STORAGESHARENAME, doneurl, token, self.request.id,
+                        regresp['fnid'], regresp['md5'], regresp['newname'], is_fasta=fa_data)
             else:
                 print('File was already downloaded')
 
@@ -71,8 +71,8 @@ def check_ensembl_uniprot_fasta_download(self, dbname, version, organism, dbtype
                 if regresp:
                     fa_data['desc'] = desc
                     transfer_resultfile(dstpath, settings.LIBRARY_FILE_PATH, wfp.name, 
-                            settings.PRIMARY_STORAGESHARENAME, regresp, doneurl, token,
-                            self.request.id, is_fasta=fa_data)
+                            settings.PRIMARY_STORAGESHARENAME, doneurl, token, self.request.id,
+                            regresp['fnid'], regresp['md5'], regresp['newname'], is_fasta=fa_data)
                 else:
                     print('File was already downloaded')
     task_finished(self.request.id)
@@ -192,8 +192,9 @@ def run_nextflow_workflow(self, run, params, stagefiles, profiles, nf_version):
         regfile = register_resultfile(os.path.basename(ofile), ofile, token)
         if not regfile:
             continue
-        transfer_resultfile(outdir, outpath, ofile, run['dstsharename'], regfile, fileurl, token, 
-                self.request.id, analysis_id=run['analysis_id'], checksrvurl=checksrvurl)
+        transfer_resultfile(outdir, outpath, ofile, run['dstsharename'], fileurl, token, 
+                self.request.id, regfile['fnid'], regfile['md5'], regfile['newname'], 
+                analysis_id=run['analysis_id'], checksrvurl=checksrvurl)
     report_finished_run(reporturl, postdata, stagedir_to_rm, rundir, run['analysis_id'])
     return run
 
@@ -255,7 +256,7 @@ def refine_mzmls(self, run, params, mzmls, stagefiles, profiles, nf_version):
         sf_id, newname = os.path.basename(fn).split('___')
         fdata = {'file_id': sf_id, 'newname': newname, 'md5': calc_md5(fn)}
         transfer_resultfile(outfullpath, run['runname'], fn, run['dstsharename'], fdata, fileurl, token,
-                self.request.id)
+                self.request.id, fdata['fnid'], fdata['md5'], fdata['newname'])
     reporturl = urljoin(settings.KANTELEHOST, reverse('jobs:analysisdone'))
     postdata = {'client_id': settings.APIKEY, 'analysis_id': run['analysis_id'],
             'task': self.request.id, 'name': run['runname'], 'user': run['user'], 'state': 'ok'}
@@ -483,7 +484,7 @@ def check_in_transfer_client(task_id, token, filetype):
 
 
 def register_resultfile(fname, fpath, token):
-    reg_url = urljoin(settings.KANTELEHOST, reverse('files:register'))
+    reg_url = urljoin(settings.KANTELEHOST, reverse('files:reg_trfstate'))
     postdata = {'fn': fname,
                 'client_id': settings.APIKEY,
                 'md5': calc_md5(fpath),
@@ -493,51 +494,48 @@ def register_resultfile(fname, fpath, token):
                 'token': token,
                 }
     resp = requests.post(url=reg_url, json=postdata)
+    if resp.status != 500:
+        rj = resp.json()
     resp.raise_for_status()
-    rj = resp.json()
-    if not rj['stored']:
-        outfile = resp.json()
-        outfile.update({'newname': fname, 'md5': postdata['md5']})
-        return outfile
+    if rj['transferstate'] == 'transfer':
+        return {'fnid': rj['fn_id'], 'newname': fname, 'md5': postdata['md5']}
     else:
         return False
 
 
-def transfer_resultfile(outfullpath, outpath, fn, dstsharename, regfile, url, token, task_id,
-        analysis_id=False, checksrvurl=False, is_fasta=False):
+def transfer_resultfile(outfullpath, outpath, fn, dstsharename, url, token, task_id,
+        fn_id, reg_md5, newname, analysis_id=False, checksrvurl=False, is_fasta=False):
     '''Copies files from analyses to outdir on result storage.
     outfullpath is absolute destination dir for file
     outpath is the path stored in Kantele DB (for users on the share of outfullpath)
     fn is absolute path to src file
-    regfile is dict of registered file with md5, newname, fn_id
     '''
-    fname = regfile['newname']
-    dst = os.path.join(outfullpath, fname)
+    dst = os.path.join(outfullpath, newname)
     try:
         shutil.copy(fn, dst)
     except:
         taskfail_update_db(task_id, 'Errored when trying to copy files to analysis result destination')
         raise
     os.chmod(dst, 0o640)
-    postdata = {'client_id': settings.APIKEY, 'fn_id': regfile['file_id'],
-            'outdir': outpath, 'filename': fname, 'token': token, 'dstsharename': dstsharename,
+    postdata = {'client_id': settings.APIKEY, 'fn_id': fn_id, 'outdir': outpath,
+            'filename': newname, 'token': token, 'dstsharename': dstsharename,
             'analysis_id': analysis_id, 'is_fasta': is_fasta}
-    if calc_md5(dst) != regfile['md5']:
+    if calc_md5(dst) != reg_md5:
         msg = 'Copying error, MD5 of src and dst are different'
         taskfail_update_db(task_id, msg)
         raise RuntimeError(msg)
     else:
-        postdata['md5'] = regfile['md5']
+        postdata['md5'] = reg_md5
     if analysis_id:
         # Not for refine mzMLs
         postdata.update({'ftype': settings.ANALYSIS_FT_NAME, 'analysis_id': analysis_id})
         # first check if upload file is OK:
-        resp = requests.post(checksrvurl, json={'fname': fname, 'client_id': settings.APIKEY})
+        resp = requests.post(checksrvurl, json={'fname': newname, 'client_id': settings.APIKEY})
         if resp.status_code == 200:
             # Servable file found, upload also to web server
             # Somewhat complex POST to get JSON and files in same request
             response = requests.post(url, files={
-                'ana_file': (fname, open(fn, 'rb'), 'application/octet-stream'),
+                'ana_file': (newname, open(fn, 'rb'), 'application/octet-stream'),
                 'json': (None, json.dumps(postdata), 'application/json')})
         else:
             response = update_db(url, files={

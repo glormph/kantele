@@ -5,7 +5,7 @@ import shutil
 import sqlite3
 import zipfile
 import signal
-from time import sleep
+from time import sleep, time
 from io import BytesIO
 from base64 import b64encode
 import subprocess
@@ -101,8 +101,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
         cmd = ['python3', 'rawstatus/file_inputs/upload.py', '--files', fullp, '--token', self.user_token]
         sp = subprocess.run(cmd, stderr=subprocess.PIPE)
         explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file with ID {self.f3raw.pk} was "done"']
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: done']
         for out, exp in zip(sp.stderr.decode('utf-8').strip().split('\n'), explines):
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
@@ -150,12 +149,9 @@ class TestUploadScriptManual(BaseIntegrationTest):
         zipboxpath = os.path.join(os.getcwd(), 'zipbox', f'{self.f3sf.filename}.zip')
         explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
                 'Registering 1 new file(s)', 
-                f'File {new_raw.name} matches remote file {new_raw.name} with ID {new_raw.pk}',
-                f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
-                f'State for file {new_raw.name} with ID {new_raw.pk} was: transfer',
+                f'File {new_raw.name} has ID {new_raw.pk}, instruction: transfer',
                 f'Uploading {zipboxpath} to {self.live_server_url}',
                 f'Succesful transfer of file {zipboxpath}',
-                f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
         for out, exp in zip(outlines, explines):
@@ -163,7 +159,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
-        lastexp = f'State for file with ID {new_raw.pk} was "done"'
+        lastexp = f'File {new_raw.name} has ID {new_raw.pk}, instruction: done'
         self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
         # FIXME check actual classifying (fake sqlite .d/analysis.tdf file)
         # check user/lib transfer - no classify
@@ -209,13 +205,9 @@ class TestUploadScriptManual(BaseIntegrationTest):
         zipboxpath = os.path.join(os.getcwd(), 'zipbox', f'{self.f3sf.filename}.zip')
         explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
                 'Registering 1 new file(s)', 
-                f'File {self.f3raw.name} matches remote file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'File {self.f3raw.name} is already registered and has MD5 {self.f3raw.source_md5}. Already stored = False',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: transfer',
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: transfer',
                 f'Uploading {zipboxpath} to {self.live_server_url}',
                 f'Succesful transfer of file {zipboxpath}',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
         for out, exp in zip(outlines, explines):
@@ -223,7 +215,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
-        lastexp = f'State for file with ID {self.f3raw.pk} was "done"'
+        lastexp = f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: done'
         self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
 
     def test_transfer_same_name(self):
@@ -262,9 +254,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
                 f'Checking for new files in {outbox}',
                 f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
                 'Registering 1 new file(s)',
-                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
-                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
-                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
                 f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Moving file {newraw.name} to skipbox',
                 f'Another file in the system has the same name and is stored in the same path '
@@ -351,10 +341,8 @@ class TestUploadScriptManual(BaseIntegrationTest):
             print(sperr.decode('utf-8'))
             self.fail()
         explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: wait',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file with ID {self.f3raw.pk} was "done"']
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: wait',
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: done']
         for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             out = re.sub('.*producer.worker - ', '', out)
@@ -421,13 +409,10 @@ class TestUploadScriptManual(BaseIntegrationTest):
                 f'Checking for new files in {outbox}',
                 f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
                 'Registering 1 new file(s)',
-                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
-                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
-                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
                 f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Succesful transfer of file {zipboxpath}',
-                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
-                f'State for file with ID {newraw.pk} was "done"',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: done',
                 f'Removing file {newraw.name} from outbox',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
@@ -501,9 +486,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
                 f'Checking for new files in {outbox}',
                 f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
                 'Registering 1 new file(s)',
-                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
-                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
-                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
                 f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Succesful transfer of file {zipboxpath}',
                 # This is enough, afterwards the 'Checking new files in outbox' starts
@@ -577,13 +560,10 @@ class TestUploadScriptManual(BaseIntegrationTest):
                 f'Checking for new files in {outbox}',
                 f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
                 'Registering 1 new file(s)',
-                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
-                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
-                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
                 f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Succesful transfer of file {zipboxpath}',
-                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
-                f'State for file with ID {newraw.pk} was "done"',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: done',
                 f'Removing file {newraw.name} from outbox',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
@@ -717,11 +697,16 @@ class TransferStateTest(BaseFilesTest):
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 405)
         resp = self.cl.post(self.url, content_type='application/json', data={'hello': 'test'})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('No token', resp.json()['error'])
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': 'wrongid', 'fnid': 1, 'desc': False})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('invalid or expired', resp.json()['error'])
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': 'self.token'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('Bad request', resp.json()['error'])
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'token': self.token, 'fnid': 99, 'desc': False})
         self.assertEqual(resp.status_code, 404)
@@ -756,19 +741,23 @@ class TransferStateTest(BaseFilesTest):
 
 
 class TestFileRegistered(BaseFilesTest):
-    url = '/files/register/'
+    url = '/files/transferstate/'
 
     def test_auth_etc_fails(self):
         # GET
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 405)
-        # No params
+        # No token
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'hello': 'test'})
+        self.assertEqual(resp.status_code, 403)
+        # No other param
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': 'test'})
         self.assertEqual(resp.status_code, 400)
         # Missing client ID /token (False)
         stddata = {'fn': self.registered_raw.name, 'token': False, 'size': 200,
-                'date': 'fake', 'md5': 'fake'}
+                'date': time(), 'md5': 'fake'}
         resp = self.cl.post(self.url, content_type='application/json',
                 data=stddata)
         self.assertEqual(resp.status_code, 403)
@@ -783,7 +772,7 @@ class TestFileRegistered(BaseFilesTest):
         self.assertIn('invalid or expired', resp.json()['error'])
         # Wrong date
         resp = self.cl.post(self.url, content_type='application/json',
-                data={**stddata, 'token': self.token})
+                data={**stddata, 'token': self.token, 'date': 'fake'})
         self.assertEqual(resp.status_code, 400)
 
     def test_normal(self):
@@ -796,7 +785,9 @@ class TestFileRegistered(BaseFilesTest):
         newraws = rm.RawFile.objects.filter(source_md5='fake', #date=nowdate,
                 name=self.registered_raw.name, producer=self.prod, size=100) 
         self.assertEqual(newraws.count(), 1)
-        self.assertTrue(nowdate - newraws.get().date < timedelta(seconds=60))
+        newraw = newraws.get()
+        self.assertTrue(nowdate - newraw.date < timedelta(seconds=60))
+        self.assertEqual(resp.json(), {'transferstate': 'transfer', 'fn_id': newraw.pk})
 
     def test_register_again(self):
         # create a rawfile
@@ -811,8 +802,8 @@ class TestFileRegistered(BaseFilesTest):
         newraws = rm.RawFile.objects.filter(source_md5='fake',
                 name=self.registered_raw.name, producer=self.prod, size=100) 
         self.assertEqual(newraws.count(), 1)
-        self.assertEqual(resp.json()['state'], 'error')
-        self.assertIn('is already registered', resp.json()['msg'])
+        newraw = newraws.get()
+        self.assertEqual(resp.json(), {'transferstate': 'transfer', 'fn_id': newraw.pk})
 
 
 class TestFileTransfer(BaseFilesTest):
@@ -989,7 +980,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
     zipsizes = {'kantele_upload.sh': 337,
             'kantele_upload.bat': 185,
-            'upload.py': 30763,
+            'upload.py': 30768,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 689,

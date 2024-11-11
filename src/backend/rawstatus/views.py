@@ -76,8 +76,9 @@ def import_external_data(request):
             fakemd5 = md5()
             fakemd5.update(fn.encode('utf-8'))
             fakemd5 = fakemd5.hexdigest()
-            rawfn = get_or_create_rawfile(fakemd5, fn, extprod, size, date, claimed=True)
-            sfile = StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'],
+            rawfn, _ = RawFile.objects.get_or_create(source_md5=fakemd5, defaults={
+                'name': fn, 'producer': extprod, 'size': size, 'date': date, 'claimed': True})
+            sfile = StoredFile.objects.get_or_create(rawfile_id=rawfn.pk,
                     filetype_id=extprod.msinstrument.filetype_id, filename=fn,
                     defaults={'servershare_id': share.id,
                         'path': os.path.join(req['dirname'], path), 'md5': fakemd5})
@@ -103,40 +104,9 @@ def scan_raws_tmp(request):
     return JsonResponse({'dirsfound': result, 'instruments': [(ep.id, ep.name) for ep in exprods]})
 
 
-@require_POST
-def register_file(request):
-    """New files are registered in the system on this view, where producer 
-    or user passes info on file (name, md5, date, etc). Auth is done 
-    via a token either from web console or CLI script.
-    """
-    data = json.loads(request.body.decode('utf-8'))
-    try:
-        token = data['token']
-        fn, size, md5, filedate_raw = data['fn'], data['size'], data['md5'], data['date']
-    except KeyError as error:
-        print('POST request to register_file with missing parameter, '
-              '{}'.format(error))
-        return JsonResponse({'error': 'Data passed to registration incorrect'}, status=400)
-    upload = UploadToken.validate_token(token, ['producer'])
-    if not upload:
-        return JsonResponse({'error': 'Token invalid or expired'}, status=403)
-    try:
-        file_date = datetime.strftime(
-            datetime.fromtimestamp(float(filedate_raw)), '%Y-%m-%d %H:%M')
-    except ValueError as error:
-        print('POST request to register_file with incorrect formatted '
-              'date parameter {}'.format(error))
-        return JsonResponse({'error': 'Date passed to registration incorrectly formatted'}, status=400)
-    if upload.uploadtype == UploadToken.UploadFileType.ANALYSIS:
-        claimed = True
-    else:
-        claimed = False
-    response = get_or_create_rawfile(md5, fn, upload.producer, size, file_date, claimed=claimed)
-    return JsonResponse(response)
-
-
 @login_required
 def browser_userupload(request):
+    # needs test
     # FIXME make sure this job is similar to transfer_file then?
     data = request.POST
     try:
@@ -184,14 +154,16 @@ def browser_userupload(request):
         if ftype.filetype == 'fasta' and not any(SeqIO.parse(fp, 'fasta')):
             return JsonResponse(notfa_err_resp, status=403)
         dighash = dighash.hexdigest() 
-        raw = get_or_create_rawfile(dighash, upfile.name, producer, upfile.size, timezone.now(), claimed=True)
-        dst = rsjobs.create_upload_dst_web(raw['file_id'], upload.filetype.filetype)
+        raw, _ = RawFile.objects.get_or_create(source_md5=dighash, defaults={
+                'name': upfile.name, 'producer': producer, 'size': upfile.size,
+                'date': timezone.now(), 'claimed': True})
+        dst = rsjobs.create_upload_dst_web(raw.pk, upload.filetype.filetype)
         # Copy file to target uploadpath, after Tempfile context is gone, it is deleted
         shutil.copy(fp.name, dst)
         os.chmod(dst, 0o644)
 
     # Unfortunately have to do checking after upload as we need the MD5 of the file
-    sfns = StoredFile.objects.filter(rawfile_id=raw['file_id'])
+    sfns = StoredFile.objects.filter(rawfile_id=raw.pk)
     if sfns.count() == 1:
         os.unlink(dst)
         return JsonResponse({'success': False, 'msg': 'This file is already in the '
@@ -209,11 +181,11 @@ def browser_userupload(request):
         fname = upfile.name
     elif upload.uploadtype == ufiletypes.LIBRARY:
         dstsharename = settings.PRIMARY_STORAGESHARENAME
-        fname = f'{raw["file_id"]}_{upfile.name}'
+        fname = f'{raw.pk}_{upfile.name}'
         dstpath = settings.LIBRARY_FILE_PATH
     elif upload.uploadtype == ufiletypes.USERFILE:
         dstsharename = settings.PRIMARY_STORAGESHARENAME
-        fname = f'{raw["file_id"]}_{upfile.name}'
+        fname = f'{raw.pk}_{upfile.name}'
         dstpath = settings.USERFILEDIR
     else:
         return JsonResponse({'success': False, 'msg': 'Can only upload files of raw, library, '
@@ -229,7 +201,7 @@ def browser_userupload(request):
             status=403)
 
     # All good, get the file to storage
-    sfile = StoredFile.objects.create(rawfile_id=raw['file_id'], filename=fname, checked=True,
+    sfile = StoredFile.objects.create(rawfile_id=raw.pk, filename=fname, checked=True,
             filetype=upload.filetype, md5=dighash, path=dstpath, servershare=dstshare)
     create_job('rsync_transfer', sf_id=sfile.pk, src_path=dst)
     dstfn = process_file_confirmed_ready(sfile.rawfile, sfile, upload, desc)
@@ -352,31 +324,28 @@ def create_upload_token(ftype_id, user_id, producer, uploadtype, archive_only=Fa
             archive_only=archive_only, uploadtype=uploadtype)
 
 
-def get_or_create_rawfile(md5, fn, producer, size, file_date, claimed):
-    rawfn, created = RawFile.objects.get_or_create(source_md5=md5, defaults={
-        'name': fn, 'producer': producer, 'size': size, 'date': file_date,
-        'claimed': claimed})
-    if not created:
-        nrsfn = StoredFile.objects.filter(md5=md5, checked=True).count()
-        stored = True if nrsfn else False
-        state = 'registered' if nrsfn else 'error'
-        msg = (f'File {rawfn.name} is already registered and has MD5 '
-                f'{rawfn.source_md5}. Already stored = {stored}')
-    else:
-        stored, state, msg = False, 'registered', False
-    return {'file_id': rawfn.id, 'state': state, 'stored': stored, 
-            'remote_name': rawfn.name, 'msg': msg}
-
-
 # /files/transferstate
 @require_POST
 def get_files_transferstate(request):
     data =  json.loads(request.body.decode('utf-8'))
     try:
-        token, fnid, desc = data['token'], data['fnid'], data['desc']
+        token = data['token']
     except KeyError as error:
-        print(f'Request to get transferstate with missing parameter, {error}')
-        return JsonResponse({'error': 'Bad request'}, status=400)
+        return JsonResponse({'error': 'No token, cannot authenticate'}, status=403)
+    
+    if fnid := data.get('fnid', False):
+        desc = data.get('desc')
+    else:
+        desc = True # Do not error on missing description
+        try:
+            fn, size, md5, filedate_raw = data['fn'], data['size'], data['md5'], data['date']
+            file_date = datetime.strftime(
+                datetime.fromtimestamp(float(filedate_raw)), '%Y-%m-%d %H:%M')
+        except ValueError as error:
+            return JsonResponse({'error': 'Date passed to registration incorrectly formatted'}, status=400)
+        except KeyError as error:
+            print(f'Request to get transferstate with missing parameter, {error}')
+            return JsonResponse({'error': 'Bad request'}, status=400)
 
     upload = UploadToken.validate_token(token, ['producer'])
     if not upload:
@@ -387,11 +356,19 @@ def get_files_transferstate(request):
         # FIXME can we upload proper analysis files here too??? In theory, yes! At a speed cost
         return JsonResponse({'error': 'Analysis result uploads need an analysis_id to put them in'}, status=403)
 
-    # Also do registration here? if MD5? prob not.
-    rfn = RawFile.objects.filter(pk=fnid).select_related('producer')
-    if not rfn.count():
-        return JsonResponse({'error': f'File with ID {fnid} cannot be found in system'}, status=404)
-    rfn = rfn.get()
+    if not fnid:
+        if upload.uploadtype == UploadToken.UploadFileType.ANALYSIS:
+            claimed = True
+        else:
+            claimed = False
+        rfn, _ = RawFile.objects.get_or_create(source_md5=md5, defaults={
+            'name': fn, 'producer': upload.producer, 'size': size, 'date': file_date,
+            'claimed': claimed})
+    else:
+        rfn = RawFile.objects.filter(pk=fnid).select_related('producer')
+        if not rfn.count():
+            return JsonResponse({'error': f'File with ID {fnid} cannot be found in system'}, status=404)
+        rfn = rfn.get()
     if rfn.producer != upload.producer:
         # In case the file has been moved to another instrument or the instrument API key
         # is wrong here (unlikely right?)
@@ -459,7 +436,7 @@ def get_files_transferstate(request):
             # There is an unlikely rsync job which is canceled, requeue it
             create_job('rsync_transfer', sf_id=sfn.pk, src_path=up_dst)
             tstate = 'wait'
-    response = {'transferstate': tstate}
+    response = {'transferstate': tstate, 'fn_id': rfn.pk}
     return JsonResponse(response)
 
 
@@ -979,12 +956,14 @@ def download_px_project(request):
         fakemd5 = md5()
         fakemd5.update(filename.encode('utf-8'))
         fakemd5 = fakemd5.hexdigest()
-        rawfn = get_or_create_rawfile(fakemd5, filename, extproducers[fn['instr_type']],
-                fn['fileSize'], date, claimed=True)
-        shasums[rawfn['file_id']] = fn['sha1sum']
-        if not rawfn['stored']:
+        rawfn, _ = RawFile.objects.get_or_create(source_md5=fakemd5, defaults={
+            'name': filename, 'producer': extproducers[fn['instr_type']],
+            'size': fn['fileSize'], 'date': date, 'claimed': True})
+        shasums[rawfn.pk] = fn['sha1sum']
+        if not StoredFile.objects.filter(md5=fakemd5, checked=True).count():
+            # FIXME thermo only
             ftid = StoredFileType.objects.get(name='thermo_raw_file', filetype='raw').id
-            StoredFile.objects.get_or_create(rawfile_id=rawfn['file_id'], filetype_id=ftid,
+            StoredFile.objects.get_or_create(rawfile=rawfn, filetype_id=ftid,
                     filename=fn, defaults={'servershare_id': tmpshare, 'path': '',
                         'md5': fakemd5})
     create_job(

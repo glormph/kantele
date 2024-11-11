@@ -57,7 +57,7 @@ def get_new_file_entry(fn, raw_is_folder):
         size = os.path.getsize(fn)
     return {'fpath': fn, 'fname': os.path.basename(fn),
             'md5': False,
-            'fn_id': False,
+            'fnid': False,
             'prod_date': str(os.path.getctime(fn)),
             'size': size,
             'is_dir': raw_is_folder or os.path.isdir(fn),
@@ -162,19 +162,36 @@ def save_ledger(ledger, ledgerfile):
         json.dump(ledger, fp)
 
 
-def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **postkwargs):
+def query_file(host, url, fn, fn_md5, size, date, cookies, token, fnid, desc, logger):
     url = urljoin(host, url)
     postdata = {'fn': fn,
                 'token': token,
                 'md5': fn_md5,
                 'size': size,
                 'date': date,
-                'claimed': claimed,
+                'fnid': fnid,
+                'desc': desc,
                 }
-    if postkwargs:
-        postdata.update(postkwargs)
-    return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata,
-            verify=certifi.where())
+    try:
+        resp = requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), 
+                json=postdata, verify=certifi.where())
+    except requests.exceptions.ConnectionError:
+        logger.error('Cannot connect to kantele server trying to query file {fn}, will try later')
+    else:
+        if resp.status_code != 500:
+            resp_j = resp.json()
+        if resp.status_code == 200:
+            logger.info(f'File {fn} has ID {resp_j["fn_id"]}, instruction: {resp_j["transferstate"]}')
+            return {'fnid': resp_j['fn_id'], 'state': resp_j['transferstate']}
+        elif resp.status_code == 403:
+            logger.error(f'Permission denied querying server for file, server replied '
+                    f' with {resp_j["error"]}')
+        elif resp.status_code != 500:
+            logger.error(f'Problem querying for file, server replied with {resp_j["error"]}')
+        else:
+            logger.error(f'Could not register file, error code {resp.status_code}, '
+                    'likely problem is on server, please check with admin')
+        return {'error': resp.status_code}
 
 
 def transfer_file(url, fpath, fn_id, token, cookies, host):
@@ -330,84 +347,33 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
     while True:
         loginresp = requests.get(urljoin(kantelehost, 'login/'), verify=certifi.where())
         cookies = loginresp.cookies
-        if not config['is_manual']:
-            for fndata in [x for x in ledger.values() if not x['fn_id']]:
-                # In case new files are found but registration failed for some
-                # reason, MD5 is on disk (only to ledger after MD5), re-register
-                regq.put(fndata)
         newfns = []
         while not regq.empty():
             newfns.append(regq.get())
         if newfns:
             logger.info(f'Registering {len(newfns)} new file(s)')
+        trffns, ledgerchanged = [], False
         for fndata in newfns:
             # DO NOT USE: while regq.qsize() here,
             # that leads to potential eternal loop when flooded every five seconds
             # Also MacOS doesnt support qsize()
             ct_size = get_fndata_id(fndata)
+            ledgerchanged = True
             # update ledger in case new MD5 calculated
             ledger[ct_size] = fndata
-            try:
-                resp = register_file(kantelehost, 'files/register/', fndata['fname'],
-                        fndata['md5'], fndata['size'], fndata['prod_date'], 
-                        cookies, config['token'], claimed=False)
-            except requests.exceptions.ConnectionError:
-                logger.error('Cannot connect to kantele server trying to register '
-                        f'file {fndata["fname"]}, will try later')
-            else:
-                if resp.status_code == 200:
-                    resp_j = resp.json()
-                    logger.info(f'File {fndata["fname"]} matches remote file '
-                            f'{resp_j["remote_name"]} with ID {resp_j["file_id"]}')
-                    if resp_j['msg']:
-                        logger.info(resp_j['msg'])
-                    fndata['fn_id'] = resp_j['file_id']
-                elif resp.status_code == 403:
-                    resp_j = resp.json()
-                    logger.error(f'Permission denied registering file, server replied '
-                            f' with {resp_j["error"]}')
-                elif resp.status_code != 500:
-                    resp_j = resp.json()
-                    logger.error(f'Problem registering file, server replied with {resp_j["error"]}')
-                else:
-                    logger.error(f'Could not register file, error code {resp.status_code}, '
-                            'likely problem is on server, please check with admin')
-                if resp.status_code != 200:
-                    # Exit when permission denied, need a new password from user
-                    # exit also at server/client errors
-                    sys.exit(resp.status_code)
-        # Persist state of zipped/MD5/fn_ids to disk
-        if len(newfns):
+        if ledgerchanged:
             save_ledger(ledger, LEDGERFN)
-
-        # Now find what to do with all registered files and do it
-        trffns, ledgerchanged = [], False
-        to_process = [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]
-        for cts_id, fnid, fndata in to_process:
-            desc = descriptions.get(fndata['fpath'], False)
-            logger.info(f'Checking remote state for file {fndata["fname"]} with ID {fnid}')
-            try:
-                resp = requests.post(fnstate_url, cookies=cookies,
-                        headers=get_csrf(cookies, kantelehost),
-                        json={'fnid': fnid, 'token': config['token'], 'desc': desc},
-                        verify=certifi.where())
-            except requests.exceptions.ConnectionError:
-                logger.error('Cannot connect to kantele server to request state '
-                f'for file {fndata["fname"]}, will retry')
-                continue
-            if resp.status_code != 500:
-                result = resp.json()
-            else:
-                result = {'error': 'Kantele server error when getting file state, '
-                        'please contact administrator'}
-            if resp.status_code != 200:
-                logger.error(f'Could not get state for file with ID {fnid}, error '
-                        f'message was: {result["error"]}')
-                # Exit when permission denied, need a new password from user
-                # exit also at server/client errors
-                sys.exit(resp.status_code)
-            elif result['transferstate'] == 'done':
-                logger.info(f'State for file with ID {fnid} was "done"')
+            ledgerchanged = False
+        for cts_id, fndata in [(k, v) for k, v in ledger.items()]:
+            #return {'fn_id': resp_j['file_id'], }
+            query = query_file(kantelehost, 'files/transferstate/', fndata['fname'],
+                    fndata['md5'], fndata['size'], fndata['prod_date'], 
+                    cookies, config['token'], fndata.get('fnid', False),
+                    descriptions.get(fndata['fpath'], False), logger)
+            if query.get('error', False):
+                sys.exit(query['error'])
+            fnid = fndata['fnid'] = query['fnid']
+            if query['state'] == 'done':
                 # Remove done files from ledger/outbox
                 if fndata['is_dir']:
                     # Zipped intermediate files are removed here
@@ -429,16 +395,15 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                         regdoneq.put(cts_id)
                 del(ledger[cts_id])
                 ledgerchanged = True
-            elif result['transferstate'] == 'transfer':
+
+            elif query['state'] == 'transfer':
                 trffns.append((cts_id, fndata))
-                logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
-                        f'{result["transferstate"]}')
-            else:
-                logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
-                        f'{result["transferstate"]}')
+
         if config['is_manual'] and not ledger.keys():
             # Quit loop for manual file
             break
+        if ledgerchanged:
+            save_ledger(ledger, LEDGERFN)
 
         # Now transfer registered files
         for cts_id, fndata in trffns:
@@ -452,7 +417,7 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                 logger.warning(f'Could not find file with ID {fndata["fn_id"]} locally')
                 continue
             try:
-                resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
+                resp = transfer_file(trf_url, fndata['fpath'], fndata['fnid'], config['token'],
                         cookies, kantelehost)
             except subprocess.CalledProcessError:
                 # FIXME wrong exception!
