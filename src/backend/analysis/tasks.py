@@ -496,6 +496,8 @@ def register_resultfile(fname, fpath, token):
     resp = requests.post(url=reg_url, json=postdata)
     if resp.status != 500:
         rj = resp.json()
+    else:
+        rj = False
     resp.raise_for_status()
     if rj['transferstate'] == 'transfer':
         return {'fnid': rj['fn_id'], 'newname': fname, 'md5': postdata['md5']}

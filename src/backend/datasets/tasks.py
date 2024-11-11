@@ -41,9 +41,8 @@ def run_convert_mzml_nf(self, run, params, raws, ftype_name, nf_version, profile
     for raw in raws:
         token = check_in_transfer_client(self.request.id, token, ftype_name)
         srcpath = os.path.join(run_outdir, raw[4])
-        fdata = {'md5': calc_md5(srcpath), 'file_id': raw[3], 'newname': raw[4]}
         transfer_resultfile(outfullpath, outpath, srcpath, run['dstsharename'],
-                fdata, transfer_url, token, self.request.id)
+                raw[3], calc_md5(srcpath), raw[4], transfer_url, token, self.request.id)
     # FIXME first check tstate so no dup transfers used?
     # TODO we're only reporting task finished in this POST call, but there is no specific route
     # for that.

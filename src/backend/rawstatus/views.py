@@ -335,6 +335,7 @@ def get_files_transferstate(request):
     
     if fnid := data.get('fnid', False):
         desc = data.get('desc')
+        fn = size = md5 = file_date = False
     else:
         desc = True # Do not error on missing description
         try:
