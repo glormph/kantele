@@ -45,11 +45,14 @@ def set_task_status(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], settings.CLIENT_APIKEYS):
         return HttpResponseForbidden()
-    task = models.Task.objects.get(asyncid=data['task_id'])
-    task.state = data['state']
-    task.save()
+    # FIXME retries sometimes cause issues! Task not found
+    taskq = models.Task.objects.filter(asyncid=data['task_id'])
+    task_nr_found = taskq.update(state=data['state'])
+    if not task_nr_found:
+        # update() is 0 if no task found, 1 even if state is not actually updated
+        return HttpResponseForbidden()
     if data.get('msg', False):
-        models.TaskError.objects.create(task_id=task.id, message=data['msg'])
+        models.TaskError.objects.create(task_id=data['task_id'], message=data['msg'])
     return HttpResponse()
 
 
@@ -123,25 +126,26 @@ def renamed_project(request):
 @require_POST
 def pause_job(request):
     req = json.loads(request.body.decode('utf-8'))
-    try:
-        job = models.Job.objects.get(pk=req['item_id'])
-    except models.Job.DoesNotExist:
+    jobq = models.Job.objects.filter(pk=req['item_id'])
+    if not jobq.exists():
         return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
+    job = jobq.get()
     ownership = get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can pause this job'}, status=403)
     elif not is_job_retryable(job):
         return JsonResponse({'error': 'Job type {} cannot be paused/resumed'.format(job.funcname)}, status=403)
-    elif job.state not in [Jobstates.PENDING, Jobstates.ERROR]:
+
+    updated = jobq.filter(state__in=JOBSTATES_PAUSABLE).update(state=Jobstates.WAITING)
+    if not updated:
         return JsonResponse({'error': 'Only jobs that are pending for queueing or errored can be paused'}, status=403)
-    if job.state == Jobstates.ERROR:
+    else:
+        # Error job: delete tasks
         job.task_set.exclude(state=states.SUCCESS).delete()
         if hasattr(job, 'joberror'):
             job.joberror.delete()
-    job.state = Jobstates.WAITING
-    job.save()
-    jwrapper = jobmap[job.funcname](job.id) 
-    jwrapper.on_pause(**job.kwargs)
+        jwrapper = jobmap[job.funcname](job.id) 
+        jwrapper.on_pause(**job.kwargs)
     return JsonResponse({}) 
     
 

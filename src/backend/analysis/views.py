@@ -1142,14 +1142,12 @@ def store_analysis(request):
                 'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
                 'storagepath': analysis.storage_dir, **data_args}
         if req['analysis_id'] and hasattr(analysis, 'nextflowsearch'):
-            job_db = analysis.nextflowsearch.job
-            job_db.kwargs = kwargs
-            job_db.state = jj.Jobstates.WAITING
-            job_db.save()
-            job = {'id': job_db.pk, 'error': False}
+            jobq = jm.Job.objects.filter(nextflowsearch__analysis=analysis)
+            jobq.update(kwargs=kwargs, state=jj.Jobstates.WAITING)
+            jobid = jobq.values('pk').get()['pk']
         else:
-            job = create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-        am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': job['id'], 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
+            jobid = create_job(fname, state=jj.Jobstates.WAITING, **kwargs)['id']
+        am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': jobid, 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id, 'token': api_token})
 
 
