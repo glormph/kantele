@@ -2,9 +2,10 @@ import os
 import re
 import json
 import shutil
+import sqlite3
 import zipfile
 import signal
-from time import sleep
+from time import sleep, time
 from io import BytesIO
 from base64 import b64encode
 import subprocess
@@ -44,17 +45,22 @@ class BaseFilesTest(BaseTest):
                 size=100, date=timezone.now(), claimed=False)
 
 
-class TestUploadScript(BaseIntegrationTest):
+class TestUploadScriptManual(BaseIntegrationTest):
+    # FIXME write tests for instrument outbox
     def setUp(self):
         super().setUp()
         self.token= 'fghihj'
+
+        self.adminprod = rm.Producer.objects.create(name='adminprod', client_id='fjewrialf',
+                shortname=settings.PRODUCER_ADMIN_NAME, internal=True)
+        rm.MSInstrument.objects.create(producer=self.adminprod, instrumenttype=self.msit, filetype=self.ft)
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
                 expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
+                producer=self.adminprod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
         need_desc = 0
         #need_desc = int(self.uploadtype in [ufts.LIBRARY, ufts.USERFILE])
         self.user_token = b64encode(f'{self.token}|{self.live_server_url}|{need_desc}'.encode('utf-8')).decode('utf-8')
-        self.actual_md5 = 'd336e29e4f9e9ef20b943c63a513756d'
+        self.actual_md5 = 'dee94af7703a5beb01e8fdc84da018bb'
 
     def tearDown(self):
         super().tearDown()
@@ -74,6 +80,8 @@ class TestUploadScript(BaseIntegrationTest):
         # Have ledger with f3sf md5 so system thinks it's already done
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
+        self.f3raw.producer = self.adminprod
+        self.f3raw.save()
         timestamp = os.path.getctime(fullp)
         cts_id = f'{timestamp}__{self.f3raw.size}'
         with open('ledger.json', 'w') as fp:
@@ -86,18 +94,20 @@ class TestUploadScript(BaseIntegrationTest):
                 'fn_id': self.f3raw.pk,
                 }}, fp)
         # Check bakcup jobs before and after
-        pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
-            'sf_id': self.f3sf.pk, 'isdir': self.f3sf.filetype.is_folder})
-        self.assertEqual(pdcjobs.count(), 0)
-        self.assertEqual(rm.PDCBackedupFile.objects.filter(success=True, is_dir=self.f3sf.filetype.is_folder, storedfile=self.f3sf).count(), 0)
+        cmsjobs = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs={
+            'sf_id': self.f3sf.pk, 'token': self.token})
+        self.assertEqual(cmsjobs.count(), 0)
         # Can use subproc run here since the process will finish - no need to sleep/run jobs
         cmd = ['python3', 'rawstatus/file_inputs/upload.py', '--files', fullp, '--token', self.user_token]
         sp = subprocess.run(cmd, stderr=subprocess.PIPE)
-        explines = [f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file with ID {self.f3raw.pk} was "done"']
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: done']
         for out, exp in zip(sp.stderr.decode('utf-8').strip().split('\n'), explines):
-            self.assertEqual(re.sub('.*producer.worker - ', '', out), exp)
-        self.assertEqual(pdcjobs.count(), 1)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            self.assertEqual(out, exp)
+        self.assertEqual(cmsjobs.count(), 1)
 
     def test_new_file(self):
         # Use same file as f3sf but actually take its md5 and therefore it is new
@@ -111,12 +121,16 @@ class TestUploadScript(BaseIntegrationTest):
         new_raw = rm.RawFile.objects.last()
         self.assertEqual(new_raw.pk, old_raw.pk + 1)
         sf = rm.StoredFile.objects.last()
-        self.assertEqual(sf.filename, self.f3sf.filename)
+        self.assertEqual(sf.filename, f'{self.f3sf.filename}.zip')
         self.assertEqual(sf.path, settings.TMPPATH)
         self.assertEqual(sf.servershare.name, settings.TMPSHARENAME)
         self.assertFalse(sf.checked)
+        # Run rsync
+        self.run_job()
+        # Run classify
         self.run_job()
         sf.refresh_from_db()
+        self.assertEqual(sf.filename, self.f3sf.filename)
         try:
             spout, sperr = sp.communicate(timeout=10)
         except subprocess.TimeoutExpired:
@@ -125,23 +139,30 @@ class TestUploadScript(BaseIntegrationTest):
             os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
             spout, sperr = sp.communicate()
             print(sperr.decode('utf-8'))
-            raise
+            self.fail()
+        cjob = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs__sf_id=sf.pk).get()
+        new_raw.refresh_from_db()
+        self.assertEqual(cjob.task_set.get().state, states.SUCCESS)
+        self.assertFalse(new_raw.claimed) # not QC
+        self.assertEqual(jm.Job.objects.filter(funcname='create_pdc_archive', kwargs__sf_id=sf.pk).count(), 1)
         self.assertTrue(sf.checked)
-        explines = ['Registering 1 new file(s)', 
-                f'File {new_raw.name} matches remote file {new_raw.name} with ID {new_raw.pk}',
-                f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
-                f'State for file {new_raw.name} with ID {new_raw.pk} was: transfer',
-                f'Uploading {fullp} to {self.live_server_url}',
-                f'Succesful transfer of file {fullp}',
-                f'Checking remote state for file {new_raw.name} with ID {new_raw.pk}',
+        zipboxpath = os.path.join(os.getcwd(), 'zipbox', f'{self.f3sf.filename}.zip')
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                'Registering 1 new file(s)', 
+                f'File {new_raw.name} has ID {new_raw.pk}, instruction: transfer',
+                f'Uploading {zipboxpath} to {self.live_server_url}',
+                f'Succesful transfer of file {zipboxpath}',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
         for out, exp in zip(outlines, explines):
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
-        lastexp = f'State for file with ID {new_raw.pk} was "done"'
+        lastexp = f'File {new_raw.name} has ID {new_raw.pk}, instruction: done'
         self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
+        # FIXME check actual classifying (fake sqlite .d/analysis.tdf file)
+        # check user/lib transfer - no classify
 
     def test_transfer_again(self):
         '''Transfer already existing file, e.g. overwrites of previously
@@ -151,6 +172,7 @@ class TestUploadScript(BaseIntegrationTest):
         fullp = os.path.join(fpath, self.f3sf.filename)
         self.f3raw.source_md5 = self.actual_md5
         self.f3raw.claimed = False
+        self.f3raw.producer = self.adminprod
         self.f3raw.save()
         self.f3sf.checked = False
         self.f3sfmz.delete()
@@ -164,6 +186,9 @@ class TestUploadScript(BaseIntegrationTest):
         sleep(1)
         self.f3sf.refresh_from_db()
         self.assertFalse(self.f3sf.checked)
+        # rsync
+        self.run_job()
+        # classify
         self.run_job()
         try:
             spout, sperr = sp.communicate(timeout=10)
@@ -173,25 +198,24 @@ class TestUploadScript(BaseIntegrationTest):
             os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
             spout, sperr = sp.communicate()
             print(sperr.decode('utf-8'))
-            raise
+            self.fail()
         self.f3sf.refresh_from_db()
         self.assertTrue(self.f3sf.checked)
         self.assertEqual(self.f3sf.md5, self.f3raw.source_md5)
-        explines = ['Registering 1 new file(s)', 
-                f'File {self.f3raw.name} matches remote file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'File {self.f3raw.name} is already registered and has MD5 {self.f3raw.source_md5}. Already stored = False',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: transfer',
-                f'Uploading {fullp} to {self.live_server_url}',
-                f'Succesful transfer of file {fullp}',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
+        zipboxpath = os.path.join(os.getcwd(), 'zipbox', f'{self.f3sf.filename}.zip')
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                'Registering 1 new file(s)', 
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: transfer',
+                f'Uploading {zipboxpath} to {self.live_server_url}',
+                f'Succesful transfer of file {zipboxpath}',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
         for out, exp in zip(outlines, explines):
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
             out = re.sub('.* - INFO - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
             self.assertEqual(out, exp)
-        lastexp = f'State for file with ID {self.f3raw.pk} was "done"'
+        lastexp = f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: done'
         self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
 
     def test_transfer_same_name(self):
@@ -206,17 +230,18 @@ class TestUploadScript(BaseIntegrationTest):
         tmpdir = mkdtemp()
         outbox = os.path.join(tmpdir, 'testoutbox')
         os.makedirs(outbox, exist_ok=True)
-        shutil.copy(fullp, os.path.join(outbox, self.f3sf.filename))
+        shutil.copytree(fullp, os.path.join(outbox, self.f3sf.filename))
         timestamp = os.path.getctime(os.path.join(outbox, self.f3sf.filename))
         with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
             json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
                 'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
-                'filetype_id': self.ft.pk}, fp)
+                'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
+                'injection_waittime': 5}, fp)
         self.assertFalse(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
 
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
-        sleep(2)
+        sleep(4)
         sp.terminate()
         # Properly kill children since upload.py uses multiprocessing
         os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
@@ -225,16 +250,15 @@ class TestUploadScript(BaseIntegrationTest):
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newraw.pk, lastraw.pk + 1)
         self.assertEqual(newsf.pk, lastsf.pk)
-        explines = [f'Checking for new files in {outbox}',
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'Checking for new files in {outbox}',
                 f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
                 'Registering 1 new file(s)',
-                f'File {newraw.name} matches remote file {newraw.name} with ID {newraw.pk}',
-                f'Checking remote state for file {newraw.name} with ID {newraw.pk}',
-                f'State for file {newraw.name} with ID {newraw.pk} was: transfer',
-                f'Uploading {os.path.join(outbox, newraw.name)} to {self.live_server_url}',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
+                f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Moving file {newraw.name} to skipbox',
                 f'Another file in the system has the same name and is stored in the same path '
-                f'({self.f3sf.servershare.name} - {self.f3sf.path}/{self.f3sf.filename}. Please '
+                f'({self.f3sf.servershare.name} - {self.f3sf.path}/{self.f3sf.filename}). Please '
                 'investigate, possibly change the file name or location of this or the other file '
                 'to enable transfer without overwriting.']
         for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
@@ -242,6 +266,7 @@ class TestUploadScript(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.inboxcollect - ', '', out)
             out = re.sub('.* - WARNING - .producer.worker - ', '', out)
             out = re.sub('.* - INFO - root - ', '', out)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
             self.assertEqual(out, exp)
         self.assertTrue(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
 
@@ -249,10 +274,13 @@ class TestUploadScript(BaseIntegrationTest):
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
         rawfn = rm.RawFile.objects.create(source_md5=self.actual_md5, name='fake_oldname',
-                producer=self.prod, size=123, date=timezone.now(), claimed=False)
+                producer=self.adminprod, size=123, date=timezone.now(), claimed=False)
         lastsf = rm.StoredFile.objects.last()
         sp = self.run_script(fullp)
         sleep(1)
+        # Run the rsync
+        self.run_job()
+        # Run the raw classification
         self.run_job()
         try:
             spout, sperr = sp.communicate(timeout=10)
@@ -262,7 +290,7 @@ class TestUploadScript(BaseIntegrationTest):
             os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
             spout, sperr = sp.communicate()
             print(sperr.decode('utf-8'))
-            raise
+            self.fail()
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newsf.pk, lastsf.pk + 1)
         self.assertEqual(rawfn.pk, newsf.rawfile_id)
@@ -275,6 +303,7 @@ class TestUploadScript(BaseIntegrationTest):
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
         self.f3raw.claimed = False
+        self.f3raw.producer = self.adminprod
         self.f3raw.save()
         self.f3sf.checked = False
         self.f3sfmz.delete()
@@ -310,13 +339,242 @@ class TestUploadScript(BaseIntegrationTest):
             os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
             spout, sperr = sp.communicate()
             print(sperr.decode('utf-8'))
-            raise
-        explines = [f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file {self.f3raw.name} with ID {self.f3raw.pk} was: wait',
-                f'Checking remote state for file {self.f3raw.name} with ID {self.f3raw.pk}',
-                f'State for file with ID {self.f3raw.pk} was "done"']
+            self.fail()
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: wait',
+                f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: done']
         for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
-            self.assertEqual(re.sub('.*producer.worker - ', '', out), exp)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            out = re.sub('.*producer.worker - ', '', out)
+            self.assertEqual(out, exp)
+
+    def test_transfer_qc(self):
+        # Test trying to upload file with same name/path but diff MD5
+        self.token = 'prodtoken_noadminprod'
+        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
+        dm.Operator.objects.create(user=self.user) # need operator for QC jobs
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        con = sqlite3.Connection(os.path.join(fullp, 'analysis.tdf'))
+        con.execute(f'UPDATE GlobalMetadata SET Value="QC" WHERE Key="{settings.BRUKERKEY}"')
+        con.commit()
+        old_raw = rm.RawFile.objects.last()
+        tmpdir = mkdtemp()
+        outbox = os.path.join(tmpdir, 'testoutbox')
+        os.makedirs(outbox, exist_ok=True)
+        shutil.copytree(fullp, os.path.join(outbox, self.f3sf.filename))
+        timestamp = os.path.getctime(os.path.join(outbox, self.f3sf.filename))
+        lastraw = rm.RawFile.objects.last()
+        lastsf = rm.StoredFile.objects.last()
+        with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
+            json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
+
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
+                'injection_waittime': 5}, fp)
+        sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
+        sleep(3)
+        newraw = rm.RawFile.objects.last()
+        newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newraw.pk, lastraw.pk + 1)
+        self.assertEqual(newsf.pk, lastsf.pk + 1)
+        self.assertFalse(newraw.claimed)
+        # Run rsync
+        self.run_job()
+        mvjobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={
+            'sf_id': newsf.pk, 'dstsharename': settings.PRIMARY_STORAGESHARENAME,
+            'dst_path': os.path.join(settings.QC_STORAGE_DIR, self.prod.name)})
+        qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
+                kwargs__params=['--instrument', self.msit.name])
+        self.assertEqual(mvjobs.count(), 0)
+        self.assertEqual(qcjobs.count(), 0)
+        # Run classify
+        self.run_job()
+        newraw.refresh_from_db()
+        self.assertTrue(newraw.claimed)
+        self.assertEqual(mvjobs.count(), 1)
+        self.assertEqual(qcjobs.count(), 1)
+        # Must kill this script, it will keep scanning outbox
+        try:
+            spout, sperr = sp.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+        zipboxpath = os.path.join(tmpdir, 'zipbox', f'{self.f3sf.filename}.zip')
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'Checking for new files in {outbox}',
+                f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
+                'Registering 1 new file(s)',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
+                f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
+                f'Succesful transfer of file {zipboxpath}',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: done',
+                f'Removing file {newraw.name} from outbox',
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines , explines):
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - .producer.inboxcollect - ', '', out)
+            out = re.sub('.* - WARNING - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            self.assertEqual(out, exp)
+
+    def test_file_being_acquired(self):
+        # Test trying to upload file with same name/path but diff MD5
+        self.token = 'prodtoken_noadminprod'
+        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        old_raw = rm.RawFile.objects.last()
+        tmpdir = mkdtemp()
+        outbox = os.path.join(tmpdir, 'testoutbox')
+        os.makedirs(outbox, exist_ok=True)
+        shutil.copytree(fullp, os.path.join(outbox, self.f3sf.filename))
+        timestamp = os.path.getctime(os.path.join(outbox, self.f3sf.filename))
+        lastraw = rm.RawFile.objects.last()
+        lastsf = rm.StoredFile.objects.last()
+        with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
+            json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
+
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'filetype_id': self.ft.pk, 'acq_process_names': ['flock'],
+                'injection_waittime': 0}, fp)
+        # Lock analysis.tdf for 3 seconds to pretend we are the acquisition software
+        subprocess.Popen(f'flock {os.path.join(outbox, self.f3sf.filename, "analysis.tdf")} sleep 3', shell=True)
+        # Lock another file to simulate that the acquisition software stays open after acquiring
+        subprocess.Popen(f'flock manage.py sleep 20', shell=True)
+        sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
+        sleep(13)
+        newraw = rm.RawFile.objects.last()
+        newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newraw.pk, lastraw.pk + 1)
+        self.assertEqual(newsf.pk, lastsf.pk + 1)
+        # Run rsync
+        self.run_job()
+        mvjobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={
+            'sf_id': newsf.pk, 'dstsharename': settings.PRIMARY_STORAGESHARENAME,
+            'dst_path': os.path.join(settings.QC_STORAGE_DIR, self.prod.name)})
+        qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
+                kwargs__params=['--instrument', self.msit.name])
+        # Run classify
+        self.run_job()
+        newraw.refresh_from_db()
+        self.assertFalse(newraw.claimed)
+        # FIXME make this the dset-add job
+        #self.assertEqual(mvjobs.count(), 1)
+        self.assertEqual(qcjobs.count(), 0)
+        # Must kill this script, it will keep scanning outbox
+        try:
+            spout, sperr = sp.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+        print(sperr.decode('utf-8'))
+        zipboxpath = os.path.join(tmpdir, 'zipbox', f'{self.f3sf.filename}.zip')
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'Checking for new files in {outbox}',
+                f'Will wait until acquisition status ready, currently: File {os.path.join(outbox, newraw.name)} is opened by flock',
+                f'Checking for new files in {outbox}',
+                f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
+                'Registering 1 new file(s)',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
+                f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
+                f'Succesful transfer of file {zipboxpath}',
+                # This is enough, afterwards the 'Checking new files in outbox' starts
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines , explines):
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - .producer.inboxcollect - ', '', out)
+            out = re.sub('.* - WARNING - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            self.assertEqual(out, exp)
+
+    def test_transfer_dset_assoc(self):
+        # Test trying to upload file with same name/path but diff MD5
+        self.token = 'prodtoken_noadminprod'
+        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
+        dm.Operator.objects.create(user=self.user) # need operator for QC jobs
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        con = sqlite3.Connection(os.path.join(fullp, 'analysis.tdf'))
+        con.execute(f'UPDATE GlobalMetadata SET Value="{self.oldds.pk}" WHERE Key="{settings.BRUKERKEY}"')
+        con.commit()
+        old_raw = rm.RawFile.objects.last()
+        tmpdir = mkdtemp()
+        outbox = os.path.join(tmpdir, 'testoutbox')
+        os.makedirs(outbox, exist_ok=True)
+        shutil.copytree(fullp, os.path.join(outbox, self.f3sf.filename))
+        timestamp = os.path.getctime(os.path.join(outbox, self.f3sf.filename))
+        lastraw = rm.RawFile.objects.last()
+        lastsf = rm.StoredFile.objects.last()
+        with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
+            json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
+
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
+                'injection_waittime': 5}, fp)
+        sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
+        sleep(3)
+        newraw = rm.RawFile.objects.last()
+        newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newraw.pk, lastraw.pk + 1)
+        self.assertEqual(newsf.pk, lastsf.pk + 1)
+        self.assertFalse(newraw.claimed)
+        # Run rsync
+        self.run_job()
+        mvjobs = jm.Job.objects.filter(funcname='move_files_storage', kwargs={
+            'dset_id': self.oldds.pk, 'rawfn_ids': [newraw.pk]})
+        qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
+                kwargs__params=['--instrument', self.msit.name])
+        self.assertEqual(mvjobs.count(), 0)
+        self.assertEqual(qcjobs.count(), 0)
+        # Run classify
+        self.run_job()
+        newraw.refresh_from_db()
+        self.assertTrue(newraw.claimed)
+        self.assertEqual(mvjobs.count(), 1)
+        self.assertEqual(qcjobs.count(), 0)
+        # Must kill this script, it will keep scanning outbox
+        try:
+            spout, sperr = sp.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+        zipboxpath = os.path.join(tmpdir, 'zipbox', f'{self.f3sf.filename}.zip')
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                f'Checking for new files in {outbox}',
+                f'Found new file: {os.path.join(outbox, newraw.name)} produced {timestamp}',
+                'Registering 1 new file(s)',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
+                f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
+                f'Succesful transfer of file {zipboxpath}',
+                f'File {newraw.name} has ID {newraw.pk}, instruction: done',
+                f'Removing file {newraw.name} from outbox',
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines , explines):
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - .producer.inboxcollect - ', '', out)
+            out = re.sub('.* - WARNING - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            self.assertEqual(out, exp)
+
 #    def test_libfile(self):
 #    
 #    def test_userfile(self):
@@ -350,12 +608,12 @@ class TransferStateTest(BaseFilesTest):
     def test_transferstate_done(self):
         sf = self.doneraw.storedfile_set.get()
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.doneraw.id})
+                data={'token': self.token, 'fnid': self.doneraw.id, 'desc': False})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
-        pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
-            'sf_id': sf.pk, 'isdir': sf.filetype.is_folder})
-        self.assertEqual(pdcjobs.count(), 1)
+        cmsjobs = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs={
+            'sf_id': sf.pk, 'token': self.token})
+        self.assertEqual(cmsjobs.count(), 1)
 
     def test_trfstate_done_libfile(self):
         '''Test if state done is correctly reported for uploaded library file,
@@ -367,14 +625,21 @@ class TransferStateTest(BaseFilesTest):
         sflib = rm.StoredFile.objects.create(rawfile=libraw, md5=libraw.source_md5,
                 filetype=self.ft, checked=True, filename=libraw.name,
                     servershare=self.sstmp, path='')
-        lf = am.LibraryFile.objects.create(sfile=sflib, description='This is a libfile')
+        libq = am.LibraryFile.objects.filter(sfile=sflib, description='This is a libfile')
+        self.assertFalse(libq.exists())
+        libtoken = rm.UploadToken.objects.create(user=self.user, token='libtoken123',
+                expires=timezone.now() + timedelta(1), expired=False,
+                producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.LIBRARY)
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': libraw.id})
+                data={'token': libtoken.token, 'fnid': libraw.id, 'desc': 'This is a libfile'})
+        self.assertEqual(resp.status_code, 200)
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'done')
+        self.assertTrue(libq.exists())
         pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
             'sf_id': sflib.pk, 'isdir': sflib.filetype.is_folder})
         self.assertEqual(pdcjobs.count(), 1)
+        lf = libq.get()
         jobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={'sf_id': sflib.pk,
             'dst_path': settings.LIBRARY_FILE_PATH,
             'newname': f'libfile_{lf.pk}_{sflib.filename}'})
@@ -384,28 +649,26 @@ class TransferStateTest(BaseFilesTest):
         '''Test if state done is correctly reported for uploaded userfile,
         and that archiving and move jobs exist for it'''
         # Create userfile during upload
-        usrfraw, _ = rm.RawFile.objects.update_or_create(name='usrfiledone',
-                producer=self.prod, source_md5='usrfmd5', size=100, 
-                defaults={'claimed': True, 'date': timezone.now()})
-        uft, _ = rm.StoredFileType.objects.get_or_create(name='ufileft', filetype='tst',
-                is_rawdata=False)
-        sfusr, _ = rm.StoredFile.objects.update_or_create(rawfile=usrfraw,
-                md5=usrfraw.source_md5, filetype=uft,
-                defaults={'filename': usrfraw.name, 'servershare': self.sstmp,
-                    'path': '', 'checked': True})
-        usedtoken, _ = rm.UploadToken.objects.update_or_create(user=self.user, token='usrffailtoken',
-                expired=False, producer=self.prod, filetype=uft,
-                uploadtype=rm.UploadToken.UploadFileType.USERFILE, defaults={
-                    'expires': timezone.now() + timedelta(1)})
-        userfile, _ = rm.UserFile.objects.get_or_create(sfile=sfusr,
-                description='This is a userfile', upload=usedtoken)
+        usrfraw = rm.RawFile.objects.create(name='usrfiledone', producer=self.prod,
+                source_md5='newusrfmd5', size=100, claimed=True, date=timezone.now())
+        sfusr = rm.StoredFile.objects.create(rawfile=usrfraw, md5=usrfraw.source_md5, filetype=self.uft,
+                filename=usrfraw.name, servershare=self.sstmp, path='', checked=True)
+        usertoken = rm.UploadToken.objects.create(user=self.user, token='usrffailtoken',
+                expired=False, producer=self.prod, filetype=self.uft,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE, 
+                expires=timezone.now() + timedelta(1))
+        desc = 'This is a userfile'
+        ufq = rm.UserFile.objects.filter(sfile=sfusr, description=desc, upload=usertoken)
+        self.assertFalse(ufq.exists())
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': usedtoken.token, 'fnid': usrfraw.pk})
+                data={'token': usertoken.token, 'fnid': usrfraw.pk, 'desc': desc})
         rj = resp.json()
+        self.assertTrue(ufq.exists())
         self.assertEqual(rj['transferstate'], 'done')
         pdcjobs = jm.Job.objects.filter(funcname='create_pdc_archive', kwargs={
             'sf_id': sfusr.pk, 'isdir': sfusr.filetype.is_folder})
         self.assertEqual(pdcjobs.count(), 1)
+        userfile = ufq.get()
         jobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={'sf_id': sfusr.pk,
             'dst_path': settings.USERFILEDIR,
             'newname': f'userfile_{usrfraw.pk}_{sfusr.filename}'})
@@ -413,7 +676,7 @@ class TransferStateTest(BaseFilesTest):
 
     def test_transferstate_transfer(self):
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.registered_raw.id})
+                data={'token': self.token, 'fnid': self.registered_raw.id, 'desc': False})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'transfer')
 
@@ -424,7 +687,7 @@ class TransferStateTest(BaseFilesTest):
             'sf_id': self.trfsf.pk, 'src_path': upload_file,
             'dst_sharename': settings.TMPSHARENAME}, timestamp=timezone.now())
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.trfraw.id})
+                data={'token': self.token, 'fnid': self.trfraw.id, 'desc': False})
         rj = resp.json()
         self.assertEqual(rj['transferstate'], 'wait')
         # TODO test for no-rsync-job exists (wait but talk to admin)
@@ -434,17 +697,22 @@ class TransferStateTest(BaseFilesTest):
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 405)
         resp = self.cl.post(self.url, content_type='application/json', data={'hello': 'test'})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn('No token', resp.json()['error'])
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': 'wrongid', 'fnid': 1})
+                data={'token': 'wrongid', 'fnid': 1, 'desc': False})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('invalid or expired', resp.json()['error'])
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': 99})
+                data={'token': 'self.token'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('Bad request', resp.json()['error'])
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': self.token, 'fnid': 99, 'desc': False})
         self.assertEqual(resp.status_code, 404)
         # token expired
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.nottoken, 'fnid': 1})
+                data={'token': self.nottoken, 'fnid': 1, 'desc': False})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('invalid or expired', resp.json()['error'])
         # wrong producer
@@ -452,44 +720,44 @@ class TransferStateTest(BaseFilesTest):
         p2raw = rm.RawFile.objects.create(name='p2file1', producer=prod2, source_md5='p2rawmd5',
                 size=100, date=timezone.now(), claimed=False)
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': p2raw.id})
+                data={'token': self.token, 'fnid': p2raw.id, 'desc': False})
         self.assertEqual(resp.status_code, 403)
         self.assertIn('is not from producer', resp.json()['error'])
         # raw with multiple storedfiles -> conflict
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': self.token, 'fnid': self.multisf1.rawfile_id})
+                data={'token': self.token, 'fnid': self.multisf1.rawfile_id, 'desc': False})
         self.assertEqual(resp.status_code, 409)
         self.assertIn('there are multiple', resp.json()['error'])
-
-    def test_transfer_archive_only(self):
-        # Check if file is deleted directly after upload with a purge job
-        # TODO check if file goes to designated sensititve data storage from 
-        # where it is archived and purged (non-accessible)
-        uploadtoken = rm.UploadToken.objects.create(user=self.user, token='archiveonly',
-                expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft, archive_only=True, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
-        sf = self.doneraw.storedfile_set.get()
+        # userfile without description
+        usertoken = rm.UploadToken.objects.create(user=self.user, token='usrffailtoken',
+                expired=False, producer=self.prod, filetype=self.uft,
+                uploadtype=rm.UploadToken.UploadFileType.USERFILE, 
+                expires=timezone.now() + timedelta(1))
         resp = self.cl.post(self.url, content_type='application/json',
-                data={'token': uploadtoken.token, 'fnid': sf.rawfile_id})
-        jobs = jm.Job.objects.filter(funcname='purge_files', kwargs={'sf_ids': [sf.pk],
-            'need_archive': True})
-        self.assertEqual(jobs.count(), 1)
+                data={'token': usertoken.token, 'fnid': self.doneraw.id, 'desc': False})
+        rj = resp.json()
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual('Library or user files need a description', resp.json()['error'])
 
 
 class TestFileRegistered(BaseFilesTest):
-    url = '/files/register/'
+    url = '/files/transferstate/'
 
     def test_auth_etc_fails(self):
         # GET
         resp = self.cl.get(self.url)
         self.assertEqual(resp.status_code, 405)
-        # No params
+        # No token
         resp = self.cl.post(self.url, content_type='application/json',
                 data={'hello': 'test'})
+        self.assertEqual(resp.status_code, 403)
+        # No other param
+        resp = self.cl.post(self.url, content_type='application/json',
+                data={'token': 'test'})
         self.assertEqual(resp.status_code, 400)
         # Missing client ID /token (False)
         stddata = {'fn': self.registered_raw.name, 'token': False, 'size': 200,
-                'date': 'fake', 'md5': 'fake'}
+                'date': time(), 'md5': 'fake'}
         resp = self.cl.post(self.url, content_type='application/json',
                 data=stddata)
         self.assertEqual(resp.status_code, 403)
@@ -504,7 +772,7 @@ class TestFileRegistered(BaseFilesTest):
         self.assertIn('invalid or expired', resp.json()['error'])
         # Wrong date
         resp = self.cl.post(self.url, content_type='application/json',
-                data={**stddata, 'token': self.token})
+                data={**stddata, 'token': self.token, 'date': 'fake'})
         self.assertEqual(resp.status_code, 400)
 
     def test_normal(self):
@@ -517,7 +785,9 @@ class TestFileRegistered(BaseFilesTest):
         newraws = rm.RawFile.objects.filter(source_md5='fake', #date=nowdate,
                 name=self.registered_raw.name, producer=self.prod, size=100) 
         self.assertEqual(newraws.count(), 1)
-        self.assertTrue(nowdate - newraws.get().date < timedelta(seconds=60))
+        newraw = newraws.get()
+        self.assertTrue(nowdate - newraw.date < timedelta(seconds=60))
+        self.assertEqual(resp.json(), {'transferstate': 'transfer', 'fn_id': newraw.pk})
 
     def test_register_again(self):
         # create a rawfile
@@ -532,8 +802,8 @@ class TestFileRegistered(BaseFilesTest):
         newraws = rm.RawFile.objects.filter(source_md5='fake',
                 name=self.registered_raw.name, producer=self.prod, size=100) 
         self.assertEqual(newraws.count(), 1)
-        self.assertEqual(resp.json()['state'], 'error')
-        self.assertIn('is already registered', resp.json()['msg'])
+        newraw = newraws.get()
+        self.assertEqual(resp.json(), {'transferstate': 'transfer', 'fn_id': newraw.pk})
 
 
 class TestFileTransfer(BaseFilesTest):
@@ -641,44 +911,7 @@ class TestFileTransfer(BaseFilesTest):
         self.assertEqual(sf.filename, fname)
         self.registered_raw.refresh_from_db()
         self.assertEqual(self.registered_raw.name, fname)
-
-    def test_libfile(self):
-        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token='libfile',
-                uploadtype=rm.UploadToken.UploadFileType.LIBRARY,
-                expires=timezone.now() + timedelta(1), expired=False,
-                producer=self.prod, filetype=self.ft)
-        resp, upload_content = self.do_transfer_file(desc='This is a libfile', token='libfile')
-        self.do_check_okfile(resp, upload_content)
-        libs = am.LibraryFile.objects.filter(sfile__rawfile=self.registered_raw, description='This is a libfile')
-        self.assertEqual(libs.count(), 1)
     
-    def test_userfile(self):
-        token = 'userfile'
-        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
-                expires=timezone.now() + timedelta(1), expired=False,
-                uploadtype=rm.UploadToken.UploadFileType.USERFILE,
-                producer=self.prod, filetype=self.uft)
-        resp, upload_content = self.do_transfer_file(desc='This is a userfile', token=token)
-        self.do_check_okfile(resp, upload_content)
-        ufiles = rm.UserFile.objects.filter(sfile__rawfile=self.registered_raw,
-                description='This is a userfile', upload__token=token)
-        self.assertEqual(ufiles.count(), 1)
-        ufiles.delete()
-    
-    def test_userlib_fail(self):
-        token = 'userfilefail'
-        uploadtoken = rm.UploadToken.objects.create(user=self.user, token=token,
-                expires=timezone.now() + timedelta(1), expired=False,
-                uploadtype=rm.UploadToken.UploadFileType.USERFILE,
-                producer=self.prod, filetype=self.uft)
-        resp, upload_content = self.do_transfer_file(token=token)
-        self.assertEqual(resp.status_code, 403)
-        self.assertIn('Library or user files need a description', resp.json()['error'])
-
-#        elif self.uploadtoken.is_library and not libdesc:
-#            self.assertEqual(resp.status_code, 403)
-#            self.assertIn('Library file needs a description', resp.json()['error'])
-
 
 class TestArchiveFile(BaseFilesTest):
     url = '/files/archive/'
@@ -747,7 +980,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
     zipsizes = {'kantele_upload.sh': 337,
             'kantele_upload.bat': 185,
-            'upload.py': 28768,
+            'upload.py': 28503,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 689,
@@ -812,21 +1045,20 @@ class TestDownloadUploadScripts(BaseFilesTest):
             names = zipfn.namelist()
             with zipfn.open('transfer_config.json') as tcfp:
                 tfconfig = json.load(tcfp)
-        self.assertEqual(len(names), 10)
+        self.assertEqual(len(names), 11)
         for fn in ['requests-2.28.1-py3-none-any.whl', 'certifi-2022.9.14-py3-none-any.whl', 
                 'requests_toolbelt-0.9.1-py2.py3-none-any.whl', 'idna-3.4-py3-none-any.whl',
-                'charset_normalizer-2.1.1-py3-none-any.whl', 'urllib3-1.26.12-py2.py3-none-any.whl'
+                'charset_normalizer-2.1.1-py3-none-any.whl', 'urllib3-1.26.12-py2.py3-none-any.whl',
+                'psutil-6.1.0-cp37-abi3-win_amd64.whl',
                 ]:
             self.assertIn(fn, names)
         for key,val in {'outbox': f'{datadisk}\outbox',
                 'zipbox': f'{datadisk}\zipbox',
                 'donebox': f'{datadisk}\donebox',
-                'producerhostname': self.prod.name,
                 'client_id': self.prod.client_id,
                 'filetype_id': self.prod.msinstrument.filetype_id,
-                'is_folder': 1 if self.prod.msinstrument.filetype.is_folder else 0,
+                'raw_is_folder': 1 if self.prod.msinstrument.filetype.is_folder else 0,
                 'host': settings.KANTELEHOST,
-                'md5_stable_fns': self.prod.msinstrument.filetype.stablefiles,
                 }.items():
             self.assertEqual(tfconfig[key], val)
         for fn in ['transfer.bat', 'upload.py', 'setup.bat']:
@@ -955,11 +1187,11 @@ class TestRenameFile(BaseIntegrationTest):
 class TestDeleteFile(BaseIntegrationTest):
     jobname = 'purge_files'
 
-    def test_file(self):
+    def test_dir(self):
         kwargs = {'sf_ids': [self.f3sf.pk]}
         file_path = os.path.join(self.f3path, self.f3sf.filename)
         self.assertTrue(os.path.exists(file_path))
-        self.assertFalse(os.path.isdir(file_path))
+        self.assertTrue(os.path.isdir(file_path))
 
         job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
                 state=jj.Jobstates.PENDING)
@@ -971,16 +1203,16 @@ class TestDeleteFile(BaseIntegrationTest):
         self.assertTrue(self.f3sf.deleted)
         self.assertTrue(self.f3sf.purged)
 
-    def test_dir(self):
-        self.f3sf.filename = self.run1.name
-        self.f3sf.path = os.path.split(self.storloc)[0]
+    def test_file(self):
+        self.f3sf.path = os.path.join(self.f3sf.path, self.f3sf.filename)
+        self.f3sf.filename = 'analysis.tdf'
         self.f3sf.save()
-        self.ft.is_folder = True
+        self.ft.is_folder = False
         self.ft.save()
-        # storloc, a dir, is now the file
-        file_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], self.storloc)
+        file_path = os.path.join(self.f3sf.path, self.f3sf.filename)
+        file_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], file_path)
         self.assertTrue(os.path.exists(file_path))
-        self.assertTrue(os.path.isdir(file_path))
+        self.assertFalse(os.path.isdir(file_path))
 
         kwargs = {'sf_ids': [self.f3sf.pk]}
         job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
@@ -1018,8 +1250,8 @@ class TestDeleteFile(BaseIntegrationTest):
         self.assertTrue(badsf.deleted)
         self.assertTrue(badsf.purged)
 
-    def test_fail_expect_dir(self):
-        self.ft.is_folder = True
+    def test_fail_expect_file(self):
+        self.ft.is_folder = False
         self.ft.save()
         kwargs = {'sf_ids': [self.f3sf.pk]}
         job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
@@ -1028,22 +1260,23 @@ class TestDeleteFile(BaseIntegrationTest):
         task = job.task_set.get()
         self.assertEqual(task.state, states.FAILURE)
         path_noshare = os.path.join(self.f3sf.path, self.f3sf.filename)
-        full_path = os.path.join(self.f3path, self.f3sf.filename)
-        msg = (f'When trying to delete file {path_noshare}, expected a directory, but encountered '
-                'a file')
+        full_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], path_noshare)
+        msg = (f'When trying to delete file {path_noshare}, expected a file, but encountered '
+                'a directory')
         self.assertEqual(task.taskerror.message, msg)
         self.assertTrue(os.path.exists(full_path))
         self.f3sf.refresh_from_db()
         self.assertFalse(self.f3sf.deleted)
         self.assertFalse(self.f3sf.purged)
 
-    def test_fail_expect_file(self):
-        self.f3sf.filename = self.run1.name
-        self.f3sf.path = os.path.split(self.storloc)[0]
+    def test_fail_expect_dir(self):
+        self.f3sf.path = os.path.join(self.f3sf.path, self.f3sf.filename)
+        self.f3sf.filename = 'analysis.tdf'
         self.f3sf.save()
-        file_path = os.path.join(self.f3path)
+        path_noshare = os.path.join(self.f3sf.path, self.f3sf.filename)
+        file_path = os.path.join(settings.SHAREMAP[self.ssnewstore.name], path_noshare)
         self.assertTrue(os.path.exists(file_path))
-        self.assertTrue(os.path.isdir(file_path))          
+        self.assertFalse(os.path.isdir(file_path))          
 
         kwargs = {'sf_ids': [self.f3sf.pk]}
         job = jm.Job.objects.create(funcname=self.jobname, kwargs=kwargs, timestamp=timezone.now(),
@@ -1051,9 +1284,8 @@ class TestDeleteFile(BaseIntegrationTest):
         self.run_job()
         task = job.task_set.get()
         self.assertEqual(task.state, states.FAILURE)
-        path_noshare = os.path.join(self.f3sf.path, self.f3sf.filename)
-        msg = (f'When trying to delete file {path_noshare}, expected a file, but encountered '
-                'a directory')
+        msg = (f'When trying to delete file {path_noshare}, expected a directory, but encountered '
+                'a file')
         self.assertEqual(task.taskerror.message, msg)
         self.assertTrue(os.path.exists(file_path))
         self.f3sf.refresh_from_db()

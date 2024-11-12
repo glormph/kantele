@@ -4,11 +4,12 @@ import requests
 import shutil
 import subprocess
 import zipfile
+import sqlite3
 from ftplib import FTP
 from urllib.parse import urljoin, urlsplit
 from time import sleep
 from datetime import datetime
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from django.urls import reverse
 
@@ -390,3 +391,75 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id, isdir):
             self.retry(countdown=60)
         except MaxRetriesExceededError:
             raise
+
+
+@shared_task(bind=True, queue=settings.QUEUE_SEARCH_INBOX)
+def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
+    path = os.path.join(settings.SHAREMAP[servershare], path)
+    fpath = os.path.join(path, fname)
+    val = False
+    if ftypename == settings.THERMORAW:
+        with TemporaryDirectory() as tmpdir:
+            cmd = ['docker', 'run', '-v', f'{fpath}:/rawfile/{fname}', '-v', f'{tmpdir}:/outdir',
+                    settings.THERMOREADER_DOCKER, *settings.THERMO_CLASSIFY_CMD, 
+                    '-i', f'/rawfile/{fname}', '-o', f'/outdir/outfn']
+            subprocess.run(cmd)
+            # TODO which errors do we get here?
+            with open(os.path.join(tmpdir, 'outfn.sum.csv')) as fp:
+                header = next(fp).strip().split(',')
+                line = next(fp).strip().split(',')
+            try:
+                val = line[header.index(settings.THERMOKEY)]
+            except IndexError:
+                taskfail_update_db(self.request.id)
+                raise
+        
+    elif ftypename == settings.BRUKERRAW:
+        try:
+            con = sqlite3.Connection(os.path.join(fpath, 'analysis.tdf'))
+        except sqlite3.OperationalError:
+            taskfail_update_db(self.request.id, msg='Cannot open database file, is the '
+                    f'categorization as {settings.BRUKERRAW} of the file correct?')
+            raise
+        try:
+            cur = con.execute('SELECT Value FROM GlobalMetadata WHERE Key=?', (settings.BRUKERKEY,))
+        except sqlite3.DatabaseError as e:
+            if e == 'file is not a database':
+                msg = 'This raw file is not an database, possibly it is corrupted'
+            elif e == 'no such table: GlobalMetadata':
+                msg = 'Could not find correct DB table GlobalMetadata in raw file, contact admin'
+            else:
+                msg = e
+            taskfail_update_db(self.request.id, msg=msg)
+            raise
+        try:
+            val = cur.fetchone()[0]
+        except TypeError:
+            taskfail_update_db(self.request.id, msg=f'Could not get value for key:{settings.BRUKERKEY}, '
+                    'is the file OK and the key correctly specified?')
+            raise
+    # Parse what was found
+    if val == 'QC':
+        is_qc, dset_id = True, False
+    elif val:
+        is_qc = False
+        try:
+            dset_id = int(val)
+        except ValueError:
+            dset_id = False
+    else:
+        # FIXME test also non-classified files
+        is_qc, dset_id = False, False
+
+    url = urljoin(settings.KANTELEHOST, reverse('files:classifiedraw'))
+    postdata = {'token': token, 'fnid': fnid, 'qc': is_qc, 'dset_id': dset_id,
+            'task_id': self.request.id}
+    try:
+        update_db(url, json=postdata)
+    except RuntimeError:
+        try:
+            self.retry(countdown=60)
+        except MaxRetriesExceededError:
+            raise
+
+

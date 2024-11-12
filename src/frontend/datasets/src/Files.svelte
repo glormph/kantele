@@ -8,10 +8,12 @@ import ErrorNotif from './ErrorNotif.svelte';
 let errors = [];
 
 let files = {
+  pendingFiles: [],
   newFiles: {},
   dsfn_order: [],
   newfn_order: [],
 };
+let acceptedPendingFiles = [];
 let addedFiles = {};
 let removed_files = {};
 let findQuery = '';
@@ -24,6 +26,8 @@ let sortascending = {
   'size': true,
   'instrument': true,
 }
+let checkallPending = true;
+$: checkallPending = acceptedPendingFiles.length === files.pendingFiles.length;
 
 let ok_files = [];
 let outside_files = [];
@@ -102,16 +106,48 @@ async function save() {
   fetchFiles();
 }
 
+
 async function fetchFiles() {
   let url = '/datasets/show/files/';
   url = $dataset_id ? url + $dataset_id : url;
 	const response = await getJSON(url);
   for (let [key, val] of Object.entries(response)) { files[key] = val; }
   for (let key in $datasetFiles) { delete($datasetFiles[key]); }
-  for (let [key, val] of Object.entries(response.datasetFiles)) { $datasetFiles[key] = val; }
+  for (let [key, val] of Object.entries(response.datasetFiles)) {
+    $datasetFiles[key] = val;
+  }
+  acceptedPendingFiles = files.pendingFiles.map(x => x[0]);
   addedFiles = {};
   removed_files = {};
 }
+
+function toggleSelectAllPending() {
+  if (acceptedPendingFiles.length < files.pendingFiles.length) {
+    acceptedPendingFiles = files.pendingFiles.map(x => x[0]);
+  } else {
+    acceptedPendingFiles = [];
+  }
+}
+
+async function updatePendingFiles() {
+  const url = '/datasets/save/files/pending/';
+  const rejectedFiles = files.pendingFiles
+    .filter(x => acceptedPendingFiles.indexOf(x[0]) === -1)
+    .map(x => x[0]);
+  let postdata = {
+    dataset_id: $dataset_id,
+    accepted_files: acceptedPendingFiles,
+    rejected_files: rejectedFiles,
+  };
+  const response = await postJSON(url, postdata);
+  if (response.error) {
+    errors = [...errors, response.error];
+  } else {
+    acceptedPendingFiles = [];
+    files.pendingFiles = [];
+  }
+}
+
 
 onMount(async() => {
   fetchFiles();
@@ -121,6 +157,38 @@ onMount(async() => {
 
 <ErrorNotif errors={Object.values(errors).flat()} />
 
+{#if files.pendingFiles.length}
+<article class="message">
+  <div class="message-header">
+    <p>This datasets has {files.pendingFiles.length} pending files from an instrument</p>
+  </div>
+  <div class="message-body">
+  <div class="control">
+    <button class="button" on:click={updatePendingFiles}>
+    {#if acceptedPendingFiles.length}
+      Keep checked files
+    {:else}
+      Reject all files
+    {/if}
+    </button>
+  </div>
+  <div>
+    <label class="checkbox">
+      <input on:click={toggleSelectAllPending} checked={checkallPending} type="checkbox">
+    </label>
+  </div>
+  {#each files.pendingFiles as [pk, fn]}
+  <p>
+    <label class="checkbox">
+      <input bind:group={acceptedPendingFiles} value={pk} type="checkbox">
+      {fn}
+    </label>
+  </p>
+  {/each}
+  </div>
+</article>
+{/if}
+ 
 <div class="content is-small">
   <input class="input is-small" on:keyup={findFiles} bind:value={findQuery} type="text" placeholder="Type a query and press enter to find analyses">
   <div>Showing {files.newfn_order.length} new files ({selectedFiles.length} selected), {files.dsfn_order.length} files in dataset (incl. {Object.keys(removed_files).length}, excl. {Object.keys(addedFiles).length} added files)</div>

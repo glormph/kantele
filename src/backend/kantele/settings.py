@@ -129,9 +129,27 @@ LIBRARY_FILE_PATH = 'databases'
 ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE', False)
 NF_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 
-# hardcoded name for fasta DBs, analysis output
+# hardcoded name for filetypes fasta DBs, analysis output
 DBFA_FT_NAME = 'database'
 ANALYSIS_FT_NAME = 'analysis_output'
+THERMORAW = os.environ.get('THERMORAW', 'thermo_raw_file')
+BRUKERRAW = os.environ.get('BRUKERRAW', 'bruker_raw_file')
+## The following should probably be coded in MSInstrument and settable in admin
+BRUKERKEY = os.environ.get('BRUKERKEY') # e.g. Description, SampleName
+THERMOKEY = os.environ.get('THERMOKEY') # e.g. SampleID
+PROCNAMES = {THERMORAW: ['ThermoFisher.Foundation.AcquisitionService.exe'],
+        BRUKERRAW: ['timsEngine.exe'],
+        }
+# Injection waiting time until file becomes "findable" by psutil Proc.open_files(), in seconds
+# Bruker just gets an extra minute to rule out problem
+INJ_WAITTIMES = {THERMORAW: os.environ.get('THERMO_WAIT', 15 * 60), BRUKERRAW: os.environ.get('BRUKERWAIT', 60)}
+
+THERMOREADER_DOCKER = os.environ.get('THERMOREAD_DOCKER', 'ghcr.io/lehtiolab/kantele-thermorawreader')
+THERMO_CLASSIFY_CMD = ['wine', 'ScanHeadsman.exe', '-u', '-d', '0'] 
+#THERMO_CLASSIFY_OUT
+    # docker run -v {path}:/rawfiles -v {tmpdir}:/outfns {settings.THERMOREAD_DOCKER} wine ScanHeadsman.exe -d0 -i /rawfiles/{fname} -o /outfns/outfn
+
+PRODUCER_ADMIN_NAME = 'admin'
 
 MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 

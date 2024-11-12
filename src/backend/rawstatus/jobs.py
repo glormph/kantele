@@ -107,6 +107,16 @@ class RenameFile(SingleFileJob):
                 {'newname': '{}{}{}'.format(newname, special_type, ext)}))
 
 
+class ClassifyMSRawFile(SingleFileJob):
+    refname = 'classify_msrawfile'
+    task = tasks.classify_msrawfile
+
+    def process(self, **kwargs):
+        sfile = self.getfiles_query(**kwargs)
+        self.run_tasks.append(((kwargs['token'], sfile.id, sfile.filetype.name,
+            sfile.servershare.name, sfile.path, sfile.filename), {}))
+
+
 class MoveSingleFile(SingleFileJob):
     '''Move file from one share/path to another. Technically the same as rename, as you can
     also specify a new filename, but this job is not exposed to the user, and only used

@@ -31,6 +31,7 @@ alljobs = [
         rsjobs.PurgeFiles,
         rsjobs.DownloadPXProject,
         rsjobs.RegisterExternalFile,
+        rsjobs.ClassifyMSRawFile,
         anjobs.RunLongitudinalQCWorkflow,
         anjobs.RunNextflowWorkflow,
         anjobs.RefineMzmls,

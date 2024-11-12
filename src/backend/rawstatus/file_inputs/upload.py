@@ -38,6 +38,7 @@ from time import sleep, time
 from multiprocessing import Process, Queue, set_start_method
 import requests
 import certifi
+import psutil
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 LEDGERFN = 'ledger.json'
@@ -48,14 +49,6 @@ def zipfolder(folder, arcname):
     return shutil.make_archive(arcname, 'zip', folder)
 
 
-def md5(fnpath):
-    hash_md5 = hashlib.md5()
-    with open(fnpath, 'rb') as fp:
-        for chunk in iter(lambda: fp.read(4096), b''):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
 def get_new_file_entry(fn, raw_is_folder):
     if raw_is_folder or os.path.isdir(fn):
         size = sum(os.path.getsize(os.path.join(wpath, subfile))
@@ -64,7 +57,7 @@ def get_new_file_entry(fn, raw_is_folder):
         size = os.path.getsize(fn)
     return {'fpath': fn, 'fname': os.path.basename(fn),
             'md5': False,
-            'fn_id': False,
+            'fnid': False,
             'prod_date': str(os.path.getctime(fn)),
             'size': size,
             'is_dir': raw_is_folder or os.path.isdir(fn),
@@ -130,7 +123,7 @@ def check_in_instrument(config, configfn, logger):
         token_state = 'new'
         token, _h, _d = b64decode(result['user_token']).decode('utf-8').split('|')
         config['token'] = token
-    elif clid:
+    else:
         # Validate/renew existing token
         loginresp = session.get(loginurl, verify=certifi.where())
         valresp = session.post(urljoin(kantelehost, 'files/instruments/check/'),
@@ -138,16 +131,17 @@ def check_in_instrument(config, configfn, logger):
                 json={'token': config['token'], 'client_id': clid},
                 verify=certifi.where()
                 )
-        if valresp.status_code == 403:
+        if clid and valresp.status_code == 403:
+            # Only fetch new tokens if this is instrumewnt with client id
             logger.error('Token expired or invalid, will try to fetch new token')
             del(config['token'])
             # Call itself to get new fresh token
             token_state = check_in_instrument(config, configfn, logger)
             token_state = 'ok' # already new/saved in nested function call
         elif valresp.status_code == 500:
-            return 'Could not check in instrument due to server error, talk to admin'
+            return 'Could not check in with Kantele due to server error, talk to admin'
         elif valresp.status_code != 200:
-            return 'Could not check in instrument, server replied {resp["error"]}'
+            return f'Could not check in with Kantele, server replied {valresp.json()["error"]}'
         else:
             validated = valresp.json()
             if validated['newtoken']:
@@ -155,6 +149,8 @@ def check_in_instrument(config, configfn, logger):
                         f'{validated["expires"]}')
                 token_state = 'new'
                 config['token'] = validated['newtoken']
+            logger.info(f'Token OK, expires on {validated["expires"]}')
+            config['md5_stable_fns'] = validated['stablefiles']
     if token_state == 'new':
         with open(configfn, 'w') as fp:
             json.dump(config, fp)
@@ -166,29 +162,44 @@ def save_ledger(ledger, ledgerfile):
         json.dump(ledger, fp)
 
 
-def register_file(host, url, fn, fn_md5, size, date, cookies, token, claimed, **postkwargs):
+def query_file(host, url, fn, fn_md5, size, date, cookies, token, fnid, desc, logger):
     url = urljoin(host, url)
     postdata = {'fn': fn,
                 'token': token,
                 'md5': fn_md5,
                 'size': size,
                 'date': date,
-                'claimed': claimed,
+                'fnid': fnid,
+                'desc': desc,
                 }
-    if postkwargs:
-        postdata.update(postkwargs)
-    return requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), json=postdata,
-            verify=certifi.where())
+    try:
+        resp = requests.post(url=url, cookies=cookies, headers=get_csrf(cookies, host), 
+                json=postdata, verify=certifi.where())
+    except requests.exceptions.ConnectionError:
+        logger.error('Cannot connect to kantele server trying to query file {fn}, will try later')
+    else:
+        if resp.status_code != 500:
+            resp_j = resp.json()
+        if resp.status_code == 200:
+            logger.info(f'File {fn} has ID {resp_j["fn_id"]}, instruction: {resp_j["transferstate"]}')
+            return {'fnid': resp_j['fn_id'], 'state': resp_j['transferstate']}
+        elif resp.status_code == 403:
+            logger.error(f'Permission denied querying server for file, server replied '
+                    f' with {resp_j["error"]}')
+        elif resp.status_code != 500:
+            logger.error(f'Problem querying for file, server replied with {resp_j["error"]}')
+        else:
+            logger.error(f'Could not register file, error code {resp.status_code}, '
+                    'likely problem is on server, please check with admin')
+        return {'error': resp.status_code}
 
 
-def transfer_file(url, fpath, fn_id, token, desc, cookies, host):
+def transfer_file(url, fpath, fn_id, token, cookies, host):
     # use fpath/basename instead of fname, to get the
     # zipped file name if needed, instead of the normal fn
     filename = os.path.basename(fpath)
     logging.info(f'Uploading {fpath} to {host}')
     stddata = {'fn_id': f'{fn_id}', 'token': token, 'filename': filename}
-    if desc:
-        stddata['desc'] = desc
     with open(fpath, 'rb') as fp:
         stddata['file'] = (filename, fp)
         # MultipartEncoder from requests_toolbelt can stream large files, unlike requests (2024)
@@ -202,7 +213,36 @@ def get_fndata_id(fndata):
     return '{}__{}'.format(fndata['prod_date'], fndata['size'])
 
 
-def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, raw_is_folder, md5_stable_fns):
+def is_file_being_acquired(fnpath, procnames, waittime_sec, md5_stable_fns):
+    for proc in psutil.process_iter():
+        if proc.name() in procnames:
+            break
+        proc = False
+    if not proc:
+        # No acquisition program -> file is ready
+        return False
+    if md5_stable_fns:
+        try:
+            stable_fn = [x for x in md5_stable_fns if os.path.exists(os.path.join(fnpath, x))][0]
+        except IndexError:
+            # E.g. analysis.tdf not found -> MS is injecting
+            return f'No required "stable file" found inside {fnpath}'
+        else:
+            absfn = os.path.abspath(os.path.join(fnpath, stable_fn))
+    else:
+        absfn = os.path.abspath(fnpath)
+
+    if time() - os.path.getctime(absfn) < int(waittime_sec):
+        # Too early, file possibly still injecting
+        return f'File {fnpath} not older than {waittime_sec / 60} minutes yet'
+    if len([x for x in proc.open_files() if os.path.abspath(x.path) == absfn]):
+        return f'File {fnpath} is opened by {proc.name()}'
+    # Give it 5 seconds sleep in case
+    sleep(5)
+    return False
+
+
+def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, raw_is_folder, md5_stable_fns, procnames, inj_waittime):
     """Runs as process, periodically checks outbox,
     runs MD5 and if needed zip (folder) on newly discovered files,
     process own ledger is kept for new file adding,
@@ -218,6 +258,9 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
                 del(ledger[cts_id])
         logger.info(f'Checking for new files in {outbox}')
         for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
+            if acq_status := is_file_being_acquired(fn, procnames, inj_waittime, md5_stable_fns):
+                logger.info(f'Will wait until acquisition status ready, currently: {acq_status}')
+                continue
             # create somewhat unique identifier to filter against existing entries
             fndata = get_new_file_entry(fn, raw_is_folder)
             ct_size = get_fndata_id(fndata)
@@ -228,21 +271,14 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
             newfn = False
             if not produced_fn['md5']:
                 newfn = True
-                if produced_fn['is_dir']:
-                    try:
-                        stable_fn = [x for x in md5_stable_fns
-                                if os.path.exists(os.path.join(produced_fn['fpath'], x))][0]
-                    except IndexError:
-                        logger.warning('This file is a directory, but we could not '
-                                'find a designated stable file inside it')
-                        continue
-                    md5path = os.path.join(produced_fn['fpath'], stable_fn)
-                else:
-                    md5path = produced_fn['fpath']
                 try:
-                    produced_fn['md5'] = md5(md5path)
+                    produced_fn['md5'] = md5(produced_fn['fpath'], produced_fn['is_dir'], md5_stable_fns)
                 except FileNotFoundError:
                     logger.warning('Could not find file in outbox to check MD5')
+                    continue
+                except IndexError:
+                    logger.warning('This file is a directory, but we could not '
+                            'find a designated stable file inside it')
                     continue
             if produced_fn['is_dir'] and 'nonzipped_path' not in produced_fn:
                 newfn = True
@@ -254,6 +290,19 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
             if newfn:
                 regq.put(produced_fn)
         sleep(5)
+
+
+def md5(fnpath, is_dir, md5_stable_fns):
+    if is_dir:
+        stable_fn = [x for x in md5_stable_fns if os.path.exists(os.path.join(fnpath, x))][0]
+        md5path = os.path.join(fnpath, stable_fn)
+    else:
+        md5path = fnpath
+    hash_md5 = hashlib.md5()
+    with open(md5path, 'rb') as fp:
+        for chunk in iter(lambda: fp.read(4096), b''):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 def proc_log_configure(queue):
@@ -298,83 +347,33 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
     while True:
         loginresp = requests.get(urljoin(kantelehost, 'login/'), verify=certifi.where())
         cookies = loginresp.cookies
-        if not config['is_manual']:
-            for fndata in [x for x in ledger.values() if not x['fn_id']]:
-                # In case new files are found but registration failed for some
-                # reason, MD5 is on disk (only to ledger after MD5), re-register
-                regq.put(fndata)
         newfns = []
         while not regq.empty():
             newfns.append(regq.get())
         if newfns:
             logger.info(f'Registering {len(newfns)} new file(s)')
+        trffns, ledgerchanged = [], False
         for fndata in newfns:
             # DO NOT USE: while regq.qsize() here,
             # that leads to potential eternal loop when flooded every five seconds
             # Also MacOS doesnt support qsize()
             ct_size = get_fndata_id(fndata)
+            ledgerchanged = True
             # update ledger in case new MD5 calculated
             ledger[ct_size] = fndata
-            try:
-                resp = register_file(kantelehost, 'files/register/', fndata['fname'],
-                        fndata['md5'], fndata['size'], fndata['prod_date'], 
-                        cookies, config['token'], claimed=False)
-            except requests.exceptions.ConnectionError:
-                logger.error('Cannot connect to kantele server trying to register '
-                        f'file {fndata["fname"]}, will try later')
-            else:
-                if resp.status_code == 200:
-                    resp_j = resp.json()
-                    logger.info(f'File {fndata["fname"]} matches remote file '
-                            f'{resp_j["remote_name"]} with ID {resp_j["file_id"]}')
-                    if resp_j['msg']:
-                        logger.info(resp_j['msg'])
-                    fndata['fn_id'] = resp_j['file_id']
-                elif resp.status_code == 403:
-                    resp_j = resp.json()
-                    logger.error(f'Permission denied registering file, server replied '
-                            f' with {resp_j["error"]}')
-                elif resp.status_code != 500:
-                    resp_j = resp.json()
-                    logger.error(f'Problem registering file, server replied with {resp_j["error"]}')
-                else:
-                    logger.error(f'Could not register file, error code {resp.status_code}, '
-                            'likely problem is on server, please check with admin')
-                if resp.status_code != 200:
-                    # Exit when permission denied, need a new password from user
-                    # exit also at server/client errors
-                    sys.exit(resp.status_code)
-        # Persist state of zipped/MD5/fn_ids to disk
-        if len(newfns):
+        if ledgerchanged:
             save_ledger(ledger, LEDGERFN)
-
-        # Now find what to do with all registered files and do it
-        trffns, ledgerchanged = [], False
-        to_process = [(k, x['fn_id'], x)  for k, x in ledger.items() if x['fn_id']]
-        for cts_id, fnid, fndata in to_process:
-            logger.info(f'Checking remote state for file {fndata["fname"]} with ID {fnid}')
-            try:
-                resp = requests.post(fnstate_url, cookies=cookies,
-                        headers=get_csrf(cookies, kantelehost),
-                        json={'fnid': fnid, 'token': config['token']},
-                        verify=certifi.where())
-            except requests.exceptions.ConnectionError:
-                logger.error('Cannot connect to kantele server to request state '
-                f'for file {fndata["fname"]}, will retry')
-                continue
-            if resp.status_code != 500:
-                result = resp.json()
-            else:
-                result = {'error': 'Kantele server error when getting file state, '
-                        'please contact administrator'}
-            if resp.status_code != 200:
-                logger.error(f'Could not get state for file with ID {fnid}, error '
-                        f'message was: {result["error"]}')
-                # Exit when permission denied, need a new password from user
-                # exit also at server/client errors
-                sys.exit(resp.status_code)
-            elif result['transferstate'] == 'done':
-                logger.info(f'State for file with ID {fnid} was "done"')
+            ledgerchanged = False
+        for cts_id, fndata in [(k, v) for k, v in ledger.items()]:
+            #return {'fn_id': resp_j['file_id'], }
+            query = query_file(kantelehost, 'files/transferstate/', fndata['fname'],
+                    fndata['md5'], fndata['size'], fndata['prod_date'], 
+                    cookies, config['token'], fndata.get('fnid', False),
+                    descriptions.get(fndata['fpath'], False), logger)
+            if query.get('error', False):
+                sys.exit(query['error'])
+            fnid = fndata['fnid'] = query['fnid']
+            if query['state'] == 'done':
                 # Remove done files from ledger/outbox
                 if fndata['is_dir']:
                     # Zipped intermediate files are removed here
@@ -396,16 +395,15 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
                         regdoneq.put(cts_id)
                 del(ledger[cts_id])
                 ledgerchanged = True
-            elif result['transferstate'] == 'transfer':
+
+            elif query['state'] == 'transfer':
                 trffns.append((cts_id, fndata))
-                logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
-                        f'{result["transferstate"]}')
-            else:
-                logger.info(f'State for file {fndata["fname"]} with ID {fnid} was: '
-                        f'{result["transferstate"]}')
+
         if config['is_manual'] and not ledger.keys():
             # Quit loop for manual file
             break
+        if ledgerchanged:
+            save_ledger(ledger, LEDGERFN)
 
         # Now transfer registered files
         for cts_id, fndata in trffns:
@@ -418,17 +416,16 @@ def register_and_transfer(regq, regdoneq, logqueue, ledger, config, configfn, do
             if cts_id not in ledger:
                 logger.warning(f'Could not find file with ID {fndata["fn_id"]} locally')
                 continue
-            desc = descriptions.get(fndata['fpath'], False)
             try:
-                resp = transfer_file(trf_url, fndata['fpath'], fndata['fn_id'], config['token'],
-                        desc, cookies, kantelehost)
+                resp = transfer_file(trf_url, fndata['fpath'], fndata['fnid'], config['token'],
+                        cookies, kantelehost)
             except subprocess.CalledProcessError:
                 # FIXME wrong exception!
                 logger.warning(f'Could not transfer {fndata["fpath"]}')
             else:
                 if resp.status_code == 500:
-                    result = {'error': 'Kantele server error when transferring file '
-                        'state, please contact administrator'}
+                    result = {'error': 'Kantele server error when transferring file, '
+                        'please contact administrator'}
                 elif resp.status_code == 413:
                     result = {'error': 'File to transfer too large for Kantele server! '
                             'Please contact administrator'}
@@ -541,11 +538,6 @@ def main():
     if config.get('client_id', False):
         # Instrument
         config['is_manual'] = False
-        checkerr = check_in_instrument(config, args.configfn, logger)
-        if checkerr:
-            # No logger process running yet, so print here
-            print(checkerr)
-            sys.exit(1)
     else:
         # Parse token gotten from web UI, this is needed so Kantele knows
         # which filetype were uploading, and it will contain the upload location
@@ -563,6 +555,12 @@ def main():
                 descriptions[fn] = input(f'Please enter a description for your file {fn}: ')
         config.update({'host': kantelehost, 'token': token, 'is_manual': True})
 
+    checkerr = check_in_instrument(config, args.configfn, logger)
+    if checkerr:
+        # No logger process running yet, so print here
+        print(checkerr)
+        sys.exit(1)
+
     outbox = config.get('outbox', False)
 
     # ledger for outboxes with multiple files to keep track in case 
@@ -574,9 +572,10 @@ def main():
         ledger = {}
 
     if outbox:
-        donebox = config.get('donebox') or os.path.join(outbox, os.path.pardir, 'donebox')
-        zipbox = config.get('zipbox') or os.path.join(outbox, os.path.pardir, 'zipbox')
-        skipbox = config.get('skipbox') or os.path.join(outbox, os.path.pardir, 'skipbox')
+        basedir = os.path.abspath(os.path.join(outbox, os.path.pardir))
+        donebox = config.get('donebox') or os.path.join(basedir, 'donebox')
+        zipbox = config.get('zipbox') or os.path.join(basedir, 'zipbox')
+        skipbox = config.get('skipbox') or os.path.join(basedir, 'skipbox')
         # for instruments, setup collection/MD5 process
         # otherwise we use a single shot MD5er
         if not os.path.exists(outbox):
@@ -587,13 +586,15 @@ def main():
             os.makedirs(skipbox)
         # watch outbox for incoming files
         collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger,
-            outbox, zipbox, clientname, config.get('raw_is_folder'), config.get('md5_stable_fns')))
+            outbox, zipbox, clientname, config.get('raw_is_folder'), config.get('md5_stable_fns'),
+            config.get('acq_process_names'), config.get('injection_waittime')))
         processes = [collect_p]
         collect_p.start()
         processes.extend(start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
             donebox, skipbox, config['host'], clientname, descriptions))
     elif args.files:
         print('New files found, calculating checksum')
+        zipbox = config.get('zipbox') or 'zipbox'
         # Multi file upload by user with token from web GUI
         donebox, skipbox = False, False
         # FIXME filetype and raw_is_folder should be dynamic, in token
@@ -617,17 +618,26 @@ def main():
         processes = start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
                 donebox, skipbox, config['host'], clientname, descriptions)
         for upload_fnid, fndata in ledger.items():
+            newfn = False
+            if not fndata['md5']:
+                try:
+                    fndata['md5'] = md5(fndata['fpath'], fndata['is_dir'], config['md5_stable_fns'])
+                except FileNotFoundError:
+                    logger.warning(f'Could not find file {fndata["fpath"]} specified to check MD5')
+                    continue
+                except IndexError:
+                    logger.warning(f'File {fndata["fpath"]} is a directory, but we could not '
+                            'find a designated stable file inside it')
+                    continue
+                else:
+                    newfn = True
             if fndata['is_dir'] and 'nonzipped_path' not in fndata:
                 zipname = os.path.join(zipbox, os.path.basename(fndata['fpath']))
                 fndata['nonzipped_path'] = fndata['fpath']
                 fndata['fpath'] = zipfolder(fndata['fpath'], zipname)
-            if not fndata['md5']:
-                try:
-                    fndata['md5'] = md5(fndata['fpath'])
-                except FileNotFoundError:
-                    logger.warning('Could not find file specified to check MD5')
-                else:
-                    regq.put(fndata)
+                newfn = True
+            if newfn:
+                regq.put(fndata)
             print('Finished checksum of file, will try to upload')
     else:
         print('No input files or outbox to watch was specified, exiting')

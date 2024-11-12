@@ -100,8 +100,17 @@ def dataset_files(request, dataset_id=False):
             return HttpResponseNotFound()
         ds_files = models.DatasetRawFile.objects.select_related(
                 'rawfile__producer').filter(dataset_id=dataset_id).order_by('rawfile__date')
+        if penfileq := jm.Job.objects.filter(funcname='move_files_storage', kwargs__dset_id=dataset_id,
+                state=jj.Jobstates.HOLD):
+            pending_ids = [x for y in penfileq for x in y.kwargs['rawfn_ids']]
+            print(penfileq, pending_ids)
+            pending_files = [(x['pk'], x['name']) for x in
+                    filemodels.RawFile.objects.filter(pk__in=pending_ids).values('name', 'pk')]
+        else:
+            pending_files = []
         response_json.update({
             'dsfn_order': [x.rawfile_id for x in ds_files],
+            'pendingFiles': pending_files,
             'datasetFiles':
             {x.rawfile_id:
               {'id': x.rawfile_id, 'name': x.rawfile.name, 'associd': x.id,
@@ -1282,6 +1291,42 @@ def save_or_update_files(data):
             set_component_state(dset_id, models.DatasetUIComponent.SAMPLES,
                     models.DCStates.INCOMPLETE)
     return {'error': False}, 200
+
+
+@login_required
+def accept_or_reject_dset_preassoc_files(request):
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return user_denied
+    # First remove jobs on rejected files and un-claim rawfiles
+    if len(data['rejected_files']):
+        deleted = jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD,
+                kwargs__dset_id=data['dataset_id'],
+                kwargs__rawfn_ids__in=[[x] for x in data['rejected_files']]).delete()
+        if deleted:
+            filemodels.RawFile.objects.filter(pk__in=data['rejected_files']).update(claimed=False)
+    # Now start jobs for accepted files
+    if len(data['accepted_files']):
+        jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD,
+                kwargs__dset_id=data['dataset_id'],
+                kwargs__rawfn_ids__in=[[x] for x in data['accepted_files']]).update(
+                        state=jj.Jobstates.PENDING)
+        models.DatasetRawFile.objects.bulk_create([
+            models.DatasetRawFile(dataset_id=data['dataset_id'], rawfile_id=fnid)
+            for fnid in data['accepted_files']])
+        # If files changed and labelfree, set sampleprep component status
+        # to not good. Which should update the tab colour (green to red)
+        try:
+            qtype = models.Dataset.objects.select_related(
+                'quantdataset__quanttype').get(pk=data['dataset_id']).quantdataset.quanttype
+        except models.QuantDataset.DoesNotExist:
+            pass
+        else:
+            set_component_state(data['dataset_id'], models.DatasetUIComponent.SAMPLES,
+                    models.DCStates.INCOMPLETE)
+    return JsonResponse({'error': False})
+    # FIXME switch fileserver should happen - in that case on the classify start!
 
 
 @login_required

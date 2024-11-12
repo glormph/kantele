@@ -25,15 +25,15 @@ class MzmlTests(BaseTest):
         self.ssmzml, _ = rm.ServerShare.objects.get_or_create(name=settings.MZMLINSHARENAME, 
                 server=self.newfserver, share='/home/mzmls')
         self.ft, _ = rm.StoredFileType.objects.get_or_create(name='Thermo raw', filetype='raw')
-        self.prodqe, _ = rm.Producer.objects.get_or_create(name='qe_prod', client_id='abcdefg',
-                shortname='p1')
-        self.prodtims, _ = rm.Producer.objects.get_or_create(name='tims_prod', client_id='hijklm',
+        self.prodqe = rm.Producer.objects.create(name='qe_prod', client_id='qe_abcdefg',
+                shortname='qep1')
+        self.prodtims = rm.Producer.objects.create(name='tims_prod', client_id='hijklm',
                 shortname='p2')
-        self.tims, _ = rm.MSInstrumentType.objects.get_or_create(name='timstof')
-        self.qe, _ = rm.MSInstrumentType.objects.get_or_create(name='qe')
-        instqe, _ = rm.MSInstrument.objects.get_or_create(producer=self.prodqe,
+        self.tims = rm.MSInstrumentType.objects.create(name='timstof')
+        self.qe = rm.MSInstrumentType.objects.create(name='qe')
+        instqe = rm.MSInstrument.objects.create(producer=self.prodqe,
                 instrumenttype=self.qe, filetype=self.ft)
-        insttims, _ = rm.MSInstrument.objects.get_or_create(producer=self.prodtims,
+        insttims = rm.MSInstrument.objects.create(producer=self.prodtims,
                 instrumenttype=self.tims, filetype=self.ft)
         own1, _ = dm.DatasetOwner.objects.get_or_create(dataset=self.ds, user=self.user)
         self.run = dm.RunName.objects.create(name=self.id(), experiment=self.exp1)

@@ -21,6 +21,7 @@ urlpatterns = [
     path('show/species/', views.get_species),
     path('save/dataset/', views.save_dataset, name="savedset"),
     path('save/files/', views.save_files, name="savefiles"),
+    path('save/files/pending/', views.accept_or_reject_dset_preassoc_files),
     path('save/mssamples/', views.save_mssamples),
     path('save/samples/', views.save_samples),
     path('save/labelcheck/', views.save_labelcheck),

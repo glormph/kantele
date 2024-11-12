@@ -238,6 +238,7 @@ def populate_files(dbfns):
               'job_ids': [],
               'deleted': fn.deleted,
               'purged': fn.purged,
+              'smallstatus': [],
              }
         # TODO make unified backup model?
         try:
@@ -266,6 +267,12 @@ def populate_files(dbfns):
         elif hasattr(fn, 'analysisresultfile'):
             it['owner'] = fn.analysisresultfile.analysis.user.username
             it['analyses'].append(fn.analysisresultfile.analysis.id)
+        else:
+            # Claimed file without datasetrawfile, analysisfile, possibly file is 
+            # QC or pending for dataset
+            if jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD, 
+                    kwargs__rawfn_ids=[fn.rawfile_id]):
+                it['smallstatus'].append({'text': 'dataset pending', 'state': 'active'})
         popfiles[fn.id] = it
     order = [x['id'] for x in sorted(popfiles.values(), key=lambda x: x['date'], reverse=True)]
     return JsonResponse({'items': popfiles, 'order': order})
@@ -478,6 +485,12 @@ def populate_dset(dbdsets, user):
                 state = mzmlgroups[ftype]
                 text = f'({ftype})' if state == 'deleted' else ftype
                 dsets[dataset.id]['smallstatus'].append({'text': text, 'state': state})
+
+        # Pending files
+        if nrpenjobs := jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD, 
+                kwargs__dset_id=dataset.pk).count():
+            dsets[dataset.pk]['smallstatus'].append({'text': f'{nrpenjobs} pending raw files',
+                'state': 'pending'})
 
         # Add job states
         jobmap = get_ds_jobs(dbdsets)
