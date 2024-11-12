@@ -275,7 +275,7 @@ class DeleteDatasetMzml(DatasetJob):
     task = filetasks.delete_file
 
     def process(self, **kwargs):
-        for fn in self.getfiles_query(**kwargs).filter(deleted=False, purged=False, checked=True,
+        for fn in self.getfiles_query(**kwargs).filter(deleted=True, purged=False, checked=True,
                 mzmlfile__pwiz_id=kwargs['pwiz_id']):
             fullpath = os.path.join(fn.path, fn.filename)
             print('Queueing deletion of mzML file {fullpath} from dataset {kwargs["dset_id"]}')

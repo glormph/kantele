@@ -871,8 +871,10 @@ def create_mzmls(request):
         filters.append('"scanSumming precursorTol=0.02 scanTimeTol=10 ionMobilityTol=0.1"')
         options.append('combineIonMobilitySpectra')
     num_rawfns = filemodels.RawFile.objects.filter(datasetrawfile__dataset_id=data['dsid']).count()
-    mzmls_exist = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset,
-            deleted=False, purged=False, checked=True, mzmlfile__isnull=False)
+    mzmls_exist_any_deleted_state = filemodels.StoredFile.objects.filter(
+            rawfile__datasetrawfile__dataset=dset, purged=False, checked=True,
+            mzmlfile__isnull=False)
+    mzmls_exist = mzmls_exist_any_deleted_state.filter(deleted=False)
     if num_rawfns == mzmls_exist.filter(mzmlfile__pwiz=pwiz).count():
         return JsonResponse({'error': 'This dataset already has existing mzML files of that '
             'proteowizard version'}, status=403)
@@ -888,9 +890,11 @@ def create_mzmls(request):
     # Remove other pwiz mzMLs
     other_pwiz_mz = mzmls_exist.exclude(mzmlfile__pwiz=pwiz)
     if other_pwiz_mz.count():
-        for sf in other_pwiz_mz.distinct('mzmlfile__pwiz_id').values('mzmlfile__pwiz_id'):
-            create_job('delete_mzmls_dataset', dset_id=dset.pk, pwiz_id=sf['mzmlfile__pwiz_id'])
         other_pwiz_mz.update(deleted=True)
+        # redefine query since now all the mzmls to deleted are marked deleted=T
+        del_pwiz_q = mzmls_exist_any_deleted_state.exclude(mzmlfile__pwiz=pwiz).filter(deleted=True)
+        for sf in del_pwiz_q.distinct('mzmlfile__pwiz_id').values('mzmlfile__pwiz_id'):
+            create_job('delete_mzmls_dataset', dset_id=dset.pk, pwiz_id=sf['mzmlfile__pwiz_id'])
     create_job('convert_dataset_mzml', options=options, filters=filters,
             dset_id=data['dsid'], dstshare_id=res_share.pk, pwiz_id=pwiz.pk,
             timestamp=datetime.strftime(datetime.now(), '%Y%m%d_%H.%M'))
