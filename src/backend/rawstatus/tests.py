@@ -35,6 +35,7 @@ class BaseFilesTest(BaseTest):
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
                 expires=timezone.now() + timedelta(1), expired=False,
                 producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
+
         # expired token
         rm.UploadToken.objects.create(user=self.user, token=self.nottoken, 
                 expires=timezone.now() - timedelta(1), expired=False, 
@@ -45,8 +46,7 @@ class BaseFilesTest(BaseTest):
                 size=100, date=timezone.now(), claimed=False)
 
 
-class TestUploadScriptManual(BaseIntegrationTest):
-    # FIXME write tests for instrument outbox
+class TestUploadScript(BaseIntegrationTest):
     def setUp(self):
         super().setUp()
         self.token= 'fghihj'
@@ -112,6 +112,7 @@ class TestUploadScriptManual(BaseIntegrationTest):
     def test_new_file(self):
         # Use same file as f3sf but actually take its md5 and therefore it is new
         # Testing all the way from register to upload
+        # This file is of filetype self.ft which is NOT is_folder -> so it will be zipped up
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
         old_raw = rm.RawFile.objects.last()
@@ -899,7 +900,7 @@ class TestFileTransfer(BaseFilesTest):
         resp, upload_content = self.do_transfer_file()
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp.json(), {'error': 'Another file in the system has the same name '
-            f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}. '
+            f'and is stored in the same path ({settings.TMPSHARENAME} - {settings.TMPPATH}/{self.registered_raw.name}). '
             'Please investigate, possibly change the file name or location of this or the other '
             'file to enable transfer without overwriting.', 'problem': 'DUPLICATE_EXISTS'})
 

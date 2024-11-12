@@ -14,7 +14,7 @@ class Jobstates:
     WAITING = 'wait' # jobs in wait can be skipped
     HOLD = 'hold' # jobs in hold block other jobs
     PENDING = 'pending'
-    QUEUED = 'queued'
+    QUEUED = 'queued' # Not currently used yet
     PROCESSING = 'processing'
     ERROR = 'error'
     DONE = 'done'
@@ -109,9 +109,8 @@ class BaseJob:
             self.create_db_task(tid, *args, **kwargs)
     
     def create_db_task(self, task_id, *args, **kwargs):
-        t = Task(asyncid=task_id, job_id=self.job_id, state=states.PENDING, args=[args, kwargs])
-        t.save()
-        return t
+        return Task.objects.create(asyncid=task_id, job_id=self.job_id, state=states.PENDING,
+                args=[args, kwargs])
 
 
 class SingleFileJob(BaseJob):

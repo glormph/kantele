@@ -350,7 +350,7 @@ def store_longitudinal_qc(request):
 @require_POST
 def confirm_internal_file(request):
     """Stores the reporting of a transferred analysis result file,
-    checks its md5"""
+    and of downloaded uniprot files, checks its md5"""
     data =  json.loads(request.POST['json'])
     upload = UploadToken.validate_token(data['token'], [])
     if not upload:
@@ -476,9 +476,10 @@ def revoke_and_delete_tasks(task_q):
 
 
 def do_retry_job(job, force=False):
+    '''Jobs that are not DONE, CANCELED, PENDING, can be retried'''
     tasks = models.Task.objects.filter(job=job)
     if not is_job_retryable(job) and not force:
-        print('Cannot retry job which is not idempotent')
+        print('Cannot retry job, is not retryable')
         return
     if not is_job_ready(job=job, tasks=tasks) and not force:
         print('Tasks not all ready yet, will not retry, try again later')
