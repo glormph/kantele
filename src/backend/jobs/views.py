@@ -22,7 +22,7 @@ from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
 from datasets.models import DatasetRawFile, Dataset
-from jobs.jobs import Jobstates
+from jobs.jobs import Jobstates, JOBSTATES_PAUSABLE, JOBSTATES_JOB_SENT, JOBSTATES_JOB_NOT_SENT, JOBSTATES_RETRYABLE
 from jobs.jobutil import create_job, jobmap
 from kantele import settings
 

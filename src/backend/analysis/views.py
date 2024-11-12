@@ -769,7 +769,7 @@ def store_analysis(request):
             return JsonResponse({'error': 'You do not have permission to edit this analysis'}, status=403)
         elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state == jj.Jobstates.DONE:
             return JsonResponse({'error': 'This analysis has already finished running, it cannot be edited'}, status=403)
-        elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
+        elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state not in jj.JOBSTATES_JOB_NOT_SENT:
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'}, status=403)
         elif not analysis.editable:
             return JsonResponse({'error': 'This analysis cannot be edited'}, status=403)
@@ -1295,7 +1295,7 @@ def start_analysis(request):
     ownership = jv.get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can start this job'}, status=403)
-    elif job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
+    elif job.state not in jj.JOBSTATES_JOB_INACTIVE:
         return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, '
             f'this job is {job.state}'}, status=403)
     jv.do_retry_job(job)
@@ -1412,7 +1412,7 @@ def nextflow_analysis_log(request):
         nfs = am.NextflowSearch.objects.get(token=req['runName'])
     except am.NextflowSearch.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
-    if nfs.job.state not in [jj.Jobstates.PROCESSING, jj.Jobstates.REVOKING]:
+    if nfs.job.state not in jj.JOBSTATES_TASKS_RUNNING:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if req['event'] in ['started', 'completed']:
         logmsg = 'Nextflow reports: workflow {}'.format(req['event'])

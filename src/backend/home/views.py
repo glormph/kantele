@@ -296,8 +296,7 @@ def get_ds_jobs(dbdsets):
 @require_GET
 def show_jobs(request):
     items = {}
-    order = {'user': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR, jj.Jobstates.REVOKING] + jj.JOBSTATES_DONE},
-             'admin': {x: [] for x in jj.JOBSTATES_WAIT + [jj.Jobstates.ERROR, jj.Jobstates.REVOKING] + jj.JOBSTATES_DONE}}
+    order = {'user': {x: [] for x in jj.JOBSTATES_ALL}, 'admin': {x: [] for x in jj.JOBSTATES_ALL}}
     if 'ids' in request.GET:
         jobids = request.GET['ids'].split(',')
         dbjobs = jm.Job.objects.filter(pk__in=jobids)
@@ -319,7 +318,8 @@ def show_jobs(request):
         if type(dsets) == int:
             dsets = [dsets]
         items[job.id]['dset_ids'] = dsets
-    stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING, jj.Jobstates.WAITING]
+    stateorder = [jj.Jobstates.ERROR, jj.Jobstates.PROCESSING, jj.Jobstates.PENDING, jj.Jobstates.HOLD,
+            jj.Jobstates.WAITING]
     return JsonResponse({'items': items, 'order': 
                          [x for u in ['user', 'admin'] for s in stateorder 
                           for x in order[u][s]]})
@@ -330,7 +330,7 @@ def get_job_actions(job, ownership):
     if job.state == jj.Jobstates.ERROR and (ownership['is_staff'] or ownership['owner_loggedin']) and jv.is_job_retryable_ready(job):
         actions.append('retry')
     if ownership['is_staff']:
-        if job.state in [jj.Jobstates.PENDING, jj.Jobstates.ERROR]:
+        if job.state in jj.JOBSTATES_PAUSABLE:
             actions.append('pause')
         elif job.state == jj.Jobstates.WAITING:
             actions.append('resume')
@@ -353,9 +353,9 @@ def get_ana_actions(analysis, user):
         else:
             actions.append('view')
         if hasattr(analysis, 'nextflowsearch'):
-            if analysis.nextflowsearch.job.state in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
+            if analysis.nextflowsearch.job.state in jj.JOBSTATES_JOB_INACTIVE:
                 actions.append('run job')
-            elif analysis.nextflowsearch.job.state in [jj.Jobstates.PENDING, jj.Jobstates.PROCESSING]:
+            elif analysis.nextflowsearch.job.state in jj.JOBSTATES_JOB_ACTIVE:
                 actions.append('stop job')
     return actions
 

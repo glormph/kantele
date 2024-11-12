@@ -22,9 +22,45 @@ class Jobstates:
     CANCELED = 'canceled'
 
 
-JOBSTATES_WAIT = [Jobstates.WAITING, Jobstates.PENDING, Jobstates.QUEUED, Jobstates.PROCESSING]
+JOBSTATES_ALL = [Jobstates.WAITING, Jobstates.HOLD, Jobstates.ERROR, Jobstates.CANCELED, Jobstates.PENDING,
+        Jobstates.QUEUED, Jobstates.PROCESSING, Jobstates.REVOKING, Jobstates.DONE
+        ]
+
 JOBSTATES_DONE = [Jobstates.DONE, Jobstates.CANCELED]
-JOBSTATES_PRE_OK_JOB = [Jobstates.WAITING, Jobstates.ERROR, Jobstates.REVOKING, Jobstates.CANCELED]
+
+# Inactive jobs:
+# - can (re)run analysis
+JOBSTATES_JOB_INACTIVE = [Jobstates.WAITING, Jobstates.HOLD, Jobstates.ERROR, Jobstates.CANCELED]
+
+# Active jobs
+# - analysis can be stopped
+JOBSTATES_JOB_ACTIVE = [Jobstates.PENDING, Jobstates.QUEUED, Jobstates.PROCESSING]
+
+# Tasks not sent:
+# - Can be canceled without revoking task
+# - Cannot edit analysis
+JOBSTATES_JOB_NOT_SENT = [Jobstates.WAITING, Jobstates.HOLD, Jobstates.ERROR, Jobstates.CANCELED, Jobstates.PENDING]
+
+# Tasks not sent but job still not cancel
+# - can be paused
+JOBSTATES_PAUSABLE = [Jobstates.HOLD, Jobstates.ERROR, Jobstates.PENDING]
+
+# Tasks have been sent
+# - Canceling needs revoking
+# - revoking (jobs/views) at all gets check
+JOBSTATES_JOB_SENT = [Jobstates.QUEUED, Jobstates.PROCESSING, Jobstates.REVOKING]
+
+# Tasks picked up
+# - Nextflow can log to this analysis
+JOBSTATES_TASKS_RUNNING = [Jobstates.PROCESSING, Jobstates.REVOKING]
+# For showing jobs:
+JOBSTATES_WAIT = [Jobstates.WAITING, Jobstates.PENDING, Jobstates.QUEUED, Jobstates.PROCESSING, Jobstates.HOLD]
+
+# Jobs retryable
+JOBSTATES_RETRYABLE = [Jobstates.PROCESSING, Jobstates.ERROR, Jobstates.REVOKING]
+
+# FIXME Deprecate below line, is not used:
+JOBSTATES_PRE_OK_JOB = [Jobstates.WAITING, Jobstates.ERROR, Jobstates.REVOKING, Jobstates.CANCELED, Jobstates.HOLD]
 
 
 class BaseJob:
