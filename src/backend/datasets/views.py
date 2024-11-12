@@ -1249,8 +1249,7 @@ def save_or_update_files(data):
                 storedfile__checked=True).exists():
             return {'error': 'Some files cannot be saved to dataset since they '
                     'are not confirmed to be stored yet'}, 403
-        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'dst_path': dset.storage_loc, 
-            'rawfn_ids': added_fnids}))
+        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'rawfn_ids': added_fnids}))
     if removed_ids:
         mvjobs.append(('move_stored_files_tmp', {'dset_id': dset_id, 'fn_ids': removed_ids}))
 
