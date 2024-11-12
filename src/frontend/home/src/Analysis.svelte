@@ -39,7 +39,7 @@ function stopJob(anid) {
 }
 
 function startJob(anid) {
-  const callback = (analysis) => {refreshJob(analysis.id)};
+  const callback = (analysis) => {refreshAnalysis(analysis.id)};
   treatItems('/analysis/start/', 'job for analysis', 'starting', callback, [anid]);
 }
 
