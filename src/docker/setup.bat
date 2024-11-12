@@ -8,6 +8,7 @@ pip install certifi-2022.9.14-py3-none-any.whl
 pip install urllib3-1.26.12-py2.py3-none-any.whl
 pip install requests-2.28.1-py3-none-any.whl
 pip install requests_toolbelt-0.9.1-py2.py3-none-any.whl
+pip install psutil-6.1.0-cp37-abi3-win_amd64.whl
 
 echo schtasks /create /sc ONLOGON /tn kantele_filetransfer /tr "python %cd%/transfer.bat" > tasksetup.bat
 echo echo Created task in task scheduler >> tasksetup.bat
