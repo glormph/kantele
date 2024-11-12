@@ -14,8 +14,9 @@ from gzip import GzipFile
 from django.urls import reverse
 from django.utils import timezone
 from celery import shared_task, exceptions
+from celery import states as taskstates
 
-from jobs.post import update_db, taskfail_update_db, task_finished
+from jobs.post import update_db, taskfail_update_db
 from kantele import settings
 from rawstatus.tasks import calc_md5
 from analysis.models import UniProtFasta
@@ -75,7 +76,8 @@ def check_ensembl_uniprot_fasta_download(self, dbname, version, organism, dbtype
                             regresp['fnid'], regresp['md5'], regresp['newname'], is_fasta=fa_data)
                 else:
                     print('File was already downloaded')
-    task_finished(self.request.id)
+    update_db(urljoin(settings.KANTELEHOST, reverse('jobs:settask')), json={'task_id': self.request.id,
+        'client_id': settings.APIKEY, 'state': taskstates.SUCCESS})
     print(f'Finished downloading {desc}')
         
 

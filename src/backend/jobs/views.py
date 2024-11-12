@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 from tempfile import NamedTemporaryFile
 
 from celery import states
+from celery.result import AsyncResult
 from django.http import HttpResponseForbidden, HttpResponse, JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
@@ -22,7 +23,7 @@ from analysis.views import write_analysis_log
 from dashboard import views as dashviews
 from datasets import views as dsviews
 from datasets.models import DatasetRawFile, Dataset
-from jobs.jobs import Jobstates
+from jobs.jobs import Jobstates, JOBSTATES_PAUSABLE, JOBSTATES_JOB_SENT, JOBSTATES_JOB_NOT_SENT, JOBSTATES_RETRYABLE
 from jobs.jobutil import create_job, jobmap
 from kantele import settings
 
@@ -44,11 +45,14 @@ def set_task_status(request):
     if 'client_id' not in data or not taskclient_authorized(
             data['client_id'], settings.CLIENT_APIKEYS):
         return HttpResponseForbidden()
-    task = models.Task.objects.get(asyncid=data['task_id'])
-    task.state = data['state']
-    task.save()
+    # FIXME retries sometimes cause issues! Task not found
+    taskq = models.Task.objects.filter(asyncid=data['task_id'])
+    task_nr_found = taskq.update(state=data['state'])
+    if not task_nr_found:
+        # update() is 0 if no task found, 1 even if state is not actually updated
+        return HttpResponseForbidden()
     if data.get('msg', False):
-        models.TaskError.objects.create(task_id=task.id, message=data['msg'])
+        models.TaskError.objects.create(task_id=data['task_id'], message=data['msg'])
     return HttpResponse()
 
 
@@ -122,25 +126,26 @@ def renamed_project(request):
 @require_POST
 def pause_job(request):
     req = json.loads(request.body.decode('utf-8'))
-    try:
-        job = models.Job.objects.get(pk=req['item_id'])
-    except models.Job.DoesNotExist:
+    jobq = models.Job.objects.filter(pk=req['item_id'])
+    if not jobq.exists():
         return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
+    job = jobq.get()
     ownership = get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can pause this job'}, status=403)
     elif not is_job_retryable(job):
         return JsonResponse({'error': 'Job type {} cannot be paused/resumed'.format(job.funcname)}, status=403)
-    elif job.state not in [Jobstates.PENDING, Jobstates.ERROR]:
+
+    updated = jobq.filter(state__in=JOBSTATES_PAUSABLE).update(state=Jobstates.WAITING)
+    if not updated:
         return JsonResponse({'error': 'Only jobs that are pending for queueing or errored can be paused'}, status=403)
-    if job.state == Jobstates.ERROR:
+    else:
+        # Error job: delete tasks
         job.task_set.exclude(state=states.SUCCESS).delete()
         if hasattr(job, 'joberror'):
             job.joberror.delete()
-    job.state = Jobstates.WAITING
-    job.save()
-    jwrapper = jobmap[job.funcname](job.id) 
-    jwrapper.on_pause(**job.kwargs)
+        jwrapper = jobmap[job.funcname](job.id) 
+        jwrapper.on_pause(**job.kwargs)
     return JsonResponse({}) 
     
 
@@ -163,24 +168,30 @@ def resume_job(request):
     return JsonResponse({}) 
     
 
-def revoke_job(jobid, request):
-    try:
-        job = models.Job.objects.get(pk=jobid)
-    except models.Job.DoesNotExist:
-        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
-    ownership = get_job_ownership(job, request)
-    if not ownership['owner_loggedin'] and not ownership['is_staff']:
-        return JsonResponse({'error': 'Only job owners and admin can delete this job'}, status=403)
-    job.state = Jobstates.REVOKING
-    job.save()
-    return JsonResponse({}) 
+
+
+def cancel_or_revoke_job(jobq):
+    '''Centralize revoking here, so correct check is done, and it is done in an update statement
+    so there is no race condition stuff'''
+    canceled = jobq.filter(state__in=JOBSTATES_JOB_NOT_SENT).update(state=Jobstates.CANCELED)
+    revoked = jobq.filter(state__in=JOBSTATES_JOB_SENT).update(state=Jobstates.REVOKING)
+    return canceled + revoked
 
 
 @login_required
 @require_POST
 def delete_job(request):
     req = json.loads(request.body.decode('utf-8'))
-    return revoke_job(req['item_id'], request)
+    jobq = models.Job.objects.filter(pk=req['item_id'])
+    if not jobq.exists():
+        return JsonResponse({'error': 'This job does not exist (anymore), it may have been deleted'}, status=403)
+    job = jobq.get()
+    ownership = get_job_ownership(job, request)
+    if not ownership['owner_loggedin'] and not ownership['is_staff']:
+        return JsonResponse({'error': 'Only job owners and admin can stop this job'}, status=403)
+    # If job needs revoking, do it here
+    cancel_or_revoke_job(jobq)
+    return JsonResponse({})
 
 
 @require_POST
@@ -339,7 +350,7 @@ def store_longitudinal_qc(request):
 @require_POST
 def confirm_internal_file(request):
     """Stores the reporting of a transferred analysis result file,
-    checks its md5"""
+    and of downloaded uniprot files, checks its md5"""
     data =  json.loads(request.POST['json'])
     upload = UploadToken.validate_token(data['token'], [])
     if not upload:
@@ -457,21 +468,30 @@ def retry_job(request):
     return JsonResponse({})
 
 
+def revoke_and_delete_tasks(task_q):
+    task_q.update(state=states.REVOKED)
+    for task in task_q:
+        AsyncResult(task.asyncid).revoke(terminate=True, signal='SIGUSR1')
+    task_q.delete()
+
+
 def do_retry_job(job, force=False):
+    '''Jobs that are not DONE, CANCELED, PENDING, can be retried'''
     tasks = models.Task.objects.filter(job=job)
     if not is_job_retryable(job) and not force:
-        print('Cannot retry job which is not idempotent')
+        print('Cannot retry job, is not retryable')
         return
     if not is_job_ready(job=job, tasks=tasks) and not force:
         print('Tasks not all ready yet, will not retry, try again later')
         return
-    tasks.exclude(state=states.SUCCESS).delete()
+    jobq = models.Job.objects.filter(pk=job.pk, state__in=JOBSTATES_RETRYABLE).update(
+            state=Jobstates.PENDING)
+    # revoke tasks in case they are still running (force retry)
+    revoke_and_delete_tasks(tasks.exclude(state=states.SUCCESS))
     try:
         job.joberror.delete()
     except models.JobError.DoesNotExist:
         pass
-    job.state = Jobstates.PENDING
-    job.save()
 
 
 def send_slack_message(text, channel):

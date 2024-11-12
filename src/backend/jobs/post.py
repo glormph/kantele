@@ -24,19 +24,12 @@ def update_db(url, form=False, json=False, files=False, msg=False):
         if not msg:
             msg = 'Could not update database: {}'
         msg = msg.format(e)
-        print(msg)
         raise RuntimeError(msg)
     else:
         if r:
             return r
         else:
             raise RuntimeError('Something went wrong')
-
-
-
-def task_finished(task_id):
-    update_db(urljoin(settings.KANTELEHOST, reverse('jobs:settask')), json={'task_id': task_id,
-        'client_id': settings.APIKEY, 'state': states.SUCCESS})
 
 
 def taskfail_update_db(task_id, msg=False):

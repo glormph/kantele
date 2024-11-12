@@ -72,8 +72,8 @@ def check_in_instrument(config, configfn, logger):
     '''Check in instrument with backend to get/renew/validate token, and provide
     a client heartbeat to backend.
     This function has side-effects in that it mutates config dict, which is why
-    it is only called once pre-setup and further only in the register-thread, as
-    no other thread needs this config (for updates)
+    it is only called once pre-setup and further only in the register-process, as
+    no other proc needs this config (for updates)
     '''
     clid = config.get('client_id', False)
     kantelehost = config['host']
@@ -258,6 +258,7 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
                 del(ledger[cts_id])
         logger.info(f'Checking for new files in {outbox}')
         for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
+
             if acq_status := is_file_being_acquired(fn, procnames, inj_waittime, md5_stable_fns):
                 logger.info(f'Will wait until acquisition status ready, currently: {acq_status}')
                 continue

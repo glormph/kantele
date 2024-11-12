@@ -6,14 +6,13 @@ Nextflow, or Galaxy or whatever one likes.
 Scheduler runs sequential and waits for each job that contains files running in another job
 """
 from celery import states
-from celery.result import AsyncResult
 from django.core.management.base import BaseCommand
 from time import sleep
 
 from kantele import settings
 from jobs.models import Task, Job
 from jobs.jobs import Jobstates
-from jobs.views import send_slack_message
+from jobs.views import send_slack_message, revoke_and_delete_tasks
 from jobs import jobs as jj
 from rawstatus.models import FileJob
 from jobs.jobutil import jobmap
@@ -52,7 +51,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
             # Register files
             # FIXME do some jobs really have no files?
             sf_ids = jwrapper.get_sf_ids_jobrunner(**job.kwargs)
-            # FIXME if restart jobrunner - this will create duplicates!
+            FileJob.objects.filter(job_id=job.id).delete()
             FileJob.objects.bulk_create([FileJob(storedfile_id=sf_id, job_id=job.id)
                 for sf_id in sf_ids])
             job_fn_map[job.id] = set(sf_ids)
@@ -79,12 +78,13 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
                 print(job.joberror.message)
                 
         elif job.state == Jobstates.REVOKING:
-            if jwrapper.revokable:
-                tasks.update(state=states.REVOKED)
-                for task in tasks:
-                    AsyncResult(task.asyncid).revoke(terminate=True, signal='SIGUSR1')
-            job.state = Jobstates.CANCELED
-            job.save()
+            # canceling job from revoke status only happens here
+            # we do a new query update where state=revoking, as to not get race with someone quickly un-revoking
+            canceled = Job.objects.filter(pk=job.pk, state__in=jj.Jobstates.REVOKING).update(state=jj.Jobstates.CANCELED)
+            # There is an extra check if the job actually has revokable tasks
+            # Most jobs are not, but very long running user-ordered tasks are.
+            if jwrapper.revokable and canceled:
+                revoke_and_delete_tasks(tasks)
             del(job_fn_map[job.id])
             del(job_ds_map[job.id])
             active_jobs.remove(job.id)

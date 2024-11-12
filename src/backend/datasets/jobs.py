@@ -200,6 +200,7 @@ class MoveFilesStorageTmp(DatasetJob):
     def check_error(self, **kwargs):
         sfs = self.getfiles_query(**kwargs).values('pk', 'filename')
         if StoredFile.objects.exclude(pk__in=[x['pk'] for x in sfs]).filter(
+                servershare__name=settings.TMPSHARENAME, path='',
                 filename__in=[x['filename'] for x in sfs]):
             return (f'Cannot move files from dataset {kwargs["dset_id"]} to tmp storage, as there '
                     'exist file(s) with the same name there. Please resolve this before retrying')
@@ -275,7 +276,7 @@ class DeleteDatasetMzml(DatasetJob):
     task = filetasks.delete_file
 
     def process(self, **kwargs):
-        for fn in self.getfiles_query(**kwargs).filter(deleted=False, purged=False, checked=True,
+        for fn in self.getfiles_query(**kwargs).filter(deleted=True, purged=False, checked=True,
                 mzmlfile__pwiz_id=kwargs['pwiz_id']):
             fullpath = os.path.join(fn.path, fn.filename)
             print('Queueing deletion of mzML file {fullpath} from dataset {kwargs["dset_id"]}')

@@ -103,7 +103,6 @@ def dataset_files(request, dataset_id=False):
         if penfileq := jm.Job.objects.filter(funcname='move_files_storage', kwargs__dset_id=dataset_id,
                 state=jj.Jobstates.HOLD):
             pending_ids = [x for y in penfileq for x in y.kwargs['rawfn_ids']]
-            print(penfileq, pending_ids)
             pending_files = [(x['pk'], x['name']) for x in
                     filemodels.RawFile.objects.filter(pk__in=pending_ids).values('name', 'pk')]
         else:
@@ -752,6 +751,7 @@ def purge_project(request):
 
 
 def get_dset_storestate(dset, dsfiles=False):
+    # Dsfiles is passed in home/views, but only to cache it?
     if not dsfiles:
         dsfiles = filemodels.StoredFile.objects.filter(rawfile__datasetrawfile__dataset=dset)
     dsfiles = dsfiles.exclude(mzmlfile__isnull=False)
@@ -1249,8 +1249,7 @@ def save_or_update_files(data):
                 storedfile__checked=True).exists():
             return {'error': 'Some files cannot be saved to dataset since they '
                     'are not confirmed to be stored yet'}, 403
-        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'dst_path': dset.storage_loc, 
-            'rawfn_ids': added_fnids}))
+        mvjobs.append(('move_files_storage', {'dset_id': dset_id, 'rawfn_ids': added_fnids}))
     if removed_ids:
         mvjobs.append(('move_stored_files_tmp', {'dset_id': dset_id, 'fn_ids': removed_ids}))
 
@@ -1615,9 +1614,12 @@ def save_samples(request):
 
 
 def set_component_state(dset_id, comp, state):
-    dcs = models.DatasetComponentState.objects.get(dataset_id=dset_id, dtcomp__component=comp)
-    dcs.state = state
-    dcs.save()
+    '''If you want to use this in a job, be careful that it will not roll back
+    since the job runner doesnt have atomic transactions'''
+    updated = models.DatasetComponentState.objects.filter(
+            dataset_id=dset_id, dtcomp__component=comp).update(state=state)
+    if updated == 0:
+        raise RuntimeError(f'Could not find datasetcomponentstate row of type {comp} for dset {dset_id}')
 
 
 def update_admin_defined_params(dset, data, category):

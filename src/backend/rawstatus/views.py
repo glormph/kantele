@@ -131,6 +131,7 @@ def browser_userupload(request):
         return JsonResponse({'success': False, 'msg': 'Cannot upload folder datatypes through browser'}, status=403)
 
     # create userfileupload model (incl. fake token)
+    # FIXME hardcoded admin name!
     producer = Producer.objects.get(shortname='admin')
     upload = create_upload_token(ftype.pk, request.user.id, producer, uploadtype, archive_only)
     # tmp write file 
@@ -195,7 +196,7 @@ def browser_userupload(request):
     if upload.uploadtype == ufiletypes.RAWFILE and StoredFile.objects.filter(filename=fname, path=dstpath,
             servershare=dstshare, deleted=False).exclude(rawfile__source_md5=raw.source_md5).exists():
         return JsonResponse({'error': 'Another file in the system has the same name '
-            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}. '
+            f'and is stored in the same path ({dstshare.name} - {dstpath}/{fname}). '
             'Please investigate, possibly change the file name or location of this or the other '
             'file to enable transfer without overwriting.', 'problem': 'DUPLICATE_EXISTS'},
             status=403)
@@ -415,6 +416,7 @@ def get_files_transferstate(request):
             # There is no rsync job for this file, means it's old or somehow
             # errored # TODO how to report to user? File is also not OK checked
             tstate = 'wait'
+        # FIXME elif last_rsjob.state == jobutil.Jobstates.ERROR: tstate = 'skip' ??
         elif last_rsjob.state not in jobutil.JOBSTATES_DONE:
             # File being rsynced and optionally md5checked (or it crashed, job
             # errored, revoked, wait for system or admin to catch job)
@@ -541,39 +543,6 @@ def process_file_confirmed_ready(rfn, sfn, upload, desc):
             sfn.save()
             create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
     return newname
-    ############
-#    fn = sfn.filename
-#    if 'QC' in fn and 'hela' in fn.lower() and not 'DIA' in fn and is_active_ms:
-#        rfn.claimed = True
-#        rfn.save()
-#        create_job('move_single_file', sf_id=sfn.id,
-#                dstsharename=settings.PRIMARY_STORAGESHARENAME,
-#                dst_path=os.path.join(settings.QC_STORAGE_DIR, rfn.producer.name))
-#        staff_ops = dsmodels.Operator.objects.filter(user__is_staff=True)
-#        if staff_ops.exists():
-#            user_op = staff_ops.first()
-#        else:
-#            user_op = dsmodels.Operator.objects.first()
-#        run_singlefile_qc(sfn.rawfile, sfn, user_op)
-#        newname = fn
-#    elif hasattr(sfn, 'libraryfile'):
-#        newname = f'libfile_{sfn.libraryfile.id}_{rfn.name}'
-#        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.LIBRARY_FILE_PATH,
-#                newname=newname)
-#    elif hasattr(sfn, 'userfile'):
-#        newname = f'userfile_{rfn.id}_{rfn.name}'
-#        # FIXME can we move a folder!?
-#        create_job('move_single_file', sf_id=sfn.id, dst_path=settings.USERFILEDIR,
-#                newname=newname)
-#    else:
-#        newname = sfn.filename
-#    create_job('create_pdc_archive', sf_id=sfn.id, isdir=sfn.filetype.is_folder)
-#    if archive_only:
-#        # This purge job only runs when the PDC job is confirmed, w need_archive
-#        sfn.deleted = True
-#        sfn.save()
-#        create_job('purge_files', sf_ids=[sfn.pk], need_archive=True)
-#    return newname
 
 
 @require_POST
@@ -587,12 +556,10 @@ def transfer_file(request):
         fn_id = int(data['fn_id'])
         fname = data['filename']
     except KeyError as error:
-        print('POST request to transfer_file with missing parameter, '
-              '{}'.format(error))
+        print(f'POST request to transfer_file with missing parameter, {error}')
         return JsonResponse({'error': 'Bad request'}, status=400)
     except ValueError:
-        print('POST request to transfer_file with incorrect fn_id, '
-              '{}'.format(error))
+        print(f'POST request to transfer_file with incorrect fn_id, {error}')
         return JsonResponse({'error': 'Bad request'}, status=400)
     upload = UploadToken.validate_token(token, ['filetype', 'externalanalysis__analysis'])
     if not upload:
@@ -685,7 +652,7 @@ def transfer_file(request):
     if check_dup and StoredFile.objects.filter(filename=nonzip_fname, path=dstpath, servershare=dstshare,
             deleted=False).exclude(rawfile__source_md5=rawfn.source_md5).exists():
         return JsonResponse({'error': 'Another file in the system has the same name '
-            f'and is stored in the same path ({dstshare.name} - {dstpath}/{nonzip_fname}. '
+            f'and is stored in the same path ({dstshare.name} - {dstpath}/{nonzip_fname}). '
             'Please investigate, possibly change the file name or location of this or the other '
             'file to enable transfer without overwriting.', 'problem': 'DUPLICATE_EXISTS'},
             status=403)

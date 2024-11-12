@@ -769,7 +769,7 @@ def store_analysis(request):
             return JsonResponse({'error': 'You do not have permission to edit this analysis'}, status=403)
         elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state == jj.Jobstates.DONE:
             return JsonResponse({'error': 'This analysis has already finished running, it cannot be edited'}, status=403)
-        elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED, jj.Jobstates.ERROR]:
+        elif hasattr(analysis, 'nextflowsearch') and analysis.nextflowsearch.job.state not in jj.JOBSTATES_JOB_NOT_SENT:
             return JsonResponse({'error': 'This analysis has a running or queued job, it cannot be edited, please stop the job first'}, status=403)
         elif not analysis.editable:
             return JsonResponse({'error': 'This analysis cannot be edited'}, status=403)
@@ -1142,14 +1142,12 @@ def store_analysis(request):
                 'wfv_id': req['nfwfvid'], 'inputs': jobinputs, 'fullname': ana_storpathname,
                 'storagepath': analysis.storage_dir, **data_args}
         if req['analysis_id'] and hasattr(analysis, 'nextflowsearch'):
-            job_db = analysis.nextflowsearch.job
-            job_db.kwargs = kwargs
-            job_db.state = jj.Jobstates.WAITING
-            job_db.save()
-            job = {'id': job_db.pk, 'error': False}
+            jobq = jm.Job.objects.filter(nextflowsearch__analysis=analysis)
+            jobq.update(kwargs=kwargs, state=jj.Jobstates.WAITING)
+            jobid = jobq.values('pk').get()['pk']
         else:
-            job = create_job(fname, state=jj.Jobstates.WAITING, **kwargs)
-        am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': job['id'], 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
+            jobid = create_job(fname, state=jj.Jobstates.WAITING, **kwargs)['id']
+        am.NextflowSearch.objects.update_or_create(defaults={'nfwfversionparamset_id': req['nfwfvid'], 'job_id': jobid, 'workflow_id': req['wfid'], 'token': ''}, analysis=analysis)
     return JsonResponse({'error': False, 'analysis_id': analysis.id, 'token': api_token})
 
 
@@ -1235,13 +1233,8 @@ def delete_analysis(request):
             del_record = am.AnalysisDeleted(analysis=analysis)
             del_record.save()
             if hasattr(analysis, 'nextflowsearch'):
-                ana_job = analysis.nextflowsearch.job
-                if ana_job.state not in jj.Jobstates.DONE:
-                    if ana_job.state in [jj.Jobstates.ERROR, jj.Jobstates.WAITING, jj.Jobstates.PENDING]:
-                        ana_job.state = jj.Jobstates.CANCELED
-                    else:
-                        ana_job.state = jj.Jobstates.REVOKING
-                    ana_job.save()
+                jobq = jm.Job.objects.filter(nextflowsearch__analysis=analysis)
+                jv.cancel_or_revoke_job(jobq)
         return JsonResponse({})
     else:
         return JsonResponse({'error': 'User is not authorized to delete this analysis'}, status=403)
@@ -1295,7 +1288,7 @@ def start_analysis(request):
     ownership = jv.get_job_ownership(job, request)
     if not ownership['owner_loggedin'] and not ownership['is_staff']:
         return JsonResponse({'error': 'Only job owners and admin can start this job'}, status=403)
-    elif job.state not in [jj.Jobstates.WAITING, jj.Jobstates.CANCELED]:
+    elif job.state not in jj.JOBSTATES_JOB_INACTIVE:
         return JsonResponse({'error': 'Only waiting/canceled jobs can be (re)started, '
             f'this job is {job.state}'}, status=403)
     jv.do_retry_job(job)
@@ -1309,10 +1302,13 @@ def stop_analysis(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
-    job = jm.Job.objects.get(nextflowsearch__analysis_id=req['item_id'])
-    job.nextflowsearch.analysis.editable = True
-    job.nextflowsearch.analysis.save()
-    return jv.revoke_job(job.pk, request)
+    anaq = am.Analysis.objects.filter(pk=req['item_id'], user=request.user)
+    if not request.user.is_superuser() or not anaq.exists():
+        return JsonResponse({'error': 'Analysis does not exist or you dont have permission'}, status=403)
+    anaq.update(editable=True)
+    jobq = jm.Job.objects.filter(nextflowsearch__analysis_id=req['item_id'])
+    jv.cancel_or_revoke_job(jobq)
+    return JsonResponse({})
 
 
 @login_required
@@ -1412,7 +1408,7 @@ def nextflow_analysis_log(request):
         nfs = am.NextflowSearch.objects.get(token=req['runName'])
     except am.NextflowSearch.DoesNotExist:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
-    if nfs.job.state not in [jj.Jobstates.PROCESSING, jj.Jobstates.REVOKING]:
+    if nfs.job.state not in jj.JOBSTATES_TASKS_RUNNING:
         return JsonResponse({'error': 'Analysis does not exist'}, status=403)
     if req['event'] in ['started', 'completed']:
         logmsg = 'Nextflow reports: workflow {}'.format(req['event'])
