@@ -53,7 +53,9 @@ JOBSTATES_JOB_SENT = [Jobstates.QUEUED, Jobstates.PROCESSING, Jobstates.REVOKING
 # Tasks picked up
 # - Nextflow can log to this analysis
 JOBSTATES_TASKS_RUNNING = [Jobstates.PROCESSING, Jobstates.REVOKING]
-# For showing jobs:
+
+# - showing jobs
+# - determining if file is being backed up
 JOBSTATES_WAIT = [Jobstates.WAITING, Jobstates.PENDING, Jobstates.QUEUED, Jobstates.PROCESSING, Jobstates.HOLD]
 
 # Jobs retryable
