@@ -984,7 +984,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
             'upload.py': 28503,
             'transfer.bat': 177,
             'transfer_config.json': 202,
-            'setup.bat': 689,
+            'setup.bat': 738,
             }
 
     def setUp(self):
