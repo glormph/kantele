@@ -263,19 +263,25 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
                 logger.info(f'Will wait until acquisition status ready, currently: {acq_status}')
                 continue
             # create somewhat unique identifier to filter against existing entries
-            fndata = get_new_file_entry(fn, raw_is_folder)
+            try:
+                fndata = get_new_file_entry(fn, raw_is_folder)
+            except FileNotFoundError:
+                # File has been cleaned up by transfer, while we were sleeping when
+                # checking acquisition of this or other files etc
+                continue
             ct_size = get_fndata_id(fndata)
             if ct_size not in ledger:
                 logger.info(f'Found new file: {fn} produced {fndata["prod_date"]}')
                 ledger[ct_size] = fndata
-        for produced_fn in ledger.values():
+        for cts_id, produced_fn in [(k,v) for k, v in ledger.items()]:
             newfn = False
             if not produced_fn['md5']:
                 newfn = True
                 try:
                     produced_fn['md5'] = md5(produced_fn['fpath'], produced_fn['is_dir'], md5_stable_fns)
                 except FileNotFoundError:
-                    logger.warning('Could not find file in outbox to check MD5')
+                    logger.warning('Could not find file without MD5 in outbox anymore')
+                    del(ledger[cts_id])
                     continue
                 except IndexError:
                     logger.warning('This file is a directory, but we could not '
@@ -287,7 +293,11 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
                     os.makedirs(zipbox)
                 zipname = os.path.join(zipbox, os.path.basename(produced_fn['fpath']))
                 produced_fn['nonzipped_path'] = produced_fn['fpath']
-                produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
+                if os.path.exists(produced_fn['fpath']):
+                    produced_fn['fpath'] = zipfolder(produced_fn['fpath'], zipname)
+                else:
+                    del(ledger[cts_id])
+                    continue
             if newfn:
                 regq.put(produced_fn)
         sleep(5)
