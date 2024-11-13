@@ -55,7 +55,7 @@ class TestUploadScript(BaseIntegrationTest):
                 shortname=settings.PRODUCER_ADMIN_NAME, internal=True)
         rm.MSInstrument.objects.create(producer=self.adminprod, instrumenttype=self.msit, filetype=self.ft)
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
-                expires=timezone.now() + timedelta(1), expired=False,
+                expires=timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS + 1), expired=False,
                 producer=self.adminprod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
         need_desc = 0
         #need_desc = int(self.uploadtype in [ufts.LIBRARY, ufts.USERFILE])
@@ -353,7 +353,7 @@ class TestUploadScript(BaseIntegrationTest):
         # Test trying to upload file with same name/path but diff MD5
         self.token = 'prodtoken_noadminprod'
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
-                expires=timezone.now() + timedelta(1), expired=False,
+                expires=timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS + 1), expired=False,
                 producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
         dm.Operator.objects.create(user=self.user) # need operator for QC jobs
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
@@ -429,7 +429,7 @@ class TestUploadScript(BaseIntegrationTest):
         # Test trying to upload file with same name/path but diff MD5
         self.token = 'prodtoken_noadminprod'
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
-                expires=timezone.now() + timedelta(1), expired=False,
+                expires=timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS + 1), expired=False,
                 producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
@@ -505,7 +505,7 @@ class TestUploadScript(BaseIntegrationTest):
         # Test trying to upload file with same name/path but diff MD5
         self.token = 'prodtoken_noadminprod'
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
-                expires=timezone.now() + timedelta(1), expired=False,
+                expires=timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS + 1), expired=False,
                 producer=self.prod, filetype=self.ft, uploadtype=rm.UploadToken.UploadFileType.RAWFILE)
         dm.Operator.objects.create(user=self.user) # need operator for QC jobs
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)

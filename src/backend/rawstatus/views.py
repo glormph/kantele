@@ -235,13 +235,14 @@ def instrument_check_in(request):
     response = {'newtoken': False}
     uploadtype = UploadToken.UploadFileType.RAWFILE
     if upload:
+
         # producer is admin if there is no client id
+        day_window = timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS)
         if upload.producer.client_id != client_id and \
                 upload.producer.shortname != settings.PRODUCER_ADMIN_NAME:
             # Keep the token bound to a client instrument
-            print(upload.producer.shortname, settings.PRODUCER_ADMIN_NAME)
             return JsonResponse({'error': 'Token/client ID invalid or non-existing'}, status=403)
-        elif client_id and upload.expires > timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS):
+        elif client_id and upload.expires - day_window < timezone.now() < upload.expires:
             upload.expired = True
             upload.save()
             newtoken = create_upload_token(upload.filetype_id, upload.user_id, upload.producer, uploadtype)
