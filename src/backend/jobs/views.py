@@ -52,7 +52,8 @@ def set_task_status(request):
         # update() is 0 if no task found, 1 even if state is not actually updated
         return HttpResponseForbidden()
     if data.get('msg', False):
-        models.TaskError.objects.create(task_id=data['task_id'], message=data['msg'])
+        task_id = taskq.values('pk').get()['pk']
+        models.TaskError.objects.create(task_id=task_id, message=data['msg'])
     return HttpResponse()
 
 
