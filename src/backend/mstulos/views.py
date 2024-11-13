@@ -38,12 +38,11 @@ def paginate(qset, pnr):
 
 @staff_member_required
 @require_POST
-def add_analysis(request, nfs_id):
+def add_analysis(request, ana_id):
     # FIXME: need mods defined as unimod when analysing
     # ideally we have a unimod lookup in Kantele, can download from there
     analysis = am.Analysis.objects.select_related('nextflowsearch__nfwfversionparamset',
-            'nextflowsearch__job',
-            ).get(nextflowsearch__pk=nfs_id)
+            'nextflowsearch__job').get(pk=ana_id)
 
     # First do checks:
     organisms = set()

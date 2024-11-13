@@ -132,7 +132,7 @@ class TestUploadAnalysis(BaseTC):
     jobname = 'ingest_search_results'
 
     def test_with_genes(self):
-        self.url = f'/mstulos/add/{self.nfs.pk}/'
+        self.url = f'/mstulos/add/{self.ana.pk}/'
         resp = self.post_json({})
         self.assertEqual(resp.status_code, 200)
 

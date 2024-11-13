@@ -5,7 +5,7 @@ app_name = 'mstulos'
 urlpatterns = [
         path('', views.frontpage, name='front'),
         path('upload/init/', views.init_store_experiment, name='init_store'),
-        path('add/<int:nfs_id>/', views.add_analysis),
+        path('add/<int:ana_id>/', views.add_analysis),
         path('peptides/', views.peptide_table),
         path('psms/', views.psm_table),
         path('upload/proteins/', views.upload_proteins, name='upload_proteins'),
