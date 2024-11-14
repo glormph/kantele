@@ -1,5 +1,6 @@
 from datetime import timedelta, datetime
 import json
+from base64 import b64encode
 from celery import states as tstates
 
 from django.shortcuts import render
@@ -24,6 +25,7 @@ from jobs import jobs as jj
 from jobs import views as jv
 from jobs.jobutil import create_job
 from jobs import models as jm
+from mstulos import models as mm
 
 
 @login_required
@@ -362,6 +364,7 @@ def get_ana_actions(analysis, user):
 
 def populate_analysis(analyses, user):
     ana_out, order = {}, []
+    tulos_keys = ['peptides', 'proteins', 'genes', 'experiments']
     for ana in analyses.select_related('nextflowsearch__job', 'nextflowsearch__workflow',
             'nextflowsearch__nfwfversionparamset'):
         if hasattr(ana, 'nextflowsearch'):
@@ -376,7 +379,18 @@ def populate_analysis(analyses, user):
         else:
             nfs = {'jobid': False, 'fn_ids': False, 'dset_ids': False, 'wflink': False}
             fjobs, fjobdsets = [], []
-
+        tulosq = mm.Experiment.objects.filter(analysis=ana)
+        if tulosq.exists():
+            tulos_empty = {f'{x}': [] for x in tulos_keys}
+            tulos_empty['experiments'] = [[f'{tulosq.values("pk").get()["pk"]}', ana.name]]
+            tulos_filt = [tulos_empty[k] for k in tulos_keys]
+            tulos_filt.extend([*['' for x in tulos_keys], *[1, 1, 1, 0], *[0, 0, 0],
+                '', {'dia': True, 'dda': True}, False])
+            tulos_filt = [b64encode(json.dumps(tulos_filt, separators=(',', ':')
+                ).encode('utf-8')).decode('utf-8')]
+        else:
+            tulos_filt = False
+            
         ana_out[ana.id] = {
             'id': ana.id,
             'own': ana.user_id == user.id,
@@ -388,6 +402,7 @@ def populate_analysis(analyses, user):
             'dset_ids': [x.storedfile.rawfile.datasetrawfile.dataset_id for x in fjobdsets
                 if hasattr(x.storedfile.rawfile, 'datasetrawfile')],
             'fn_ids': [x.storedfile_id for x in fjobs],
+            'mstulosq': tulos_filt,
             'actions': get_ana_actions(ana, user),
             **nfs,
         }
