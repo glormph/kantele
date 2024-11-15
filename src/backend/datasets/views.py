@@ -699,7 +699,7 @@ def rename_project(request):
             return JsonResponse({'error': f'You do not have the rights to change all datasets in this project'}, status=403)
     # queue jobs to rename project, update project name after that since it is needed in job for path
     prim_share = filemodels.ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME)
-    if storageshare_id != prim_share.pk:
+    if dsets.exists() and storageshare_id != prim_share.pk:
         # Take leftover dset from loop
         if error := move_dset_project_servershare(dset['pk'], dset['storageshare__name'],
                 settings.PRIMARY_STORAGESHARENAME, dset['runname__experiment__project_id']):
