@@ -681,7 +681,7 @@ def refresh_job(request, job_id):
 def refresh_analysis(request, anid):
     ana = anmodels.Analysis.objects.filter(pk=anid)
     ana_out, _order = populate_analysis(ana, request.user)
-    return JsonResponse(ana_out)
+    return JsonResponse(ana_out[anid])
 
 
 @login_required

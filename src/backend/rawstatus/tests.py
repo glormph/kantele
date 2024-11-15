@@ -504,8 +504,6 @@ class TestUploadScript(BaseIntegrationTest):
             self.assertEqual(out, exp)
         lastexp = f'File {new_raw.name} has ID {new_raw.pk}, instruction: done'
         self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
-        # FIXME check actual classifying (fake sqlite .d/analysis.tdf file)
-        # check user/lib transfer - no classify
 
     def test_file_being_acquired(self):
         # Test trying to upload file with same name/path but diff MD5
@@ -561,7 +559,6 @@ class TestUploadScript(BaseIntegrationTest):
             # Properly kill children since upload.py uses multiprocessing
             os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
             spout, sperr = sp.communicate()
-        print(sperr.decode('utf-8'))
         zipboxpath = os.path.join(tmpdir, 'zipbox', f'{self.f3sf.filename}.zip')
         explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
                 f'Checking for new files in {outbox}',
@@ -661,8 +658,6 @@ class TestUploadScript(BaseIntegrationTest):
 #    def test_libfile(self):
 #    
 #    def test_userfile(self):
-#    
-#   def test_analysisfile(self):
  
 
 class TransferStateTest(BaseFilesTest):

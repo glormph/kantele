@@ -1307,7 +1307,7 @@ def stop_analysis(request):
         return JsonResponse({'error': 'Must use POST'}, status=405)
     req = json.loads(request.body.decode('utf-8'))
     anaq = am.Analysis.objects.filter(pk=req['item_id'], user=request.user)
-    if not request.user.is_superuser() or not anaq.exists():
+    if not request.user.is_superuser and not anaq.exists():
         return JsonResponse({'error': 'Analysis does not exist or you dont have permission'}, status=403)
     anaq.update(editable=True)
     jobq = jm.Job.objects.filter(nextflowsearch__analysis_id=req['item_id'])

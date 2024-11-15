@@ -290,6 +290,8 @@ def login_required_403_json(view_func):
 @login_required_403_json
 @require_POST
 def request_upload_token(request):
+    '''This view is ony for the instrument check-in, and the manual upload. It is not
+    used by the analysis upload, and will not work with that uploadtype if tested'''
     data = json.loads(request.body.decode('utf-8'))
     try:
         producer = Producer.objects.get(client_id=data['producer_id'])
