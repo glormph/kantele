@@ -335,8 +335,9 @@ def get_analysis(request, anid):
             analysis['isoquants'] = get_isoquants(ana, sampletables)
 
     if hasattr(ana, 'externalanalysis'):
+        host = settings.KANTELEHOST or request.build_absolute_uri('/')
         analysis.update({'external_desc': ana.externalanalysis.description,
-            'upload_token': ana.externalanalysis.last_token.parse_token_for_frontend(), 
+            'upload_token': ana.externalanalysis.last_token.parse_token_for_frontend(host), 
             'external_results': True})
 
     context = {
@@ -947,7 +948,8 @@ def store_analysis(request):
             # Need to access its upload token so have to get it anyway
             exta.description = req['external_description']
             exta.save()
-        api_token = exta.last_token.parse_token_for_frontend()
+        host = settings.KANTELEHOST or request.build_absolute_uri('/')
+        api_token = exta.last_token.parse_token_for_frontend(host)
     else:
         # Delete any existing external analysis row, but also upload token!
         exta = am.ExternalAnalysis.objects.filter(analysis=analysis).select_related('last_token')
@@ -1192,7 +1194,8 @@ def renew_token(request):
             rm.UploadToken.UploadFileType.ANALYSIS)
     analysis.externalanalysis.last_token = new_token
     analysis.externalanalysis.save()
-    api_token = new_token.parse_token_for_frontend()
+    host = settings.KANTELEHOST or request.build_absolute_uri('/')
+    api_token = new_token.parse_token_for_frontend(host)
     return JsonResponse({'error': False, 'token': api_token})
 
 

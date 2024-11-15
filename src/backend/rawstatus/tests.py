@@ -109,10 +109,19 @@ class TestUploadScript(BaseIntegrationTest):
             self.assertEqual(out, exp)
         self.assertEqual(cmsjobs.count(), 1)
 
+    def get_token(self, *, uploadtype=False):
+        resp = self.cl.post(f'{self.live_server_url}/files/token/', content_type='application/json',
+                data={'ftype_id': self.ft.pk, 'archive_only': False,
+                    'uploadtype': uploadtype or rm.UploadToken.UploadFileType.RAWFILE})
+        self.assertEqual(resp.status_code, 200)
+        self.token = resp.json()
+        self.user_token = self.token['user_token']
+
     def test_new_file(self):
         # Use same file as f3sf but actually take its md5 and therefore it is new
         # Testing all the way from register to upload
         # This file is of filetype self.ft which is NOT is_folder -> so it will be zipped up
+        self.get_token()
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
         old_raw = rm.RawFile.objects.last()
@@ -148,7 +157,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertEqual(jm.Job.objects.filter(funcname='create_pdc_archive', kwargs__sf_id=sf.pk).count(), 1)
         self.assertTrue(sf.checked)
         zipboxpath = os.path.join(os.getcwd(), 'zipbox', f'{self.f3sf.filename}.zip')
-        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+        explines = [f'Token OK, expires on {self.token["expires"]}',
                 'Registering 1 new file(s)', 
                 f'File {new_raw.name} has ID {new_raw.pk}, instruction: transfer',
                 f'Uploading {zipboxpath} to {self.live_server_url}',
@@ -169,6 +178,7 @@ class TestUploadScript(BaseIntegrationTest):
         '''Transfer already existing file, e.g. overwrites of previously
         found to be corrupt file. It needs to be checked=False for that'''
         # Actual raw3 fn md5:
+        self.get_token()
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
         self.f3raw.source_md5 = self.actual_md5
@@ -204,7 +214,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertTrue(self.f3sf.checked)
         self.assertEqual(self.f3sf.md5, self.f3raw.source_md5)
         zipboxpath = os.path.join(os.getcwd(), 'zipbox', f'{self.f3sf.filename}.zip')
-        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+        explines = [f'Token OK, expires on {self.token["expires"]}',
                 'Registering 1 new file(s)', 
                 f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: transfer',
                 f'Uploading {zipboxpath} to {self.live_server_url}',
@@ -272,6 +282,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertTrue(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
 
     def test_transfer_file_namechanged(self):
+        self.get_token()
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
         rawfn = rm.RawFile.objects.create(source_md5=self.actual_md5, name='fake_oldname',
@@ -301,6 +312,7 @@ class TestUploadScript(BaseIntegrationTest):
 
     def test_rsync_not_finished_yet(self):
         # Have ledger with f3sf md5 so system uses that file
+        self.get_token()
         fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path)
         fullp = os.path.join(fpath, self.f3sf.filename)
         self.f3raw.claimed = False
@@ -341,7 +353,7 @@ class TestUploadScript(BaseIntegrationTest):
             spout, sperr = sp.communicate()
             print(sperr.decode('utf-8'))
             self.fail()
-        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+        explines = [f'Token OK, expires on {self.token["expires"]}',
                 f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: wait',
                 f'File {self.f3raw.name} has ID {self.f3raw.pk}, instruction: done']
         for out, exp in zip(sperr.decode('utf-8').strip().split('\n'), explines):
