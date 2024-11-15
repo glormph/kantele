@@ -453,7 +453,7 @@ def get_files_transferstate(request):
 def classified_rawfile_treatment(request):
     '''Task calls this after reading a raw file for classification'''
     data = json.loads(request.body.decode('utf-8'))
-    tasks = jm.Task.objects.filter(asyncid=data['task_id'])
+    tasks = jm.Task.objects.filter(asyncid=data['task_id'], state=taskstates.PENDING)
     # If task is force-retried, and there was another task running, that other task will
     # get 403 here
     if tasks.count() != 1:

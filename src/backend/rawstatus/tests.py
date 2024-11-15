@@ -1056,9 +1056,9 @@ class TestArchiveFile(BaseFilesTest):
 
 class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
-    zipsizes = {'kantele_upload.sh': 337,
-            'kantele_upload.bat': 185,
-            'upload.py': 28503,
+    zipsizes = {'kantele_upload.sh': 344,
+            'kantele_upload.bat': 192,
+            'upload.py': 28963,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 738,
