@@ -437,6 +437,76 @@ class TestUploadScript(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             self.assertEqual(out, exp)
 
+    def test_upload_to_analysis(self):
+        # Use same file as f3sf but actually take its md5 and therefore it is new
+        # Testing all the way from register to upload
+        # This file is of filetype self.ft which is NOT is_folder -> so it will be zipped up
+        self.token = 'hfsjkfhhkjshfskj'
+        anashare = rm.ServerShare.objects.create(name=settings.ANALYSISSHARENAME,
+                server=self.newfserver, share='/ana')
+        anaft = rm.StoredFileType.objects.create(name='anaft', filetype=settings.ANALYSIS_FT_NAME,
+                is_rawdata=False)
+        self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
+                expires=timezone.now() + timedelta(settings.TOKEN_RENEWAL_WINDOW_DAYS + 1), expired=False,
+                producer=self.anaprod, filetype=anaft, uploadtype=rm.UploadToken.UploadFileType.ANALYSIS)
+        ana = am.Analysis.objects.create(user=self.user, name='testana', storage_dir='testdir_iso')
+        exta = am.ExternalAnalysis.objects.create(analysis=ana, description='bla', last_token=self.uploadtoken)
+        need_desc = 0
+        self.user_token = b64encode(f'{self.token}|{self.live_server_url}|{need_desc}'.encode('utf-8')).decode('utf-8')
+        self.actual_md5 = 'dee94af7703a5beb01e8fdc84da018bb'
+        fpath = os.path.join(settings.SHAREMAP[self.f3sf.servershare.name], self.f3sf.path, self.f3sf.filename)
+        self.f3sf.filename = 'analysis.tdf'
+        fullp = os.path.join(fpath, self.f3sf.filename)
+        old_raw = rm.RawFile.objects.last()
+        sp = self.run_script(fullp)
+        # Give time for running script, so job is created before running it etc
+        sleep(2)
+        new_raw = rm.RawFile.objects.last()
+        self.assertEqual(new_raw.pk, old_raw.pk + 1)
+        sf = rm.StoredFile.objects.last()
+        self.assertEqual(sf.filename, self.f3sf.filename)
+        self.assertEqual(sf.path, ana.storage_dir)
+        self.assertEqual(sf.servershare, anashare)
+        self.assertFalse(sf.checked)
+        # Run rsync
+        self.run_job()
+        # Run classify
+        self.run_job()
+        sf.refresh_from_db()
+        self.assertEqual(sf.filename, self.f3sf.filename)
+        try:
+            spout, sperr = sp.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sp.terminate()
+            # Properly kill children since upload.py uses multiprocessing
+            os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
+            spout, sperr = sp.communicate()
+            print(sperr.decode('utf-8'))
+            self.fail()
+        cjob = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs__sf_id=sf.pk)
+        self.assertFalse(cjob.exists())
+        new_raw.refresh_from_db()
+        self.assertTrue(new_raw.claimed)
+        self.assertEqual(jm.Job.objects.filter(funcname='create_pdc_archive', kwargs__sf_id=sf.pk).count(), 1)
+        self.assertTrue(sf.checked)
+        self.assertTrue(am.AnalysisResultFile.objects.filter(sfile=sf, analysis=ana).exists())
+        explines = [f'Token OK, expires on {datetime.strftime(self.uploadtoken.expires, "%Y-%m-%d, %H:%M")}',
+                'Registering 1 new file(s)', 
+                f'File {new_raw.name} has ID {new_raw.pk}, instruction: transfer',
+                f'Uploading {fullp} to {self.live_server_url}',
+                f'Succesful transfer of file {fullp}',
+                ]
+        outlines = sperr.decode('utf-8').strip().split('\n')
+        for out, exp in zip(outlines, explines):
+            out = re.sub('.* - INFO - .producer.main - ', '', out)
+            out = re.sub('.* - INFO - .producer.worker - ', '', out)
+            out = re.sub('.* - INFO - root - ', '', out)
+            self.assertEqual(out, exp)
+        lastexp = f'File {new_raw.name} has ID {new_raw.pk}, instruction: done'
+        self.assertEqual(re.sub('.* - INFO - .producer.worker - ', '', outlines[-1]), lastexp)
+        # FIXME check actual classifying (fake sqlite .d/analysis.tdf file)
+        # check user/lib transfer - no classify
+
     def test_file_being_acquired(self):
         # Test trying to upload file with same name/path but diff MD5
         self.token = 'prodtoken_noadminprod'
