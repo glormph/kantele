@@ -246,7 +246,7 @@ class TestUploadScript(BaseIntegrationTest):
         with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
             json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
-                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
                 'injection_waittime': 5}, fp)
         self.assertFalse(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
@@ -384,11 +384,11 @@ class TestUploadScript(BaseIntegrationTest):
         with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
             json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
-                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
                 'injection_waittime': 5}, fp)
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
-        sleep(3)
+        sleep(5)
         newraw = rm.RawFile.objects.last()
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newraw.pk, lastraw.pk + 1)
@@ -425,8 +425,6 @@ class TestUploadScript(BaseIntegrationTest):
                 f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
                 f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Succesful transfer of file {zipboxpath}',
-                f'File {newraw.name} has ID {newraw.pk}, instruction: done',
-                f'Removing file {newraw.name} from outbox',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
         for out, exp in zip(outlines , explines):
@@ -436,6 +434,7 @@ class TestUploadScript(BaseIntegrationTest):
             out = re.sub('.* - INFO - root - ', '', out)
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             self.assertEqual(out, exp)
+        self.assertFalse(os.path.exists(os.path.join(outbox, self.f3sf.filename)))
 
     def test_upload_to_analysis(self):
         # Use same file as f3sf but actually take its md5 and therefore it is new
@@ -524,7 +523,7 @@ class TestUploadScript(BaseIntegrationTest):
         with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
             json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
-                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['flock'],
                 'injection_waittime': 0}, fp)
         # Lock analysis.tdf for 3 seconds to pretend we are the acquisition software
@@ -603,11 +602,11 @@ class TestUploadScript(BaseIntegrationTest):
         with open(os.path.join(tmpdir, 'config.json'), 'w') as fp:
             json.dump({'client_id': self.prod.client_id, 'host': self.live_server_url,
 
-                'token': self.token, 'outbox': outbox, 'raw_is_folder': False,
+                'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
                 'injection_waittime': 5}, fp)
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
-        sleep(3)
+        sleep(5)
         newraw = rm.RawFile.objects.last()
         newsf = rm.StoredFile.objects.last()
         self.assertEqual(newraw.pk, lastraw.pk + 1)
@@ -643,8 +642,6 @@ class TestUploadScript(BaseIntegrationTest):
                 f'File {newraw.name} has ID {newraw.pk}, instruction: transfer',
                 f'Uploading {os.path.join(tmpdir, "zipbox", newraw.name)}.zip to {self.live_server_url}',
                 f'Succesful transfer of file {zipboxpath}',
-                f'File {newraw.name} has ID {newraw.pk}, instruction: done',
-                f'Removing file {newraw.name} from outbox',
                 ]
         outlines = sperr.decode('utf-8').strip().split('\n')
         for out, exp in zip(outlines , explines):
@@ -654,6 +651,7 @@ class TestUploadScript(BaseIntegrationTest):
             out = re.sub('.* - INFO - root - ', '', out)
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             self.assertEqual(out, exp)
+        self.assertFalse(os.path.exists(os.path.join(outbox, self.f3sf.filename)))
 
 #    def test_libfile(self):
 #    
