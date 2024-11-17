@@ -496,7 +496,7 @@ def register_resultfile(fname, fpath, token):
                 'token': token,
                 }
     resp = requests.post(url=reg_url, json=postdata)
-    if resp.status != 500:
+    if resp.status_code != 500:
         rj = resp.json()
     else:
         rj = False
