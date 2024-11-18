@@ -453,6 +453,7 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
         is_qc, dset_id = False, False
 
     url = urljoin(settings.KANTELEHOST, reverse('files:classifiedraw'))
+    print(f'File {fname} of type {ftypename} parsed, result: dset_id={dset_id}, is_qc={is_qc}')
     postdata = {'token': token, 'fnid': fnid, 'qc': is_qc, 'dset_id': dset_id,
             'task_id': self.request.id}
     try:

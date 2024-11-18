@@ -153,6 +153,8 @@ class TestUploadScript(BaseIntegrationTest):
         cjob = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs__sf_id=sf.pk).get()
         new_raw.refresh_from_db()
         self.assertEqual(cjob.task_set.get().state, states.SUCCESS)
+        classifytask = jm.Task.objects.filter(job__funcname='classify_msrawfile', job__kwargs__sf_id=sf.pk)
+        self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         self.assertFalse(new_raw.claimed) # not QC
         self.assertEqual(jm.Job.objects.filter(funcname='create_pdc_archive', kwargs__sf_id=sf.pk).count(), 1)
         self.assertTrue(sf.checked)
@@ -396,17 +398,23 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertFalse(newraw.claimed)
         # Run rsync
         self.run_job()
+        classifyjob = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs={
+            'sf_id': newsf.pk, 'token': self.token})
+        classifytask = jm.Task.objects.filter(job__funcname='classify_msrawfile', job__kwargs__sf_id=newsf.pk)
         mvjobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={
             'sf_id': newsf.pk, 'dstsharename': settings.PRIMARY_STORAGESHARENAME,
             'dst_path': os.path.join(settings.QC_STORAGE_DIR, self.prod.name)})
         qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
                 kwargs__params=['--instrument', self.msit.name])
+        self.assertEqual(classifyjob.count(), 1)
+        self.assertEqual(classifytask.count(), 0)
         self.assertEqual(mvjobs.count(), 0)
         self.assertEqual(qcjobs.count(), 0)
         # Run classify
         self.run_job()
         newraw.refresh_from_db()
         self.assertTrue(newraw.claimed)
+        self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         self.assertEqual(mvjobs.count(), 1)
         self.assertEqual(qcjobs.count(), 1)
         # Must kill this script, it will keep scanning outbox
@@ -469,8 +477,6 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertFalse(sf.checked)
         # Run rsync
         self.run_job()
-        # Run classify
-        self.run_job()
         sf.refresh_from_db()
         self.assertEqual(sf.filename, self.f3sf.filename)
         try:
@@ -482,6 +488,7 @@ class TestUploadScript(BaseIntegrationTest):
             spout, sperr = sp.communicate()
             print(sperr.decode('utf-8'))
             self.fail()
+        # Analysis files dont go through classify raw of course
         cjob = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs__sf_id=sf.pk)
         self.assertFalse(cjob.exists())
         new_raw.refresh_from_db()
@@ -538,16 +545,23 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertEqual(newsf.pk, lastsf.pk + 1)
         # Run rsync
         self.run_job()
+        classifyjob = jm.Job.objects.filter(funcname='classify_msrawfile', kwargs={
+            'sf_id': newsf.pk, 'token': self.token})
+        classifytask = jm.Task.objects.filter(job__funcname='classify_msrawfile', job__kwargs__sf_id=newsf.pk)
         mvjobs = jm.Job.objects.filter(funcname='move_single_file', kwargs={
             'sf_id': newsf.pk, 'dstsharename': settings.PRIMARY_STORAGESHARENAME,
             'dst_path': os.path.join(settings.QC_STORAGE_DIR, self.prod.name)})
         qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
                 kwargs__params=['--instrument', self.msit.name])
+        newsf.refresh_from_db()
         # Run classify
+        sleep(1)
+        self.assertEqual(classifyjob.count(), 1)
         self.run_job()
+        self.assertEqual(classifyjob.count(), 1)
         newraw.refresh_from_db()
         self.assertFalse(newraw.claimed)
-        # FIXME make this the dset-add job
+        self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         #self.assertEqual(mvjobs.count(), 1)
         self.assertEqual(qcjobs.count(), 0)
         # Must kill this script, it will keep scanning outbox
@@ -618,6 +632,7 @@ class TestUploadScript(BaseIntegrationTest):
             'dset_id': self.oldds.pk, 'rawfn_ids': [newraw.pk]})
         qcjobs = jm.Job.objects.filter(funcname='run_longit_qc_workflow', kwargs__sf_id=newsf.pk,
                 kwargs__params=['--instrument', self.msit.name])
+        classifytask = jm.Task.objects.filter(job__funcname='classify_msrawfile', job__kwargs__sf_id=newsf.pk)
         self.assertEqual(mvjobs.count(), 0)
         self.assertEqual(qcjobs.count(), 0)
         # Run classify
@@ -626,6 +641,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertTrue(newraw.claimed)
         self.assertEqual(mvjobs.count(), 1)
         self.assertEqual(qcjobs.count(), 0)
+        self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         # Must kill this script, it will keep scanning outbox
         try:
             spout, sperr = sp.communicate(timeout=1)
