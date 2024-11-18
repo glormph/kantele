@@ -412,7 +412,7 @@ def get_files_transferstate(request):
             tstate = 'done'
             has_backupjob = jm.Job.objects.filter(funcname='create_pdc_archive',
 
-                    kwargs__sf_id=sfn.pk, state=jobutil.JOBSTATES_WAIT).exists()
+                    kwargs__sf_id=sfn.pk, state__in=jobutil.JOBSTATES_WAIT).exists()
             if not has_backupjob and not PDCBackedupFile.objects.filter(storedfile_id=sfn.id):
                 # No already-backedup PDC file, then do some processing work
                 process_file_confirmed_ready(rfn, sfn, upload, desc)
