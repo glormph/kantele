@@ -9,9 +9,10 @@ let errors = [];
 
 async function fetchData() {
   let url = new URL('/mstulos/plotdata/genes/', document.location);
-  let expids = new Set();
-  data.forEach(x => x.experiments.forEach(x => expids.add(x[0])));
-  const post = {expids: Array.from(expids), gids: data.map(x => x.id )}
+  const post = {
+    expids: Array.from(new Set(data.flatMap(x => x.experiments.map(e => e[0])))),
+    gids: Array.from(new Set(data.flatMap(x => x.genes.map(g => g[0])))),
+  }
   const resp = await postJSON(url, post);
   return resp;
 }
