@@ -411,8 +411,8 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
             try:
                 val = line[header.index(settings.THERMOKEY)]
             except IndexError:
-                taskfail_update_db(self.request.id)
-                raise
+                print(f'File {fname} of type {ftypename} parsed, could not find key: '
+                        f'{settings.THERMOKEY}')
         
     elif ftypename == settings.BRUKERRAW:
         try:
@@ -435,9 +435,7 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
         try:
             val = cur.fetchone()[0]
         except TypeError:
-            taskfail_update_db(self.request.id, msg=f'Could not get value for key:{settings.BRUKERKEY}, '
-                    'is the file OK and the key correctly specified?')
-            raise
+            print(f'File {fname} of type {ftypename} parsed, could not find key: {settings.BRUKERKEY}')
     # Parse what was found
     # FIXME invalid dataset ID needs logging!
     if val == 'QC':
