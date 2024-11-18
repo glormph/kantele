@@ -80,7 +80,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
         elif job.state == Jobstates.REVOKING:
             # canceling job from revoke status only happens here
             # we do a new query update where state=revoking, as to not get race with someone quickly un-revoking
-            canceled = Job.objects.filter(pk=job.pk, state__in=jj.Jobstates.REVOKING).update(state=jj.Jobstates.CANCELED)
+            canceled = Job.objects.filter(pk=job.pk, state=jj.Jobstates.REVOKING).update(state=jj.Jobstates.CANCELED)
             # There is an extra check if the job actually has revokable tasks
             # Most jobs are not, but very long running user-ordered tasks are.
             if jwrapper.revokable and canceled:
