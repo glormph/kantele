@@ -485,11 +485,15 @@ def classified_rawfile_treatment(request):
         run_singlefile_qc(sfn.rawfile, sfn, user_op)
     elif dsid:
         # Make sure dataset exists
-        if not dsmodels.Dataset.objects.filter(pk=dsid).exists():
+        dsq = dsmodels.Dataset.objects.filter(pk=dsid)
+        if not dsq.exists():
             # TODO this needs error logging? For now this is fine
             # File will not be classified
+            print(f'Classify task error for task {data["task_id"]} - dsid {dsid} doesnt exist')
             already_classified_or_error = True
-        else:
+        elif dsq.filter(datasetcomponentstate__dtcomp__component=dsmodels.DatasetUIComponent.FILES,
+                datasetcomponentstate__state=dsmodels.DCStates.NEW).exists():
+            # Only accept files if file component state is NEW
             # Make sure users cant use this file for something else:
             sfn.rawfile.claimed = True
             sfn.rawfile.save()
@@ -497,7 +501,7 @@ def classified_rawfile_treatment(request):
             mvjob_kw = {'dset_id': dsid, 'rawfn_ids': [sfn.rawfile_id]}
             if error := check_job_error('move_files_storage', **mvjob_kw):
                 # TODO this needs logging
-                print(error)
+                print(f'Classify task error for task {data["task_id"]} trying to queue move_files_storage - {error}')
                 already_classified_or_error = True
             else:
                 job, _cr = jm.Job.objects.get_or_create(state=jobutil.Jobstates.HOLD,
@@ -505,6 +509,10 @@ def classified_rawfile_treatment(request):
                 if not _cr:
                     # Somehow script has already run!
                     already_classified_or_error = True
+        else:
+            print(f'Classify task error for task {data["task_id"]} - dataset {dsid} already has '
+                    'files, more files cannot be added automatically via rawfile classification')
+            already_classified_or_error = True
 
     # For all files, even those not assoc to QC/Dset
     create_job('create_pdc_archive', sf_id=sfn.pk, isdir=sfn.filetype.is_folder)

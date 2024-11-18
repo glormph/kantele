@@ -1312,6 +1312,7 @@ def save_or_update_files(data):
         if (added_fnids or removed_ids) and qtype.name == 'labelfree':
             set_component_state(dset_id, models.DatasetUIComponent.SAMPLES,
                     models.DCStates.INCOMPLETE)
+    set_component_state(dset_id, models.DatasetUIComponent.FILES, models.DCStates.OK)
     return {'error': False}, 200
 
 
@@ -1347,6 +1348,8 @@ def accept_or_reject_dset_preassoc_files(request):
         else:
             set_component_state(data['dataset_id'], models.DatasetUIComponent.SAMPLES,
                     models.DCStates.INCOMPLETE)
+        # Only set file component to OK if any files have been accepted
+        set_component_state(data['dataset_id'], models.DatasetUIComponent.FILES, models.DCStates.OK)
     return JsonResponse({'error': False})
     # FIXME switch fileserver should happen - in that case on the classify start!
 

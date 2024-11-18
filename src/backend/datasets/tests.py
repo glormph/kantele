@@ -177,6 +177,9 @@ class UpdateFilesTest(BaseIntegrationTest):
 
     def test_add_files(self):
         '''Add files, check if added, also check if the job waits for another job on the dataset'''
+        self.assertTrue(self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles,
+            state=dm.DCStates.OK).exists())
+        self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles).update(state=dm.DCStates.NEW)
         resp = self.post_json({'dataset_id': self.ds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
             'removed_files': {}})
         self.assertEqual(resp.status_code, 200)
@@ -193,12 +196,15 @@ class UpdateFilesTest(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
             self.ds.storage_loc, self.tmpsf.filename)))
+        self.assertTrue(self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles,
+            state=dm.DCStates.OK).exists())
     
     def test_add_fails(self):
         # Fail because there is no storedfile
         fn = 'raw_no_sf'
         raw = rm.RawFile.objects.create(name=fn, producer=self.prod, claimed=False,
                 source_md5='raw_no_sf_fakemd5', size=1024, date=timezone.now())
+        self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles).update(state=dm.DCStates.NEW)
         resp = self.post_json({'dataset_id': self.ds.pk, 'added_files': {raw.pk: {'id': raw.pk}},
             'removed_files': {}})
         self.assertEqual(resp.status_code, 403)
@@ -206,6 +212,8 @@ class UpdateFilesTest(BaseIntegrationTest):
         newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=raw)
         self.assertEqual(newdsr.count(), 0)
         self.assertFalse(raw.claimed)
+        self.assertFalse(self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles,
+            state=dm.DCStates.OK).exists())
 
     def test_trigger_movejob_errors(self):
         # add files are already in dset
@@ -213,6 +221,7 @@ class UpdateFilesTest(BaseIntegrationTest):
                 source_md5='tmpraw_dupe_fakemd5', size=100, date=timezone.now(), claimed=False)
         dupe_sf = rm.StoredFile.objects.create(rawfile=dupe_raw, md5=dupe_raw.source_md5, path='',
                 filename=dupe_raw.name, servershare=self.sstmp, checked=True, filetype=self.ft)
+        self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles).update(state=dm.DCStates.NEW)
         resp = self.cl.post(self.url, content_type='application/json', data={
             'dataset_id': self.ds.pk, 'added_files': {dupe_raw.pk: {'id': dupe_raw.pk}},
             'removed_files': {}})
@@ -237,6 +246,8 @@ class UpdateFilesTest(BaseIntegrationTest):
         self.assertIn(f'Cannot move files from dataset {self.ds.pk}', resp.json()['error'])
         self.assertEqual(self.f3sf.servershare, self.ds.storageshare)
         self.assertEqual(self.f3sf.path, self.ds.storage_loc)
+        self.assertFalse(self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles,
+            state=dm.DCStates.OK).exists())
 
     def test_dset_is_filename_job_error(self):
         # new file is dir w same name as dset storage dir
@@ -247,6 +258,7 @@ class UpdateFilesTest(BaseIntegrationTest):
         newds = dm.Dataset.objects.create(date=self.p1.registered, runname=run,
                 datatype=self.dtype, storageshare=self.ssnewstore, storage_loc=newpath)
         dm.DatasetOwner.objects.get_or_create(dataset=newds, user=self.user)
+        dtc = newds.datasetcomponentstate_set.create(dtcomp=self.dtcompfiles, state=dm.DCStates.NEW)
         resp = self.cl.post(self.url, content_type='application/json', data={
             'dataset_id': newds.pk, 'added_files': {self.tmpraw.pk: {'id': self.tmpraw.pk}},
             'removed_files': {}})
@@ -257,6 +269,8 @@ class UpdateFilesTest(BaseIntegrationTest):
         self.assertIn(f'Cannot move selected files to path {newds.storage_loc}', resp.json()['error'])
         self.assertEqual(self.tmpsf.servershare, self.sstmp)
         self.assertEqual(self.tmpsf.path, '')
+        dtc.refresh_from_db()
+        self.assertEqual(dtc.state, dm.DCStates.NEW)
 
 
 class AcceptRejectPreassocFiles(BaseIntegrationTest):
@@ -268,6 +282,7 @@ class AcceptRejectPreassocFiles(BaseIntegrationTest):
         self.tmpraw.save()
         jm.Job.objects.create(funcname='move_files_storage', state=Jobstates.HOLD, kwargs={
             'dset_id': self.ds.pk, 'rawfn_ids': [self.tmpraw.pk]}, timestamp=timezone.now())
+        self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles).update(state=dm.DCStates.NEW)
 
     def test_accept_all_files(self):
         newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
@@ -286,6 +301,8 @@ class AcceptRejectPreassocFiles(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
             self.ds.storage_loc, self.tmpsf.filename)))
+        self.assertTrue(self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles,
+            state=dm.DCStates.OK).exists())
     
     def test_reject_all_files(self):
         newdsr = dm.DatasetRawFile.objects.filter(dataset=self.ds, rawfile=self.tmpraw)
@@ -305,7 +322,8 @@ class AcceptRejectPreassocFiles(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, '')
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.sstmp.name],
             self.tmpsf.filename)))
-    
+        self.assertFalse(self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles,
+            state=dm.DCStates.OK).exists())
 
     def test_accept_some_files(self):
         rejectraw = rm.RawFile.objects.create(name='reject.raw', producer=self.prod,
@@ -331,6 +349,8 @@ class AcceptRejectPreassocFiles(BaseIntegrationTest):
         self.assertEqual(self.tmpsf.path, self.ds.storage_loc)
         self.assertTrue(os.path.exists(os.path.join(settings.SHAREMAP[self.ssnewstore.name], 
             self.ds.storage_loc, self.tmpsf.filename)))
+        self.assertTrue(self.ds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles,
+            state=dm.DCStates.OK).exists())
 
 
 class RenameProjectTest(BaseIntegrationTest):

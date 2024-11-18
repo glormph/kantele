@@ -593,7 +593,7 @@ class TestUploadScript(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             self.assertEqual(out, exp)
 
-    def test_transfer_dset_assoc(self):
+    def do_transfer_dset_assoc(self, *, ds_exists, ds_hasfiles):
         # Test trying to upload file with same name/path but diff MD5
         self.token = 'prodtoken_noadminprod'
         self.uploadtoken = rm.UploadToken.objects.create(user=self.user, token=self.token,
@@ -638,9 +638,15 @@ class TestUploadScript(BaseIntegrationTest):
         # Run classify
         self.run_job()
         newraw.refresh_from_db()
-        self.assertTrue(newraw.claimed)
-        self.assertEqual(mvjobs.count(), 1)
+        if ds_hasfiles:
+            self.assertFalse(newraw.claimed)
+            self.assertEqual(mvjobs.count(), 0)
+        else:
+            self.assertTrue(newraw.claimed)
+            self.assertEqual(mvjobs.count(), 1)
         self.assertEqual(qcjobs.count(), 0)
+        sleep(4)
+
         self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         # Must kill this script, it will keep scanning outbox
         try:
@@ -668,6 +674,14 @@ class TestUploadScript(BaseIntegrationTest):
             out = re.sub('.* - INFO - .producer.main - ', '', out)
             self.assertEqual(out, exp)
         self.assertFalse(os.path.exists(os.path.join(outbox, self.f3sf.filename)))
+
+    def test_transfer_dset_assoc_hasfiles(self):
+        self.do_transfer_dset_assoc(ds_exists=True, ds_hasfiles=True)
+
+    def test_transfer_dset_assoc(self):
+        self.oldds.datasetcomponentstate_set.filter(dtcomp=self.dtcompfiles).update(
+                state=dm.DCStates.NEW)
+        self.do_transfer_dset_assoc(ds_exists=True, ds_hasfiles=False)
 
 #    def test_libfile(self):
 #    
