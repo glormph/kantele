@@ -40,7 +40,7 @@ def run_ready_jobs(job_fn_map, job_ds_map, active_jobs):
     # Jobs that changed to waiting are excluded from active
     # Jobs that are on HOLD also, because they will get added to active when encountered
     # This way they will only seen as active to jobs after the held job
-    wait_jobs = Job.objects.filter(state=[Jobstates.WAITING, Jobstates.HOLD],
+    wait_jobs = Job.objects.filter(state__in=[Jobstates.WAITING, Jobstates.HOLD],
             pk__in=active_jobs).values('pk')
     active_jobs.difference_update([x['pk'] for x in wait_jobs])
     for job in jobs_not_finished:

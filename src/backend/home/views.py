@@ -458,13 +458,13 @@ def populate_proj(dbprojs, user, showjobs=True, include_db_entry=False):
 
 def populate_dset(dsids, dbdsets, user):
     dsets = OrderedDict()
-    jobmap = defaultdict(dict)
+    jobmap = defaultdict(list)
     for job in jm.Job.objects.filter(
             filejob__storedfile__rawfile__datasetrawfile__dataset_id__in=dsids
             ).exclude(state__in=jj.JOBSTATES_DONE).distinct('pk').values('state', 'pk',
                     'filejob__storedfile__rawfile__datasetrawfile__dataset_id'):
         dsid = job['filejob__storedfile__rawfile__datasetrawfile__dataset_id']
-        jobmap[dsid][str(job['pk'])] = job['state']
+        jobmap[dsid].append((str(job['pk']), job['state']))
     for dset in dbdsets.values('pk', 'deleted', 'runname__experiment__project__projtype__ptype_id',
             'runname__experiment__name', 'runname__experiment__project__projtype__ptype__name',
             'runname__experiment__project__name', 'runname__name', 'datatype__name',
