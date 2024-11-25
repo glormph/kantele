@@ -127,7 +127,11 @@ USERFILEDIR = 'uploadfiles'
 # nextflow
 NXF_COMMAND = os.environ.get('NXF_COMMAND', 'nextflow')
 LIBRARY_FILE_PATH = 'databases'
+# Large things (e.g. lots of mzmls) are staged in the stage disk (if any):
 ANALYSIS_STAGESHARE = os.environ.get('STAGESHARE', False)
+# Small files can be staged on normal disk (where NF scratch is run)
+TMP_SCRATCHDIR = os.environ.get('TMP_SCRATCHDIR', False)
+
 NF_RUNDIR = os.environ.get('NEXTFLOW_RUNDIR')
 
 # hardcoded name for filetypes fasta DBs, analysis output

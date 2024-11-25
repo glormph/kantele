@@ -283,9 +283,10 @@ def prepare_nextflow_run(run, taskid, rundir, stagefiles, infiles, params):
         raise
     if 'analysis_id' in run:
         log_analysis(run['analysis_id'], 'Checked out workflow repo, staging files')
-    print(f'Staging parameter files to {rundir}')
+    scratchstage = os.path.join(settings.TMP_SCRATCHDIR, os.path.basename(rundir))
+    print(f'Staging parameter files to {scratchstage}')
     for flag, files in stagefiles.items():
-        stagefiledir = os.path.join(rundir, flag.replace('--', ''))
+        stagefiledir = os.path.join(scratchstage, flag.replace('--', ''))
         if len(files) > 1:
             dst = os.path.join(stagefiledir, '*')
         else:
