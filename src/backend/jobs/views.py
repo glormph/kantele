@@ -293,7 +293,7 @@ def restored_archive_file(request):
         return HttpResponseForbidden()
     sfile = StoredFile.objects.filter(pk=data['sfid'])
     sfile.update(deleted=False, purged=False,
-            servershare_id=ServerShare.objects.get(name=data['serversharename'])
+            servershare_id=ServerShare.objects.get(name=data['serversharename']))
     if 'task' in request.POST:
         set_task_done(request.POST['task'])
     return HttpResponse()
