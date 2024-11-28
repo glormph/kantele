@@ -380,7 +380,8 @@ def pdc_restore(self, servershare, filepath, pdcpath, fn_id, isdir):
         except Exception:
             taskfail_update_db(self.request.id, msg='File {} to retrieve from backup is directory '
             'type, it is retrieved to {} but errored when moving from there'.format(fileloc, pdcpath))
-    postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': settings.APIKEY}
+    postdata = {'sfid': fn_id, 'task': self.request.id, 'client_id': settings.APIKEY,
+            'serversharename': servershare}
     url = urljoin(settings.KANTELEHOST, reverse('jobs:restoredpdcarchive'))
     msg = ('Restore from archive could not update database with for fn {} with PDC path {} :'
            '{}'.format(filepath, pdcpath, '{}'))

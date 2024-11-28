@@ -317,10 +317,14 @@ class ReactivateDeletedDataset(DatasetJob):
     task = filetasks.pdc_restore
 
     def process(self, **kwargs):
-        for sfile in self.getfiles_query(**kwargs).exclude(mzmlfile__isnull=False).filter(purged=True, pdcbackedupfile__isnull=False):
+        for sfile in self.getfiles_query(**kwargs).exclude(mzmlfile__isnull=False).filter(
+                purged=True, pdcbackedupfile__isnull=False):
             self.run_tasks.append((rsjobs.restore_file_pdc_runtask(sfile), {}))
         # Also set archived/archivable files which are already active (purged=False) to not deleted in UI
-        self.getfiles_query(**kwargs).filter(purged=False, deleted=True, pdcbackedupfile__isnull=False).update(deleted=False)
+        self.getfiles_query(**kwargs).filter(purged=False, deleted=True, pdcbackedupfile__isnull=False
+                ).update(deleted=False)
+        Dataset.objects.filter(kwargs['dset_id']).update(
+                storageshare=ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME))
 
 
 class DeleteDatasetPDCBackup(DatasetJob):

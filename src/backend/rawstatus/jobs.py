@@ -268,7 +268,7 @@ def restore_file_pdc_runtask(sfile):
     backupfile = models.PDCBackedupFile.objects.get(storedfile=sfile)
     fnpath = os.path.join(sfile.path, sfile.filename)
     yearmonth = datetime.strftime(sfile.regdate, '%Y%m')
-    return (sfile.servershare.name, fnpath, backupfile.pdcpath, sfile.id, backupfile.is_dir)
+    return (settings.PRIMARY_STORAGESHARENAME, fnpath, backupfile.pdcpath, sfile.id, backupfile.is_dir)
 
 
 def call_proteomexchange(pxacc):
