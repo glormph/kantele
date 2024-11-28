@@ -323,7 +323,7 @@ class ReactivateDeletedDataset(DatasetJob):
         # Also set archived/archivable files which are already active (purged=False) to not deleted in UI
         self.getfiles_query(**kwargs).filter(purged=False, deleted=True, pdcbackedupfile__isnull=False
                 ).update(deleted=False)
-        Dataset.objects.filter(kwargs['dset_id']).update(
+        Dataset.objects.filter(pk=kwargs['dset_id']).update(
                 storageshare=ServerShare.objects.get(name=settings.PRIMARY_STORAGESHARENAME))
 
 
