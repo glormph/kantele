@@ -71,9 +71,6 @@ ARCHIVEPATH = ''
 NGINX_ANALYSIS_REDIRECT = os.environ.get('NGINX_ANALYSIS_REDIRECT')
 SERVABLE_FILENAMES = ['qc.html', 'qc_full.html', 'qc_light.html', 'pipeline_report.html', 'report.html']
 
-SLACK_BASE = 'https://hooks.slack.com/services/'
-SLACK_WORKSPACE = os.environ.get('SLACK_WORKSPACE')
-SLACK_HOOKS = {k.replace('SLACK_HOOK_', ''): v for k,v in os.environ.items() if k.startswith('SLACK_HOOK_')}
 # message queue
 RABBIT_HOST = os.environ.get('RABBITHOST')
 RABBIT_VHOST = os.environ.get('RABBIT_VHOST')

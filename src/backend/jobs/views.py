@@ -309,7 +309,6 @@ def analysis_run_done(request):
         write_analysis_log(data['log'], data['analysis_id'])
     if 'task' in data:
         set_task_done(data['task'])
-    send_slack_message('{}: Analysis of {} is now finished'.format(data['user'], data['name']), 'general')
     am.Analysis.objects.filter(pk=data['analysis_id']).update(editable=False)
     return HttpResponse()
 
@@ -343,7 +342,6 @@ def store_longitudinal_qc(request):
         return HttpResponseForbidden()
     else:
         dashviews.store_longitudinal_qc(data)
-        send_slack_message('QC run for {} is now finished: {}'.format(data['instrument'], data['filename']), 'lab')
     if 'task' in data:
         set_task_done(data['task'])
     return HttpResponse()
@@ -377,7 +375,6 @@ def confirm_internal_file(request):
             subtype = am.UniProtFasta.UniprotClass[fa['dbtype']]
             kwargs['dbtype'] = subtype
         dbmodel.objects.create(**kwargs)
-        send_slack_message(f'New automatic fasta release done: {fa["dbname"]} - {fa["organism"]}' f'{f", {subtype.label}" if subtype else ""}, version {fa["version"]}', 'kantele')
 
     # Also store any potential servable file on share on web server
     if data['filename'] in settings.SERVABLE_FILENAMES and request.FILES:
@@ -494,18 +491,3 @@ def do_retry_job(job, force=False):
         job.joberror.delete()
     except models.JobError.DoesNotExist:
         pass
-
-
-def send_slack_message(text, channel):
-    try:
-        channelpath = settings.SLACK_HOOKS[channel.upper()]
-    except KeyError:
-        print('Kantele cant send slack message to channel {}, please check configuration'.format(channel))
-        return
-    url = urljoin(settings.SLACK_BASE, '/'.join([x for y in [settings.SLACK_WORKSPACE, channelpath] for x in y.split('/')]))
-    req = requests.post(url, json={'text': text})
-    # FIXME need to fix network outage (no raise_for_status
-    try:
-        req.raise_for_status()
-    except Exception as error:
-        print('Kantele cant send slack message to channel {}, please check configuration. Error was {}'.format(channel, error))
