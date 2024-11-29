@@ -232,7 +232,11 @@ def is_file_being_acquired(fnpath, procnames, waittime_sec, md5_stable_fns):
     else:
         absfn = os.path.abspath(fnpath)
 
-    if time() - os.path.getctime(absfn) < int(waittime_sec):
+    try:
+        fn_ctime = os.path.getctime(absfn)
+    except FileNotFoundError:
+        return f'File {fnpath} no longer exists, possibly has been cleaned by concurrent process'
+    if time() - fn_ctime < int(waittime_sec):
         # Too early, file possibly still injecting
         return f'File {fnpath} not older than {waittime_sec / 60} minutes yet'
     if len([x for x in proc.open_files() if os.path.abspath(x.path) == absfn]):
