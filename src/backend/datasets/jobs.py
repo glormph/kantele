@@ -316,6 +316,13 @@ class ReactivateDeletedDataset(DatasetJob):
     refname = 'reactivate_dataset'
     task = filetasks.pdc_restore
 
+    def getfiles_query(self, **kwargs):
+        '''Reactivation will only be relevant for old datasets that will not just happen to get
+        some new files, or old files removed. For this job to be retryable, fetch all files regardless
+        of their servershare (which may change in server migrations).'''
+        # FIXME need to be able to lock a a dataset so noone accidentally adds files
+        return StoredFile.objects.filter(rawfile__datasetrawfile__dataset=kwargs['dset_id'])
+
     def process(self, **kwargs):
         for sfile in self.getfiles_query(**kwargs).exclude(mzmlfile__isnull=False).filter(
                 purged=True, pdcbackedupfile__isnull=False):

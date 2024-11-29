@@ -160,9 +160,12 @@ class DatasetJob(BaseJob):
 
     def getfiles_query(self, **kwargs):
         '''Get all files with same path as dset.storage_loc. This gets all files in the dset dir,
-        not only the ones that have a datasetrawfile. This means there will also be
-        ... FIXME which files are not dsetrawfile but still in the dataset dir?? Probably "removed files"
-        or some other state in which files are not yet or no longer associated?
+        not only the ones that have a datasetrawfile. If this job runs just after a user removes
+        files from the dataset, the job that runs the removal comes after this, and the removed files
+        will not have a datasetrawfile, so we need to take care of all the files in the dset.
+        Also, files ADDED to the dataset will still be on tmp and need not to be included in this
+        job, even though they will have a datasetrawfile.
+        # FIXME to avoid this particular issue, create_job could create the sfids instead of dset_id when being run.
         '''
         dset = dm.Dataset.objects.get(pk=kwargs['dset_id'])
         return StoredFile.objects.filter(servershare=dset.storageshare, path=dset.storage_loc)
