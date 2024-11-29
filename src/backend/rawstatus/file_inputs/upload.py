@@ -246,7 +246,8 @@ def is_file_being_acquired(fnpath, procnames, waittime_sec, md5_stable_fns):
     return False
 
 
-def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, raw_is_folder, md5_stable_fns, procnames, inj_waittime):
+def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, raw_is_folder,
+        md5_stable_fns, filetype_ext, procnames, inj_waittime):
     """Runs as process, periodically checks outbox,
     runs MD5 and if needed zip (folder) on newly discovered files,
     process own ledger is kept for new file adding,
@@ -263,6 +264,9 @@ def instrument_collector(regq, fndoneq, logq, ledger, outbox, zipbox, hostname, 
         logger.info(f'Checking for new files in {outbox}')
         for fn in [os.path.join(outbox, x) for x in os.listdir(outbox)]:
 
+            if os.path.splitext(fn)[1] != f'.{filetype_ext}':
+                # Skip non-raw files, such as .sld, .meth from instrument
+                continue
             if acq_status := is_file_being_acquired(fn, procnames, inj_waittime, md5_stable_fns):
                 logger.info(f'Will wait until acquisition status ready, currently: {acq_status}')
                 continue
@@ -602,7 +606,7 @@ def main():
         # watch outbox for incoming files
         collect_p = Process(target=instrument_collector, args=(regq, regdoneq, logqueue, ledger,
             outbox, zipbox, clientname, config.get('raw_is_folder'), config.get('md5_stable_fns'),
-            config.get('acq_process_names'), config.get('injection_waittime')))
+            config.get('filetype_ext'), config.get('acq_process_names'), config.get('injection_waittime')))
         processes = [collect_p]
         collect_p.start()
         processes.extend(start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,

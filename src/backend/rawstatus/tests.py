@@ -250,7 +250,7 @@ class TestUploadScript(BaseIntegrationTest):
 
                 'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
-                'injection_waittime': 5}, fp)
+                'filetype_ext': os.path.splitext(fullp)[1][1:], 'injection_waittime': 5}, fp)
         self.assertFalse(os.path.exists(os.path.join(tmpdir, 'skipbox', self.f3sf.filename)))
 
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
@@ -388,7 +388,7 @@ class TestUploadScript(BaseIntegrationTest):
 
                 'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
-                'injection_waittime': 5}, fp)
+                'filetype_ext': os.path.splitext(fullp)[1][1:], 'injection_waittime': 5}, fp)
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
         sleep(5)
         newraw = rm.RawFile.objects.last()
@@ -532,7 +532,7 @@ class TestUploadScript(BaseIntegrationTest):
 
                 'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['flock'],
-                'injection_waittime': 0}, fp)
+                'filetype_ext': os.path.splitext(fullp)[1][1:], 'injection_waittime': 0}, fp)
         # Lock analysis.tdf for 3 seconds to pretend we are the acquisition software
         subprocess.Popen(f'flock {os.path.join(outbox, self.f3sf.filename, "analysis.tdf")} sleep 3', shell=True)
         # Lock another file to simulate that the acquisition software stays open after acquiring
@@ -618,7 +618,7 @@ class TestUploadScript(BaseIntegrationTest):
 
                 'token': self.token, 'outbox': outbox, 'raw_is_folder': True,
                 'filetype_id': self.ft.pk, 'acq_process_names': ['TEST'],
-                'injection_waittime': 5}, fp)
+                'filetype_ext': os.path.splitext(fullp)[1][1:], 'injection_waittime': 5}, fp)
         sp = self.run_script(False, config=os.path.join(tmpdir, 'config.json'), session=True)
         sleep(5)
         newraw = rm.RawFile.objects.last()
@@ -1086,7 +1086,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
     url = '/files/datainflow/download/'
     zipsizes = {'kantele_upload.sh': 344,
             'kantele_upload.bat': 192,
-            'upload.py': 28963,
+            'upload.py': 29339,
             'transfer.bat': 177,
             'transfer_config.json': 202,
             'setup.bat': 738,
@@ -1163,6 +1163,7 @@ class TestDownloadUploadScripts(BaseFilesTest):
                 'donebox': f'{datadisk}\donebox',
                 'client_id': self.prod.client_id,
                 'filetype_id': self.prod.msinstrument.filetype_id,
+                'filetype_ext': self.prod.msinstrument.filetype.filetype,
                 'raw_is_folder': 1 if self.prod.msinstrument.filetype.is_folder else 0,
                 'host': settings.KANTELEHOST,
                 }.items():

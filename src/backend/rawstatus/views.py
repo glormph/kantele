@@ -821,6 +821,7 @@ def download_instrument_package(request):
             'skipbox': f'{datadisk}:\skipbox',
             'client_id': prod.client_id,
             'filetype_id': prod.msinstrument.filetype_id,
+            'filetype_ext': prod.msinstrument.filetype.filetype,
             'acq_process_names': settings.PROCNAMES[prod.msinstrument.filetype.name],
             'injection_waittime': int(settings.INJ_WAITTIMES[prod.msinstrument.filetype.name]),
             'raw_is_folder': 1 if prod.msinstrument.filetype.is_folder else 0,
