@@ -634,8 +634,6 @@ def main():
             ledger = {x[0]: x[1] for x in files_found}
             # TODO cannot zip yet, there is no "zipbox", maybe make it workdir
             # FIXME align this with collector process
-        processes = start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
-                donebox, skipbox, config['host'], clientname, descriptions)
         for upload_fnid, fndata in ledger.items():
             newfn = False
             if not fndata['md5']:
@@ -658,6 +656,8 @@ def main():
             if newfn:
                 regq.put(fndata)
             print('Finished checksum of file, will try to upload')
+        processes = start_processes(regq, regdoneq, logqueue, ledger, config, args.configfn,
+                donebox, skipbox, config['host'], clientname, descriptions)
     else:
         print('No input files or outbox to watch was specified, exiting')
         sys.exit(1)
