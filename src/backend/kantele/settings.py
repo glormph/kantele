@@ -148,7 +148,7 @@ INJ_WAITTIMES = {THERMORAW: os.environ.get('THERMO_WAIT', 15 * 60), BRUKERRAW: o
 
 # The thermo reader command
 THERMOREADER_DOCKER = os.environ.get('THERMOREAD_DOCKER', 'ghcr.io/lehtiolab/kantele-thermorawreader')
-THERMO_CLASSIFY_CMD = ['wine', 'ScanHeadsman.exe', '-u', '-d', '0'] 
+THERMO_CLASSIFY_CMD = ['wine', 'ScanHeadsman.exe', '-u', '-d', '0', '-m']
 
 PRODUCER_ADMIN_NAME = os.environ.get('PRODUCER_ADMIN_NAME', 'admin')
 PRODUCER_ANALYSIS_NAME = os.environ.get('PRODUCER_ANALYSIS_NAME', 'analysis')

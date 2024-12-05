@@ -60,7 +60,7 @@ class TestUploadScript(BaseIntegrationTest):
         need_desc = 0
         #need_desc = int(self.uploadtype in [ufts.LIBRARY, ufts.USERFILE])
         self.user_token = b64encode(f'{self.token}|{self.live_server_url}|{need_desc}'.encode('utf-8')).decode('utf-8')
-        self.actual_md5 = 'dee94af7703a5beb01e8fdc84da018bb'
+        self.actual_md5 = '1eab409e2965943f52df8e3c63874d5b'
 
     def tearDown(self):
         super().tearDown()
@@ -156,6 +156,7 @@ class TestUploadScript(BaseIntegrationTest):
         classifytask = jm.Task.objects.filter(job__funcname='classify_msrawfile', job__kwargs__sf_id=sf.pk)
         self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         self.assertFalse(new_raw.claimed) # not QC
+        self.assertEqual(new_raw.msfiledata.mstime, 123.456)
         self.assertEqual(jm.Job.objects.filter(funcname='create_pdc_archive', kwargs__sf_id=sf.pk).count(), 1)
         self.assertTrue(sf.checked)
         zipboxpath = os.path.join(os.getcwd(), 'zipbox', f'{self.f3sf.filename}.zip')
@@ -201,6 +202,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertFalse(self.f3sf.checked)
         # rsync
         self.run_job()
+        sleep(2)
         # classify
         self.run_job()
         try:
@@ -294,6 +296,7 @@ class TestUploadScript(BaseIntegrationTest):
         sleep(1)
         # Run the rsync
         self.run_job()
+        sleep(2)
         # Run the raw classification
         self.run_job()
         try:
@@ -306,6 +309,7 @@ class TestUploadScript(BaseIntegrationTest):
             print(sperr.decode('utf-8'))
             self.fail()
         newsf = rm.StoredFile.objects.last()
+        self.assertEqual(newsf.rawfile.msfiledata.mstime, 123.456)
         self.assertEqual(newsf.pk, lastsf.pk + 1)
         self.assertEqual(rawfn.pk, newsf.rawfile_id)
         self.assertEqual(newsf.filename, self.f3sf.filename)
@@ -414,6 +418,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.run_job()
         newraw.refresh_from_db()
         self.assertTrue(newraw.claimed)
+        self.assertEqual(newraw.msfiledata.mstime, 123.456)
         self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         self.assertEqual(mvjobs.count(), 1)
         self.assertEqual(qcjobs.count(), 1)
@@ -561,6 +566,7 @@ class TestUploadScript(BaseIntegrationTest):
         self.assertEqual(classifyjob.count(), 1)
         newraw.refresh_from_db()
         self.assertFalse(newraw.claimed)
+        self.assertEqual(newraw.msfiledata.mstime, 123.456)
         self.assertEqual(classifytask.filter(state=states.SUCCESS).count(), 1)
         #self.assertEqual(mvjobs.count(), 1)
         self.assertEqual(qcjobs.count(), 0)
@@ -638,6 +644,7 @@ class TestUploadScript(BaseIntegrationTest):
         # Run classify
         self.run_job()
         newraw.refresh_from_db()
+        self.assertEqual(newraw.msfiledata.mstime, 123.456)
         if ds_hasfiles:
             self.assertFalse(newraw.claimed)
             self.assertEqual(mvjobs.count(), 0)
