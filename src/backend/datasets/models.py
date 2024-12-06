@@ -327,6 +327,16 @@ class OperatorDataset(models.Model):
     operator = models.ForeignKey(Operator, on_delete=models.CASCADE)
 
 
+class AcquisistionMode(models.IntegerChoices):
+    DDA = 1, 'DDA'
+    DIA = 2, 'DIA'
+
+
+class AcquisistionModeDataset(models.Model):
+    dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
+    acqmode = models.IntegerField(choices=AcquisistionMode.choices)
+
+
 class ReversePhaseDataset(models.Model):
     dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
     length = models.TextField()

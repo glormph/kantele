@@ -16,10 +16,12 @@ let dsinfo = {
   dynamic_rp: false,
   rp_length: '',
   params: [],
+  acqmode: '',
 }
 
 let acqdata = {
   operators: [],
+  acqmodes: [],
 }
 
 let saved = false;
@@ -112,6 +114,21 @@ onMount(async() => {
         <option disabled value="">Please select one</option>
         {#each acqdata.operators as operator}
         <option value={operator.id}>{operator.name}</option>
+        {/each}
+      </select>
+    </div>
+  </div>
+</div>
+
+
+<div class="field">
+  <label class="label">Acquisition mode</label>
+  <div class="control">
+    <div class="select">
+      <select on:change={editMade} bind:value={dsinfo.acqmode}>
+        <option disabled value="">Please select one</option>
+        {#each acqdata.acqmodes as aq}
+        <option value={aq.id}>{aq.name}</option>
         {/each}
       </select>
     </div>

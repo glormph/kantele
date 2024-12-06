@@ -146,18 +146,20 @@ def dataset_msacq(request, dataset_id=False):
     response_json = {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.ACQUISITION)},
         'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
                 x.user.first_name, x.user.last_name)}
-                for x in models.Operator.objects.select_related('user').all()]},
-            }
+                for x in models.Operator.objects.select_related('user').all()],
+        'acqmodes': [{'id': x[0], 'name': x[1]} for x in models.AcquisistionMode.choices],
+            }}
     if dataset_id:
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
         try:
-            response_json['dsinfo']['operator_id'] = models.OperatorDataset.objects.get(
-                    dataset_id=dataset_id).operator_id
-
-            response_json['dsinfo']['rp_length'] = models.ReversePhaseDataset.objects.get(
-                    dataset_id=dataset_id).length
-        except models.OperatorDataset.DoesNotExist:
+            response_json['dsinfo']['operator_id'] = models.OperatorDataset.objects.values(
+                    'operator_id').get(dataset_id=dataset_id)['operator_id']
+            response_json['dsinfo']['acqmode'] = models.AcquisistionModeDataset.objects.values(
+                    'acqmode').get(dataset_id=dataset_id)['acqmode']
+            response_json['dsinfo']['rp_length'] = models.ReversePhaseDataset.objects.values(
+                    'length').get(dataset_id=dataset_id)['length']
+        except (models.OperatorDataset.DoesNotExist, models.AcquisistionModeDataset.DoesNotExist):
             return JsonResponse(response_json)
         except models.ReversePhaseDataset.DoesNotExist:
             response_json['dsinfo']['dynamic_rp'] = True
