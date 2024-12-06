@@ -2,7 +2,8 @@
 import { getJSON, postJSON } from './funcJSON.js'
 import { dataset_id, datatype_id, datasetFiles, projsamples } from './stores.js';
 import { onMount } from 'svelte';
-import MSDataComp from './MScomp.svelte';
+import MSAcqComp from './MSAcqComp.svelte';
+import MSSamplePrepComp from './MSSamplePrepComp.svelte';
 import Samplesheet from './Samplesheet.svelte';
 // FIXME msdata should be folded into the MScomponent now we dont have acquisition only anymore
 import Msdata from './Msdata.svelte';
@@ -15,7 +16,8 @@ import DynamicSelect from './DynamicSelect.svelte';
 if (init_dataset_id) { dataset_id.set(init_dataset_id) };
 
 let mssubcomp;
-let msdatacomp;
+let msacqcomp;
+let mssampleprepcomp;
 let samplesheet;
 let lccomp;
 let pooledlc;
@@ -24,7 +26,8 @@ let edited = false;
 let errors = {
   basics: [],
   samples: [],
-  msdata: [],
+  msacq: [],
+  mssampleprep: [],
   lc: [],
 };
 let saveerrors = Object.assign({}, errors);
@@ -402,7 +405,9 @@ function showFiles() {
 
       {#if showMsdata}
       <!-- acquisition and MS data -->
-      <MSDataComp bind:this={msdatacomp} bind:errors={errors.msdata} />
+      <MSSamplePrepComp bind:this={mssampleprepcomp} bind:errors={errors.mssampleprep} />
+      <hr>
+      <MSAcqComp bind:this={msacqcomp} bind:errors={errors.msacq} />
       <hr>
       {/if}
 

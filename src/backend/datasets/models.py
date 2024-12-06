@@ -67,6 +67,7 @@ class DatasetUIComponent(models.IntegerChoices):
     SAMPLES = 2, 'Samples'
     ACQUISITION = 3, 'MS Acquisition'
     DEFINITION = 4, 'Definition'
+    SAMPLEPREP = 5, 'MS Sampleprep'
     LCSAMPLES = 6, 'LC samples'
     POOLEDLCSAMPLES = 7, 'Pooled LC samples'
 
@@ -132,7 +133,10 @@ class ParamType(models.Model):
 
 
 class Labcategories(models.IntegerChoices):
-    MSSAMPLES = 1, 'MS Samples'
+    # FIXME should these be folded into the Datatype categories?
+    # Even if they are only two?
+    ACQUISITION = 1, 'MS Acquisition'
+    SAMPLEPREP = 2, 'MS Sample prep'
 
 
 class SelectParameter(models.Model):

@@ -121,8 +121,33 @@ def dataset_files(request, dataset_id=False):
 
 
 @login_required
-def dataset_mssamples(request, dataset_id=False):
-    response_json = empty_mssamples_json()
+def dataset_mssampleprep(request, dataset_id=False):
+    response_json = {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.SAMPLEPREP),
+        'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
+            for x in models.Enzyme.objects.all()]},
+            }
+    if dataset_id:
+        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
+            return HttpResponseNotFound()
+        enzymes_used = {x.enzyme_id for x in 
+                models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
+        response_json['no_enzyme'] = True
+        for enzyme in response_json['dsinfo']['enzymes']:
+            if enzyme['id'] in enzymes_used:
+                enzyme['checked'] = True
+                response_json['no_enzyme'] = False
+
+        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.SAMPLEPREP)
+    return JsonResponse(response_json)
+
+
+@login_required
+def dataset_msacq(request, dataset_id=False):
+    response_json = {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.ACQUISITION)},
+        'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
+                x.user.first_name, x.user.last_name)}
+                for x in models.Operator.objects.select_related('user').all()]},
+            }
     if dataset_id:
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
@@ -137,16 +162,7 @@ def dataset_mssamples(request, dataset_id=False):
         except models.ReversePhaseDataset.DoesNotExist:
             response_json['dsinfo']['dynamic_rp'] = True
             response_json['dsinfo']['rp_length'] = ''
-
-        enzymes_used = {x.enzyme_id for x in 
-                models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
-        response_json['no_enzyme'] = True
-        for enzyme in response_json['dsinfo']['enzymes']:
-            if enzyme['id'] in enzymes_used:
-                enzyme['checked'] = True
-                response_json['no_enzyme'] = False
-
-        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.MSSAMPLES)
+        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.ACQUISITION)
     return JsonResponse(response_json)
 
 
@@ -1185,14 +1201,6 @@ def get_dynamic_emptyparams(category):
     return params
 
 
-def empty_mssamples_json():
-    return {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.MSSAMPLES),
-        'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
-            for x in models.Enzyme.objects.all()]},
-        'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
-                x.user.first_name, x.user.last_name)}
-                for x in models.Operator.objects.select_related('user').all()]},
-            }
 
 
 @login_required
@@ -1365,10 +1373,10 @@ def save_files(request):
     return JsonResponse(err_result, status=status)
 
 
-def update_mssamples(dset, data):
-    models.EnzymeDataset.objects.filter(dataset=dset).delete()
-    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
-        for enz in data['enzymes'] if enz['checked']])
+def update_msacq(dset, data):
+#    models.EnzymeDataset.objects.filter(dataset=dset).delete()
+#    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
+#        for enz in data['enzymes'] if enz['checked']])
     if data['operator_id'] != dset.operatordataset.operator_id:
         dset.operatordataset.operator_id = data['operator_id']
         dset.operatordataset.save()
@@ -1383,29 +1391,46 @@ def update_mssamples(dset, data):
     elif data['rp_length'] != dset.reversephasedataset.length:
         dset.reversephasedataset.length = data['rp_length']
         dset.reversephasedataset.save()
-    update_admin_defined_params(dset, data, models.Labcategories.MSSAMPLES)
+    update_admin_defined_params(dset, data, models.Labcategories.ACQUISITION)
+    return JsonResponse({})
+
+
+def update_mssampleprep(dset, data):
+    models.EnzymeDataset.objects.filter(dataset=dset).delete()
+    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
+        for enz in data['enzymes'] if enz['checked']])
+    update_admin_defined_params(dset, data, models.Labcategories.SAMPLEPREP)
     return JsonResponse({})
 
 
 @login_required
-def save_mssamples(request):
+def save_ms_sampleprep(request):
     data = json.loads(request.body.decode('utf-8'))
     user_denied = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
         return user_denied
     dset_id = data['dataset_id']
-    dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related(
-        'operatordataset', 'reversephasedataset').get()
-    if hasattr(dset, 'operatordataset'):
-        return update_mssamples(dset, data)
-    if data['rp_length']:
-        models.ReversePhaseDataset.objects.create(dataset_id=dset_id,
-                                                  length=data['rp_length'])
-    models.OperatorDataset.objects.create(dataset_id=dset_id,
-                                          operator_id=data['operator_id'])
+    dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related().get()
+    if models.SelectParameterValue(dataset=dset, param__category=models.Labcategories.SAMPLEPREP
+            ).exists():
+        return update_mssampleprep(dset, data)
     models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset_id=dset_id, enzyme_id=enz['id'])
         for enz in data['enzymes'] if enz['checked']])
+    save_admin_defined_params(data, dset_id)
+    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
+    return JsonResponse({})
 
+
+@login_required
+def save_ms_acquisition(request):
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return user_denied
+    dset_id = data['dataset_id']
+    dset = models.Dataset.objects.filter(pk=data['dataset_id']).get()
+    if hasattr(dset, 'operatordataset'):
+        return update_msacq(dset, data)
     save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, models.DatasetUIComponent.ACQUISITION, models.DCStates.OK)
     return JsonResponse({})

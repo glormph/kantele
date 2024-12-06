@@ -16,8 +16,6 @@ let dsinfo = {
   dynamic_rp: false,
   rp_length: '',
   params: [],
-  enzymes: [],
-  no_enzyme: false,
 }
 
 let acqdata = {
@@ -35,9 +33,6 @@ function editMade() {
 
 export function validate() {
   let comperrors = [];
-	if (!dsinfo.no_enzyme && !dsinfo.enzymes.filter.length) {
-		comperrors.push('Enzyme selection is required');
-	}
 	if (!dsinfo.operator_id) {
 		comperrors.push('Operator is required');
 	}
@@ -58,12 +53,11 @@ export async function save() {
   if (errors.length === 0) { 
     let postdata = {
       dataset_id: $dataset_id,
-      enzymes: dsinfo.no_enzyme ? [] : dsinfo.enzymes,
       operator_id: dsinfo.operator_id,
       params: dsinfo.params,
       rp_length: dsinfo.dynamic_rp ? '' : dsinfo.rp_length,
     };
-    let url = '/datasets/save/mssamples/';
+    let url = '/datasets/save/msacq/';
     try {
       const resp = await postJSON(url, postdata);
       fetchData();
@@ -77,7 +71,7 @@ export async function save() {
 
 
 async function fetchData() {
-  let url = '/datasets/show/mssamples/';
+  let url = '/datasets/show/msacq/';
   url = $dataset_id ? url + $dataset_id : url;
 	const response = await getJSON(url);
   for (let [key, val] of Object.entries(response.acqdata)) { acqdata[key] = val; }
@@ -103,25 +97,12 @@ onMount(async() => {
   {:else}
   <i class="icon fas fa-edit"></i>
   {/if}
-  MS data
+  MS Acquisition 
   <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
   <button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>
 </h5>
 
 <ErrorNotif errors={acquierrors} />
-
-<div class="field">
-  <label class="label">Enzymes</label>
-  <input type="checkbox" on:change={editMade} bind:checked={dsinfo.no_enzyme}>No enzyme
-  {#if !dsinfo.no_enzyme}
-  {#each dsinfo.enzymes as enzyme}
-  <div class="control">
-    <input on:change={editMade} bind:checked={enzyme.checked} type="checkbox">{enzyme.name}
-  </div>
-  {/each}
-  {/if}
-</div>
-
 
 <div class="field">
   <label class="label">MS Operator</label>
