@@ -428,10 +428,6 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
                 raise
         
     elif ftypename == settings.BRUKERRAW:
-        x = os.path.join(fpath, 'analysis.tdf')
-        print(x, os.path.exists(x))
-        print(os.listdir('/storage/tmp/raw3/'))
-        print(x, os.path.exists(fpath))
         try:
             con = sqlite3.Connection(os.path.join(fpath, 'analysis.tdf'))
         except sqlite3.OperationalError:

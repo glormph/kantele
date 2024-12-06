@@ -707,7 +707,7 @@ def transfer_file(request):
             os.unlink(upload_dst)
             return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'}, status=409)
     os.chmod(upload_dst, 0o644)
-    file_trf, created = StoredFile.objects.get_or_create(
+    file_trf, created = StoredFile.objects.update_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
             defaults={'servershare': dstshare, 'path': dstpath, 'filename': fname})
     if not created:
