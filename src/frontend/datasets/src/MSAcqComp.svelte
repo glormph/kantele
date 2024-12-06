@@ -38,6 +38,9 @@ export function validate() {
 	if (!dsinfo.operator_id) {
 		comperrors.push('Operator is required');
 	}
+	if (!dsinfo.acqmode) {
+		comperrors.push('Acquisition mode is required');
+	}
 	if (!dsinfo.dynamic_rp && !dsinfo.rp_length) {
 		comperrors.push('Reverse phase is required');
 	}
@@ -56,6 +59,7 @@ export async function save() {
     let postdata = {
       dataset_id: $dataset_id,
       operator_id: dsinfo.operator_id,
+      acqmode: dsinfo.acqmode,
       params: dsinfo.params,
       rp_length: dsinfo.dynamic_rp ? '' : dsinfo.rp_length,
     };

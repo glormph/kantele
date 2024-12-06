@@ -1382,6 +1382,7 @@ def update_msacq(dset, data):
     if data['operator_id'] != dset.operatordataset.operator_id:
         dset.operatordataset.operator_id = data['operator_id']
         dset.operatordataset.save()
+    models.AcquisistionModeDataset.objects.filter(dataset=dset).update(acqmode=data['acqmode'])
     if not hasattr(dset, 'reversephasedataset'):
         if data['rp_length']:
             models.ReversePhaseDataset.objects.create(dataset_id=dset.id,
@@ -1433,6 +1434,7 @@ def save_ms_acquisition(request):
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).get()
     if hasattr(dset, 'operatordataset'):
         return update_msacq(dset, data)
+    models.OperatorDataset.objects.create(dataset=dset, operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, models.DatasetUIComponent.ACQUISITION, models.DCStates.OK)
     return JsonResponse({})
