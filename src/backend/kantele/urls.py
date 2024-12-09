@@ -12,4 +12,5 @@ urlpatterns = [
     path('', include('home.urls')),
     path('analysis/', include('analysis.urls')),
     path('mstulos/', include('mstulos.urls')),
+    path('corefac/', include('corefac.urls')),
 ]

@@ -254,7 +254,7 @@ def get_admin_params_for_dset(response, dset_id, category):
     stored_data, oldparams, newparams = {}, {}, {}
     params = response['params']
     params_saved = False
-    for p in models.SelectParameterValue.objects.filter(
+    for p in models.SampleprepParameterValue.objects.filter(
             dataset_id=dset_id, value__param__category=category):
         params_saved = True
         if p.value.param.active:
@@ -1188,7 +1188,7 @@ def fill_admin_fieldparam(params, p, value=False):
 
 def get_dynamic_emptyparams(category):
     params = {}
-    for p in models.SelectParameterOption.objects.select_related(
+    for p in models.SampleprepParameterOption.objects.select_related(
             'param').filter(param__category=category):
         if p.param.active:
             fill_admin_selectparam(params, p)
@@ -1414,7 +1414,7 @@ def save_ms_sampleprep(request):
         return user_denied
     dset_id = data['dataset_id']
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related().get()
-    if models.SelectParameterValue(dataset=dset, param__category=models.Labcategories.SAMPLEPREP
+    if models.SampleprepParameterValue(dataset=dset, param__category=models.Labcategories.SAMPLEPREP
             ).exists():
         return update_mssampleprep(dset, data)
     models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset_id=dset_id, enzyme_id=enz['id'])
@@ -1679,7 +1679,7 @@ def set_component_state(dset_id, comp, state):
 
 def update_admin_defined_params(dset, data, category):
     fieldparams = dset.fieldparametervalue_set.filter(param__category=category)
-    selectparams = dset.selectparametervalue_set.filter(
+    selectparams = dset.sampleprepparametervalue_set.filter(
         value__param__category=category).select_related('value')
     checkboxparamvals = dset.checkboxparametervalue_set.filter(
         value__param__category=category).select_related('value')
@@ -1700,7 +1700,7 @@ def update_admin_defined_params(dset, data, category):
                 selectparams[pid].value_id = value
                 selectparams[pid].save()
             elif pid not in selectparams:
-                models.SelectParameterValue.objects.create(
+                models.SampleprepParameterValue.objects.create(
                     dataset_id=data['dataset_id'], value_id=value)
         elif param['inputtype'] == 'checkbox':
             value = [box['value'] for box in param['fields'] if box['checked']]
@@ -1732,7 +1732,7 @@ def save_admin_defined_params(data, dset_id):
     for param in data['params'].values():
         if param['inputtype'] == 'select':
             value = param['model']
-            selects.append(models.SelectParameterValue(dataset_id=dset_id,
+            selects.append(models.SampleprepParameterValue(dataset_id=dset_id,
                                                        value_id=value))
         elif param['inputtype'] == 'checkbox':
             value = [box['value'] for box in param['fields'] if box['checked']]
@@ -1743,6 +1743,6 @@ def save_admin_defined_params(data, dset_id):
             fields.append(models.FieldParameterValue(dataset_id=dset_id,
                                                      param_id=param['param_id'],
                                                      value=value))
-    models.SelectParameterValue.objects.bulk_create(selects)
+    models.SampleprepParameterValue.objects.bulk_create(selects)
     models.CheckboxParameterValue.objects.bulk_create(checkboxes)
     models.FieldParameterValue.objects.bulk_create(fields)

@@ -32,6 +32,7 @@
 		    <a class="navbar-item {% if appname == 'files' %}is-active{% endif %}" href="{% url 'files:inflow' %}">DATA UPLOADS</a>
 		    <a class="navbar-item {% if appname == 'mstulos' %}is-active{% endif %}" href="{% url 'mstulos:front' %}">RESULTS VIEWER</a>
 	  	    {% if user.is_staff %}
+		    <a class="navbar-item {% if appname == 'corefac' %}is-active{% endif %}" href="{% url 'corefac:home' %}">CORE FAC</a>
 		    <a class="navbar-item {% if appname == 'staffpage' %}is-active{% endif %}" href="{% url 'staffpage:home' %}">ADMIN</a>
 		    {% endif %}
 		    <a class="navbar-item" href="{% url 'logout' %}">LOGOUT {{ user }}</a>

@@ -139,14 +139,29 @@ class Labcategories(models.IntegerChoices):
     SAMPLEPREP = 2, 'MS Sample prep'
 
 
-class SelectParameter(models.Model):
-    # adminable
-    title = models.TextField()
-    category = models.IntegerField(choices=Labcategories.choices)
+class SampleprepParameter(models.Model):
+    title = models.TextField(unique=True)
     active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.title
+
+
+class SampleprepParameterOption(models.Model):
+    param = models.ForeignKey(SampleprepParameter, on_delete=models.CASCADE)
+    value = models.TextField()
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.value
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['param_id', 'value'], name='uni_sprepopt')]
+
+
+class SampleprepParameterValue(models.Model):
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    value = models.ForeignKey(SampleprepParameterOption, on_delete=models.CASCADE)
 
 
 class FieldParameter(models.Model):
@@ -159,19 +174,6 @@ class FieldParameter(models.Model):
 
     def __str__(self):
         return self.title
-
-
-class SelectParameterOption(models.Model):
-    param = models.ForeignKey(SelectParameter, on_delete=models.CASCADE)
-    value = models.TextField()
-
-    def __str__(self):
-        return self.value
-
-
-class SelectParameterValue(models.Model):
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
-    value = models.ForeignKey(SelectParameterOption, on_delete=models.CASCADE)
 
 
 class FieldParameterValue(models.Model):

@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from datasets.models import (Datatype, PrincipalInvestigator, DatatypeComponent,
-                             SelectParameter, SelectParameterOption,
+                             SampleprepParameter, SampleprepParameterOption,
                              CheckboxParameter, CheckboxParameterOption,
                              FieldParameter, SampleMaterialType,
                              Enzyme, QuantType, QuantChannel, QuantTypeChannel,
@@ -11,8 +11,8 @@ from datasets.models import (Datatype, PrincipalInvestigator, DatatypeComponent,
 # Register your models here.
 
 admin.site.register(FieldParameter)
-admin.site.register(SelectParameter)
-admin.site.register(SelectParameterOption)
+admin.site.register(SampleprepParameter)
+admin.site.register(SampleprepParameterOption)
 admin.site.register(CheckboxParameter)
 admin.site.register(CheckboxParameterOption)
 admin.site.register(HiriefRange)
