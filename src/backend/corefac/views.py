@@ -6,6 +6,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.http import require_GET, require_POST
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.db.models import Q
 
 from corefac import models as cm
 from datasets import models as dm
@@ -18,7 +19,8 @@ def corefac_home(request):
     protos = {}
     all_doi = defaultdict(list)
     for pop in cm.PrepOptionProtocol.objects.all():
-        all_doi[pop.paramopt_id].append({'version': pop.version, 'doi': pop.doi})
+        all_doi[pop.paramopt_id].append({'id': pop.pk, 'version': pop.version, 'doi': pop.doi,
+            'active': pop.active})
         
     # create following JSON:
     # {1: { id: 1, title: Cleanup, methods: [{name: SP3, versions: [(v1, doi123), ]}]}
@@ -53,7 +55,19 @@ def add_sampleprep_method(request):
 @staff_member_required
 @login_required
 def add_sampleprep_method_version(request):
-    pass
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        paramopt_id, doi, version = req['paramopt_id'], req['doi'], req['version']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to add sampleprep method, contact admin'},
+                status=400)
+    dupq = Q(paramopt_id=paramopt_id, version=version) | Q(doi=doi)
+
+    if cm.PrepOptionProtocol.objects.filter(dupq).exists():
+        return JsonResponse({'error': 'A parameter with this version and/or DOI already exists'},
+                status=400)
+    pop = cm.PrepOptionProtocol.objects.create(paramopt_id=paramopt_id, doi=doi, version=version)
+    return JsonResponse({'id': pop.pk})
 
 
 @staff_member_required
@@ -67,7 +81,7 @@ def edit_sampleprep_method(request):
         return JsonResponse({'error': 'Bad request to edit sampleprep method, contact admin'},
                 status=400)
     spo = dm.SampleprepParameterOption.objects.filter(pk=paramopt_id)
-    if not spo.count():
+    if not spo.exists():
         return JsonResponse({'error': 'Could not find method, contact admin'}, status=400)
     spo.update(value=name)
     return JsonResponse({})
@@ -78,7 +92,15 @@ def edit_sampleprep_method(request):
 @require_POST
 def edit_sampleprep_method_version(request):
     req = json.loads(request.body.decode('utf-8'))
-    pass
+    try:
+        protid, doi, version = req['prepprot_id'], req['doi'], req['version']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to add sampleprep method, contact admin'},
+                status=400)
+    pop = cm.PrepOptionProtocol.objects.filter(pk=protid)
+    if not pop.exists():
+        return JsonResponse({'error': 'Could not find protocol, contact admin'}, status=400)
+    pop.update(doi=doi, version=version)
     return JsonResponse({})
 
 
@@ -101,7 +123,18 @@ def disable_sampleprep_method(request):
 @staff_member_required
 @login_required
 def disable_sampleprep_method_version(request):
-    pass
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        prepprot_id = req['prepprot_id']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to disable sampleprep protocol, contact admin'},
+                status=400)
+    pop = cm.PrepOptionProtocol.objects.filter(pk=prepprot_id)
+    if not pop.count():
+        return JsonResponse({'error': 'Could not find method, contact admin'}, status=400)
+    pop.update(active=False)
+    return JsonResponse({})
+
 
 
 @staff_member_required
@@ -123,7 +156,18 @@ def enable_sampleprep_method(request):
 @staff_member_required
 @login_required
 def enable_sampleprep_method_version(request):
-    pass
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        prepprot_id = req['prepprot_id']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to disable sampleprep protocol, contact admin'},
+                status=400)
+    pop = cm.PrepOptionProtocol.objects.filter(pk=prepprot_id)
+    if not pop.count():
+        return JsonResponse({'error': 'Could not find method, contact admin'}, status=400)
+    pop.update(active=True)
+    return JsonResponse({})
+
 
 
 @staff_member_required
@@ -147,6 +191,17 @@ def delete_sampleprep_method(request):
 @staff_member_required
 @login_required
 def delete_sampleprep_method_version(request):
-    pass
-
-
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        prepprot_id = req['prepprot_id']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to delete sampleprep protocol, contact admin'},
+                status=400)
+    pop = cm.PrepOptionProtocol.objects.filter(pk=prepprot_id)
+    if not pop.count():
+        return JsonResponse({'error': 'Could not find sampleprep protocol to delete, contact admin'},
+                status=400)
+    if cm.DatasetPipeline.objects.filter(pipeline__pipelinestep__step_id=prepprot_id).exists():
+        return JsonResponse({'error': 'Datasets exist mapped to this protocol, we cant delete it!'}, status=403)
+    pop.delete()
+    return JsonResponse({})

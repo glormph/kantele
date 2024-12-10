@@ -6,7 +6,8 @@ from datasets import models as dm
 class PrepOptionProtocol(models.Model):
     doi = models.TextField()
     version = models.TextField()
-    paramopt = models.OneToOneField(dm.SampleprepParameterOption, on_delete=models.CASCADE)
+    paramopt = models.ForeignKey(dm.SampleprepParameterOption, on_delete=models.CASCADE)
+    active = models.BooleanField(default=True)
 
 
 class SamplePipeline(models.Model):
