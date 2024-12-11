@@ -49,6 +49,12 @@ export function inputdone() {
   The intext is then set if there is a slected value, 
   
   */
+  if (selectval && selectval in fixedoptions) {
+    intext = niceName(fixedoptions[selectval]);
+  } else {
+    intext = '';
+    selectval = false;
+  }
   if (!mouseSelect) {
     typing = false;
     if (selectval && selectval in options) {
@@ -105,26 +111,28 @@ async function handleKeyInput(event) {
     hoveropt = false;
     options = Object.fromEntries(Object.entries(fixedoptions));
     optorder = fixedorder.length ? fixedorder : Object.keys(options);
-    selectval = initval;
 
   } else if (event.key.length > 1 && !(event.keyCode === 8 || event.keyCode === 46)) {
     // special key without modification effect (e.g. alt), not backspace/delete
     return
 
   } else if (intext.length > 2 && fetchUrl) {
-    selectval = '';
     options = await getJSON(`${fetchUrl}?q=${intext}`);
     fetchedData = Object.assign({}, options);
     delete(options.ok);
     optorder = Object.keys(options);
     typing = true;
 
-  } else if (!fetchUrl && fixedoptions && intext) {
-    selectval = '';
-    options = Object.fromEntries(Object.entries(fixedoptions).filter(x => x[1].name.toLowerCase().indexOf(intext.toLowerCase()) > -1));
+  } else if (!fetchUrl && fixedoptions && intext.trim().length) {
+    let searched_opt = Object.entries(fixedoptions);
+    for (let word of intext.trim().split(' ')) {
+      searched_opt = searched_opt.filter(x => x[1].name.toLowerCase().includes(word.toLowerCase()));
+    }
+    options = Object.fromEntries(searched_opt);
     const keys = Object.keys(options);
     optorder = fixedorder.length ? fixedorder.filter(x => keys.indexOf(x.toString()) > -1) : keys;
     typing = true;
+
   } else if (!fetchUrl && fixedoptions) {
     options = Object.fromEntries(Object.entries(fixedoptions));
     optorder = fixedorder.length ? fixedorder : Object.keys(options);
@@ -134,7 +142,7 @@ async function handleKeyInput(event) {
 }
 
 function starttyping() {
-  selectval = false;
+  intext = '';
   const keys = Object.keys(options);
   optorder = fixedorder.length ? fixedorder : keys;
   options = fixedorder.length ? fixedoptions : options;
