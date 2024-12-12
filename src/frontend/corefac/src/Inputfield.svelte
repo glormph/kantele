@@ -7,6 +7,10 @@ export let addIcon = false;
 
 export let intext = '';
 
+/*
+ * A styled input field that sends events when enter is pressed, and when in focus
+ */
+
 
 
 async function handleKeyInput(event) {

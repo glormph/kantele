@@ -32,9 +32,23 @@ def corefac_home(request):
                     'active': spo['param__active'], 'methods': []}
         protos[spo['param__pk']]['methods'].append({'name': spo['value'], 'id': spo['pk'],
             'versions': versions, 'active': spo['active']})
-    context = {'ctx': {'protocols': protos}}
+    pipelines = {}
+    
+    for pv in cm.PipelineVersion.objects.all().values('pk', 'pipeline_id', 'pipeline__name',
+            'version', 'active'):
+        pipelines[pv['pk']] = {'id': pv['pk'], 'pipe_id': pv['pipeline_id'], 'active': pv['active'],
+                'name': pv['pipeline__name'], 'version': pv['version'],
+                'steps': [{'name': get_pipeline_step_name(x), 'id': x['step_id'], 'ix': x['index']}
+                    for x in  cm.PipelineStep.objects.filter(pipelineversion_id=pv['pk']).values(
+                        'step_id', 'index', 'step__doi',
+                        'step__version', 'step__paramopt__value',
+                        'step__paramopt__param__title')]}
+    context = {'ctx': {'protocols': protos, 'pipelines': pipelines}}
     return render(request, 'corefac/corefac.html', context)
 
+
+def get_pipeline_step_name(stepvals):
+    return f'{stepvals["step__paramopt__param__title"]} - {stepvals["step__paramopt__value"]} - {stepvals["step__doi"]} - {stepvals["step__version"]}'
 
 @staff_member_required
 @login_required
@@ -160,7 +174,7 @@ def enable_sampleprep_method_version(request):
     try:
         prepprot_id = req['prepprot_id']
     except KeyError:
-        return JsonResponse({'error': 'Bad request to disable sampleprep protocol, contact admin'},
+        return JsonResponse({'error': 'Bad request to enable sampleprep protocol, contact admin'},
                 status=400)
     pop = cm.PrepOptionProtocol.objects.filter(pk=prepprot_id)
     if not pop.count():
@@ -205,3 +219,94 @@ def delete_sampleprep_method_version(request):
         return JsonResponse({'error': 'Datasets exist mapped to this protocol, we cant delete it!'}, status=403)
     pop.delete()
     return JsonResponse({})
+
+
+@staff_member_required
+@login_required
+def add_sampleprep_pipeline(request):
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        name, version = req['name'], req['version']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to add sampleprep pipeline, contact admin'},
+                status=400)
+    pipeline, _ = cm.SamplePipeline.objects.get_or_create(name=name)
+    pversion, cr = cm.PipelineVersion.objects.get_or_create(pipeline=pipeline, version=version)
+    if not cr:
+        return JsonResponse({'error': 'Pipeline of this version already exists'}, status=400)
+    return JsonResponse({'id': pversion.pk, 'pipe_id': pipeline.pk})
+
+
+@staff_member_required
+@login_required
+def edit_sampleprep_pipeline(request):
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        pvid, version, pipe_id, steps = req['id'], req['version'], req['pipe_id'], req['steps']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to edit pipeline method, contact admin'},
+                status=400)
+    # Update version and possibly pipeline FK
+    cm.PipelineVersion.objects.filter(pk=pvid).update(version=version, pipeline_id=pipe_id)
+    # Remove old steps that are not needed if pipeline is shorter, update remaining/new steps
+    cm.PipelineStep.objects.filter(pipelineversion_id=pvid).exclude(index__in=[x['ix'] for x in steps]).delete()
+    for step in steps:
+        cm.PipelineStep.objects.update_or_create(pipelineversion_id=pvid, index=step['ix'],
+                defaults={'step_id': step['id']})
+    return JsonResponse({})
+
+
+@staff_member_required
+@login_required
+def disable_sampleprep_pipeline(request):
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        pvid = req['id']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to disable pipeline, contact admin'},
+                status=400)
+    pipeline = cm.PipelineVersion.objects.filter(pk=pvid)
+    if not pipeline.count():
+        return JsonResponse({'error': 'Could not find method, contact admin'}, status=400)
+    pipeline.update(active=False)
+    return JsonResponse({})
+
+
+@staff_member_required
+@login_required
+def enable_sampleprep_pipeline(request):
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        pvid = req['id']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to enable pipeline, contact admin'},
+                status=400)
+    pipeline = cm.PipelineVersion.objects.filter(pk=pvid)
+    if not pipeline.count():
+        return JsonResponse({'error': 'Could not find method, contact admin'}, status=400)
+    pipeline.update(active=True)
+    return JsonResponse({})
+
+
+@staff_member_required
+@login_required
+def delete_sampleprep_pipeline(request):
+    req = json.loads(request.body.decode('utf-8'))
+    try:
+        pvid = req['id']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to delete pipeline, contact admin'},
+                status=400)
+    pipeline = cm.PipelineVersion.objects.filter(pk=pvid)
+    if not pipeline.count():
+        return JsonResponse({'error': 'Could not find pipeline, contact admin'}, status=400)
+    if cm.DatasetPipeline.objects.filter(pipelineversion__id=pvid).exists():
+        return JsonResponse({'error': 'Datasets exist mapped to this pipeline, we cant delete it!'}, status=403)
+    motherpipeline = pipeline.values('pipeline_id').get()['pipeline_id']
+    if not cm.PipelineVersion.objects.filter(pipeline_id=motherpipeline).exists():
+        pipeline.delete()
+        cm.SamplePipeline.objects.filter(pk=motherpipeline).delete()
+    else:
+        pipeline.delete()
+    return JsonResponse({})
+

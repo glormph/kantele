@@ -2,9 +2,10 @@
 import { createEventDispatcher } from 'svelte';
 import Inputfield from './Inputfield.svelte';
 import { postJSON } from '../../datasets/src/funcJSON.js'
+import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
 
 const dispatch = createEventDispatcher();
-  export let meth;
+export let meth;
 
 let editing;
 let newProtocol;
@@ -22,6 +23,7 @@ async function editMethod(name, method) {
     dispatch('error', {error: resp.error});
   } else {
     method.name = name;
+    dispatch('updateprotocols', {});
   }
   editing = false;
 }
@@ -36,6 +38,7 @@ async function addProtocol() {
     const newmeth = {id: resp.id, version: newVersion, doi: newDOI, active: true};
     meth.versions.push(newmeth);
     selectedProtocol = newmeth;
+    dispatch('updateprotocols', {});
   }
   cancelProtocol();
 }
@@ -49,6 +52,7 @@ async function editProtocol() {
   } else {
     selectedProtocol.version = newVersion;
     selectedProtocol.doi = newDOI;
+    dispatch('updateprotocols', {});
   }
   cancelProtocol();
 }
@@ -63,6 +67,7 @@ async function archiveProtocol() {
     selectedProtocol.active = false;
     meth.versions = meth.versions;
     selectedProtocol = false;
+    dispatch('updateprotocols', {});
   }
   cancelProtocol();
 }
@@ -70,13 +75,18 @@ async function archiveProtocol() {
 
 async function reactivateProtocol() {
   const url = 'sampleprep/version/enable/';
-  const resp = await postJSON(url, {'prepprot_id': selectedDisabledProtocol.id});
+  const resp = await postJSON(url, {'prepprot_id': selectedDisabledProtocol});
   if (resp.error) {
     dispatch('error', {error: resp.error});
   } else {
-    selectedDisabledProtocol.active = true;
+    meth.versions
+      .filter(x => x.id === selectedDisabledProtocol)
+      .forEach(x => {
+        x.active = true
+      });
     meth.versions = meth.versions;
     selectedDisabledProtocol = meth.versions.filter(x => !x.active)[0];
+    dispatch('updateprotocols', {});
   }
   cancelProtocol();
 }
@@ -90,6 +100,7 @@ async function deleteProtocol() {
   } else {
     meth.versions = meth.versions.filter(x => x.id !== selectedProtocol.id);
     selectedProtocol = false;
+    dispatch('updateprotocols', {});
   }
   cancelProtocol();
 }
@@ -166,14 +177,13 @@ function startEditProtocol() {
     {#if meth.versions.filter(x => !x.active).length}
     <div class="control mt-4">
       <label class="label">Disabled versions:</label>
-      <button on:click={reactivateProtocol} class="icon is-medium"><i class="fas fa-lg fa-undo"></i></button>
-      <div class="select is-small ">
-        <select bind:value={selectedDisabledProtocol}>
-          {#each meth.versions.filter(x => !x.active) as version}
-          <option value={version}>{version.version} - {version.doi}</option>
-          {/each}
-        </select>
-      </div>
+
+        <DynamicSelect placeholder="Type to select version"
+  fixedoptions={Object.fromEntries(meth.versions.filter(x => !x.active).map(x => [x.id, x]))} bind:selectval={selectedDisabledProtocol} niceName={x => `${x.version} - ${x.doi}`} />
+        <button class="button" title="Reactivate" on:click={reactivateProtocol}>
+          <span class="icon"><i class="has-text-grey far fa-arrow-alt-circle-up"></i></span>
+          <span>Reactivate</span>
+        </button>
     </div>
     {/if}
   </div>

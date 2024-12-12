@@ -4,26 +4,39 @@ from datasets import models as dm
 
 
 class PrepOptionProtocol(models.Model):
-    doi = models.TextField()
+    doi = models.TextField(unique=True)
     version = models.TextField()
     paramopt = models.ForeignKey(dm.SampleprepParameterOption, on_delete=models.CASCADE)
     active = models.BooleanField(default=True)
 
 
 class SamplePipeline(models.Model):
-    name = models.TextField()
+    name = models.TextField(unique=True)
+
+
+class PipelineVersion(models.Model):
+    pipeline = models.ForeignKey(SamplePipeline, on_delete=models.PROTECT)
+    version = models.TextField()
+    locked = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['pipeline', 'version'], name='uni_pipelineversion')]
 
 
 class PipelineStep(models.Model):
-    pipeline = models.ForeignKey(SamplePipeline, on_delete=models.CASCADE)
-    previous = models.OneToOneField('self', on_delete=models.CASCADE)#, related_name='prevstep_of')
-    step = models.ForeignKey(dm.SampleprepParameterOption, on_delete=models.CASCADE)
+    pipelineversion = models.ForeignKey(PipelineVersion, on_delete=models.CASCADE)
+    index = models.IntegerField()
+    step = models.ForeignKey(PrepOptionProtocol, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['index', 'pipelineversion_id'], name='uni_pipelinestep')]
 
 
 class DatasetPipeline(models.Model):
     '''A prep pipeline can be reused in multiple datasets if needed - result of a sample
     prep can theoretically be used in e.g. DIA / DDA runs, etc'''
-    pipeline = models.ForeignKey(SamplePipeline, on_delete=models.CASCADE)
+    pipelineversion = models.ForeignKey(PipelineVersion, on_delete=models.CASCADE)
     dataset = models.ForeignKey(dm.Dataset, on_delete=models.CASCADE)
     started = models.BooleanField(default=False)
     start = models.DateTimeField(auto_now=True)
