@@ -4,17 +4,21 @@ import { onMount } from 'svelte';
 import { getJSON, postJSON } from './funcJSON.js'
 import Param from './Param.svelte';
 import ErrorNotif from './ErrorNotif.svelte';
+import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
+import DatasetPipeline from './DatasetPipeline.svelte'
 import { dataset_id } from './stores.js';
 
 export let errors;
 
 let samplepreperrors = [];
+let useTrackingPipeline = false;
+let selectedPipeline = false;
+let pipelines = {};
+let pipeselector;
+let dset_pipe_id;
 
 
 let dsinfo = {
-  operator_id: '',
-  dynamic_rp: false,
-  rp_length: '',
   params: [],
   enzymes: [],
   no_enzyme: false,
@@ -34,12 +38,6 @@ export function validate() {
 	if (!dsinfo.no_enzyme && !dsinfo.enzymes.filter.length) {
 		comperrors.push('Enzyme selection is required');
 	}
-	if (!dsinfo.operator_id) {
-		comperrors.push('Operator is required');
-	}
-	if (!dsinfo.dynamic_rp && !dsinfo.rp_length) {
-		comperrors.push('Reverse phase is required');
-	}
 	for (let key in dsinfo.params) {
     if (dsinfo.params[key].model === undefined || dsinfo.params[key].model === '') {
 			comperrors.push(dsinfo.params[key].title + ' is required');
@@ -55,9 +53,8 @@ export async function save() {
     let postdata = {
       dataset_id: $dataset_id,
       enzymes: dsinfo.no_enzyme ? [] : dsinfo.enzymes,
-      operator_id: dsinfo.operator_id,
       params: dsinfo.params,
-      rp_length: dsinfo.dynamic_rp ? '' : dsinfo.rp_length,
+      pipeline: selectedPipeline,
     };
     let url = '/datasets/save/mssampleprep/';
     try {
@@ -78,10 +75,35 @@ async function fetchData() {
 	const response = await getJSON(url);
   for (let [key, val] of Object.entries(response.dsinfo)) { dsinfo[key] = val; }
   edited = false;
-  if (dsinfo.operator_id) {
-    saved = true;
+  saved = response.saved;
+  pipelines = response.pipelines;
+  selectedPipeline = response.dsinfo.pipe_id;
+  useTrackingPipeline = selectedPipeline !== false;
+  dset_pipe_id = response.dsinfo.dspipe_id;
+}
+
+
+function pipelineSelected() {
+  useTrackingPipeline = true;
+  pipelines[selectedPipeline].steps.forEach(step => {
+    dsinfo.params[step[0]].model = step[1];
+  });
+  editMade();
+}
+
+function togglePipeline() {
+  if (useTrackingPipeline) {
+    useTrackingPipeline = false;
+    selectedPipeline = false;
+    // If we run immediately then the selectedPipeline will not be updated yet
+    setTimeout(pipeselector.inputdone, 20);
+    editMade();
+  } else {
+    useTrackingPipeline = true;
+    setTimeout(pipeselector.inputdone, 20);
   }
 }
+
 
 onMount(async() => {
   fetchData();
@@ -117,10 +139,20 @@ onMount(async() => {
   {/if}
 </div>
 
+<div class="field">
+  <label class="label">Sample prep pipeline</label>
+  <input type="checkbox" on:change={togglePipeline} checked={useTrackingPipeline}>Use a tracking pipeline
+  <DynamicSelect bind:this={pipeselector} placeholder="Type to select pipeline" fixedoptions={pipelines} bind:selectval={selectedPipeline} niceName={x => x.name} on:selectedvalue={pipelineSelected} />
+</div>
 
+{#if useTrackingPipeline && selectedPipeline}
+<DatasetPipeline pipeSteps={pipelines[selectedPipeline].steps} samplePrepCategories={dsinfo.params} bind:savedStageDates={dsinfo.prepdatetrack} bind:pipeStepsDone={dsinfo.prepsteptrack} bind:dspipeId={dset_pipe_id} />
+
+{:else}
 {#each Object.entries(dsinfo.params) as [param_id, param]}
 <Param bind:param={param} on:edited={editMade}/>
 {/each}
+{/if}
 
 <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
 <button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>

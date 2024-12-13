@@ -37,20 +37,27 @@ class DatasetPipeline(models.Model):
     '''A prep pipeline can be reused in multiple datasets if needed - result of a sample
     prep can theoretically be used in e.g. DIA / DDA runs, etc'''
     pipelineversion = models.ForeignKey(PipelineVersion, on_delete=models.CASCADE)
-    dataset = models.ForeignKey(dm.Dataset, on_delete=models.CASCADE)
-    started = models.BooleanField(default=False)
-    start = models.DateTimeField(auto_now=True)
-    stop = models.DateTimeField(auto_now=True)
+    dataset = models.OneToOneField(dm.Dataset, on_delete=models.CASCADE)
 
 
-class SamplePrepFinished(models.Model):
-    '''Technically we could track result-of-step-samples (and locations) but that would be too much
-    bookkeeping in the lab'''
-    # To start we ll only put start/stop on the pipeline in the UI, and then make the prep steps
-    # finish inside it. Im not sure if we need detailed prep step tracking
-    sample = models.ForeignKey(dm.ProjectSample, on_delete=models.CASCADE)
-    step = models.ForeignKey(PipelineStep, on_delete=models.CASCADE)
-    finished = models.DateTimeField(auto_now=True)
+class TrackingStages(models.IntegerChoices):
+    SAMPLESREADY = 1, 'Samples arrived'
+    PREPSTARTED = 2, 'Prep started'
+    PREPFINISHED = 3, 'Prep finished'
+    MSQUEUED = 4, 'Queued on MS'
+
+
+class DatasetPrepTracking(models.Model):
+    dspipe = models.ForeignKey(DatasetPipeline, on_delete=models.CASCADE)
+    stage = models.IntegerField(choices=TrackingStages.choices)
+    timestamp = models.DateTimeField()
+
+
+class DatasetPrepTrackingNodate(models.Model):
+    # For stages between PREPSTARTED and PREPFINISHED
+    dspipe = models.ForeignKey(DatasetPipeline, on_delete=models.CASCADE)
+    stage = models.ForeignKey(PipelineStep, on_delete=models.CASCADE)
+    finished = models.BooleanField()
 
 
 #class ILabToken(models.Model):

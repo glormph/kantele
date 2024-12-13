@@ -25,6 +25,7 @@ urlpatterns = [
     path('save/files/', views.save_files, name="savefiles"),
     path('save/files/pending/', views.accept_or_reject_dset_preassoc_files),
     path('save/mssampleprep/', views.save_ms_sampleprep),
+    path('save/mssampleprep/tracking/', views.save_ms_sampleprep_tracking_step),
     path('save/msacq/', views.save_ms_acquisition),
     path('save/samples/', views.save_samples),
     path('save/labelcheck/', views.save_labelcheck),

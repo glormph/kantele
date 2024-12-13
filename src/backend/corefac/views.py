@@ -215,7 +215,7 @@ def delete_sampleprep_method_version(request):
     if not pop.count():
         return JsonResponse({'error': 'Could not find sampleprep protocol to delete, contact admin'},
                 status=400)
-    if cm.DatasetPipeline.objects.filter(pipeline__pipelinestep__step_id=prepprot_id).exists():
+    if cm.DatasetPipeline.objects.filter(pipelineversion__pipelinestep__step_id=prepprot_id).exists():
         return JsonResponse({'error': 'Datasets exist mapped to this protocol, we cant delete it!'}, status=403)
     pop.delete()
     return JsonResponse({})

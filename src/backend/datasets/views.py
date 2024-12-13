@@ -17,6 +17,7 @@ from rawstatus import models as filemodels
 from jobs.jobutil import create_job, check_job_error, create_job_without_check, jobmap
 from jobs import models as jm
 from jobs import jobs as jj
+from corefac import models as cm
 
 
 INTERNAL_PI_PK = 1
@@ -122,11 +123,25 @@ def dataset_files(request, dataset_id=False):
 
 @login_required
 def dataset_mssampleprep(request, dataset_id=False):
-    response_json = {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.SAMPLEPREP),
-        'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
-            for x in models.Enzyme.objects.all()]},
+    params = {}
+    for p in models.SampleprepParameterOption.objects.select_related('param'):
+        fill_sampleprepparam(params, p)
+    pipelines = {}
+    for ps in cm.PipelineStep.objects.filter(pipelineversion__active=True).order_by('index').values(
+            'pipelineversion__version', 'pipelineversion__pipeline__name',
+            'pipelineversion_id', 'step__paramopt_id', 'step__paramopt__param_id'):
+        pid = ps['pipelineversion_id']
+        if pid not in pipelines:
+            pipelines[pid] = {'id': pid, 'steps': [],
+                    'name': f'{ps["pipelineversion__pipeline__name"]} - {ps["pipelineversion__version"]}',
+                    }
+        pipelines[pid]['steps'].append((ps['step__paramopt__param_id'], ps['step__paramopt_id']))
+    response_json = {'dsinfo': {'params': params, 'prepdatetrack': {}, 'prepsteptrack': {},
+        'dspipe_id': False, 'pipe_id': False, 'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
+            for x in models.Enzyme.objects.all()]}, 'pipelines': pipelines,
             }
     if dataset_id:
+        response_json['saved'] = True
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
         enzymes_used = {x.enzyme_id for x in 
@@ -136,8 +151,21 @@ def dataset_mssampleprep(request, dataset_id=False):
             if enzyme['id'] in enzymes_used:
                 enzyme['checked'] = True
                 response_json['no_enzyme'] = False
+        for p in models.SampleprepParameterValue.objects.filter(dataset_id=dataset_id):
+            fill_sampleprepparam(response_json['dsinfo']['params'], p.value, p.value.id)
+        dspipeq = cm.DatasetPipeline.objects.filter(dataset_id=dataset_id)
+        if dspipeq.exists():
+            dspipe = dspipeq.get()
+            response_json['dsinfo']['dspipe_id'] = dspipe.id
+            response_json['dsinfo']['pipe_id'] = dspipe.pipelineversion_id
+        else:
+            get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.SAMPLEPREP)
+        response_json['dsinfo']['prepdatetrack'] = {
+                cm.TrackingStages(x.stage).name: datetime.strftime(x.timestamp, '%Y-%m-%d')
+                for x in cm.DatasetPrepTracking.objects.filter(dspipe__dataset_id=dataset_id)}
+        response_json['dsinfo']['prepsteptrack'] = {x.stage_id: x.finished for x in
+            cm.DatasetPrepTrackingNodate.objects.filter(dspipe__dataset_id=dataset_id)}
 
-        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.SAMPLEPREP)
     return JsonResponse(response_json)
 
 
@@ -254,13 +282,6 @@ def get_admin_params_for_dset(response, dset_id, category):
     stored_data, oldparams, newparams = {}, {}, {}
     params = response['params']
     params_saved = False
-    for p in models.SampleprepParameterValue.objects.filter(
-            dataset_id=dset_id, value__param__category=category):
-        params_saved = True
-        if p.value.param.active:
-            fill_admin_selectparam(params, p.value, p.value.id)
-        else:
-            fill_admin_selectparam(oldparams, p.value, p.value.id)
     for p in models.CheckboxParameterValue.objects.filter(
             dataset_id=dset_id, value__param__category=category):
         params_saved = True
@@ -1130,22 +1151,17 @@ def get_empty_isoquant():
     return quants
 
 
-def empty_samples_json():
-    return {'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
-            'lf_qtid': models.QuantType.objects.get(name='labelfree').pk,
-            'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
-            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
-                'name': x['species__popname'], 'total': x['total']} 
-                for x in models.SampleSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
-                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
-            }
 
-
-def fill_admin_selectparam(params, p, value=False):
+def fill_sampleprepparam(params, p, value=False):
+    # This is now only used for sample prep params. Keep around for when that changes
     """Fills params dict with select parameters passed, in proper JSON format
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
-    p_id = f'select_{p.param.id}'
+    # If reusing this, you need to make a new version for non sampleprep
+    # that uses f'select_{p.param.id}' - this is to not mix them with e.g. fieldparam
+    # with same ID
+    #p_id = f'select_{p.param.id}'
+    p_id = p.param_id
     if p_id not in params:
         params[p_id] = {'param_id': p.param.id, 'fields': [],
                               'inputtype': 'select', 'title': p.param.title}
@@ -1187,11 +1203,13 @@ def fill_admin_fieldparam(params, p, value=False):
 
 
 def get_dynamic_emptyparams(category):
+    # If you ever add more lab categories, they get empty params here
+    # This used to be used by multiple components but has since 2024 or so
+    # been collapsed into only a single component (first sampleprep/acquisition, and
+    # later only acquisition) The latter removal of sample prep led to
+    # the conversion of selectparam into sampleprep param (sample prep contained
+    # no field params, or checkbox except dedicated enzyme box)
     params = {}
-    for p in models.SampleprepParameterOption.objects.select_related(
-            'param').filter(param__category=category):
-        if p.param.active:
-            fill_admin_selectparam(params, p)
     for p in models.FieldParameter.objects.select_related(
             'paramtype').filter(category=category):
         if p.active:
@@ -1389,21 +1407,19 @@ def update_msacq(dset, data):
                                                       length=data['rp_length'])
     elif not data['rp_length']:
             dset.reversephasedataset.delete()
-#            models.ReversePhaseDataset.objects.filter(
-#                dataset_id=dset.id).delete()
     elif data['rp_length'] != dset.reversephasedataset.length:
         dset.reversephasedataset.length = data['rp_length']
         dset.reversephasedataset.save()
+# FIXME do his instead
+#    if hasattr(dset, 'reversephasedataset') and not data['rp_length']:
+#        dset.reversephasedataset.delete()
+#    else:
+#        dm.ReversePhaseDataset.objects.update_or_create(dataset=dset,
+#                defaults={'length': data['rp_length']})
     update_admin_defined_params(dset, data, models.Labcategories.ACQUISITION)
     return JsonResponse({})
 
 
-def update_mssampleprep(dset, data):
-    models.EnzymeDataset.objects.filter(dataset=dset).delete()
-    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
-        for enz in data['enzymes'] if enz['checked']])
-    update_admin_defined_params(dset, data, models.Labcategories.SAMPLEPREP)
-    return JsonResponse({})
 
 
 @login_required
@@ -1414,14 +1430,58 @@ def save_ms_sampleprep(request):
         return user_denied
     dset_id = data['dataset_id']
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related().get()
-    if models.SampleprepParameterValue(dataset=dset, param__category=models.Labcategories.SAMPLEPREP
-            ).exists():
-        return update_mssampleprep(dset, data)
-    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset_id=dset_id, enzyme_id=enz['id'])
-        for enz in data['enzymes'] if enz['checked']])
-    save_admin_defined_params(data, dset_id)
+    models.EnzymeDataset.objects.filter(dataset=dset).delete()
+    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
+            for enz in data['enzymes'] if enz['checked']])
+
+    if data['pipeline']:
+        models.SampleprepParameterValue.objects.filter(dataset=dset).delete()
+        cm.DatasetPipeline.objects.update_or_create(dataset=dset, defaults={
+            'pipelineversion_id': data['pipeline']})
+    else:
+        cm.DatasetPipeline.objects.filter(dataset=dset).delete()
+        if models.SampleprepParameterValue(dataset=dset, param__category=models.Labcategories.SAMPLEPREP
+                ).exists():
+            update_admin_defined_params(dset, data, models.Labcategories.SAMPLEPREP)
+        else:
+            save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
     return JsonResponse({})
+
+
+@login_required
+def save_ms_sampleprep_tracking_step(request):
+    data = json.loads(request.body.decode('utf-8'))
+    try:
+        stagename, step_id, dspipe_id = data['stagename'], data['pipelinestep'], data['pipeline_id']
+        timestamp = datetime.strptime(data['timestamp'], '%Y-%m-%d')
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to save tracking step method, contact admin'},
+                status=400)
+
+    dspipe = cm.DatasetPipeline.objects.filter(pk=dspipe_id).values('dataset_id').get()
+    user_denied = check_save_permission(dspipe['dataset_id'], request.user)
+    if user_denied:
+        return user_denied
+    
+    if stagename and hasattr(cm.TrackingStages, stagename):
+        stage = cm.TrackingStages[stagename]
+        cm.DatasetPrepTracking.objects.update_or_create(dspipe_id=dspipe_id, stage=stage,
+                defaults={'timestamp': timestamp})
+        if stage > cm.TrackingStages.PREPSTARTED:
+            prepstages = cm.PipelineStep.objects.filter(pipelineversion__datasetpipeline__pk=dspipe_id)
+            cm.DatasetPrepTrackingNodate.update_or_create(dspipe_id=dspipe_id, stage__in=prepstages, defaults={'finished': True})
+    elif step_id:
+        cm.DatasetPrepTrackingNodate.objects.update_or_create(dspipe_id=dspipe_id, stage__lteq=step_id,
+                defaults={'finished': True})
+    else:
+        return JsonResponse({'error': 'No proper date could be saved'}, status=400)
+
+    updated = {'tracked': [(cm.TrackingStages(x.stage).name, datetime.strftime(x.timestamp, '%Y-%m-%d'))
+        for x in cm.DatasetPrepTracking.objects.filter(dspipe_id=dspipe_id)],
+        'nodate': [(x.stage_id, x.finished) for x in cm.DatasetPrepTrackingNodate.objects.filter(dspipe_id=dspipe_id)]
+            }
+    return JsonResponse(updated)
 
 
 @login_required
