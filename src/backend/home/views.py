@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
-from django.db.models import Q, Sum, Max, Count
+from django.db.models import Q, Sum, Max, Count, F
 from django.db.models.functions import Trunc, Greatest
 from collections import OrderedDict, defaultdict
 
@@ -18,7 +18,7 @@ from analysis import models as anmodels
 from analysis import views as av
 from analysis import jobs as aj
 from datasets import jobs as dsjobs
-from datasets.views import check_ownership, get_dset_storestate, move_dset_project_servershare
+from datasets.views import check_ownership, get_dset_storestate, move_dset_project_servershare, fill_sampleprepparam
 from rawstatus import models as filemodels
 from rawstatus import views as rv
 from jobs import jobs as jj
@@ -26,6 +26,7 @@ from jobs import views as jv
 from jobs.jobutil import create_job
 from jobs import models as jm
 from mstulos import models as mm
+from corefac import models as cm
 
 
 @login_required
@@ -859,6 +860,30 @@ def fetch_dset_details(dset):
         info['pwiz_sets'] = [x for x in pw_sets.values()]
         info['pwiz_versions'] =  {x.id: x.version_description for x in anmodels.Proteowizard.objects.exclude(
             pk__in=[x['id'] for x in info['pwiz_sets']]).exclude(active=False)}
+
+        # Tracking pipeline
+        dspipeq = cm.DatasetPipeline.objects.filter(dataset=dset)
+        pipeline = {}
+        if dspipeq.exists():
+            dspipe = dspipeq.get()
+            name = dspipeq.annotate(name=F('pipelineversion__pipeline__name'),
+                    ver=F('pipelineversion__version')).values('name', 'ver').first()
+            pipeline = {'dspipe_id': dspipe.pk, 'steps': [],
+                    'name': f'{name["name"]} - {name["ver"]}',
+                    }
+            for ps in cm.PipelineStep.objects.filter(pipelineversion__datasetpipeline__dataset=dset).order_by('index').values('pk', 'step__paramopt_id', 'step__paramopt__param_id'):
+                pipeline['steps'].append((ps['step__paramopt__param_id'], ps['step__paramopt_id'], ps['pk']))
+            params = {}
+            for p in dsmodels.SampleprepParameterOption.objects.select_related('param'):
+                fill_sampleprepparam(params, p)
+            pipeline.update({'prepcategories': params,
+                'prepdatetrack': {cm.TrackingStages(x.stage).name: datetime.strftime(x.timestamp, '%Y-%m-%d')
+                for x in cm.DatasetPrepTracking.objects.filter(dspipe__dataset=dset)},
+                'prepsteptrack': {x.stage_id: x.finished for x in
+                    cm.DatasetPrepTrackingNodate.objects.filter(dspipe__dataset=dset)}
+                })
+        info['pipeline'] = pipeline if pipeline else False
+
     else:
         nrstoredfiles = {nonms_dtypes[dset.datatype_id]: rawfiles.count()}
     info['nrstoredfiles'] = nrstoredfiles

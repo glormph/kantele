@@ -104,6 +104,10 @@ function togglePipeline() {
   }
 }
 
+function showError(error) {
+  samplepreperrors = [...samplepreperrors, error];
+}
+
 
 onMount(async() => {
   fetchData();
@@ -145,10 +149,10 @@ onMount(async() => {
   <DynamicSelect bind:this={pipeselector} placeholder="Type to select pipeline" fixedoptions={pipelines} bind:selectval={selectedPipeline} niceName={x => x.name} on:selectedvalue={pipelineSelected} />
 </div>
 
-{#if useTrackingPipeline && selectedPipeline}
-<DatasetPipeline pipeSteps={pipelines[selectedPipeline].steps} samplePrepCategories={dsinfo.params} bind:savedStageDates={dsinfo.prepdatetrack} bind:pipeStepsDone={dsinfo.prepsteptrack} bind:dspipeId={dset_pipe_id} />
+{#if useTrackingPipeline && selectedPipeline && dset_pipe_id}
+<DatasetPipeline on:error={e => showError(e.detail.error)} pipeSteps={pipelines[selectedPipeline].steps} samplePrepCategories={dsinfo.params} bind:savedStageDates={dsinfo.prepdatetrack} bind:pipeStepsDone={dsinfo.prepsteptrack} bind:dspipeId={dset_pipe_id} />
 
-{:else}
+{:else if !useTrackingPipeline}
 {#each Object.entries(dsinfo.params) as [param_id, param]}
 <Param bind:param={param} on:edited={editMade}/>
 {/each}

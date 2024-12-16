@@ -52,12 +52,17 @@ class DatasetPrepTracking(models.Model):
     stage = models.IntegerField(choices=TrackingStages.choices)
     timestamp = models.DateTimeField()
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['dspipe', 'stage'], name='uni_dspipe')]
 
 class DatasetPrepTrackingNodate(models.Model):
     # For stages between PREPSTARTED and PREPFINISHED
     dspipe = models.ForeignKey(DatasetPipeline, on_delete=models.CASCADE)
     stage = models.ForeignKey(PipelineStep, on_delete=models.CASCADE)
     finished = models.BooleanField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['dspipe', 'stage'], name='uni_dspipenotrack')]
 
 
 #class ILabToken(models.Model):

@@ -128,14 +128,14 @@ def dataset_mssampleprep(request, dataset_id=False):
         fill_sampleprepparam(params, p)
     pipelines = {}
     for ps in cm.PipelineStep.objects.filter(pipelineversion__active=True).order_by('index').values(
-            'pipelineversion__version', 'pipelineversion__pipeline__name',
+            'pk', 'pipelineversion__version', 'pipelineversion__pipeline__name',
             'pipelineversion_id', 'step__paramopt_id', 'step__paramopt__param_id'):
         pid = ps['pipelineversion_id']
         if pid not in pipelines:
             pipelines[pid] = {'id': pid, 'steps': [],
                     'name': f'{ps["pipelineversion__pipeline__name"]} - {ps["pipelineversion__version"]}',
                     }
-        pipelines[pid]['steps'].append((ps['step__paramopt__param_id'], ps['step__paramopt_id']))
+        pipelines[pid]['steps'].append((ps['step__paramopt__param_id'], ps['step__paramopt_id'], ps['pk']))
     response_json = {'dsinfo': {'params': params, 'prepdatetrack': {}, 'prepsteptrack': {},
         'dspipe_id': False, 'pipe_id': False, 'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
             for x in models.Enzyme.objects.all()]}, 'pipelines': pipelines,
@@ -1440,8 +1440,7 @@ def save_ms_sampleprep(request):
             'pipelineversion_id': data['pipeline']})
     else:
         cm.DatasetPipeline.objects.filter(dataset=dset).delete()
-        if models.SampleprepParameterValue(dataset=dset, param__category=models.Labcategories.SAMPLEPREP
-                ).exists():
+        if models.SampleprepParameterValue.objects.filter(dataset=dset).exists():
             update_admin_defined_params(dset, data, models.Labcategories.SAMPLEPREP)
         else:
             save_admin_defined_params(data, dset_id)
@@ -1451,10 +1450,13 @@ def save_ms_sampleprep(request):
 
 @login_required
 def save_ms_sampleprep_tracking_step(request):
+    '''Save pipeline step when user fills in date or "done today". If a dated step is done which
+    is later than the PREPSTARTED step, this will set to done the not-dated steps before that 
+    as well.  '''
     data = json.loads(request.body.decode('utf-8'))
     try:
         stagename, step_id, dspipe_id = data['stagename'], data['pipelinestep'], data['pipeline_id']
-        timestamp = datetime.strptime(data['timestamp'], '%Y-%m-%d')
+        timestamp = data['timestamp']
     except KeyError:
         return JsonResponse({'error': 'Bad request to save tracking step method, contact admin'},
                 status=400)
@@ -1466,13 +1468,29 @@ def save_ms_sampleprep_tracking_step(request):
     
     if stagename and hasattr(cm.TrackingStages, stagename):
         stage = cm.TrackingStages[stagename]
+        timestamp_dt = datetime.strptime(timestamp, '%Y-%m-%d')
+        if cm.DatasetPrepTracking.objects.filter(dspipe_id=dspipe_id,
+                stage__lt=stage).count() < stage - 1:
+            # If stage = 3, there should be 2 stages already in DB
+            return JsonResponse({'error': 'Cannot update that stage without first updating previous'
+                ' dated stages'}, status=403)
         cm.DatasetPrepTracking.objects.update_or_create(dspipe_id=dspipe_id, stage=stage,
-                defaults={'timestamp': timestamp})
+                defaults={'timestamp': timestamp_dt})
         if stage > cm.TrackingStages.PREPSTARTED:
-            prepstages = cm.PipelineStep.objects.filter(pipelineversion__datasetpipeline__pk=dspipe_id)
-            cm.DatasetPrepTrackingNodate.update_or_create(dspipe_id=dspipe_id, stage__in=prepstages, defaults={'finished': True})
+            preptracks = []
+            for prepstage in cm.PipelineStep.objects.filter(
+                    pipelineversion__datasetpipeline__pk=dspipe_id):
+                preptracks.append(cm.DatasetPrepTrackingNodate(dspipe_id=dspipe_id, finished=True,
+                    stage=prepstage))
+            cm.DatasetPrepTrackingNodate.objects.bulk_create(preptracks, update_conflicts=True,
+                    update_fields=['finished'], unique_fields=['dspipe', 'stage'])
     elif step_id:
-        cm.DatasetPrepTrackingNodate.objects.update_or_create(dspipe_id=dspipe_id, stage__lteq=step_id,
+        pre_stages = [cm.TrackingStages.SAMPLESREADY, cm.TrackingStages.PREPSTARTED]
+        if cm.DatasetPrepTracking.objects.filter(dspipe_id=dspipe_id,
+                stage__in=pre_stages).count() < len(pre_stages):
+            return JsonResponse({'error': 'Cannot update that stage without first updating previous'
+                ' dated stages'}, status=403)
+        cm.DatasetPrepTrackingNodate.objects.update_or_create(dspipe_id=dspipe_id, stage_id=step_id,
                 defaults={'finished': True})
     else:
         return JsonResponse({'error': 'No proper date could be saved'}, status=400)
@@ -1739,8 +1757,7 @@ def set_component_state(dset_id, comp, state):
 
 def update_admin_defined_params(dset, data, category):
     fieldparams = dset.fieldparametervalue_set.filter(param__category=category)
-    selectparams = dset.sampleprepparametervalue_set.filter(
-        value__param__category=category).select_related('value')
+    selectparams = dset.sampleprepparametervalue_set.select_related('value')
     checkboxparamvals = dset.checkboxparametervalue_set.filter(
         value__param__category=category).select_related('value')
     selectparams = {p.value.param_id: p for p in selectparams}
