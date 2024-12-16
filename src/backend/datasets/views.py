@@ -474,10 +474,10 @@ def change_owners(request):
     is_already_ownerq = dsownq.filter(user_id=data['owner'])
     is_already_owner = is_already_ownerq.exists()
     if data['op'] == 'add' and not is_already_owner:
-        newowner = models.DatasetOwner(dataset=dset, user_id=data['owner'])
+        newowner = models.DatasetOwner(dataset_id=dset['pk'], user_id=data['owner'])
         newowner.save()
         return JsonResponse({'result': 'ok'})
-    elif data['op'] == 'del' and is_already_owner and dset.datasetowner_set.count() > 1:
+    elif data['op'] == 'del' and is_already_owner and dsownq.count() > 1:
         is_already_ownerq.delete()
         return JsonResponse({'result': 'ok'})
     else:
