@@ -90,6 +90,7 @@ class Dataset(models.Model):
     storageshare = models.ForeignKey(ServerShare, on_delete=models.CASCADE)
     deleted = models.BooleanField(default=False) # for UI only, indicate deleted from active storage
     purged = models.BooleanField(default=False) # for UI only, indicate permanent deleted from cold storage too
+    locked = models.BooleanField(default=False)
 
 
 class DatasetOwner(models.Model):

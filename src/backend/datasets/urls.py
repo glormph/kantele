@@ -22,6 +22,8 @@ urlpatterns = [
     path('show/components/<int:datatype_id>/', views.get_datatype_components),
     path('show/species/', views.get_species),
     path('save/dataset/', views.save_dataset, name="savedset"),
+    path('save/dataset/lock/', views.lock_dataset), 
+    path('save/dataset/unlock/', views.unlock_dataset), 
     path('save/files/', views.save_files, name="savefiles"),
     path('save/files/pending/', views.accept_or_reject_dset_preassoc_files),
     path('save/mssampleprep/', views.save_ms_sampleprep),

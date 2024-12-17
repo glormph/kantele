@@ -64,14 +64,11 @@ export async function save() {
       rp_length: dsinfo.dynamic_rp ? '' : dsinfo.rp_length,
     };
     let url = '/datasets/save/msacq/';
-    try {
-      const resp = await postJSON(url, postdata);
-      fetchData();
-    } catch(error) {
-      if (error.message === '404') { 
-        acquierrors = [...acquierrors, 'Save dataset before saving MS samples'];
-      }
-    }
+    const resp = await postJSON(url, postdata);
+    if ('error' in resp) {
+      acquierrors = [...acquierrors, resp.error];
+    } 
+    fetchData();
   }
 }
 

@@ -57,7 +57,22 @@ def get_species(request):
 
 @login_required
 def dataset_info(request, dataset_id=False):
-    response_json = {'projdata': empty_dataset_json(), 'dsinfo': {}}
+    response_json = {'projdata': {'projects': {x.id:
+        {'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
+            'select': False, 'pi_id': x.pi_id} 
+        for x in models.Project.objects.select_related('projtype').filter(active=True)},
+            'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
+            'external_pis': {x.id: {'name': x.name, 'id': x.id} for x in
+                             models.PrincipalInvestigator.objects.all()},
+            'internal_pi_id': INTERNAL_PI_PK,
+            'local_ptype_id': settings.LOCAL_PTYPE_ID,
+            'datasettypes': [{'name': x.name, 'id': x.id} for x in
+                             models.Datatype.objects.filter(public=True)],
+            'prefracs': [{'id': x.id, 'name': x.name}
+                          for x in models.Prefractionation.objects.all()],
+            'hirief_ranges': [{'name': str(x), 'id': x.id}
+                              for x in models.HiriefRange.objects.all()]},
+            'dsinfo': {'locked': False}}
     if dataset_id:
         try:
             dset = models.Dataset.objects.select_related(
@@ -84,6 +99,7 @@ def dataset_info(request, dataset_id=False):
                 'ptype_id': project.projtype.ptype_id,
                 'datatype_id': dset.datatype_id,
                 'storage_location': dset.storage_loc,
+                'locked': dset.locked,
             }
         if hasattr(dset, 'prefractionationdataset'):
             response_json['dsinfo'].update(pf_dataset_info_json(
@@ -547,19 +563,24 @@ def check_ownership(user, ptype_id, deleted, owners):
     return True
 
 
-def check_save_permission(dset_id, logged_in_user):
-    '''Only datasets which are not deleted can be saved, and a check_ownership is done'''
-    try:
-        ds = models.Dataset.objects.filter(purged=False, deleted=False,
-                pk=dset_id).values('runname__experiment__project__projtype__ptype_id', 'deleted').get()
-    except models.Dataset.DoesNotExist:
-        return HttpResponseNotFound()
+def check_save_permission(dset_id, logged_in_user, action=False):
+    '''Only datasets which are not deleted can be saved, and a check_ownership is done,
+    return (False, 200) if ok,
+    return e.g. ('errmsg', 403) if not ok
+    '''
+    dsq = models.Dataset.objects.filter(purged=False, deleted=False, pk=dset_id)
+    if not dsq.exists():
+        return ('Cannot find dataset to edit', 404)
+    elif action != 'unlock' and dsq.filter(locked=True).exists():
+        return ('You cannot edit a locked dataset', 403)
+
+    ds = dsq.filter(locked=action == 'unlock').values('runname__experiment__project__projtype__ptype_id').get()
+    owner_ids = [x['user_id'] for x in models.DatasetOwner.objects.filter(dataset_id=dset_id).values('user_id')]
+    if check_ownership(logged_in_user, ds['runname__experiment__project__projtype__ptype_id'],
+            deleted=True, owners=owner_ids):
+        return (False, 200)
     else:
-        owner_ids = [x['user_id'] for x in models.DatasetOwner.objects.filter(dataset_id=dset_id).values('user_id')]
-        if not check_ownership(logged_in_user, ds['runname__experiment__project__projtype__ptype_id'],
-                ds['deleted'], owner_ids):
-            return HttpResponseForbidden()
-    return False
+        return ('You are not authorized to edit this dataset', 403)
 
 
 def get_or_create_px_dset(exp, px_acc, user_id):
@@ -990,13 +1011,42 @@ def is_invalid_proj_exp_runnames(name):
 
 
 @login_required
+def lock_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if data['dataset_id']:
+        user_denied, status = check_save_permission(data['dataset_id'], request.user)
+        if user_denied:
+            return JsonResponse({'error': user_denied}, status=status)
+    else:
+        return JsonResponse({'error': 'Can not find dataset to lock'}, status=404)
+    updated = models.Dataset.objects.filter(pk=data['dataset_id'], locked=False).update(locked=True)
+    if not updated:
+        return JsonResponse({'error': 'Can not find dataset to unlock'}, status=404)
+    return JsonResponse({})
+
+
+@login_required
+def unlock_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if data['dataset_id']:
+        user_denied, status = check_save_permission(data['dataset_id'], request.user, action='unlock')
+        if user_denied:
+            return JsonResponse({'error': user_denied}, status=status)
+    else:
+        return JsonResponse({'error': 'Can not find dataset to unlock'}, status=404)
+    updated = models.Dataset.objects.filter(pk=data['dataset_id'], locked=True).update(locked=False)
+    if not updated:
+        return JsonResponse({'error': 'Can not find dataset to unlock'}, status=404)
+    return JsonResponse({})
+
+
+@login_required
 def save_dataset(request):
     data = json.loads(request.body.decode('utf-8'))
     if data['dataset_id']:
-        user_denied = check_save_permission(data['dataset_id'], request.user)
+        user_denied, status = check_save_permission(data['dataset_id'], request.user)
         if user_denied:
-            return user_denied
-        print('Updating')
+            return JsonResponse({'error': user_denied}, status=status)
         return update_dataset(data)
     else:
         if is_invalid_proj_exp_runnames(data['runname']):
@@ -1101,24 +1151,6 @@ def get_project(request, project_id):
         'experiments': [{'id': x.id, 'name': x.name} for x in 
         models.Experiment.objects.filter(project_id=project_id)]})
 
-
-def empty_dataset_json():
-    edpr = {'projects': {x.id:
-        {'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
-            'select': False, 'pi_id': x.pi_id} 
-        for x in models.Project.objects.select_related('projtype').filter(active=True)},
-            'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
-            'external_pis': {x.id: {'name': x.name, 'id': x.id} for x in
-                             models.PrincipalInvestigator.objects.all()},
-            'internal_pi_id': INTERNAL_PI_PK,
-            'local_ptype_id': settings.LOCAL_PTYPE_ID,
-            'datasettypes': [{'name': x.name, 'id': x.id} for x in
-                             models.Datatype.objects.filter(public=True)],
-            'prefracs': [{'id': x.id, 'name': x.name}
-                          for x in models.Prefractionation.objects.all()],
-            'hirief_ranges': [{'name': str(x), 'id': x.id}
-                              for x in models.HiriefRange.objects.all()]}
-    return edpr
 
 
 def pf_dataset_info_json(pfds):
@@ -1347,9 +1379,9 @@ def save_or_update_files(data):
 @login_required
 def accept_or_reject_dset_preassoc_files(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     # First remove jobs on rejected files and un-claim rawfiles
     if len(data['rejected_files']):
         deleted = jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD,
@@ -1386,9 +1418,9 @@ def accept_or_reject_dset_preassoc_files(request):
 def save_files(request):
     """Updates and saves files"""
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     err_result, status = save_or_update_files(data)
     return JsonResponse(err_result, status=status)
 
@@ -1425,9 +1457,9 @@ def update_msacq(dset, data):
 @login_required
 def save_ms_sampleprep(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     dset_id = data['dataset_id']
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related().get()
     models.EnzymeDataset.objects.filter(dataset=dset).delete()
@@ -1463,9 +1495,9 @@ def save_ms_sampleprep_tracking_step(request):
                 status=400)
 
     dspipe = cm.DatasetPipeline.objects.filter(pk=dspipe_id).values('dataset_id').get()
-    user_denied = check_save_permission(dspipe['dataset_id'], request.user)
+    user_denied, status = check_save_permission(dspipe['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     
     if stagename and hasattr(cm.TrackingStages, stagename):
         stage = cm.TrackingStages[stagename]
@@ -1506,9 +1538,9 @@ def save_ms_sampleprep_tracking_step(request):
 @login_required
 def save_ms_acquisition(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     dset_id = data['dataset_id']
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).get()
     if hasattr(dset, 'operatordataset'):
@@ -1543,9 +1575,9 @@ def update_labelcheck(data, qtype):
 @login_required
 def save_labelcheck(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     dset_id = data['dataset_id']
     try:
         qtype = models.QuantDataset.objects.select_related(
@@ -1581,9 +1613,9 @@ def save_samples(request):
     Then either save or update
     '''
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     dset_id = data['dataset_id']
 
     # Gather all data from the input about samples/channels and map with ch/file keys

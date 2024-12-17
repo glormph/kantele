@@ -231,6 +231,28 @@ async function save() {
   }
 }
 
+async function lockDataset() {
+    let postdata = {dataset_id: $dataset_id};
+    const response = await postJSON('/datasets/save/dataset/lock/', postdata);
+    if ('error' in response) {
+      saveerrors.basics = [response.error, ...saveerrors.basics];
+    } else {
+      dsinfo.locked = true;
+    }
+}
+
+
+async function unlockDataset() {
+    let postdata = {dataset_id: $dataset_id};
+    const response = await postJSON('/datasets/save/dataset/unlock/', postdata);
+    if ('error' in response) {
+      saveerrors.basics = [response.error, ...saveerrors.basics];
+    } else {
+      dsinfo.locked = false;
+    }
+}
+
+
 onMount(async() => {
   await fetchDataset();
 })
@@ -275,7 +297,14 @@ function showFiles() {
 	</ul>
 </div>
 
-<h4 class="title is-4">{!$dataset_id ? 'New dataset' : `Dataset ${$dataset_id}`}</h4> 
+<h4 class="title is-4">
+  {#if dsinfo.locked}
+  <a title="Click to unlock dataset" on:click={unlockDataset}><i class="icon fas fa-lock has-text-grey"></i></a>
+  {:else}
+  <a title="Click to lock dataset" on:click={lockDataset}><i class="icon fas fa-lock-open has-text-grey"></i></a>
+  {/if}
+  {!$dataset_id ? 'New dataset' : `Dataset ${$dataset_id}`}
+</h4> 
 <div style="display: {tabshow !== 'meta' ? 'none' : ''}">
     <div class="box" id="project">
     

@@ -43,14 +43,11 @@ export async function save() {
     pipeline: selectedPipeline,
   };
   let url = '/datasets/save/mssampleprep/';
-  try {
-    const resp = await postJSON(url, postdata);
-    fetchData();
-  } catch(error) {
-    if (error.message === '404') { 
-      samplepreperrors = [...samplepreperrors, 'Save dataset before saving MS samples'];
-    }
-  }
+  const resp = await postJSON(url, postdata);
+  if ('error' in resp) {
+    samplepreperrors = [...samplepreperrors, resp.error];
+  } 
+  fetchData();
 }
 
 
