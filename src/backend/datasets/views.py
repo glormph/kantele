@@ -146,11 +146,11 @@ def dataset_mssampleprep(request, dataset_id=False):
             return HttpResponseNotFound()
         enzymes_used = {x.enzyme_id for x in 
                 models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
-        response_json['no_enzyme'] = True
+        response_json['dsinfo']['no_enzyme'] = True
         for enzyme in response_json['dsinfo']['enzymes']:
             if enzyme['id'] in enzymes_used:
                 enzyme['checked'] = True
-                response_json['no_enzyme'] = False
+                response_json['dsinfo']['no_enzyme'] = False
         for p in models.SampleprepParameterValue.objects.filter(dataset_id=dataset_id):
             fill_sampleprepparam(response_json['dsinfo']['params'], p.value, p.value.id)
         dspipeq = cm.DatasetPipeline.objects.filter(dataset_id=dataset_id)
@@ -1431,8 +1431,9 @@ def save_ms_sampleprep(request):
     dset_id = data['dataset_id']
     dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related().get()
     models.EnzymeDataset.objects.filter(dataset=dset).delete()
-    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
-            for enz in data['enzymes'] if enz['checked']])
+    if len([x for x in data['enzymes'] if x['checked']]):
+        models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset,
+            enzyme_id=enz['id']) for enz in data['enzymes'] if enz['checked']])
 
     if data['pipeline']:
         models.SampleprepParameterValue.objects.filter(dataset=dset).delete()
@@ -1773,12 +1774,12 @@ def update_admin_defined_params(dset, data, category):
         value = param['model']
         pid = param['param_id']
         if param['inputtype'] == 'select':
-            if (pid in selectparams and value != selectparams[pid].value_id):
-                selectparams[pid].value_id = value
-                selectparams[pid].save()
-            elif pid not in selectparams:
-                models.SampleprepParameterValue.objects.create(
-                    dataset_id=data['dataset_id'], value_id=value)
+            if not value:
+                models.SampleprepParameterValue.objects.filter(dataset_id=data['dataset_id'],
+                        value__param_id=pid).delete()
+            else:
+                models.SampleprepParameterValue.objects.update_or_create(dataset_id=data['dataset_id'],
+                        value__param_id=pid, defaults={'value_id': value})
         elif param['inputtype'] == 'checkbox':
             value = [box['value'] for box in param['fields'] if box['checked']]
             if pid in checkboxparams:
@@ -1808,9 +1809,8 @@ def save_admin_defined_params(data, dset_id):
     selects, checkboxes, fields = [], [], []
     for param in data['params'].values():
         if param['inputtype'] == 'select':
-            value = param['model']
-            selects.append(models.SampleprepParameterValue(dataset_id=dset_id,
-                                                       value_id=value))
+            if value := param['model']:
+                selects.append(models.SampleprepParameterValue(dataset_id=dset_id, value_id=value))
         elif param['inputtype'] == 'checkbox':
             value = [box['value'] for box in param['fields'] if box['checked']]
             checkboxes.extend([models.CheckboxParameterValue(dataset_id=dset_id,

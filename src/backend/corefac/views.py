@@ -34,21 +34,26 @@ def corefac_home(request):
             'versions': versions, 'active': spo['active']})
     pipelines = {}
     
+    enzymes = {x.id: {'id': x.id, 'name': x.name} for x in dm.Enzyme.objects.all()}
     for pv in cm.PipelineVersion.objects.all().values('pk', 'pipeline_id', 'pipeline__name',
             'version', 'active'):
         pipelines[pv['pk']] = {'id': pv['pk'], 'pipe_id': pv['pipeline_id'], 'active': pv['active'],
                 'name': pv['pipeline__name'], 'version': pv['version'],
+                'enzymes': [x.enzyme_id for x in 
+                    cm.PipelineEnzyme.objects.filter(pipelineversion_id=pv['pk'])],
                 'steps': [{'name': get_pipeline_step_name(x), 'id': x['step_id'], 'ix': x['index']}
                     for x in  cm.PipelineStep.objects.filter(pipelineversion_id=pv['pk']).values(
                         'step_id', 'index', 'step__doi',
                         'step__version', 'step__paramopt__value',
                         'step__paramopt__param__title')]}
-    context = {'ctx': {'protocols': protos, 'pipelines': pipelines}}
+
+    context = {'ctx': {'protocols': protos, 'pipelines': pipelines, 'enzymes': [x for x in enzymes.values()]}}
     return render(request, 'corefac/corefac.html', context)
 
 
 def get_pipeline_step_name(stepvals):
     return f'{stepvals["step__paramopt__param__title"]} - {stepvals["step__paramopt__value"]} - {stepvals["step__doi"]} - {stepvals["step__version"]}'
+
 
 @staff_member_required
 @login_required
@@ -243,6 +248,7 @@ def edit_sampleprep_pipeline(request):
     req = json.loads(request.body.decode('utf-8'))
     try:
         pvid, version, pipe_id, steps = req['id'], req['version'], req['pipe_id'], req['steps']
+        enzymes = req['enzymes']
     except KeyError:
         return JsonResponse({'error': 'Bad request to edit pipeline method, contact admin'},
                 status=400)
@@ -253,6 +259,10 @@ def edit_sampleprep_pipeline(request):
     for step in steps:
         cm.PipelineStep.objects.update_or_create(pipelineversion_id=pvid, index=step['ix'],
                 defaults={'step_id': step['id']})
+    cm.PipelineEnzyme.objects.filter(pipelineversion_id=pvid).delete()
+    if len(enzymes):
+        cm.PipelineEnzyme.objects.bulk_create([cm.PipelineEnzyme(pipelineversion_id=pvid,
+            enzyme_id=eid) for eid in enzymes])
     return JsonResponse({})
 
 

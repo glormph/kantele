@@ -8,10 +8,16 @@ const dispatch = createEventDispatcher();
 
 export let pipe;
 export let flattened_protocols;
+export let all_enzymes = [];
+export let enzymes = [];
 
 let editingName = false;
 let selectedStep = {};
 let showStepEdit = {};
+let no_enzyme = false;
+
+no_enzyme = enzymes.length === 0;
+
 
 function addPipelineStep(ix, step_id) {
   const step = {name: flattened_protocols[step_id].name, id: flattened_protocols[step_id].id};
@@ -42,7 +48,8 @@ async function archivePipeline() {
 async function savePipeline() {
   const url = 'sampleprep/pipeline/edit/';
   const resp = await postJSON(url, {id: pipe.id, version: pipe.version, pipe_id: pipe.pipe_id,
-    steps: pipe.steps});
+    steps: pipe.steps, enzymes: no_enzyme ? [] : enzymes,
+  });
   if (resp.error) {
     dispatch('error', {error: resp.error});
   } else {
@@ -74,6 +81,18 @@ function editName(name) {
 </label>
   </div>
   
+<div class="field">
+  <label class="label">Enzymes</label>
+  <input type="checkbox" bind:checked={no_enzyme}>No enzyme
+  {#if !no_enzyme}
+  {#each all_enzymes as enzyme}
+  <div class="control">
+    <input bind:group={enzymes} value={enzyme.id} type="checkbox">{enzyme.name}
+  </div>
+  {/each}
+  {/if}
+</div>
+
   <div class="is-flex is-justify-content-center">
     <div class="tag is-primary is-medium">Samples arrived</div>
   </div>

@@ -31,6 +31,7 @@ async function saveNodateStep(stage_id) {
         });
       resp.nodate
         .forEach(x => {
+          pipeStepsDone[x[0]] = x[1];
         });
     }
   }

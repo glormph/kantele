@@ -33,37 +33,22 @@ function editMade() {
   edited = true;
 }
 
-export function validate() {
-  let comperrors = [];
-	if (!dsinfo.no_enzyme && !dsinfo.enzymes.filter.length) {
-		comperrors.push('Enzyme selection is required');
-	}
-	for (let key in dsinfo.params) {
-    if (dsinfo.params[key].model === undefined || dsinfo.params[key].model === '') {
-			comperrors.push(dsinfo.params[key].title + ' is required');
-		}
-	}
-  return comperrors;
-}
 
 export async function save() {
   samplepreperrors = [];
-  errors = validate();
-  if (errors.length === 0) { 
-    let postdata = {
-      dataset_id: $dataset_id,
-      enzymes: dsinfo.no_enzyme ? [] : dsinfo.enzymes,
-      params: dsinfo.params,
-      pipeline: selectedPipeline,
-    };
-    let url = '/datasets/save/mssampleprep/';
-    try {
-      const resp = await postJSON(url, postdata);
-      fetchData();
-    } catch(error) {
-      if (error.message === '404') { 
-        samplepreperrors = [...samplepreperrors, 'Save dataset before saving MS samples'];
-      }
+  let postdata = {
+    dataset_id: $dataset_id,
+    enzymes: dsinfo.no_enzyme ? [] : dsinfo.enzymes,
+    params: dsinfo.params,
+    pipeline: selectedPipeline,
+  };
+  let url = '/datasets/save/mssampleprep/';
+  try {
+    const resp = await postJSON(url, postdata);
+    fetchData();
+  } catch(error) {
+    if (error.message === '404') { 
+      samplepreperrors = [...samplepreperrors, 'Save dataset before saving MS samples'];
     }
   }
 }
@@ -131,6 +116,17 @@ onMount(async() => {
 
 <ErrorNotif errors={samplepreperrors} />
 
+
+<div class="field">
+  <label class="label">Sample prep pipeline</label>
+  <input type="checkbox" on:change={togglePipeline} checked={useTrackingPipeline}>Use a tracking pipeline
+  <DynamicSelect bind:this={pipeselector} placeholder="Type to select pipeline" fixedoptions={pipelines} bind:selectval={selectedPipeline} niceName={x => x.name} on:selectedvalue={pipelineSelected} />
+</div>
+
+{#if useTrackingPipeline && selectedPipeline && dset_pipe_id}
+<DatasetPipeline on:error={e => showError(e.detail.error)} pipeSteps={pipelines[selectedPipeline].steps} samplePrepCategories={dsinfo.params} bind:savedStageDates={dsinfo.prepdatetrack} bind:pipeStepsDone={dsinfo.prepsteptrack} bind:dspipeId={dset_pipe_id} />
+
+{:else if !useTrackingPipeline}
 <div class="field">
   <label class="label">Enzymes</label>
   <input type="checkbox" on:change={editMade} bind:checked={dsinfo.no_enzyme}>No enzyme
@@ -143,16 +139,6 @@ onMount(async() => {
   {/if}
 </div>
 
-<div class="field">
-  <label class="label">Sample prep pipeline</label>
-  <input type="checkbox" on:change={togglePipeline} checked={useTrackingPipeline}>Use a tracking pipeline
-  <DynamicSelect bind:this={pipeselector} placeholder="Type to select pipeline" fixedoptions={pipelines} bind:selectval={selectedPipeline} niceName={x => x.name} on:selectedvalue={pipelineSelected} />
-</div>
-
-{#if useTrackingPipeline && selectedPipeline && dset_pipe_id}
-<DatasetPipeline on:error={e => showError(e.detail.error)} pipeSteps={pipelines[selectedPipeline].steps} samplePrepCategories={dsinfo.params} bind:savedStageDates={dsinfo.prepdatetrack} bind:pipeStepsDone={dsinfo.prepsteptrack} bind:dspipeId={dset_pipe_id} />
-
-{:else if !useTrackingPipeline}
 {#each Object.entries(dsinfo.params) as [param_id, param]}
 <Param bind:param={param} on:edited={editMade}/>
 {/each}

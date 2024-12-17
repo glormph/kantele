@@ -18,6 +18,7 @@ let pipelines = cf_init_data.pipelines;
 let showAddPipeField = false;
 let showAddPipeVersionField = false;
 let newPipeName = '';
+let all_enzymes = cf_init_data.enzymes;
 
 
 let flattened_protocols;
@@ -133,7 +134,7 @@ async function addPipeline(pipeversion) {
   if (resp.error) {
     showError(resp.error);
   } else {
-    pipelines[resp.id] = {id: resp.id, pipe_id: resp.pipe_id, name: pipename, version: pipeversion, steps: []};
+    pipelines[resp.id] = {id: resp.id, pipe_id: resp.pipe_id, name: pipename, version: pipeversion, steps: [], active: true};
     selectedPipeline = resp.id;
     stopNewPipelineInput();
   }
@@ -264,7 +265,12 @@ onMount(async() => {
         {/if}
 
         {#if selectedPipeline}
-        <Pipeline pipe={selectedPipeline ? pipelines[selectedPipeline] : false} {flattened_protocols} on:error={e => showError(e.detail.error)} on:pipelineupdate={e => pipelines=pipelines} on:deletepipeline={e => deletePipeline(e.detail.id)} />
+        <Pipeline pipe={selectedPipeline ? pipelines[selectedPipeline] : false} 
+          {flattened_protocols} {all_enzymes} 
+          bind:enzymes={pipelines[selectedPipeline].enzymes}
+          on:error={e => showError(e.detail.error)} 
+          on:pipelineupdate={e => pipelines=pipelines}
+          on:deletepipeline={e => deletePipeline(e.detail.id)} />
         {/if}
       </div>
       <div class="box">

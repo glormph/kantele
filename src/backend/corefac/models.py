@@ -24,6 +24,14 @@ class PipelineVersion(models.Model):
         constraints = [models.UniqueConstraint(fields=['pipeline', 'version'], name='uni_pipelineversion')]
 
 
+class PipelineEnzyme(models.Model):
+    pipelineversion = models.ForeignKey(PipelineVersion, on_delete=models.CASCADE)
+    enzyme = models.ForeignKey(dm.Enzyme, on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['enzyme_id', 'pipelineversion_id'], name='uni_pipelineenzyme')]
+
+
 class PipelineStep(models.Model):
     pipelineversion = models.ForeignKey(PipelineVersion, on_delete=models.CASCADE)
     index = models.IntegerField()
