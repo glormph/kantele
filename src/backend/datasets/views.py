@@ -589,10 +589,11 @@ def check_save_permission(dset_id, logged_in_user, action=False):
     elif action != 'unlock' and dsq.filter(locked=True).exists():
         return ('You cannot edit a locked dataset', 403)
 
-    ds = dsq.filter(locked=action == 'unlock').values('runname__experiment__project__projtype__ptype_id').get()
+    ds = dsq.filter(locked=action == 'unlock').values('deleted',
+            'runname__experiment__project__projtype__ptype_id').get()
     owner_ids = [x['user_id'] for x in models.DatasetOwner.objects.filter(dataset_id=dset_id).values('user_id')]
     if check_ownership(logged_in_user, ds['runname__experiment__project__projtype__ptype_id'],
-            deleted=True, owners=owner_ids):
+            deleted=ds['deleted'], owners=owner_ids):
         return (False, 200)
     else:
         return ('You are not authorized to edit this dataset', 403)
