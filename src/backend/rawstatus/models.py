@@ -106,6 +106,11 @@ class StoredFile(models.Model):
         return self.rawfile.name
 
 
+class MSFileData(models.Model):
+    rawfile = models.OneToOneField(RawFile, on_delete=models.CASCADE)
+    mstime = models.FloatField()
+
+
 class UploadToken(models.Model):
     """A token to upload a specific file type for a specified time"""
 

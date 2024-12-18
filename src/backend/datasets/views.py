@@ -17,6 +17,7 @@ from rawstatus import models as filemodels
 from jobs.jobutil import create_job, check_job_error, create_job_without_check, jobmap
 from jobs import models as jm
 from jobs import jobs as jj
+from corefac import models as cm
 
 
 INTERNAL_PI_PK = 1
@@ -25,7 +26,7 @@ INTERNAL_PI_PK = 1
 @login_required
 def new_dataset(request):
     """Returns dataset view with JS app"""
-    context = {'dataset_id': 'false', 'newdataset': True, 'is_owner': 'true'}
+    context = {'dataset_id': 'false', 'is_owner': 'true'}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -40,7 +41,7 @@ def show_dataset(request, dataset_id):
     dsown_ids = [x['user_id'] for x in models.DatasetOwner.objects.filter(dataset_id=dset['pk']).values('user_id')]
     is_owner = check_ownership(request.user, dset['runname__experiment__project__projtype__ptype_id'],
         dset['deleted'], dsown_ids)
-    context = {'dataset_id': dataset_id, 'newdataset': False, 'is_owner': json.dumps(is_owner)}
+    context = {'dataset_id': dataset_id, 'is_owner': json.dumps(is_owner)}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -56,7 +57,22 @@ def get_species(request):
 
 @login_required
 def dataset_info(request, dataset_id=False):
-    response_json = {'projdata': empty_dataset_json(), 'dsinfo': {}}
+    response_json = {'projdata': {'projects': {x.id:
+        {'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
+            'select': False, 'pi_id': x.pi_id} 
+        for x in models.Project.objects.select_related('projtype').filter(active=True)},
+            'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
+            'external_pis': {x.id: {'name': x.name, 'id': x.id} for x in
+                             models.PrincipalInvestigator.objects.all()},
+            'internal_pi_id': INTERNAL_PI_PK,
+            'local_ptype_id': settings.LOCAL_PTYPE_ID,
+            'datasettypes': [{'name': x.name, 'id': x.id} for x in
+                             models.Datatype.objects.filter(public=True)],
+            'prefracs': [{'id': x.id, 'name': x.name}
+                          for x in models.Prefractionation.objects.all()],
+            'hirief_ranges': [{'name': str(x), 'id': x.id}
+                              for x in models.HiriefRange.objects.all()]},
+            'dsinfo': {'locked': False}}
     if dataset_id:
         try:
             dset = models.Dataset.objects.select_related(
@@ -83,6 +99,7 @@ def dataset_info(request, dataset_id=False):
                 'ptype_id': project.projtype.ptype_id,
                 'datatype_id': dset.datatype_id,
                 'storage_location': dset.storage_loc,
+                'locked': dset.locked,
             }
         if hasattr(dset, 'prefractionationdataset'):
             response_json['dsinfo'].update(pf_dataset_info_json(
@@ -95,7 +112,14 @@ def dataset_info(request, dataset_id=False):
 
 @login_required
 def dataset_files(request, dataset_id=False):
-    response_json = empty_files_json()
+    newfiles = filemodels.RawFile.objects.select_related('producer').filter(
+            claimed=False, storedfile__checked=True, date__gt=datetime.now() - timedelta(200))
+    response_json = {'instruments': [x.name for x in filemodels.Producer.objects.all()],
+            'datasetFiles': [],
+            'newfn_order': [x.id for x in newfiles.order_by('-date')],
+            'newFiles': {x.id: {'id': x.id, 'name': x.name, 'size': round(x.size / (2**20), 1), 
+                'date': x.date.timestamp() * 1000, 'instrument': x.producer.name, 'checked': False}
+                for x in newfiles}}
     if dataset_id:
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
@@ -121,38 +145,91 @@ def dataset_files(request, dataset_id=False):
 
 
 @login_required
-def dataset_mssamples(request, dataset_id=False):
-    response_json = empty_mssamples_json()
+def dataset_mssampleprep(request, dataset_id=False):
+    params = {}
+    for p in models.SampleprepParameterOption.objects.select_related('param'):
+        fill_sampleprepparam(params, p)
+    pipelines = {}
+    for ps in cm.PipelineStep.objects.filter(pipelineversion__locked=True,
+            pipelineversion__active=True).order_by('index').values(
+                    'pk', 'pipelineversion__version', 'pipelineversion__pipeline__name',
+                    'pipelineversion_id', 'step__paramopt_id', 'step__paramopt__param_id'):
+        pid = ps['pipelineversion_id']
+        if pid not in pipelines:
+            pipelines[pid] = {'id': pid, 'steps': [],
+                    'name': f'{ps["pipelineversion__pipeline__name"]} - {ps["pipelineversion__version"]}',
+                    }
+        pipelines[pid]['steps'].append((ps['step__paramopt__param_id'], ps['step__paramopt_id'], ps['pk']))
+    response_json = {'dsinfo': {'params': params, 'prepdatetrack': {}, 'prepsteptrack': {},
+        'dspipe_id': False, 'pipe_id': False, 'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
+            for x in models.Enzyme.objects.all()]}, 'pipelines': pipelines,
+            }
+    if dataset_id:
+        response_json['saved'] = True
+        if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
+            return HttpResponseNotFound()
+        enzymes_used = {x.enzyme_id for x in 
+                models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
+        response_json['dsinfo']['no_enzyme'] = True
+        for enzyme in response_json['dsinfo']['enzymes']:
+            if enzyme['id'] in enzymes_used:
+                enzyme['checked'] = True
+                response_json['dsinfo']['no_enzyme'] = False
+        for p in models.SampleprepParameterValue.objects.filter(dataset_id=dataset_id):
+            fill_sampleprepparam(response_json['dsinfo']['params'], p.value, p.value.id)
+        dspipeq = cm.DatasetPipeline.objects.filter(dataset_id=dataset_id)
+        if dspipeq.exists():
+            dspipe = dspipeq.get()
+            response_json['dsinfo']['dspipe_id'] = dspipe.id
+            response_json['dsinfo']['pipe_id'] = dspipe.pipelineversion_id
+        else:
+            get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.SAMPLEPREP)
+        response_json['dsinfo']['prepdatetrack'] = {
+                cm.TrackingStages(x.stage).name: datetime.strftime(x.timestamp, '%Y-%m-%d')
+                for x in cm.DatasetPrepTracking.objects.filter(dspipe__dataset_id=dataset_id)}
+        response_json['dsinfo']['prepsteptrack'] = {x.stage_id: x.finished for x in
+            cm.DatasetPrepTrackingNodate.objects.filter(dspipe__dataset_id=dataset_id)}
+
+    return JsonResponse(response_json)
+
+
+@login_required
+def dataset_msacq(request, dataset_id=False):
+    response_json = {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.ACQUISITION)},
+        'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
+                x.user.first_name, x.user.last_name)}
+                for x in models.Operator.objects.select_related('user').all()],
+        'acqmodes': [{'id': x[0], 'name': x[1]} for x in models.AcquisistionMode.choices],
+            }}
     if dataset_id:
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
         try:
-            response_json['dsinfo']['operator_id'] = models.OperatorDataset.objects.get(
-                    dataset_id=dataset_id).operator_id
-
-            response_json['dsinfo']['rp_length'] = models.ReversePhaseDataset.objects.get(
-                    dataset_id=dataset_id).length
-        except models.OperatorDataset.DoesNotExist:
+            response_json['dsinfo']['operator_id'] = models.OperatorDataset.objects.values(
+                    'operator_id').get(dataset_id=dataset_id)['operator_id']
+            response_json['dsinfo']['acqmode'] = models.AcquisistionModeDataset.objects.values(
+                    'acqmode').get(dataset_id=dataset_id)['acqmode']
+            response_json['dsinfo']['rp_length'] = models.ReversePhaseDataset.objects.values(
+                    'length').get(dataset_id=dataset_id)['length']
+        except (models.OperatorDataset.DoesNotExist, models.AcquisistionModeDataset.DoesNotExist):
             return JsonResponse(response_json)
         except models.ReversePhaseDataset.DoesNotExist:
             response_json['dsinfo']['dynamic_rp'] = True
             response_json['dsinfo']['rp_length'] = ''
-
-        enzymes_used = {x.enzyme_id for x in 
-                models.EnzymeDataset.objects.filter(dataset_id=dataset_id)}
-        response_json['no_enzyme'] = True
-        for enzyme in response_json['dsinfo']['enzymes']:
-            if enzyme['id'] in enzymes_used:
-                enzyme['checked'] = True
-                response_json['no_enzyme'] = False
-
-        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.MSSAMPLES)
+        get_admin_params_for_dset(response_json['dsinfo'], dataset_id, models.Labcategories.ACQUISITION)
     return JsonResponse(response_json)
 
 
 @login_required
 def dataset_samples(request, dataset_id=False):
-    response_json = empty_samples_json()
+    response_json = {'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
+            'lf_qtid': models.QuantType.objects.get(name='labelfree').pk,
+            'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
+            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
+                'name': x['species__popname'], 'total': x['total']} 
+                for x in models.SampleSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
+            }
     if dataset_id:
         dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
         if not dset:
@@ -236,13 +313,6 @@ def get_admin_params_for_dset(response, dset_id, category):
     stored_data, oldparams, newparams = {}, {}, {}
     params = response['params']
     params_saved = False
-    for p in models.SelectParameterValue.objects.filter(
-            dataset_id=dset_id, value__param__category=category):
-        params_saved = True
-        if p.value.param.active:
-            fill_admin_selectparam(params, p.value, p.value.id)
-        else:
-            fill_admin_selectparam(oldparams, p.value, p.value.id)
     for p in models.CheckboxParameterValue.objects.filter(
             dataset_id=dset_id, value__param__category=category):
         params_saved = True
@@ -508,19 +578,25 @@ def check_ownership(user, ptype_id, deleted, owners):
     return True
 
 
-def check_save_permission(dset_id, logged_in_user):
-    '''Only datasets which are not deleted can be saved, and a check_ownership is done'''
-    try:
-        ds = models.Dataset.objects.filter(purged=False, deleted=False,
-                pk=dset_id).values('runname__experiment__project__projtype__ptype_id', 'deleted').get()
-    except models.Dataset.DoesNotExist:
-        return HttpResponseNotFound()
+def check_save_permission(dset_id, logged_in_user, action=False):
+    '''Only datasets which are not deleted can be saved, and a check_ownership is done,
+    return (False, 200) if ok,
+    return e.g. ('errmsg', 403) if not ok
+    '''
+    dsq = models.Dataset.objects.filter(purged=False, deleted=False, pk=dset_id)
+    if not dsq.exists():
+        return ('Cannot find dataset to edit', 404)
+    elif action != 'unlock' and dsq.filter(locked=True).exists():
+        return ('You cannot edit a locked dataset', 403)
+
+    ds = dsq.filter(locked=action == 'unlock').values('deleted',
+            'runname__experiment__project__projtype__ptype_id').get()
+    owner_ids = [x['user_id'] for x in models.DatasetOwner.objects.filter(dataset_id=dset_id).values('user_id')]
+    if check_ownership(logged_in_user, ds['runname__experiment__project__projtype__ptype_id'],
+            deleted=ds['deleted'], owners=owner_ids):
+        return (False, 200)
     else:
-        owner_ids = [x['user_id'] for x in models.DatasetOwner.objects.filter(dataset_id=dset_id).values('user_id')]
-        if not check_ownership(logged_in_user, ds['runname__experiment__project__projtype__ptype_id'],
-                ds['deleted'], owner_ids):
-            return HttpResponseForbidden()
-    return False
+        return ('You are not authorized to edit this dataset', 403)
 
 
 def get_or_create_px_dset(exp, px_acc, user_id):
@@ -776,7 +852,7 @@ def get_dset_storestate(dset_id, dsfiles=False):
     dsfc = dsfiles.count()
     if dsfc == 0:
         return 'empty'
-    coldfiles = dsfiles.filter(pdcbackedupfile__isnull=False, pdcbackedupfile__deleted=False, pdcbackedupfile__success=True)
+    coldfiles = dsfiles.filter(pdcbackedupfile__deleted=False, pdcbackedupfile__success=True)
     if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.count():
         storestate = 'complete'
     elif dsfiles.filter(checked=True, deleted=False).count() == dsfc:
@@ -951,13 +1027,42 @@ def is_invalid_proj_exp_runnames(name):
 
 
 @login_required
+def lock_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if data['dataset_id']:
+        user_denied, status = check_save_permission(data['dataset_id'], request.user)
+        if user_denied:
+            return JsonResponse({'error': user_denied}, status=status)
+    else:
+        return JsonResponse({'error': 'Can not find dataset to lock'}, status=404)
+    updated = models.Dataset.objects.filter(pk=data['dataset_id'], locked=False).update(locked=True)
+    if not updated:
+        return JsonResponse({'error': 'Can not find dataset to unlock'}, status=404)
+    return JsonResponse({})
+
+
+@login_required
+def unlock_dataset(request):
+    data = json.loads(request.body.decode('utf-8'))
+    if data['dataset_id']:
+        user_denied, status = check_save_permission(data['dataset_id'], request.user, action='unlock')
+        if user_denied:
+            return JsonResponse({'error': user_denied}, status=status)
+    else:
+        return JsonResponse({'error': 'Can not find dataset to unlock'}, status=404)
+    updated = models.Dataset.objects.filter(pk=data['dataset_id'], locked=True).update(locked=False)
+    if not updated:
+        return JsonResponse({'error': 'Can not find dataset to unlock'}, status=404)
+    return JsonResponse({})
+
+
+@login_required
 def save_dataset(request):
     data = json.loads(request.body.decode('utf-8'))
     if data['dataset_id']:
-        user_denied = check_save_permission(data['dataset_id'], request.user)
+        user_denied, status = check_save_permission(data['dataset_id'], request.user)
         if user_denied:
-            return user_denied
-        print('Updating')
+            return JsonResponse({'error': user_denied}, status=status)
         return update_dataset(data)
     else:
         if is_invalid_proj_exp_runnames(data['runname']):
@@ -1063,24 +1168,6 @@ def get_project(request, project_id):
         models.Experiment.objects.filter(project_id=project_id)]})
 
 
-def empty_dataset_json():
-    edpr = {'projects': {x.id:
-        {'name': x.name, 'id': x.id, 'ptype_id': x.projtype.ptype_id,
-            'select': False, 'pi_id': x.pi_id} 
-        for x in models.Project.objects.select_related('projtype').filter(active=True)},
-            'ptypes': [{'name': x.name, 'id': x.id} for x in models.ProjectTypeName.objects.all()],
-            'external_pis': {x.id: {'name': x.name, 'id': x.id} for x in
-                             models.PrincipalInvestigator.objects.all()},
-            'internal_pi_id': INTERNAL_PI_PK,
-            'local_ptype_id': settings.LOCAL_PTYPE_ID,
-            'datasettypes': [{'name': x.name, 'id': x.id} for x in
-                             models.Datatype.objects.filter(public=True)],
-            'prefracs': [{'id': x.id, 'name': x.name}
-                          for x in models.Prefractionation.objects.all()],
-            'hirief_ranges': [{'name': str(x), 'id': x.id}
-                              for x in models.HiriefRange.objects.all()]}
-    return edpr
-
 
 def pf_dataset_info_json(pfds):
     resp_json = {'prefrac_id': pfds.prefractionation.id,
@@ -1112,22 +1199,17 @@ def get_empty_isoquant():
     return quants
 
 
-def empty_samples_json():
-    return {'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
-            'lf_qtid': models.QuantType.objects.get(name='labelfree').pk,
-            'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
-            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
-                'name': x['species__popname'], 'total': x['total']} 
-                for x in models.SampleSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
-                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
-            }
 
-
-def fill_admin_selectparam(params, p, value=False):
+def fill_sampleprepparam(params, p, value=False):
+    # This is now only used for sample prep params. Keep around for when that changes
     """Fills params dict with select parameters passed, in proper JSON format
     This takes care of both empty params (for new dataset), filled parameters,
     and old parameters"""
-    p_id = f'select_{p.param.id}'
+    # If reusing this, you need to make a new version for non sampleprep
+    # that uses f'select_{p.param.id}' - this is to not mix them with e.g. fieldparam
+    # with same ID
+    #p_id = f'select_{p.param.id}'
+    p_id = p.param_id
     if p_id not in params:
         params[p_id] = {'param_id': p.param.id, 'fields': [],
                               'inputtype': 'select', 'title': p.param.title}
@@ -1169,11 +1251,13 @@ def fill_admin_fieldparam(params, p, value=False):
 
 
 def get_dynamic_emptyparams(category):
+    # If you ever add more lab categories, they get empty params here
+    # This used to be used by multiple components but has since 2024 or so
+    # been collapsed into only a single component (first sampleprep/acquisition, and
+    # later only acquisition) The latter removal of sample prep led to
+    # the conversion of selectparam into sampleprep param (sample prep contained
+    # no field params, or checkbox except dedicated enzyme box)
     params = {}
-    for p in models.SelectParameterOption.objects.select_related(
-            'param').filter(param__category=category):
-        if p.param.active:
-            fill_admin_selectparam(params, p)
     for p in models.FieldParameter.objects.select_related(
             'paramtype').filter(category=category):
         if p.active:
@@ -1185,14 +1269,6 @@ def get_dynamic_emptyparams(category):
     return params
 
 
-def empty_mssamples_json():
-    return {'dsinfo': {'params': get_dynamic_emptyparams(models.Labcategories.MSSAMPLES),
-        'enzymes': [{'id': x.id, 'name': x.name, 'checked': False}
-            for x in models.Enzyme.objects.all()]},
-        'acqdata': {'operators': [{'id': x.id, 'name': '{} {}'.format(
-                x.user.first_name, x.user.last_name)}
-                for x in models.Operator.objects.select_related('user').all()]},
-            }
 
 
 @login_required
@@ -1217,15 +1293,6 @@ def find_files(request):
                          for x in newfiles}})
 
 
-def empty_files_json():
-    '''Shows to user all uploaded non-claimed and checked files in a 200 day window'''
-    newfiles = filemodels.RawFile.objects.select_related('producer').filter(
-            claimed=False, storedfile__checked=True, date__gt=datetime.now() - timedelta(200))
-    return {'instruments': [x.name for x in filemodels.Producer.objects.all()], 'datasetFiles': [],
-            'newfn_order': [x.id for x in newfiles.order_by('-date')],
-            'newFiles': {x.id: {'id': x.id, 'name': x.name, 'size': round(x.size / (2**20), 1), 
-                'date': x.date.timestamp() * 1000, 'instrument': x.producer.name, 'checked': False}
-                for x in newfiles}}
 
 
 def move_dset_project_servershare(dset_id, storagesharename, dstsharename, projid):
@@ -1319,9 +1386,9 @@ def save_or_update_files(data):
 @login_required
 def accept_or_reject_dset_preassoc_files(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     # First remove jobs on rejected files and un-claim rawfiles
     if len(data['rejected_files']):
         deleted = jm.Job.objects.filter(funcname='move_files_storage', state=jj.Jobstates.HOLD,
@@ -1358,54 +1425,134 @@ def accept_or_reject_dset_preassoc_files(request):
 def save_files(request):
     """Updates and saves files"""
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     err_result, status = save_or_update_files(data)
     return JsonResponse(err_result, status=status)
 
 
-def update_mssamples(dset, data):
-    models.EnzymeDataset.objects.filter(dataset=dset).delete()
-    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
-        for enz in data['enzymes'] if enz['checked']])
+def update_msacq(dset, data):
+#    models.EnzymeDataset.objects.filter(dataset=dset).delete()
+#    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset, enzyme_id=enz['id'])
+#        for enz in data['enzymes'] if enz['checked']])
     if data['operator_id'] != dset.operatordataset.operator_id:
         dset.operatordataset.operator_id = data['operator_id']
         dset.operatordataset.save()
+    models.AcquisistionModeDataset.objects.filter(dataset=dset).update(acqmode=data['acqmode'])
     if not hasattr(dset, 'reversephasedataset'):
         if data['rp_length']:
             models.ReversePhaseDataset.objects.create(dataset_id=dset.id,
                                                       length=data['rp_length'])
     elif not data['rp_length']:
             dset.reversephasedataset.delete()
-#            models.ReversePhaseDataset.objects.filter(
-#                dataset_id=dset.id).delete()
     elif data['rp_length'] != dset.reversephasedataset.length:
         dset.reversephasedataset.length = data['rp_length']
         dset.reversephasedataset.save()
-    update_admin_defined_params(dset, data, models.Labcategories.MSSAMPLES)
+# FIXME do his instead
+#    if hasattr(dset, 'reversephasedataset') and not data['rp_length']:
+#        dset.reversephasedataset.delete()
+#    else:
+#        dm.ReversePhaseDataset.objects.update_or_create(dataset=dset,
+#                defaults={'length': data['rp_length']})
+    update_admin_defined_params(dset, data, models.Labcategories.ACQUISITION)
+    return JsonResponse({})
+
+
+
+
+@login_required
+def save_ms_sampleprep(request):
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return JsonResponse({'error': user_denied}, status=status)
+    dset_id = data['dataset_id']
+    dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related().get()
+    models.EnzymeDataset.objects.filter(dataset=dset).delete()
+    if len([x for x in data['enzymes'] if x['checked']]):
+        models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset=dset,
+            enzyme_id=enz['id']) for enz in data['enzymes'] if enz['checked']])
+
+    if data['pipeline']:
+        models.SampleprepParameterValue.objects.filter(dataset=dset).delete()
+        cm.DatasetPipeline.objects.update_or_create(dataset=dset, defaults={
+            'pipelineversion_id': data['pipeline']})
+    else:
+        cm.DatasetPipeline.objects.filter(dataset=dset).delete()
+        if models.SampleprepParameterValue.objects.filter(dataset=dset).exists():
+            update_admin_defined_params(dset, data, models.Labcategories.SAMPLEPREP)
+        else:
+            save_admin_defined_params(data, dset_id)
+    set_component_state(dset_id, models.DatasetUIComponent.SAMPLEPREP, models.DCStates.OK)
     return JsonResponse({})
 
 
 @login_required
-def save_mssamples(request):
+def save_ms_sampleprep_tracking_step(request):
+    '''Save pipeline step when user fills in date or "done today". If a dated step is done which
+    is later than the PREPSTARTED step, this will set to done the not-dated steps before that 
+    as well.  '''
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
-    if user_denied:
-        return user_denied
-    dset_id = data['dataset_id']
-    dset = models.Dataset.objects.filter(pk=data['dataset_id']).select_related(
-        'operatordataset', 'reversephasedataset').get()
-    if hasattr(dset, 'operatordataset'):
-        return update_mssamples(dset, data)
-    if data['rp_length']:
-        models.ReversePhaseDataset.objects.create(dataset_id=dset_id,
-                                                  length=data['rp_length'])
-    models.OperatorDataset.objects.create(dataset_id=dset_id,
-                                          operator_id=data['operator_id'])
-    models.EnzymeDataset.objects.bulk_create([models.EnzymeDataset(dataset_id=dset_id, enzyme_id=enz['id'])
-        for enz in data['enzymes'] if enz['checked']])
+    try:
+        stagename, step_id, dspipe_id = data['stagename'], data['pipelinestep'], data['pipeline_id']
+        timestamp = data['timestamp']
+    except KeyError:
+        return JsonResponse({'error': 'Bad request to save tracking step method, contact admin'},
+                status=400)
 
+    dspipe = cm.DatasetPipeline.objects.filter(pk=dspipe_id).values('dataset_id').get()
+    user_denied, status = check_save_permission(dspipe['dataset_id'], request.user)
+    if user_denied:
+        return JsonResponse({'error': user_denied}, status=status)
+    
+    if stagename and hasattr(cm.TrackingStages, stagename):
+        stage = cm.TrackingStages[stagename]
+        timestamp_dt = datetime.strptime(timestamp, '%Y-%m-%d')
+        if cm.DatasetPrepTracking.objects.filter(dspipe_id=dspipe_id,
+                stage__lt=stage).count() < stage - 1:
+            # If stage = 3, there should be 2 stages already in DB
+            return JsonResponse({'error': 'Cannot update that stage without first updating previous'
+                ' dated stages'}, status=403)
+        cm.DatasetPrepTracking.objects.update_or_create(dspipe_id=dspipe_id, stage=stage,
+                defaults={'timestamp': timestamp_dt})
+        if stage > cm.TrackingStages.PREPSTARTED:
+            preptracks = []
+            for prepstage in cm.PipelineStep.objects.filter(
+                    pipelineversion__datasetpipeline__pk=dspipe_id):
+                preptracks.append(cm.DatasetPrepTrackingNodate(dspipe_id=dspipe_id, finished=True,
+                    stage=prepstage))
+            cm.DatasetPrepTrackingNodate.objects.bulk_create(preptracks, update_conflicts=True,
+                    update_fields=['finished'], unique_fields=['dspipe', 'stage'])
+    elif step_id:
+        pre_stages = [cm.TrackingStages.SAMPLESREADY, cm.TrackingStages.PREPSTARTED]
+        if cm.DatasetPrepTracking.objects.filter(dspipe_id=dspipe_id,
+                stage__in=pre_stages).count() < len(pre_stages):
+            return JsonResponse({'error': 'Cannot update that stage without first updating previous'
+                ' dated stages'}, status=403)
+        cm.DatasetPrepTrackingNodate.objects.update_or_create(dspipe_id=dspipe_id, stage_id=step_id,
+                defaults={'finished': True})
+    else:
+        return JsonResponse({'error': 'No proper date could be saved'}, status=400)
+
+    updated = {'tracked': [(cm.TrackingStages(x.stage).name, datetime.strftime(x.timestamp, '%Y-%m-%d'))
+        for x in cm.DatasetPrepTracking.objects.filter(dspipe_id=dspipe_id)],
+        'nodate': [(x.stage_id, x.finished) for x in cm.DatasetPrepTrackingNodate.objects.filter(dspipe_id=dspipe_id)]
+            }
+    return JsonResponse(updated)
+
+
+@login_required
+def save_ms_acquisition(request):
+    data = json.loads(request.body.decode('utf-8'))
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
+    if user_denied:
+        return JsonResponse({'error': user_denied}, status=status)
+    dset_id = data['dataset_id']
+    dset = models.Dataset.objects.filter(pk=data['dataset_id']).get()
+    if hasattr(dset, 'operatordataset'):
+        return update_msacq(dset, data)
+    models.OperatorDataset.objects.create(dataset=dset, operator_id=data['operator_id'])
     save_admin_defined_params(data, dset_id)
     set_component_state(dset_id, models.DatasetUIComponent.ACQUISITION, models.DCStates.OK)
     return JsonResponse({})
@@ -1435,9 +1582,9 @@ def update_labelcheck(data, qtype):
 @login_required
 def save_labelcheck(request):
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     dset_id = data['dataset_id']
     try:
         qtype = models.QuantDataset.objects.select_related(
@@ -1473,9 +1620,9 @@ def save_samples(request):
     Then either save or update
     '''
     data = json.loads(request.body.decode('utf-8'))
-    user_denied = check_save_permission(data['dataset_id'], request.user)
+    user_denied, status = check_save_permission(data['dataset_id'], request.user)
     if user_denied:
-        return user_denied
+        return JsonResponse({'error': user_denied}, status=status)
     dset_id = data['dataset_id']
 
     # Gather all data from the input about samples/channels and map with ch/file keys
@@ -1650,8 +1797,7 @@ def set_component_state(dset_id, comp, state):
 
 def update_admin_defined_params(dset, data, category):
     fieldparams = dset.fieldparametervalue_set.filter(param__category=category)
-    selectparams = dset.selectparametervalue_set.filter(
-        value__param__category=category).select_related('value')
+    selectparams = dset.sampleprepparametervalue_set.select_related('value')
     checkboxparamvals = dset.checkboxparametervalue_set.filter(
         value__param__category=category).select_related('value')
     selectparams = {p.value.param_id: p for p in selectparams}
@@ -1667,12 +1813,12 @@ def update_admin_defined_params(dset, data, category):
         value = param['model']
         pid = param['param_id']
         if param['inputtype'] == 'select':
-            if (pid in selectparams and value != selectparams[pid].value_id):
-                selectparams[pid].value_id = value
-                selectparams[pid].save()
-            elif pid not in selectparams:
-                models.SelectParameterValue.objects.create(
-                    dataset_id=data['dataset_id'], value_id=value)
+            if not value:
+                models.SampleprepParameterValue.objects.filter(dataset_id=data['dataset_id'],
+                        value__param_id=pid).delete()
+            else:
+                models.SampleprepParameterValue.objects.update_or_create(dataset_id=data['dataset_id'],
+                        value__param_id=pid, defaults={'value_id': value})
         elif param['inputtype'] == 'checkbox':
             value = [box['value'] for box in param['fields'] if box['checked']]
             if pid in checkboxparams:
@@ -1702,9 +1848,8 @@ def save_admin_defined_params(data, dset_id):
     selects, checkboxes, fields = [], [], []
     for param in data['params'].values():
         if param['inputtype'] == 'select':
-            value = param['model']
-            selects.append(models.SelectParameterValue(dataset_id=dset_id,
-                                                       value_id=value))
+            if value := param['model']:
+                selects.append(models.SampleprepParameterValue(dataset_id=dset_id, value_id=value))
         elif param['inputtype'] == 'checkbox':
             value = [box['value'] for box in param['fields'] if box['checked']]
             checkboxes.extend([models.CheckboxParameterValue(dataset_id=dset_id,
@@ -1714,6 +1859,6 @@ def save_admin_defined_params(data, dset_id):
             fields.append(models.FieldParameterValue(dataset_id=dset_id,
                                                      param_id=param['param_id'],
                                                      value=value))
-    models.SelectParameterValue.objects.bulk_create(selects)
+    models.SampleprepParameterValue.objects.bulk_create(selects)
     models.CheckboxParameterValue.objects.bulk_create(checkboxes)
     models.FieldParameterValue.objects.bulk_create(fields)

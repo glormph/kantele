@@ -115,7 +115,6 @@ ENSEMBL_API = 'https://rest.ensembl.org/info/software'
 UNIPROT_API = 'https://rest.uniprot.org/uniprotkb/stream?download=true&format=fasta&query=(proteome:{}){}'
 UP_ORGS = {'Homo sapiens': 'UP000005640', 'Mus musculus': 'UP000000589'}
 ENSEMBL_DL_URL = 'ftp://ftp.ensembl.org/pub/release-{}/fasta/{}/pep/'
-BIOMART_URL = 'https://ensembl.org/biomart/martservice'
 PX_PROJECT_ID = os.environ.get('PX_PROJECT_ID')
 # multiple
 EXTERNAL_PRODUCER_IDS = [int(x) for x in os.environ.get('EXTERNAL_PRODUCER_IDS', '-1').split(',')]
@@ -148,12 +147,10 @@ INJ_WAITTIMES = {THERMORAW: os.environ.get('THERMO_WAIT', 15 * 60), BRUKERRAW: o
 
 # The thermo reader command
 THERMOREADER_DOCKER = os.environ.get('THERMOREAD_DOCKER', 'ghcr.io/lehtiolab/kantele-thermorawreader')
-THERMO_CLASSIFY_CMD = ['wine', 'ScanHeadsman.exe', '-u', '-d', '0'] 
+THERMO_CLASSIFY_CMD = ['wine', 'ScanHeadsman.exe', '-u', '-d', '0', '-m']
 
 PRODUCER_ADMIN_NAME = os.environ.get('PRODUCER_ADMIN_NAME', 'admin')
 PRODUCER_ANALYSIS_NAME = os.environ.get('PRODUCER_ANALYSIS_NAME', 'analysis')
-
-MZREFINER_NXFWFV_ID = os.environ.get('REFINE_MZML_WFVID')
 
 # django
 ALLOWED_HOSTS = os.environ.get('HOST_DOMAIN', KANTELEHOST).split(',')

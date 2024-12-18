@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% load static %}
+
+{% block head %}
+  <link rel='stylesheet' href='{% static "corefac/bundle.css" %}'>
+  {{ ctx | json_script:'cf_data'}}
+  <script defer src='{% static "corefac/bundle.js" %}'></script>
+  <script>
+    let cf_init_data = JSON.parse(document.getElementById('cf_data').textContent);
+  </script>
+{% endblock head %}
+
+{% block content %}
+<div id="apps" class="container">
+</div>
+{% endblock content %}

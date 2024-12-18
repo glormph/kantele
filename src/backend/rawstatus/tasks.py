@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import requests
 import shutil
 import subprocess
@@ -414,6 +415,17 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
             except IndexError:
                 print(f'File {fname} of type {ftypename} parsed, could not find key: '
                         f'{settings.THERMOKEY}')
+
+            with open(os.path.join(tmpdir, 'outfn.methods.txt'), encoding='utf-16') as fp:
+                for line in fp:
+                    if line[:9] == 'Run time:':
+                        break
+            try:
+                mstime_min = float(re.match('Run time: ([0-9]+\.[0-9]+) \[min\]', line).group(1))
+            except (ValueError, AttributeError):
+                msg = 'Could not determine MS time for raw file'
+                taskfail_update_db(self.request.id, msg=msg)
+                raise
         
     elif ftypename == settings.BRUKERRAW:
         try:
@@ -437,6 +449,26 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
             val = cur.fetchone()[0]
         except TypeError:
             print(f'File {fname} of type {ftypename} parsed, could not find key: {settings.BRUKERKEY}')
+
+        try:
+            # Find last frame time (gradient length)
+            cur = con.execute('SELECT Time FROM Frames ORDER BY ROWID DESC LIMIT 1')
+        except sqlite3.DatabaseError as e:
+            if e == 'file is not a database':
+                msg = 'This raw file is not an database, possibly it is corrupted'
+            elif e == 'no such table: Frames':
+                msg = 'Could not find correct DB table Frames in raw file, contact admin'
+            else:
+                msg = e
+            taskfail_update_db(self.request.id, msg=msg)
+            raise
+        try:
+            mstime_min = float(cur.fetchone()[0])
+        except (TypeError, ValueError):
+            msg = 'Could not determine MS time for raw file'
+            taskfail_update_db(self.request.id, msg=msg)
+            raise
+
     # Parse what was found
     # FIXME invalid dataset ID needs logging!
     if val == 'QC':
@@ -453,7 +485,7 @@ def classify_msrawfile(self, token, fnid, ftypename, servershare, path, fname):
 
     url = urljoin(settings.KANTELEHOST, reverse('files:classifiedraw'))
     print(f'File {fname} of type {ftypename} parsed, result: dset_id={dset_id}, is_qc={is_qc}')
-    postdata = {'token': token, 'fnid': fnid, 'qc': is_qc, 'dset_id': dset_id,
+    postdata = {'token': token, 'fnid': fnid, 'qc': is_qc, 'dset_id': dset_id, 'mstime': mstime_min,
             'task_id': self.request.id}
     try:
         update_db(url, json=postdata)

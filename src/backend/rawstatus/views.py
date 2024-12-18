@@ -26,7 +26,7 @@ from celery import states as taskstates
 from kantele import settings
 from rawstatus.models import (RawFile, Producer, StoredFile, ServerShare,
                               SwestoreBackedupFile, StoredFileType, UserFile,
-                              PDCBackedupFile, UploadToken)
+                              MSFileData, PDCBackedupFile, UploadToken)
 from rawstatus import jobs as rsjobs
 from rawstatus.tasks import search_raws_downloaded
 from analysis.models import (Analysis, LibraryFile, AnalysisResultFile)
@@ -460,6 +460,7 @@ def classified_rawfile_treatment(request):
         return HttpResponseForbidden()
     try:
         token, fnid, is_qc, dsid = data['token'], data['fnid'], data['qc'], data['dset_id']
+        mstime = data['mstime']
     except KeyError as error:
         return JsonResponse({'error': 'Bad request'}, status=400)
     upload = UploadToken.validate_token(token, [])
@@ -467,6 +468,7 @@ def classified_rawfile_treatment(request):
         return JsonResponse({'error': 'Token invalid or expired'}, status=403)
     ufts = UploadToken.UploadFileType
     sfn = StoredFile.objects.filter(pk=fnid).select_related('rawfile__producer').get()
+    MSFileData.objects.get_or_create(rawfile_id=sfn.rawfile_id, defaults={'mstime': mstime})
     already_classified_or_error = False
     if sfn.rawfile.claimed:
         # This file has already been classified or otherwise picked up by a fast user
@@ -705,7 +707,7 @@ def transfer_file(request):
             os.unlink(upload_dst)
             return JsonResponse({'error': 'Failed to upload file, checksum differs from reported MD5, possibly corrupted in transfer or changed on local disk', 'state': 'error'}, status=409)
     os.chmod(upload_dst, 0o644)
-    file_trf, created = StoredFile.objects.get_or_create(
+    file_trf, created = StoredFile.objects.update_or_create(
             rawfile=rawfn, filetype=upload.filetype, md5=rawfn.source_md5,
             defaults={'servershare': dstshare, 'path': dstpath, 'filename': fname})
     if not created:

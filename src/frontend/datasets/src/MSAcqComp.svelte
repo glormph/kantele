@@ -16,12 +16,12 @@ let dsinfo = {
   dynamic_rp: false,
   rp_length: '',
   params: [],
-  enzymes: [],
-  no_enzyme: false,
+  acqmode: '',
 }
 
 let acqdata = {
   operators: [],
+  acqmodes: [],
 }
 
 let saved = false;
@@ -35,11 +35,11 @@ function editMade() {
 
 export function validate() {
   let comperrors = [];
-	if (!dsinfo.no_enzyme && !dsinfo.enzymes.filter.length) {
-		comperrors.push('Enzyme selection is required');
-	}
 	if (!dsinfo.operator_id) {
 		comperrors.push('Operator is required');
+	}
+	if (!dsinfo.acqmode) {
+		comperrors.push('Acquisition mode is required');
 	}
 	if (!dsinfo.dynamic_rp && !dsinfo.rp_length) {
 		comperrors.push('Reverse phase is required');
@@ -58,26 +58,23 @@ export async function save() {
   if (errors.length === 0) { 
     let postdata = {
       dataset_id: $dataset_id,
-      enzymes: dsinfo.no_enzyme ? [] : dsinfo.enzymes,
       operator_id: dsinfo.operator_id,
+      acqmode: dsinfo.acqmode,
       params: dsinfo.params,
       rp_length: dsinfo.dynamic_rp ? '' : dsinfo.rp_length,
     };
-    let url = '/datasets/save/mssamples/';
-    try {
-      const resp = await postJSON(url, postdata);
-      fetchData();
-    } catch(error) {
-      if (error.message === '404') { 
-        acquierrors = [...acquierrors, 'Save dataset before saving MS samples'];
-      }
-    }
+    let url = '/datasets/save/msacq/';
+    const resp = await postJSON(url, postdata);
+    if ('error' in resp) {
+      acquierrors = [...acquierrors, resp.error];
+    } 
+    fetchData();
   }
 }
 
 
 async function fetchData() {
-  let url = '/datasets/show/mssamples/';
+  let url = '/datasets/show/msacq/';
   url = $dataset_id ? url + $dataset_id : url;
 	const response = await getJSON(url);
   for (let [key, val] of Object.entries(response.acqdata)) { acqdata[key] = val; }
@@ -103,25 +100,12 @@ onMount(async() => {
   {:else}
   <i class="icon fas fa-edit"></i>
   {/if}
-  MS data
+  MS Acquisition 
   <button class="button is-small is-danger has-text-weight-bold" disabled={!edited} on:click={save}>Save</button>
   <button class="button is-small is-info has-text-weight-bold" disabled={!edited} on:click={fetchData}>Revert</button>
 </h5>
 
 <ErrorNotif errors={acquierrors} />
-
-<div class="field">
-  <label class="label">Enzymes</label>
-  <input type="checkbox" on:change={editMade} bind:checked={dsinfo.no_enzyme}>No enzyme
-  {#if !dsinfo.no_enzyme}
-  {#each dsinfo.enzymes as enzyme}
-  <div class="control">
-    <input on:change={editMade} bind:checked={enzyme.checked} type="checkbox">{enzyme.name}
-  </div>
-  {/each}
-  {/if}
-</div>
-
 
 <div class="field">
   <label class="label">MS Operator</label>
@@ -131,6 +115,21 @@ onMount(async() => {
         <option disabled value="">Please select one</option>
         {#each acqdata.operators as operator}
         <option value={operator.id}>{operator.name}</option>
+        {/each}
+      </select>
+    </div>
+  </div>
+</div>
+
+
+<div class="field">
+  <label class="label">Acquisition mode</label>
+  <div class="control">
+    <div class="select">
+      <select on:change={editMade} bind:value={dsinfo.acqmode}>
+        <option disabled value="">Please select one</option>
+        {#each acqdata.acqmodes as aq}
+        <option value={aq.id}>{aq.name}</option>
         {/each}
       </select>
     </div>

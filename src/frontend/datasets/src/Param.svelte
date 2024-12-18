@@ -14,7 +14,7 @@ function edited() { dispatch('edited');}
     {#if param.inputtype === 'select'}
     <div class="select"> 
       <select bind:value={param.model} on:change={edited}>
-        <option disabled value="">Please select one</option>
+        <option value="">Not used</option>
         {#each param.fields as option}
         <option value={option.value}>{option.text}</option>
         {/each}

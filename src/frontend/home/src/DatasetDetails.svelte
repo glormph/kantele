@@ -4,6 +4,7 @@ import { getJSON, postJSON } from '../../datasets/src/funcJSON.js'
 import { flashtime } from '../../util.js'
 import DetailBox from './DetailBox.svelte'
 import DynamicSelect from '../../datasets/src/DynamicSelect.svelte';
+import DatasetPipeline from '../../datasets/src/DatasetPipeline.svelte'
 
 export let closeWindow;
 export let dsetIds;
@@ -38,13 +39,11 @@ async function convertDset(dsid, pwiz_id) {
   const resp = await postJSON('createmzml/', {dsid: dsid, pwiz_id: pwiz_id});
   if (!resp.ok) {
     const msg = `Something went wrong trying to queue dataset mzML conversion: ${resp.error}`;
-    notif.errors[msg] = 1;
-    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+    showError(msg);
   } else {
     cleanFetchDetails(dsetIds);
     const msg = 'Queued dataset for mzML conversion';
-    notif.messages[msg] = 1;
-    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
+    showError(msg);
   }
 }
 
@@ -52,13 +51,11 @@ async function refineDset(dsid, wfid, dbid) {
   const resp = await postJSON('refinemzml/', {dsid: dsid, wfid: wfid, dbid: dbid});
   if (!resp.ok) {
     const msg = `Something went wrong trying to queue precursor refining: ${resp.error}`;
-    notif.errors[msg] = 1;
-    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+    showError(msg);
   } else {
     cleanFetchDetails(dsetIds);
     const msg = 'Queued dataset for mzML precursor refining';
-    notif.messages[msg] = 1;
-    setTimeout(function(msg) { notif.messages[msg] = 0 } , flashtime, msg);
+    showError(msg);
   }
 }
 
@@ -69,8 +66,7 @@ async function changeOwner(dsid, owner, op) {
     'owner': owner});
   if (!resp.ok) {
     const msg = `Something went wrong trying to change owner of the dataset: ${resp.error}`;
-    notif.errors[msg] = 1;
-    setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+    showError(msg);
   } else {
     fetchDetails([dsid]);
   }
@@ -83,8 +79,7 @@ async function fetchDetails(dsetids) {
     const resp = await getJSON(`/show/dataset/${dsetId}`);
     if (!resp.ok) {
       const msg = `Something went wrong fetching dataset info: ${resp.error}`;
-      notif.errors[msg] = 1;
-      setTimeout(function(msg) { notif.errors[msg] = 0 } , flashtime, msg);
+      showError(msg);
     } else {
       fetchedDsets[dsetId] = resp;
     }
@@ -98,6 +93,12 @@ function cleanFetchDetails(dsetids) {
   fetchDetails(dsetids);
 }
 
+function showError(error) {
+  notif.errors[error] = 1;
+  setTimeout(function(error) { notif.errors[error] = 0 } , flashtime, error);
+}
+
+
 onMount(async() => {
   cleanFetchDetails(dsetIds);
 });
@@ -109,7 +110,7 @@ onMount(async() => {
   <p><span class="has-text-weight-bold">Storage location:</span> {dset.storage_loc}</p>
   <hr>
   <div class="columns">
-    <div class="column">
+    <div class="column is-one-third">
 
       <div class="field">
         {#each Object.entries(dset.nrstoredfiles) as fn}
@@ -117,9 +118,21 @@ onMount(async() => {
         {/each}
       </div>
 
-    </div>
+      {#if dset.qtype}
+      <div><span class="has-text-weight-bold">Quant type</span> {dset.qtype.name}</div>
+      {/if}
 
-    <div class="column">
+      <div class="has-text-weight-bold">Instrument(s)</div>
+      <div class="field is-grouped is-grouped-multiline">
+        {#each dset.instruments as instr}
+        <div class="control">
+          <div class="tags">
+            <span class="tag is-light">{instr}</span>
+          </div>
+        </div>
+        {/each}
+      </div>
+
 
       <div class="has-text-weight-bold">Owners</div>
       <div class="field is-grouped is-grouped-multiline">
@@ -146,22 +159,12 @@ onMount(async() => {
       </div>
 
     </div>
-    <div class="column">
+    <div class="column is-two-thirds">
 
-      {#if dset.qtype}
-      <div><span class="has-text-weight-bold">Quant type</span> {dset.qtype.name}</div>
+      {#if dset.pipeline}
+      <DatasetPipeline on:error={e => showError(e.detail.error)} pipeSteps={dset.pipeline.steps} samplePrepCategories={dset.pipeline.prepcategories} bind:savedStageDates={dset.pipeline.prepdatetrack} bind:pipeStepsDone={dset.pipeline.prepsteptrack} bind:dspipeId={dset.pipeline.dspipe_id} />
       {/if}
 
-      <div class="has-text-weight-bold">Instrument(s)</div>
-      <div class="field is-grouped is-grouped-multiline">
-        {#each dset.instruments as instr}
-        <div class="control">
-          <div class="tags">
-            <span class="tag is-light">{instr}</span>
-          </div>
-        </div>
-        {/each}
-      </div>
 
     </div>
   </div>

@@ -67,6 +67,7 @@ class DatasetUIComponent(models.IntegerChoices):
     SAMPLES = 2, 'Samples'
     ACQUISITION = 3, 'MS Acquisition'
     DEFINITION = 4, 'Definition'
+    SAMPLEPREP = 5, 'MS Sampleprep'
     LCSAMPLES = 6, 'LC samples'
     POOLEDLCSAMPLES = 7, 'Pooled LC samples'
 
@@ -89,6 +90,7 @@ class Dataset(models.Model):
     storageshare = models.ForeignKey(ServerShare, on_delete=models.CASCADE)
     deleted = models.BooleanField(default=False) # for UI only, indicate deleted from active storage
     purged = models.BooleanField(default=False) # for UI only, indicate permanent deleted from cold storage too
+    locked = models.BooleanField(default=False)
 
 
 class DatasetOwner(models.Model):
@@ -132,17 +134,35 @@ class ParamType(models.Model):
 
 
 class Labcategories(models.IntegerChoices):
-    MSSAMPLES = 1, 'MS Samples'
+    # FIXME should these be folded into the Datatype categories?
+    # Even if they are only two?
+    ACQUISITION = 1, 'MS Acquisition'
+    SAMPLEPREP = 2, 'MS Sample prep'
 
 
-class SelectParameter(models.Model):
-    # adminable
-    title = models.TextField()
-    category = models.IntegerField(choices=Labcategories.choices)
+class SampleprepParameter(models.Model):
+    title = models.TextField(unique=True)
     active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.title
+
+
+class SampleprepParameterOption(models.Model):
+    param = models.ForeignKey(SampleprepParameter, on_delete=models.CASCADE)
+    value = models.TextField()
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.value
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['param_id', 'value'], name='uni_sprepopt')]
+
+
+class SampleprepParameterValue(models.Model):
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    value = models.ForeignKey(SampleprepParameterOption, on_delete=models.CASCADE)
 
 
 class FieldParameter(models.Model):
@@ -155,19 +175,6 @@ class FieldParameter(models.Model):
 
     def __str__(self):
         return self.title
-
-
-class SelectParameterOption(models.Model):
-    param = models.ForeignKey(SelectParameter, on_delete=models.CASCADE)
-    value = models.TextField()
-
-    def __str__(self):
-        return self.value
-
-
-class SelectParameterValue(models.Model):
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
-    value = models.ForeignKey(SelectParameterOption, on_delete=models.CASCADE)
 
 
 class FieldParameterValue(models.Model):
@@ -321,6 +328,16 @@ class Operator(models.Model):
 class OperatorDataset(models.Model):
     dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
     operator = models.ForeignKey(Operator, on_delete=models.CASCADE)
+
+
+class AcquisistionMode(models.IntegerChoices):
+    DDA = 1, 'DDA'
+    DIA = 2, 'DIA'
+
+
+class AcquisistionModeDataset(models.Model):
+    dataset = models.OneToOneField(Dataset, on_delete=models.CASCADE)
+    acqmode = models.IntegerField(choices=AcquisistionMode.choices)
 
 
 class ReversePhaseDataset(models.Model):
