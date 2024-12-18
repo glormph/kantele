@@ -15,6 +15,7 @@ let editingName = false;
 let selectedStep = {};
 let showStepEdit = {};
 let no_enzyme = false;
+let editMade = false;
 
 no_enzyme = enzymes.length === 0;
 
@@ -25,11 +26,13 @@ function addPipelineStep(ix, step_id) {
   delete(selectedStep[ix]);
   showStepEdit[ix] = false;
   pipe.steps = pipe.steps.map((x, ix) => {return {...x, ix: ix}});
+  editMade = true;
 }
 
 function deletePipelineStep(rmix) {
   pipe.steps = pipe.steps.filter((step, ix) => ix !== rmix);
   pipe.steps = pipe.steps.map((x, ix) => {return {...x, ix: ix}});
+  editMade = true;
 }
 
 
@@ -54,12 +57,31 @@ async function savePipeline() {
     dispatch('error', {error: resp.error});
   } else {
     dispatch('pipelineupdate', {});
+    editMade = false;
   }
 }
+
+
+async function lockPipeline() {
+  console.log('hej');
+  // First save pipeline, then lock
+  await savePipeline();
+  const url = 'sampleprep/pipeline/lock/';
+  const resp = await postJSON(url, {id: pipe.id});
+  if (resp.error) {
+    dispatch('error', {error: resp.error});
+  } else {
+    dispatch('pipelineupdate', {});
+    editMade = false;
+    pipe.locked = true;
+  }
+}
+
 
 function editName(name) {
   pipe.version = name;
   editingName = false;
+  editMade = true;
 }
 
 </script>
@@ -71,12 +93,27 @@ function editName(name) {
     <Inputfield addIcon={false} intext={pipe.version} on:newvalue={e => editName(e.detail.text)} />
     {:else}
 <p>
-    <a title="Save" on:click={savePipeline}><i class="icon far fa-save"></i></a>
+    {#if pipe.locked}
+    <i class="icon fas fa-lock"></i>
+    {:else}
+      {#if !editMade}
+      <i class="icon far fa-save has-text-grey"></i>
+      {:else}
+      <a title="Save" on:click={savePipeline}>
+        <i class="icon far fa-save"></i>
+      </a>
+      {/if}
     <a title="Disable" on:click={archivePipeline}><i class="icon fas fa-archive"></i></a>
     <a title="Delete" on:click={e => dispatch('deletepipeline', {'id': pipe.id})}><i class="icon fas fa-trash-alt"></i></a>
     <a title="Edit" on:click={e => editingName = true}><i class="icon fas fa-edit"></i></a>
-    {pipe.name} - {pipe.version}
-</p>
+    <a title="Lock" on:click={lockPipeline}><i class="icon fas fa-lock-open"></i></a>
+    {/if}
+    <span>{pipe.name} - {pipe.version}</span>
+    {#if pipe.locked}
+    <div class="is-size-7"> 
+    Locked at {pipe.timestamp}
+    </div>
+    {/if}
     {/if}
 </label>
   </div>

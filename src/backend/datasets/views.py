@@ -143,9 +143,10 @@ def dataset_mssampleprep(request, dataset_id=False):
     for p in models.SampleprepParameterOption.objects.select_related('param'):
         fill_sampleprepparam(params, p)
     pipelines = {}
-    for ps in cm.PipelineStep.objects.filter(pipelineversion__active=True).order_by('index').values(
-            'pk', 'pipelineversion__version', 'pipelineversion__pipeline__name',
-            'pipelineversion_id', 'step__paramopt_id', 'step__paramopt__param_id'):
+    for ps in cm.PipelineStep.objects.filter(pipelineversion__locked=True,
+            pipelineversion__active=True).order_by('index').values(
+                    'pk', 'pipelineversion__version', 'pipelineversion__pipeline__name',
+                    'pipelineversion_id', 'step__paramopt_id', 'step__paramopt__param_id'):
         pid = ps['pipelineversion_id']
         if pid not in pipelines:
             pipelines[pid] = {'id': pid, 'steps': [],

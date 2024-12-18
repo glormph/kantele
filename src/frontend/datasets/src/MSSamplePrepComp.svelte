@@ -117,7 +117,7 @@ onMount(async() => {
 <div class="field">
   <label class="label">Sample prep pipeline</label>
   <input type="checkbox" on:change={togglePipeline} checked={useTrackingPipeline}>Use a tracking pipeline
-  <DynamicSelect bind:this={pipeselector} placeholder="Type to select pipeline" fixedoptions={pipelines} bind:selectval={selectedPipeline} niceName={x => x.name} on:selectedvalue={pipelineSelected} />
+  <DynamicSelect bind:this={pipeselector} placeholder="Type to select an active, locked pipeline" fixedoptions={pipelines} bind:selectval={selectedPipeline} niceName={x => x.name} on:selectedvalue={pipelineSelected} />
 </div>
 
 {#if useTrackingPipeline && selectedPipeline && dset_pipe_id}
