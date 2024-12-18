@@ -16,8 +16,6 @@ today = today.toISOString().slice(0, 10);
 
 
 async function saveNodateStep(stage_id) {
-  console.log(pipeStepsDone);
-  console.log(stage_id);
   if (!pipeStepsDone[stage_id]) {
     const url = '/datasets/save/mssampleprep/tracking/';
     const resp = await postJSON(url, {stagename: false, pipelinestep: stage_id,

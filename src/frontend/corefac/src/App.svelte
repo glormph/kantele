@@ -1,6 +1,5 @@
 <script>
 
-import { onMount } from 'svelte';
 import { flashtime, statecolors, helptexts } from '../../util.js'
 import { postJSON } from '../../datasets/src/funcJSON.js'
 import Inputfield from './Inputfield.svelte';
@@ -37,6 +36,7 @@ $: {
 
 let selectable_pipelines;
 let selectable_inactive_pipelines;
+
 $: {
   selectable_pipelines = Object.fromEntries(Object.values(pipelines)
     .filter(x => x.active)
@@ -63,7 +63,6 @@ function startNewPipelineInput() {
 
 function startNewPipelineVersionInput() {
   showAddPipeVersionField = true;
-  //showAddPipeField = true;
   newPipeName = '';
 }
 
@@ -166,8 +165,6 @@ async function deletePipeline(pvid) {
   selectedPipeline = false;
 }
 
-onMount(async() => {
-})
 </script>
 
 <style>

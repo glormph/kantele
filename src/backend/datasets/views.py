@@ -26,7 +26,7 @@ INTERNAL_PI_PK = 1
 @login_required
 def new_dataset(request):
     """Returns dataset view with JS app"""
-    context = {'dataset_id': 'false', 'newdataset': True, 'is_owner': 'true'}
+    context = {'dataset_id': 'false', 'is_owner': 'true'}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -41,7 +41,7 @@ def show_dataset(request, dataset_id):
     dsown_ids = [x['user_id'] for x in models.DatasetOwner.objects.filter(dataset_id=dset['pk']).values('user_id')]
     is_owner = check_ownership(request.user, dset['runname__experiment__project__projtype__ptype_id'],
         dset['deleted'], dsown_ids)
-    context = {'dataset_id': dataset_id, 'newdataset': False, 'is_owner': json.dumps(is_owner)}
+    context = {'dataset_id': dataset_id, 'is_owner': json.dumps(is_owner)}
     return render(request, 'datasets/dataset.html', context)
 
 
@@ -112,7 +112,14 @@ def dataset_info(request, dataset_id=False):
 
 @login_required
 def dataset_files(request, dataset_id=False):
-    response_json = empty_files_json()
+    newfiles = filemodels.RawFile.objects.select_related('producer').filter(
+            claimed=False, storedfile__checked=True, date__gt=datetime.now() - timedelta(200))
+    response_json = {'instruments': [x.name for x in filemodels.Producer.objects.all()],
+            'datasetFiles': [],
+            'newfn_order': [x.id for x in newfiles.order_by('-date')],
+            'newFiles': {x.id: {'id': x.id, 'name': x.name, 'size': round(x.size / (2**20), 1), 
+                'date': x.date.timestamp() * 1000, 'instrument': x.producer.name, 'checked': False}
+                for x in newfiles}}
     if dataset_id:
         if not models.Dataset.objects.filter(purged=False, pk=dataset_id).count():
             return HttpResponseNotFound()
@@ -215,7 +222,14 @@ def dataset_msacq(request, dataset_id=False):
 
 @login_required
 def dataset_samples(request, dataset_id=False):
-    response_json = empty_samples_json()
+    response_json = {'species': [], 'quants': get_empty_isoquant(), 'labeled': False,
+            'lf_qtid': models.QuantType.objects.get(name='labelfree').pk,
+            'allsampletypes': {x.pk: {'id': x.pk, 'name': x.name} for x in models.SampleMaterialType.objects.all()},
+            'allspecies': {str(x['species']): {'id': x['species'], 'linnean': x['species__linnean'],
+                'name': x['species__popname'], 'total': x['total']} 
+                for x in models.SampleSpecies.objects.all().values('species', 'species__linnean', 'species__popname'
+                    ).annotate(total=Count('species__linnean')).order_by('-total')[:5]},
+            }
     if dataset_id:
         dset = models.Dataset.objects.filter(purged=False, pk=dataset_id).select_related('runname__experiment')
         if not dset:
@@ -837,7 +851,7 @@ def get_dset_storestate(dset_id, dsfiles=False):
     dsfc = dsfiles.count()
     if dsfc == 0:
         return 'empty'
-    coldfiles = dsfiles.filter(pdcbackedupfile__isnull=False, pdcbackedupfile__deleted=False, pdcbackedupfile__success=True)
+    coldfiles = dsfiles.filter(pdcbackedupfile__deleted=False, pdcbackedupfile__success=True)
     if dsfiles.filter(checked=True, deleted=False).count() == dsfc == coldfiles.count():
         storestate = 'complete'
     elif dsfiles.filter(checked=True, deleted=False).count() == dsfc:
@@ -1278,15 +1292,6 @@ def find_files(request):
                          for x in newfiles}})
 
 
-def empty_files_json():
-    '''Shows to user all uploaded non-claimed and checked files in a 200 day window'''
-    newfiles = filemodels.RawFile.objects.select_related('producer').filter(
-            claimed=False, storedfile__checked=True, date__gt=datetime.now() - timedelta(200))
-    return {'instruments': [x.name for x in filemodels.Producer.objects.all()], 'datasetFiles': [],
-            'newfn_order': [x.id for x in newfiles.order_by('-date')],
-            'newFiles': {x.id: {'id': x.id, 'name': x.name, 'size': round(x.size / (2**20), 1), 
-                'date': x.date.timestamp() * 1000, 'instrument': x.producer.name, 'checked': False}
-                for x in newfiles}}
 
 
 def move_dset_project_servershare(dset_id, storagesharename, dstsharename, projid):
