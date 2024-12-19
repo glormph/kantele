@@ -52,7 +52,6 @@ export function inputdone() {
   if (selectval && selectval in fixedoptions) {
     intext = niceName(fixedoptions[selectval]);
   } else {
-    intext = '';
     selectval = false;
   }
   if (!mouseSelect) {

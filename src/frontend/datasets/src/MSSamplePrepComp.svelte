@@ -13,6 +13,7 @@ export let errors;
 let samplepreperrors = [];
 let useTrackingPipeline = false;
 let selectedPipeline = false;
+let pipelineName = '';
 let pipelines = {};
 let pipeselector;
 let dset_pipe_id;
@@ -77,6 +78,8 @@ function togglePipeline() {
   if (useTrackingPipeline) {
     useTrackingPipeline = false;
     selectedPipeline = false;
+    // Blank the pipeline name from the selector
+    pipelineName = '';
     // If we run immediately then the selectedPipeline will not be updated yet
     setTimeout(pipeselector.inputdone, 20);
     editMade();
@@ -117,7 +120,12 @@ onMount(async() => {
 <div class="field">
   <label class="label">Sample prep pipeline</label>
   <input type="checkbox" on:change={togglePipeline} checked={useTrackingPipeline}>Use a tracking pipeline
-  <DynamicSelect bind:this={pipeselector} placeholder="Type to select an active, locked pipeline" fixedoptions={pipelines} bind:selectval={selectedPipeline} niceName={x => x.name} on:selectedvalue={pipelineSelected} />
+  <DynamicSelect bind:this={pipeselector} placeholder="Type to select an active, locked pipeline" 
+    fixedoptions={pipelines}
+    bind:intext={pipelineName}
+    bind:selectval={selectedPipeline}
+    niceName={x => x.name}
+    on:selectedvalue={pipelineSelected} />
 </div>
 
 {#if useTrackingPipeline && selectedPipeline && dset_pipe_id}
